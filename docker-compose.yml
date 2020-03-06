@@ -1,39 +1,42 @@
-prod:
-  extends:
-    file: base.yml
-    service: base
-  container_name: gef-api
-  ports:
-    - "3000:3000"
-  env_file:
-    - prod.env
-  volumes:
-    - /data/scripts:/data/scripts
-  command: develop
-  restart: always
-  links:
-    - redis
+version: '2'
 
-worker:
-  extends:
-    file: base.yml
-    service: base
-  container_name: gef-api-worker
-  env_file:
-    - prod.env
-  environment:
-    FLASK_APP: main.py
-  command: worker
-  volumes:
-    - /var/run/docker.sock:/tmp/docker.sock
-    - /data/scripts:/data/scripts
-  restart: always
-  links:
-    - redis
+services:
+    prod:
+      extends:
+        file: base.yml
+        service: base
+      container_name: gef-api
+      ports:
+        - "3000:3000"
+      env_file:
+        - prod.env
+      volumes:
+        - /data/scripts:/data/scripts
+      command: develop
+      restart: always
+      links:
+        - redis
 
-redis:
-    image: redis
-    container_name: gef-api-redis
-    ports:
-      - 6379
+    worker:
+      extends:
+        file: base.yml
+        service: base
+      container_name: gef-api-worker
+      env_file:
+        - prod.env
+      environment:
+        FLASK_APP: main.py
+      command: worker
+      volumes:
+        - /var/run/docker.sock:/tmp/docker.sock
+        - /data/scripts:/data/scripts
+      restart: always
+      links:
+        - redis
+
+    redis:
+        image: redis
+        container_name: gef-api-redis
+        ports:
+          - 6379
     restart: always

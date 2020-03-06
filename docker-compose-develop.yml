@@ -1,78 +1,101 @@
-develop:
-  extends:
-    file: base.yml
-    service: base
-  container_name: gef-api-develop
-  ports:
-    - "3000:3000"
-  environment:
-    ENVIRONMENT: dev
-    DEBUG: "True"
-    FLASK_APP: main.py
-    DOCKER_URL: unix:///tmp/docker.sock
-    ROLLBAR_TOKEN: ${ROLLBAR_TOKEN}
-    EE_SERVICE_ACCOUNT: ${EE_SERVICE_ACCOUNT}
-    EE_PRIVATE_KEY: ${EE_PRIVATE_KEY}
-    EE_SERVICE_ACCOUNT_JSON: ${EE_SERVICE_ACCOUNT}
-    SPARKPOST_API_KEY: ${SPARKPOST_API_KEY}
-    API_URL: http://mymachine:3000
-    API_USER: gef@gef.com
-    API_PASSWORD: gef
-  command: develop
-  volumes:
-    - ./gefapi:/opt/gef-api/gefapi
-    - ./migrations:/opt/gef-api/migrations
-    - /var/run/docker.sock:/tmp/docker.sock
-    - /data/scripts:/data/scripts
-  restart: always
-  links:
-    - database
-    - registry
-    - redis
-worker:
-  extends:
-    file: base.yml
-    service: base
-  container_name: gef-api-worker-develop
+version: '2'
 
-  environment:
-    ENVIRONMENT: dev
-    DEBUG: "True"
-    FLASK_APP: main.py
-    DOCKER_URL: unix:///tmp/docker.sock
-  command: worker
-  volumes:
-    - ./gefapi:/opt/gef-api/gefapi
-    - ./migrations:/opt/gef-api/migrations
-    - /var/run/docker.sock:/tmp/docker.sock
-    - /data/scripts:/data/scripts
-  restart: always
-  links:
-    - database
-    - registry
-    - redis
+services:
+    develop:
+      extends:
+        file: base.yml
+        service: base
+      container_name: gef-api-develop
+      ports:
+        - "3000:3000"
+      environment:
+        ENVIRONMENT: dev
+        DEBUG: "True"
+        FLASK_APP: main.py
+        DOCKER_URL: unix:///tmp/docker.sock
+        ROLLBAR_TOKEN: ${ROLLBAR_TOKEN}
+        EE_SERVICE_ACCOUNT: ${EE_SERVICE_ACCOUNT}
+        EE_PRIVATE_KEY: ${EE_PRIVATE_KEY}
+        EE_SERVICE_ACCOUNT_JSON: ${EE_SERVICE_ACCOUNT}
+        SPARKPOST_API_KEY: ${SPARKPOST_API_KEY}
+        API_URL: http://mymachine:3000
+        API_USER: gef@gef.com
+        API_PASSWORD: gef
+        DATABASE_ENV_POSTGRES_USER: ${DATABASE_ENV_POSTGRES_USER}
+        DATABASE_ENV_POSTGRES_PASSWORD: ${DATABASE_ENV_POSTGRES_PASSWORD}
+        DATABASE_PORT_5432_TCP_ADDR: ${DATABASE_PORT_5432_TCP_ADDR}
+        DATABASE_PORT_5432_TCP_PORT: ${DATABASE_PORT_5432_TCP_PORT}
+        DATABASE_ENV_POSTGRES_DB: ${DATABASE_ENV_POSTGRES_DB}
+        REDIS_PORT_6379_TCP_ADDR: ${REDIS_PORT_6379_TCP_ADDR}
+        REDIS_PORT_6379_TCP_PORT: ${REDIS_PORT_6379_TCP_PORT}
+      command: develop
+      volumes:
+        - ./gefapi:/opt/gef-api/gefapi
+        - ./migrations:/opt/gef-api/migrations
+        - /var/run/docker.sock:/tmp/docker.sock
+        - /data/scripts:/data/scripts
+      restart: always
+      links:
+        - database
+        - registry
+        - redis
+    worker:
+      extends:
+        file: base.yml
+        service: base
+      container_name: gef-api-worker-develop
 
-database:
-    image: postgres:9.6
-    container_name: gef-api-database
-    environment:
-        POSTGRES_PASSWORD: root
-        POSTGRES_USER: root
-        POSTGRES_DB: gef
-    volumes:
-        - D:/docker/gef/data:/var/lib/postgresql/data
-    restart: always
+      environment:
+        ENVIRONMENT: dev
+        DEBUG: "True"
+        FLASK_APP: main.py
+        DOCKER_URL: unix:///tmp/docker.sock
+        DATABASE_ENV_POSTGRES_USER: ${DATABASE_ENV_POSTGRES_USER}
+        DATABASE_ENV_POSTGRES_PASSWORD: ${DATABASE_ENV_POSTGRES_PASSWORD}
+        DATABASE_PORT_5432_TCP_ADDR: ${DATABASE_PORT_5432_TCP_ADDR}
+        DATABASE_PORT_5432_TCP_PORT: ${DATABASE_PORT_5432_TCP_PORT}
+        DATABASE_ENV_POSTGRES_DB: ${DATABASE_ENV_POSTGRES_DB}
+        REDIS_PORT_6379_TCP_ADDR: ${REDIS_PORT_6379_TCP_ADDR}
+        REDIS_PORT_6379_TCP_PORT: ${REDIS_PORT_6379_TCP_PORT}
+      command: worker
+      volumes:
+        - ./gefapi:/opt/gef-api/gefapi
+        - ./migrations:/opt/gef-api/migrations
+        - /var/run/docker.sock:/tmp/docker.sock
+        - /data/scripts:/data/scripts
+      restart: always
+      links:
+        - database
+        - registry
+        - redis
 
-registry:
-    image: registry:2
-    container_name: gef-api-registry
-    ports:
-      - 5000:5000
-    restart: always
+    database:
+        image: postgres:9.6
+        container_name: gef-api-database
+        environment:
+            POSTGRES_PASSWORD: root
+            POSTGRES_USER: root
+            POSTGRES_DB: gef
+        volumes:
+            - postgres-data:/var/lib/postgresql/data
+        restart: always
 
-redis:
-    image: redis
-    container_name: gef-api-redis
-    ports:
-      - 6379
-    restart: always
+    registry:
+        image: registry:2
+        container_name: gef-api-registry
+        ports:
+          - 5000:5000
+        restart: always
+
+    redis:
+        image: redis
+        container_name: gef-api-redis
+        ports:
+          - 6379
+        restart: always
+
+volumes:
+    postgres-data:
+        external: true
+
+

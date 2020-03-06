@@ -36,7 +36,7 @@ def init_rollbar():
     rollbar.init(
         SETTINGS.get('ROLLBAR_TOKEN'),
         # environment name
-        'flasktest',
+        os.getenv('ENVIRONMENT'),
         # server root directory, makes tracebacks prettier
         root=os.path.dirname(os.path.realpath(__file__)),
         # flask already sets up logging

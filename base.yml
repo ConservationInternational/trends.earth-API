@@ -1,5 +1,8 @@
-base:
-  build: .
-  environment:
-    PORT: 3000
-  container_name: gef-cli
+version: '2'
+
+services:
+    base:
+        build: .
+        environment:
+            PORT: 3000
+        container_name: gef-cli
