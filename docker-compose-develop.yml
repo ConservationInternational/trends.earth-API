@@ -10,6 +10,7 @@ develop:
     DEBUG: "True"
     FLASK_APP: main.py
     DOCKER_URL: unix:///tmp/docker.sock
+    ROLLBAR_TOKEN: ${ROLLBAR_TOKEN}
     EE_SERVICE_ACCOUNT: ${EE_SERVICE_ACCOUNT}
     EE_PRIVATE_KEY: ${EE_PRIVATE_KEY}
     EE_SERVICE_ACCOUNT_JSON: ${EE_SERVICE_ACCOUNT}
@@ -59,7 +60,7 @@ database:
         POSTGRES_USER: root
         POSTGRES_DB: gef
     volumes:
-      - $HOME/docker/gef/data:/var/lib/postgresql/data
+        - D:/docker/gef/data:/var/lib/postgresql/data
     restart: always
 
 registry:

@@ -8,7 +8,10 @@ import os
 import json
 import logging
 
-from flask import Flask, request, current_app
+import rollbar
+import rollbar.contrib.flask
+
+from flask import Flask, request, current_app, got_request_exception
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS, cross_origin
@@ -27,7 +30,23 @@ logging.basicConfig(
 app = Flask(__name__)
 CORS(app)
 
+@app.before_first_request
+def init_rollbar():
+    """init rollbar module"""
+    rollbar.init(
+        SETTINGS.get('ROLLBAR_TOKEN'),
+        # environment name
+        'flasktest',
+        # server root directory, makes tracebacks prettier
+        root=os.path.dirname(os.path.realpath(__file__)),
+        # flask already sets up logging
+        allow_logging_basic_config=False)
+
+    # send exceptions from `app` to rollbar, using flask's signal system.
+    got_request_exception.connect(rollbar.contrib.flask.report_exception, app)
+
 # Config
+
 app.config['SQLALCHEMY_DATABASE_URI'] = SETTINGS.get('SQLALCHEMY_DATABASE_URI')
 app.config['SECRET_KEY'] = SETTINGS.get('SECRET_KEY')
 app.config['UPLOAD_FOLDER'] = SETTINGS.get('UPLOAD_FOLDER')
