@@ -35,8 +35,8 @@ services:
         - redis
 
     redis:
-        image: redis
-        container_name: gef-api-redis
-        ports:
-          - 6379
-    restart: always
+      image: redis
+      container_name: gef-api-redis
+      ports:
+        - 6379
+      restart: always
