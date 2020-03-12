@@ -34,7 +34,8 @@ CORS(app)
 def init_rollbar():
     """init rollbar module"""
     rollbar.init(
-        SETTINGS.get('ROLLBAR_TOKEN'),
+        SETTINGS.get('ROLLBAR_SCRIPT_TOKEN'),
+        SETTINGS.get('ROLLBAR_SERVER_TOKEN'),
         # environment name
         os.getenv('ENVIRONMENT'),
         # server root directory, makes tracebacks prettier
