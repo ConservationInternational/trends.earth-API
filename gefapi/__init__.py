@@ -37,17 +37,17 @@ logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(stream=sys.stdout)
 logger.addHandler(handler)
 
+rollbar.init(os.getenv('ROLLBAR_SERVER_TOKEN'), os.getenv('ENV'))
+rollbar_handler = RollbarHandler()
+rollbar_handler.setLevel(logging.ERROR)
+logger.addHandler(rollbar_handler)
+
 def handle_exception(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
 sys.excepthook = handle_exception
-
-rollbar.init(os.getenv('ROLLBAR_SERVER_TOKEN'), os.getenv('ENV'))
-rollbar_handler = RollbarHandler()
-rollbar_handler.setLevel(logging.ERROR)
-logger.addHandler(rollbar_handler)
 
 @app.before_first_request
 def init_rollbar():
