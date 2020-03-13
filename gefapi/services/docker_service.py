@@ -94,7 +94,7 @@ class DockerService(object):
         logging.debug('Pushing image with tag %s' % (tag_image))
         pushed = False
         try:
-            for line in api_client.push(REGISTRY_URL+'/'+tag_image, stream=True, decode=True, insecure_registry=True):
+            for line in api_client.push(REGISTRY_URL+'/'+tag_image, stream=True, decode=True):
                 DockerService.save_build_log(script_id=script_id, line=line)
                 if 'aux' in line and pushed:
                     return True, line['aux']
