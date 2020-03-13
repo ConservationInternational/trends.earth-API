@@ -19,7 +19,7 @@ services:
         EE_PRIVATE_KEY: ${EE_PRIVATE_KEY}
         EE_SERVICE_ACCOUNT_JSON: ${EE_SERVICE_ACCOUNT}
         SPARKPOST_API_KEY: ${SPARKPOST_API_KEY}
-        API_URL: http://mymachine:3000
+        API_URL: http://localhost:3000
         API_USER: gef@gef.com
         API_PASSWORD: gef
         DATABASE_ENV_POSTGRES_USER: ${DATABASE_ENV_POSTGRES_USER}
@@ -29,6 +29,7 @@ services:
         DATABASE_ENV_POSTGRES_DB: ${DATABASE_ENV_POSTGRES_DB}
         REDIS_PORT_6379_TCP_ADDR: ${REDIS_PORT_6379_TCP_ADDR}
         REDIS_PORT_6379_TCP_PORT: ${REDIS_PORT_6379_TCP_PORT}
+        REGISTRY_PORT_5000_TCP_PORT: ${REGISTRY_PORT_5000_TCP_PORT}
       command: develop
       volumes:
         - ./gefapi:/opt/gef-api/gefapi
@@ -58,6 +59,7 @@ services:
         DATABASE_ENV_POSTGRES_DB: ${DATABASE_ENV_POSTGRES_DB}
         REDIS_PORT_6379_TCP_ADDR: ${REDIS_PORT_6379_TCP_ADDR}
         REDIS_PORT_6379_TCP_PORT: ${REDIS_PORT_6379_TCP_PORT}
+        REGISTRY_PORT_5000_TCP_PORT: ${REGISTRY_PORT_5000_TCP_PORT}
       command: worker
       volumes:
         - ./gefapi:/opt/gef-api/gefapi
@@ -74,11 +76,13 @@ services:
         image: postgres:9.6
         container_name: gef-api-database
         environment:
-            POSTGRES_PASSWORD: root
-            POSTGRES_USER: root
-            POSTGRES_DB: gef
+            POSTGRES_PASSWORD: ${DATABASE_ENV_POSTGRES_PASSWORD}
+            POSTGRES_USER: ${DATABASE_ENV_POSTGRES_USER}
+            POSTGRES_DB: ${DATABASE_ENV_POSTGRES_DB}
         volumes:
             - postgres-data:/var/lib/postgresql/data
+        ports:
+          - 5432:5432
         restart: always
 
     registry:
