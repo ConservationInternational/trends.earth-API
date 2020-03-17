@@ -86,7 +86,7 @@ services:
         restart: always
 
     registry:
-        image: registry:2
+        image: registry:2.6.1
         container_name: gef-api-registry
         ports:
           - 5000:5000

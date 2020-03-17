@@ -1,0 +1,15 @@
+version: '2'
+
+services:
+    registry:
+        image: registry:2.7.1
+        container_name: registry
+        ports:
+          - 5000:5000
+        restart: always
+        volumes:
+            - registry-data:/var/lib/registry
+
+volumes:
+    registry-data:
+        external: true
