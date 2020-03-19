@@ -1,4 +1,4 @@
-FROM conservationinternational/trends.earth-environment:0.1.0
+FROM conservationinternational/trends.earth-environment:0.1.1
 
 COPY src /project/gefcore/script
 COPY requirements.txt /project/requirements.txt
