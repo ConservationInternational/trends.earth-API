@@ -6,7 +6,7 @@ from __future__ import print_function
 
 import logging
 import os
-from shutil import copyfile
+from shutil import copy
 import docker
 
 import time
@@ -112,7 +112,7 @@ class DockerService(object):
         try:
             logging.debug('[SERVICE]: Copying dockerfile')
             dockerfile = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'run/Dockerfile')
-            copyfile(dockerfile, os.path.join(path, 'Dockerfile'))
+            copy(dockerfile, os.path.join(path, 'Dockerfile'))
             for line in api_client.build(path=path, rm=True, decode=True, tag=REGISTRY_URL+'/'+tag_image, forcerm=True, pull=False, nocache=True):
                 if 'errorDetail' in line:
                     return False, line['errorDetail']
