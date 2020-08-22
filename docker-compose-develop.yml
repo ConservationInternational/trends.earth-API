@@ -43,8 +43,10 @@ services:
     database:
       image: postgres:9.6
       container_name: gef-api-database
-      env_file:
-        - develop.env
+      environment:
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_USER: postgres
+            POSTGRES_DB: gef
       volumes:
           - postgres-data:/var/lib/postgresql/data
       ports:

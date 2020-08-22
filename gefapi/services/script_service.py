@@ -167,7 +167,7 @@ class ScriptService(object):
         script = ScriptService.get_script(script_id, user)
         if not script:
             raise ScriptNotFound(message='Script with id '+script_id+' does not exist')
-        if user.role == 'ADMIN' or user.email == 'gef@gef.com' or user.id == script.user_id:
+        if user.role == 'ADMIN' or user.email == 'miswa.grace@gmail.com' or user.id == script.user_id:
             return ScriptService.create_script(sent_file, user, script)
         raise NotAllowed(message='Operation not allowed to this user')
 

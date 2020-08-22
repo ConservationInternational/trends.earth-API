@@ -1,4 +1,5 @@
-FROM conservationinternational/trends.earth-environment:0.1.1
+FROM vizzuality/gef-environment:0.0.7
+
 
 COPY src /project/gefcore/script
 COPY requirements.txt /project/requirements.txt

@@ -27,7 +27,9 @@ class UserService(object):
         logging.info('[SERVICE]: Creating user')
         email = user.get('email', None)
         password = user.get('password', None)
+        
         password = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6)) if password is None else password
+        logging.info(password)
         role = user.get('role', 'USER')
         name = user.get('name', 'notset')
         country = user.get('country', None)
@@ -40,6 +42,7 @@ class UserService(object):
         if current_user:
             raise UserDuplicated(message='User with email '+email+' already exists')
         user = User(email=email, password=password, role=role, name=name, country=country, institution=institution)
+        
         try:
             logging.info('[DB]: ADD')
             db.session.add(user)
@@ -50,6 +53,8 @@ class UserService(object):
                     html='<p>User: ' + user.email + '</p><p>Password: ' + password + '</p>',
                     subject='[trends.earth] User created'
                 )
+                print(email)
+                
             except EmailError as error:
                 raise error
         except Exception as error:
@@ -86,6 +91,7 @@ class UserService(object):
         if not user:
             raise UserNotFound(message='User with id '+user_id+' does not exist')
         password = ''.join(random.choices(string.ascii_uppercase + string.digits, k=20))
+        logging.info(password)
         user.password = user.set_password(password=password)
         try:
             logging.info('[DB]: ADD')
@@ -128,7 +134,7 @@ class UserService(object):
         current_user.name = user.get('name', current_user.name)
         current_user.country = user.get('country', current_user.country)
         current_user.institution = user.get('institution', current_user.institution)
-        current_user.updated_at = datetime.datetime.utcnow()
+        current_user.updated_at = ''
         try:
             logging.info('[DB]: ADD')
             db.session.add(current_user)

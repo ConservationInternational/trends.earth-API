@@ -36,4 +36,4 @@ USER root
 #USER $USER
 
 # Launch script
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["sh","./entrypoint.sh"]

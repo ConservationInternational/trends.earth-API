@@ -18,12 +18,14 @@ from gefapi.validators import validate_user_creation, validate_user_update, \
 from gefapi.services import UserService, ScriptService, ExecutionService
 from gefapi.errors import UserNotFound, UserDuplicated, InvalidFile, ScriptNotFound, \
     ScriptDuplicated, NotAllowed, ExecutionNotFound, ScriptStateNotValid, EmailError
+from flask_cors import CORS, cross_origin
 
 
 # SCRIPT CREATION
 @endpoints.route('/script', strict_slashes=False, methods=['POST'])
 @jwt_required()
 @validate_file
+@cross_origin()
 def create_script():
     """
     Create a new script
@@ -37,6 +39,7 @@ def create_script():
         user = ScriptService.create_script(sent_file, user)
     except InvalidFile as e:
         logging.error('[ROUTER]: '+e.message)
+        logging.error(sent_file)
         return error(status=400, detail=e.message)
     except ScriptDuplicated as e:
         logging.error('[ROUTER]: '+e.message)
@@ -48,6 +51,7 @@ def create_script():
 
 
 @endpoints.route('/script', strict_slashes=False, methods=['GET'])
+@cross_origin()
 @jwt_required()
 def get_scripts():
     """Get all scripts"""
@@ -64,6 +68,7 @@ def get_scripts():
 
 @endpoints.route('/script/<script>', strict_slashes=False, methods=['GET'])
 @jwt_required()
+@cross_origin()
 def get_script(script):
     """Get a script"""
     logging.info('[ROUTER]: Getting script '+script)
@@ -82,6 +87,7 @@ def get_script(script):
 
 @endpoints.route('/script/<script>/publish', strict_slashes=False, methods=['POST'])
 @jwt_required()
+@cross_origin()
 def publish_script(script):
     """Publish a script"""
     logging.info('[ROUTER]: Publishsing script '+script)
@@ -98,6 +104,7 @@ def publish_script(script):
 
 @endpoints.route('/script/<script>/unpublish', strict_slashes=False, methods=['POST'])
 @jwt_required()
+@cross_origin()
 def unpublish_script(script):
     """Unpublish a script"""
     logging.info('[ROUTER]: Unpublishsing script '+script)
@@ -114,6 +121,7 @@ def unpublish_script(script):
 
 @endpoints.route('/script/<script>/download', strict_slashes=False, methods=['GET'])
 @jwt_required()
+@cross_origin()
 def download_script(script):
     """Download a script"""
     logging.info('[ROUTER]: Download script '+script)
@@ -133,6 +141,7 @@ def download_script(script):
 
 @endpoints.route('/script/<script>/log', strict_slashes=False, methods=['GET'])
 @jwt_required()
+@cross_origin()
 def get_script_logs(script):
     """Get a script logs"""
     logging.info('[ROUTER]: Getting script logs of script %s ' % (script))
@@ -153,6 +162,7 @@ def get_script_logs(script):
 
 @endpoints.route('/script/<script>', strict_slashes=False, methods=['PATCH'])
 @jwt_required()
+@cross_origin()
 @validate_file
 def update_script(script):
     """Update a script"""
@@ -182,11 +192,12 @@ def update_script(script):
 
 @endpoints.route('/script/<script>', strict_slashes=False, methods=['DELETE'])
 @jwt_required()
+@cross_origin()
 def delete_script(script):
     """Delete a script"""
     logging.info('[ROUTER]: Deleting script: '+script)
     identity = current_identity
-    if identity.role != 'ADMIN' and identity.email != 'gef@gef.com':
+    if identity.role != 'ADMIN' and identity.email != 'miswa.grace@gmail.com':
         return error(status=403, detail='Forbidden')
     try:
         script = ScriptService.delete_script(script, identity)
@@ -202,6 +213,7 @@ def delete_script(script):
 # SCRIPT EXECUTION
 @endpoints.route('/script/<script>/run', strict_slashes=False, methods=['POST'])
 @jwt_required()
+@cross_origin()
 def run_script(script):
     """Run a script"""
     logging.info('[ROUTER]: Running script: '+script)
@@ -227,6 +239,7 @@ def run_script(script):
 
 @endpoints.route('/execution', strict_slashes=False, methods=['GET'])
 @jwt_required()
+@cross_origin()
 def get_executions():
     """Get all executions"""
     logging.info('[ROUTER]: Getting all executions: ')
@@ -248,6 +261,7 @@ def get_executions():
 
 @endpoints.route('/execution/<execution>', strict_slashes=False, methods=['GET'])
 @jwt_required()
+@cross_origin()
 def get_execution(execution):
     """Get an execution"""
     logging.info('[ROUTER]: Getting execution: '+execution)
@@ -268,13 +282,14 @@ def get_execution(execution):
 
 @endpoints.route('/execution/<execution>', strict_slashes=False, methods=['PATCH'])
 @jwt_required()
+@cross_origin()
 @validate_execution_update
 def update_execution(execution):
     """Update an execution"""
     logging.info('[ROUTER]: Updating execution '+execution)
     body = request.get_json()
     user = current_identity
-    if user.role != 'ADMIN' and user.email != 'gef@gef.com':
+    if user.role != 'ADMIN' and user.email != 'miswa.grace@gmail.com':
         return error(status=403, detail='Forbidden')
     try:
         execution = ExecutionService.update_execution(body, execution)
@@ -288,6 +303,7 @@ def update_execution(execution):
 
 
 @endpoints.route('/execution/<execution>/log', strict_slashes=False, methods=['GET'])
+@cross_origin()
 def get_execution_logs(execution):
     """Get the exectuion logs"""
     logging.info('[ROUTER]: Getting exectuion logs of execution %s ' % (execution))
@@ -307,6 +323,7 @@ def get_execution_logs(execution):
 
 
 @endpoints.route('/execution/<execution>/download-results', strict_slashes=False, methods=['GET'])
+@cross_origin()
 def get_download_results(execution):
     """Download results of the exectuion"""
     logging.info('[ROUTER]: Download execution results of execution %s ' % (execution))
@@ -325,13 +342,14 @@ def get_download_results(execution):
 
 @endpoints.route('/execution/<execution>/log', strict_slashes=False, methods=['POST'])
 @jwt_required()
+@cross_origin()
 @validate_execution_log_creation
 def create_execution_log(execution):
     """Create log of an execution"""
     logging.info('[ROUTER]: Creating execution log for '+execution)
     body = request.get_json()
     user = current_identity
-    if user.role != 'ADMIN' and user.email != 'gef@gef.com':
+    if user.role != 'ADMIN' and user.email != 'miswa.grace@gmail.com':
         return error(status=403, detail='Forbidden')
     try:
         log = ExecutionService.create_execution_log(body, execution)
@@ -347,6 +365,7 @@ def create_execution_log(execution):
 # USER
 @endpoints.route('/user', strict_slashes=False, methods=['POST'])
 @validate_user_creation
+@cross_origin()
 def create_user():
     """Create an user"""
     logging.info('[ROUTER]: Creating user')
@@ -376,13 +395,14 @@ def create_user():
 
 @endpoints.route('/user', strict_slashes=False, methods=['GET'])
 @jwt_required()
+@cross_origin()
 def get_users():
     """Get users"""
     logging.info('[ROUTER]: Getting all users')
     include = request.args.get('include')
     include = include.split(',') if include else []
     identity = current_identity
-    if identity.role != 'ADMIN' and identity.email != 'gef@gef.com':
+    if identity.role != 'ADMIN' and identity.email != 'miswa.grace@gmail.com':
         return error(status=403, detail='Forbidden')
     try:
         users = UserService.get_users()
@@ -394,13 +414,14 @@ def get_users():
 
 @endpoints.route('/user/<user>', strict_slashes=False, methods=['GET'])
 @jwt_required()
+@cross_origin()
 def get_user(user):
     """Get an user"""
     logging.info('[ROUTER]: Getting user'+user)
     include = request.args.get('include')
     include = include.split(',') if include else []
     identity = current_identity
-    if identity.role != 'ADMIN' and identity.email != 'gef@gef.com':
+    if identity.role != 'ADMIN' and identity.email != 'miswa.grace@gmail.com':
         return error(status=403, detail='Forbidden')
     try:
         user = UserService.get_user(user)
@@ -415,6 +436,7 @@ def get_user(user):
 
 @endpoints.route('/user/me', strict_slashes=False, methods=['GET'])
 @jwt_required()
+@cross_origin()
 def get_me():
     """Get me"""
     logging.info('[ROUTER]: Getting my user')
@@ -424,6 +446,7 @@ def get_me():
 
 @endpoints.route('/user/me', strict_slashes=False, methods=['PATCH'])
 @jwt_required()
+@cross_origin()
 def update_profile():
     """Update an user"""
     logging.info('[ROUTER]: Updating profile')
@@ -455,6 +478,7 @@ def update_profile():
 
 @endpoints.route('/user/me', strict_slashes=False, methods=['DELETE'])
 @jwt_required()
+@cross_origin()
 def delete_profile():
     """Delete Me"""
     logging.info('[ROUTER]: Delete me')
@@ -471,6 +495,7 @@ def delete_profile():
 
 
 @endpoints.route('/user/<user>/recover-password', strict_slashes=False, methods=['POST'])
+@cross_origin()
 def recover_password(user):
     """Revover password"""
     logging.info('[ROUTER]: Recovering password')
@@ -490,13 +515,14 @@ def recover_password(user):
 
 @endpoints.route('/user/<user>', strict_slashes=False, methods=['PATCH'])
 @jwt_required()
+@cross_origin()
 @validate_user_update
 def update_user(user):
     """Update an user"""
     logging.info('[ROUTER]: Updating user'+user)
     body = request.get_json()
     identity = current_identity
-    if identity.role != 'ADMIN' and identity.email != 'gef@gef.com':
+    if identity.role != 'ADMIN' and identity.email != 'miswa.grace@gmail.com':
         return error(status=403, detail='Forbidden')
     try:
         user = UserService.update_user(body, user)
@@ -511,13 +537,14 @@ def update_user(user):
 
 @endpoints.route('/user/<user>', strict_slashes=False, methods=['DELETE'])
 @jwt_required()
+@cross_origin()
 def delete_user(user):
     """Delete an user"""
     logging.info('[ROUTER]: Deleting user'+user)
     identity = current_identity
-    if user == 'gef@gef.com':
+    if user == 'miswa.grace@gmail.com':
         return error(status=403, detail='Forbidden')
-    if identity.role != 'ADMIN' and identity.email != 'gef@gef.com':
+    if identity.role != 'ADMIN' and identity.email != 'miswa.grace@gmail.com':
         return error(status=403, detail='Forbidden')
     try:
         user = UserService.delete_user(user)

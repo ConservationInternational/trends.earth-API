@@ -6,7 +6,7 @@ from __future__ import print_function
 
 import logging
 import os
-from shutil import copy
+from shutil import copyfile
 import docker
 
 import time
@@ -94,7 +94,7 @@ class DockerService(object):
         logging.debug('Pushing image with tag %s' % (tag_image))
         pushed = False
         try:
-            for line in api_client.push(REGISTRY_URL+'/'+tag_image, stream=True, decode=True):
+            for line in api_client.push(REGISTRY_URL+'/'+tag_image, stream=True, decode=True, insecure_registry=True):
                 DockerService.save_build_log(script_id=script_id, line=line)
                 if 'aux' in line and pushed:
                     return True, line['aux']
@@ -112,7 +112,7 @@ class DockerService(object):
         try:
             logging.debug('[SERVICE]: Copying dockerfile')
             dockerfile = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'run/Dockerfile')
-            copy(dockerfile, os.path.join(path, 'Dockerfile'))
+            copyfile(dockerfile, os.path.join(path, 'Dockerfile'))
             for line in api_client.build(path=path, rm=True, decode=True, tag=REGISTRY_URL+'/'+tag_image, forcerm=True, pull=False, nocache=True):
                 if 'errorDetail' in line:
                     return False, line['errorDetail']

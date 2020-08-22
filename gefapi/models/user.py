@@ -35,7 +35,7 @@ class User(db.Model):
                                  cascade='all, delete-orphan',
                                  lazy='dynamic')
 
-    def __init__(self, email, password, name, country, institution, role='USER'):
+    def __init__(self, email, password, name, country, institution, role='ADMIN'):
         self.email = email
         self.password = self.set_password(password=password)
         self.role = role

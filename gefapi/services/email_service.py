@@ -14,7 +14,7 @@ class EmailService(object):
     """MailService Class"""
 
     @staticmethod
-    def send_html_email(recipients=[], html='', from_email='api@trends.earth', subject='[trends.earth] Undefined Subject'):
+    def send_html_email(recipients=[], html='', from_email='info@promiseevents.co.ke', subject='[trends.earth] Undefined Subject'):
         try:
             sp = SparkPost()
             response = sp.transmissions.send(

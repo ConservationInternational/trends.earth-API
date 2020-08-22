@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 case "$1" in
     develop)
@@ -15,7 +14,7 @@ case "$1" in
         ;;
     worker)
         echo "Running celery"
-        exec celery -A gefapi.celery worker -E -B --loglevel=DEBUG
+        exec celery -A gefapi.celery worker -E -B --loglevel=DEBUG --uid=nobody --gid=nogroup
         ;;
     *)
         exec "$@"
