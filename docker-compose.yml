@@ -1,42 +1,42 @@
-version: '2'
+version: '3'
 
 services:
     prod:
-      extends:
-        file: base.yml
-        service: base
-      container_name: gef-api
+      image: trendsearth_api
+      environment:
+        PORT: 3000
       ports:
         - "3000:3000"
       env_file:
         - prod.env
       volumes:
         - /data/scripts:/data/scripts
-      command: develop
-      restart: always
-      links:
+      command: start
+      depends_on:
         - redis
+      deploy:
+        restart_policy:
+          condition: on-failure
 
     worker:
-      extends:
-        file: base.yml
-        service: base
-      container_name: gef-api-worker
+      image: trendsearth_api
       env_file:
         - prod.env
       environment:
+        PORT: 3000
         FLASK_APP: main.py
       command: worker
       volumes:
         - /var/run/docker.sock:/tmp/docker.sock
         - /data/scripts:/data/scripts
-      restart: always
-      links:
+      depends_on:
         - redis
+      deploy:
+        restart_policy:
+          condition: on-failure
 
     redis:
       image: redis
-      container_name: gef-api-redis
-      ports:
-        - 6379
-      restart: always
+      deploy:
+        restart_policy:
+          condition: on-failure
