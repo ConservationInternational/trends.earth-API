@@ -2,7 +2,7 @@ version: '3'
 
 services:
     prod:
-      image: trendsearth_api
+      image: 172.40.1.52:5000/trendsearth_api
       environment:
         PORT: 3000
       ports:
@@ -10,6 +10,7 @@ services:
       env_file:
         - prod.env
       volumes:
+        - /var/run/docker.sock:/tmp/docker.sock
         - /data/scripts:/data/scripts
       command: start
       depends_on:
@@ -17,9 +18,13 @@ services:
       deploy:
         restart_policy:
           condition: on-failure
+        placement:
+          constraints:
+            - "node.hostname==ip-172-40-1-187"
+
 
     worker:
-      image: trendsearth_api
+      image: 172.40.1.52:5000/trendsearth_api
       env_file:
         - prod.env
       environment:
@@ -34,9 +39,17 @@ services:
       deploy:
         restart_policy:
           condition: on-failure
+        placement:
+          constraints:
+            - "node.hostname==ip-172-40-1-187"
 
     redis:
       image: redis
+      ports:
+        - "6379:6379"
       deploy:
         restart_policy:
           condition: on-failure
+        placement:
+          constraints:
+            - "node.hostname==ip-172-40-1-187"
