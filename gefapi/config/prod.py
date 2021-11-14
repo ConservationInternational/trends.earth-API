@@ -14,6 +14,7 @@ SETTINGS = {
         'EE_SERVICE_ACCOUNT': os.getenv('EE_SERVICE_ACCOUNT'),
         'EE_SERVICE_ACCOUNT_JSON': os.getenv('EE_SERVICE_ACCOUNT_JSON')
     },
-    'SCRIPTS_FS': '/data/scripts',
+    'SCRIPTS_S3_PREFIX': os.getenv('SCRIPTS_S3_PREFIX'),
+    'SCRIPTS_S3_BUCKET': os.getenv('SCRIPTS_S3_BUCKET'),
     'REGISTRY_URL': os.getenv('REGISTRY_URL'),
 }

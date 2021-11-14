@@ -10,8 +10,12 @@ import logging
 import tarfile
 import json
 import shutil
+import tempfile
 from uuid import UUID
+from pathlib import Path
 
+import boto3
+import botocore
 from werkzeug.utils import secure_filename
 from slugify import slugify
 from sqlalchemy import or_
@@ -29,6 +33,21 @@ def allowed_file(filename):
     else:
         return '.' in filename and \
                filename.rsplit('.', 1)[1].lower() in SETTINGS.get('ALLOWED_EXTENSIONS')
+
+
+def _upload_script_to_s3(file_path):
+    object_name = str(SETTINGS.get('SCRIPTS_S3_PREFIX') / file_path.name)
+    s3_client = boto3.client('s3')
+    try:
+        _ = s3_client.upload_file(
+            str(file_path),
+            SETTINGS.get('SCRIPTS_S3_BUCKET'),
+            object_name
+        )
+    except botocore.exceptions.ClientError as e:
+        logging.error(e)
+        return False
+    return True
 
 
 class ScriptService(object):
@@ -84,17 +103,22 @@ class ScriptService(object):
             logging.info('[DB]: ADD')
             db.session.add(script)
 
-            shutil.move(sent_file_path, os.path.join(SETTINGS.get('SCRIPTS_FS'), script.slug+'.tar.gz'))
-            sent_file_path = os.path.join(SETTINGS.get('SCRIPTS_FS'), script.slug+'.tar.gz')
+            _upload_script_to_s3(Path(sent_file_path))
+            temp_dir = tempfile.mkdtemp()
+            shutil.move(sent_file_path, temp_dir), script.slug+'.tar.gz'))
+            sent_file_path = os.path.join(temp_dir, script.slug+'.tar.gz')
             with tarfile.open(name=sent_file_path, mode='r:gz') as tar:
-                tar.extractall(path=SETTINGS.get('SCRIPTS_FS') + '/'+script.slug)
-
-            db.session.commit()
-            result = docker_build.delay(script.id, path=SETTINGS.get('SCRIPTS_FS') + '/'+script.slug, tag_image=script.slug)
-
+                tar.extractall(path=temp_dir + '/'+script.slug)
+            result = docker_build.delay(
+                script.id,
+                path=temp_dir + '/' + script.slug,
+                tag_image=script.slug
+            )
         except Exception as error:
             logging.error(error)
             raise error
+        else:
+           db.session.commit()
         return script
 
     @staticmethod
