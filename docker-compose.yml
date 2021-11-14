@@ -1,4 +1,4 @@
-version: '3'
+version: '3.8'
 
 services:
     prod:
@@ -10,8 +10,7 @@ services:
       env_file:
         - prod.env
       volumes:
-        - /var/run/docker.sock:/tmp/docker.sock
-        - /data/scripts:/data/scripts
+        - "/data/scripts:/data/scripts"
       command: start
       depends_on:
         - redis
@@ -19,9 +18,7 @@ services:
         restart_policy:
           condition: on-failure
         placement:
-          constraints:
-            - "node.hostname==ip-172-40-1-187"
-
+          constraints: [node.role == manager]
 
     worker:
       image: 172.40.1.52:5000/trendsearth_api
@@ -32,16 +29,15 @@ services:
         FLASK_APP: main.py
       command: worker
       volumes:
-        - /var/run/docker.sock:/tmp/docker.sock
-        - /data/scripts:/data/scripts
+        - "/var/run/docker.sock:/tmp/docker.sock"
+        - "/data/scripts:/data/scripts"
       depends_on:
         - redis
       deploy:
         restart_policy:
           condition: on-failure
         placement:
-          constraints:
-            - "node.hostname==ip-172-40-1-187"
+          constraints: [node.role == manager]
 
     redis:
       image: redis
@@ -51,5 +47,4 @@ services:
         restart_policy:
           condition: on-failure
         placement:
-          constraints:
-            - "node.hostname==ip-172-40-1-187"
+          constraints: [node.role == manager]

@@ -1,5 +1,5 @@
-FROM python:3.6-alpine
-MAINTAINER Sergio Gordillo sergio.gordillo@vizzuality.com
+FROM python:3.8-bullseye
+MAINTAINER Alex Zvoleff azvoleff@conservation.org
 
 ENV NAME gef-api
 ENV USER gef-api
