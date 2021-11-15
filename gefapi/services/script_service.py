@@ -34,7 +34,7 @@ def allowed_file(filename):
                filename.rsplit('.', 1)[1].lower() in SETTINGS.get('ALLOWED_EXTENSIONS')
 
 
-def _upload_script_to_s3(file_path, object_basename):
+def push_script_to_s3(file_path, object_basename):
     object_name = SETTINGS.get('SCRIPTS_S3_PREFIX') + '/' + object_basename
     logging.info('[SERVICE]: Saving %s to S3', object_name)
     s3_client = boto3.client('s3')
@@ -48,6 +48,14 @@ def _upload_script_to_s3(file_path, object_basename):
         logging.error(e)
         return False
     return True
+
+
+def get_script_from_s3(script_file, out_path):
+    object_name = SETTINGS.get('SCRIPTS_S3_PREFIX') + '/' + script_file
+
+    s3 = boto3.client('s3')
+    s3.download_file(
+        SETTINGS.get('SCRIPTS_S3_BUCKET'), object_name, out_path)
 
 
 class ScriptService(object):
@@ -103,18 +111,7 @@ class ScriptService(object):
             logging.info('[DB]: ADD')
             db.session.add(script)
 
-            _upload_script_to_s3(sent_file_path, script.slug + '.tar.gz')
-            with tempfile.TemporaryDirectory() as temp_dir:
-                logging.info(f'[SERVICE]: Saving script to {temp_dir.name}')
-                temp_file_path = os.path.join(
-                    temp_dir.name, script.slug + '.tar.gz')
-                shutil.move(
-                    sent_file_path,
-                    temp_file_path
-                )
-                extract_path = temp_dir.name + '/' + script.slug
-                with tarfile.open(name=temp_file_path, mode='r:gz') as tar:
-                    tar.extractall(path=extract_path)
+            push_script_to_s3(sent_file_path, script.slug + '.tar.gz')
                 _ = docker_build.delay(
                     script.id,
                     path=extract_path,
