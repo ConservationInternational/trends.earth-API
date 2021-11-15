@@ -104,21 +104,22 @@ class ScriptService(object):
             db.session.add(script)
 
             _upload_script_to_s3(sent_file_path, script.slug + '.tar.gz')
-            temp_dir = tempfile.TemporaryDirectory().name
-            logging.info(f'[SERVICE]: Saving script to {temp_dir}')
-            temp_file_path = os.path.join(temp_dir, script.slug + '.tar.gz')
-            shutil.move(
-                sent_file_path,
-                temp_file_path
-            )
-            extract_path = temp_dir + '/' + script.slug
-            with tarfile.open(name=temp_file_path, mode='r:gz') as tar:
-                tar.extractall(path=extract_path)
-            _ = docker_build.delay(
-                script.id,
-                path=extract_path,
-                tag_image=script.slug
-            )
+            with tempfile.TemporaryDirectory() as temp_dir:
+                logging.info(f'[SERVICE]: Saving script to {temp_dir.name}')
+                temp_file_path = os.path.join(
+                    temp_dir.name, script.slug + '.tar.gz')
+                shutil.move(
+                    sent_file_path,
+                    temp_file_path
+                )
+                extract_path = temp_dir.name + '/' + script.slug
+                with tarfile.open(name=temp_file_path, mode='r:gz') as tar:
+                    tar.extractall(path=extract_path)
+                _ = docker_build.delay(
+                    script.id,
+                    path=extract_path,
+                    tag_image=script.slug
+                )
         except Exception as error:
             logging.error(error)
             raise error
