@@ -1,4 +1,4 @@
-FROM python:3.8-alpine
+FROM python:3.6-alpine
 MAINTAINER Alex Zvoleff azvoleff@conservation.org
 
 ENV NAME gef-api
@@ -6,9 +6,11 @@ ENV USER gef-api
 
 RUN apk update && apk upgrade && \
    apk add --no-cache --update bash git openssl-dev build-base alpine-sdk \
-   libffi-dev postgresql-dev gcc python3-dev musl-dev py3-pip
+   libffi-dev postgresql-dev gcc python3-dev musl-dev
 
 RUN addgroup $USER && adduser -s /bin/bash -D -G $USER $USER
+
+RUN easy_install pip && pip install --upgrade pip
 
 RUN pip install virtualenv gunicorn gevent
 

@@ -9,8 +9,6 @@ services:
         - "3000:3000"
       env_file:
         - prod.env
-      volumes:
-        - "/data/scripts:/data/scripts"
       command: start
       depends_on:
         - redis
@@ -29,8 +27,7 @@ services:
         FLASK_APP: main.py
       command: worker
       volumes:
-        - "/var/run/docker.sock:/tmp/docker.sock"
-        - "/data/scripts:/data/scripts"
+        - /var/run/docker.sock:/tmp/docker.sock
       depends_on:
         - redis
       deploy:
