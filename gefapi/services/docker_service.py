@@ -8,6 +8,8 @@ import logging
 import os
 from shutil import copy
 import docker
+import tempfile
+import tarfile
 
 import time
 
@@ -28,14 +30,12 @@ docker_client = docker.DockerClient(base_url=DOCKER_URL)
 def docker_build(script_id, tag_image):
     logging.debug('Obtaining script with id %s' % (script_id));
     script = Script.query.get(script_id)
-
     script_file = script.slug + '.tar.gz'
-    logging.info('[THREAD] Getting %s from S3', script_file)
-    get_script_from_s3(script_file, str(out_path))
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        logging.info(f'[SERVICE]: Saving script to {temp_dir.name}')
+        logging.info('[THREAD] Getting %s from S3', script_file)
         temp_file_path = os.path.join(temp_dir, script.slug + '.tar.gz')
+        get_script_from_s3(script_file, temp_file_path)
         extract_path = temp_dir + '/' + script.slug
         with tarfile.open(name=temp_file_path, mode='r:gz') as tar:
             tar.extractall(path=extract_path)
@@ -45,7 +45,11 @@ def docker_build(script_id, tag_image):
         db.session.add(script)
         db.session.commit()
         logging.debug('Building...')
-        correct, log = DockerService.build(script_id=script_id, path=path, tag_image=tag_image)
+        correct, log = DockerService.build(
+            script_id=script_id,
+            path=extract_path,
+            tag_image=tag_image
+        )
         try:
             docker_client.remove(image=tag_image)
         except Exception:
