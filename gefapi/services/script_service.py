@@ -103,14 +103,15 @@ class ScriptService(object):
             db.session.add(script)
 
             _upload_script_to_s3(sent_file_path)
-            temp_dir = tempfile.mkdtemp()
+            temp_dir = tempfile.TemporaryDirectory().name
+            logging.info(f'Saving script to {temp_dir}')
             shutil.move(
                 sent_file_path,
                 os.path.join(temp_dir, script.slug + '.tar.gz')
             )
-            sent_file_path = os.path.join(temp_dir, script.slug+'.tar.gz')
+            sent_file_path = os.path.join(temp_dir, script.slug +'.tar.gz')
             with tarfile.open(name=sent_file_path, mode='r:gz') as tar:
-                tar.extractall(path=temp_dir + '/' +script.slug)
+                tar.extractall(path=temp_dir + '/' + script.slug)
             _ = docker_build.delay(
                 script.id,
                 path=temp_dir + '/' + script.slug,
