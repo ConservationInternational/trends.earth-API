@@ -35,7 +35,8 @@ def allowed_file(filename):
 
 
 def _upload_script_to_s3(file_path):
-    object_name = SETTINGS.get('SCRIPTS_S3_PREFIX') + '/' + file_path.name
+    object_name = SETTINGS.get('SCRIPTS_S3_PREFIX') + '/' + os.path.basename(file_path)
+    logging.info('[SERVICE]: Saving %s to S3', object_name)
     s3_client = boto3.client('s3')
     try:
         _ = s3_client.upload_file(
@@ -104,7 +105,7 @@ class ScriptService(object):
 
             _upload_script_to_s3(sent_file_path)
             temp_dir = tempfile.TemporaryDirectory().name
-            logging.info(f'Saving script to {temp_dir}')
+            logging.info(f'[SERVICE]: Saving script to {temp_dir}')
             shutil.move(
                 sent_file_path,
                 os.path.join(temp_dir, script.slug + '.tar.gz')
