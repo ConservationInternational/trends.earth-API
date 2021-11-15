@@ -14,6 +14,7 @@ import time
 from gefapi import db, celery
 from gefapi.models import Script, ScriptLog, Execution
 from gefapi.config import SETTINGS
+from gefapi.services.script_service import get_script_from_s3
 
 
 REGISTRY_URL = SETTINGS.get('REGISTRY_URL')
@@ -24,29 +25,41 @@ docker_client = docker.DockerClient(base_url=DOCKER_URL)
 
 
 @celery.task()
-def docker_build(script_id, path, tag_image):
-    logging.info('[THREAD] Running build')
+def docker_build(script_id, tag_image):
     logging.debug('Obtaining script with id %s' % (script_id));
     script = Script.query.get(script_id)
-    script.status = 'BUILDING'
-    db.session.add(script)
-    db.session.commit()
-    logging.debug('Building...')
-    correct, log = DockerService.build(script_id=script_id, path=path, tag_image=tag_image)
-    try:
-        docker_client.remove(image=tag_image)
-    except Exception:
-        logging.info('Error removing the image')
-    logging.debug('Changing status')
-    script = Script.query.get(script_id)
-    if correct:
-        logging.debug('Correct build')
-        script.status = 'SUCCESS'
-    else:
-        logging.debug('Fail build')
-        script.status = 'FAIL'
-    db.session.add(script)
-    db.session.commit()
+
+    script_file = script.slug + '.tar.gz'
+    logging.info('[THREAD] Getting %s from S3', script_file)
+    get_script_from_s3(script_file, str(out_path))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        logging.info(f'[SERVICE]: Saving script to {temp_dir.name}')
+        temp_file_path = os.path.join(temp_dir, script.slug + '.tar.gz')
+        extract_path = temp_dir + '/' + script.slug
+        with tarfile.open(name=temp_file_path, mode='r:gz') as tar:
+            tar.extractall(path=extract_path)
+
+        logging.info('[THREAD] Running build')
+        script.status = 'BUILDING'
+        db.session.add(script)
+        db.session.commit()
+        logging.debug('Building...')
+        correct, log = DockerService.build(script_id=script_id, path=path, tag_image=tag_image)
+        try:
+            docker_client.remove(image=tag_image)
+        except Exception:
+            logging.info('Error removing the image')
+        logging.debug('Changing status')
+        script = Script.query.get(script_id)
+        if correct:
+            logging.debug('Correct build')
+            script.status = 'SUCCESS'
+        else:
+            logging.debug('Fail build')
+            script.status = 'FAIL'
+        db.session.add(script)
+        db.session.commit()
 
 
 @celery.task()

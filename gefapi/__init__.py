@@ -35,6 +35,7 @@ CORS(app)
 # Ensure all unhandled exceptions are logged, and reported to rollbar
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(stream=sys.stdout)
+handler.setLevel(logging.INFO)
 logger.addHandler(handler)
 
 rollbar.init(os.getenv('ROLLBAR_SERVER_TOKEN'), os.getenv('ENV'))
