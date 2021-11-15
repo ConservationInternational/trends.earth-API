@@ -25,6 +25,8 @@ SETTINGS = {
     'SECRET_KEY': 'mysecret',
     'DOCKER_URL': os.getenv('DOCKER_URL'),
     'REGISTRY_URL': 'localhost:'+os.getenv('REGISTRY_PORT_5000_TCP_PORT', ''),
+    'SCRIPTS_S3_PREFIX': os.getenv('SCRIPTS_S3_PREFIX'),
+    'SCRIPTS_S3_BUCKET': os.getenv('SCRIPTS_S3_BUCKET'),
     'UPLOAD_FOLDER': '/tmp/scripts',
     'ALLOWED_EXTENSIONS': set(['tar.gz']),
     'JWT_AUTH_USERNAME_KEY': 'email',

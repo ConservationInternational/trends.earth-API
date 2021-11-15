@@ -132,7 +132,7 @@ def download_script(script):
     try:
         script = ScriptService.get_script(script, current_identity)
 
-        temp_dir = tempfile.mkdtemp()
+        temp_dir = tempfile.TemporaryDirectory().name
         script_file = script.slug + '.tar.gz'
         out_path = Path(temp_dir) / script_file
         _download_script_from_s3(script_file, str(out_path))
