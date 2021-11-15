@@ -3,11 +3,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import dateutil.parser
 import logging
 import datetime
 import tempfile
-from pathlib import Path
 
 import boto3
 
@@ -127,10 +127,10 @@ def download_script(script):
 
         temp_dir = tempfile.TemporaryDirectory().name
         script_file = script.slug + '.tar.gz'
-        out_path = Path(temp_dir) / script_file
-        get_script_from_s3(script_file, str(out_path))
+        out_path = os.path.join(temp_dir, script_file)
+        get_script_from_s3(script_file, out_path)
 
-        return send_from_directory(directory=temp_dir, filename=out_path)
+        return send_from_directory(directory=temp_dir, filename=script_file)
     except ScriptNotFound as e:
         logging.error('[ROUTER]: '+e.message)
         return error(status=404, detail=e.message)
