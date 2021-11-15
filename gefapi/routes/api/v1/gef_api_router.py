@@ -25,11 +25,11 @@ from gefapi.errors import UserNotFound, UserDuplicated, InvalidFile, ScriptNotFo
 
 
 def _download_script_from_s3(script_file, out_path):
-    object_name = str(SETTINGS.get('SCRIPTS_S3_PREFIX') / script.name)
+    object_name = SETTINGS.get('SCRIPTS_S3_PREFIX') + '/' + script_file
 
     s3 = boto3.client('s3')
     s3.download_file(
-        SETTINGS.get('SCRIPTS_S3_BUCKET'), object_name, str(out_path))
+        SETTINGS.get('SCRIPTS_S3_BUCKET'), object_name, out_path)
 
 
 # SCRIPT CREATION
@@ -135,7 +135,7 @@ def download_script(script):
         temp_dir = tempfile.mkdtemp()
         script_file = script.slug + '.tar.gz'
         out_path = Path(temp_dir) / script_file
-        _download_script_from_s3(script_file, out_path)
+        _download_script_from_s3(script_file, str(out_path))
 
         return send_from_directory(directory=temp_dir, filename=out_path)
     except ScriptNotFound as e:

@@ -12,7 +12,6 @@ import json
 import shutil
 import tempfile
 from uuid import UUID
-from pathlib import Path
 
 import boto3
 import botocore
@@ -36,7 +35,7 @@ def allowed_file(filename):
 
 
 def _upload_script_to_s3(file_path):
-    object_name = str(SETTINGS.get('SCRIPTS_S3_PREFIX') / file_path.name)
+    object_name = SETTINGS.get('SCRIPTS_S3_PREFIX') + '/' + file_path.name
     s3_client = boto3.client('s3')
     try:
         _ = s3_client.upload_file(
@@ -103,7 +102,7 @@ class ScriptService(object):
             logging.info('[DB]: ADD')
             db.session.add(script)
 
-            _upload_script_to_s3(Path(sent_file_path))
+            _upload_script_to_s3(sent_file_path)
             temp_dir = tempfile.mkdtemp()
             shutil.move(
                 sent_file_path,
@@ -111,7 +110,7 @@ class ScriptService(object):
             )
             sent_file_path = os.path.join(temp_dir, script.slug+'.tar.gz')
             with tarfile.open(name=sent_file_path, mode='r:gz') as tar:
-                tar.extractall(path=temp_dir + '/'+script.slug)
+                tar.extractall(path=temp_dir + '/' +script.slug)
             _ = docker_build.delay(
                 script.id,
                 path=temp_dir + '/' + script.slug,
