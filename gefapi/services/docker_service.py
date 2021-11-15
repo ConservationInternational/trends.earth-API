@@ -16,7 +16,7 @@ import time
 from gefapi import db, celery
 from gefapi.models import Script, ScriptLog, Execution
 from gefapi.config import SETTINGS
-from gefapi.services.script_service import get_script_from_s3
+from gefapi.s3 import get_script_from_s3
 
 
 REGISTRY_URL = SETTINGS.get('REGISTRY_URL')

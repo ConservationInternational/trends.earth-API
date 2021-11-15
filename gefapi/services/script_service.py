@@ -13,14 +13,13 @@ import shutil
 import tempfile
 from uuid import UUID
 
-import boto3
-import botocore
 from werkzeug.utils import secure_filename
 from slugify import slugify
 from sqlalchemy import or_
 
 from gefapi.services import docker_build
 from gefapi import db
+from gefapi.s3 import push_script_to_s3
 from gefapi.models import Script, ScriptLog
 from gefapi.config import SETTINGS
 from gefapi.errors import InvalidFile, ScriptNotFound, ScriptDuplicated, NotAllowed
@@ -32,30 +31,6 @@ def allowed_file(filename):
     else:
         return '.' in filename and \
                filename.rsplit('.', 1)[1].lower() in SETTINGS.get('ALLOWED_EXTENSIONS')
-
-
-def push_script_to_s3(file_path, object_basename):
-    object_name = SETTINGS.get('SCRIPTS_S3_PREFIX') + '/' + object_basename
-    logging.info('[SERVICE]: Saving %s to S3', object_name)
-    s3_client = boto3.client('s3')
-    try:
-        _ = s3_client.upload_file(
-            str(file_path),
-            SETTINGS.get('SCRIPTS_S3_BUCKET'),
-            object_name
-        )
-    except botocore.exceptions.ClientError as e:
-        logging.error(e)
-        return False
-    return True
-
-
-def get_script_from_s3(script_file, out_path):
-    object_name = SETTINGS.get('SCRIPTS_S3_PREFIX') + '/' + script_file
-
-    s3 = boto3.client('s3')
-    s3.download_file(
-        SETTINGS.get('SCRIPTS_S3_BUCKET'), object_name, out_path)
 
 
 class ScriptService(object):
