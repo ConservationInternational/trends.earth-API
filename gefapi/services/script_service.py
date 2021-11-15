@@ -112,11 +112,10 @@ class ScriptService(object):
             db.session.add(script)
 
             push_script_to_s3(sent_file_path, script.slug + '.tar.gz')
-                _ = docker_build.delay(
-                    script.id,
-                    path=extract_path,
-                    tag_image=script.slug
-                )
+            _ = docker_build.delay(
+                script.id,
+                tag_image=script.slug
+            )
         except Exception as error:
             logging.error(error)
             raise error
