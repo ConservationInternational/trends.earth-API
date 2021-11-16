@@ -14,7 +14,7 @@ services:
         - redis
       deploy:
         restart_policy:
-          condition: on-failure
+          condition: any
         placement:
           constraints: [node.role == manager]
 
@@ -32,7 +32,7 @@ services:
         - redis
       deploy:
         restart_policy:
-          condition: on-failure
+          condition: any
         placement:
           constraints: [node.role == manager]
 
@@ -42,6 +42,6 @@ services:
         - "6379:6379"
       deploy:
         restart_policy:
-          condition: on-failure
+          condition: any
         placement:
           constraints: [node.role == manager]
