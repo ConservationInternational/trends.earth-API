@@ -27,7 +27,7 @@ docker_client = docker.DockerClient(base_url=DOCKER_URL)
 
 
 @celery.task()
-def docker_build(script_id, tag_image):
+def docker_build(script_id):
     logging.debug('Obtaining script with id %s' % (script_id));
     script = Script.query.get(script_id)
     script_file = script.slug + '.tar.gz'
@@ -48,10 +48,10 @@ def docker_build(script_id, tag_image):
         correct, log = DockerService.build(
             script_id=script_id,
             path=extract_path,
-            tag_image=tag_image
+            tag_image=script.slug
         )
         try:
-            docker_client.remove(image=tag_image)
+            docker_client.remove(image=script.slug)
         except Exception:
             logging.info('Error removing the image')
         logging.debug('Changing status')

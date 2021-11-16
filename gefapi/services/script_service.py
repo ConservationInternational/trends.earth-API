@@ -89,8 +89,7 @@ class ScriptService(object):
             db.session.commit()
 
             _ = docker_build.delay(
-                script.id,
-                tag_image=script.slug
+                script.id
             )
         except Exception as error:
             logging.error(error)
