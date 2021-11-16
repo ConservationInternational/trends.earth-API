@@ -17,6 +17,10 @@ services:
           condition: any
         placement:
           constraints: [node.role == manager]
+        resources:
+          reservations:
+            cpus: '0.25'
+            memory: 400M
 
     worker:
       image: 172.40.1.52:5000/trendsearth_api
@@ -35,6 +39,10 @@ services:
           condition: any
         placement:
           constraints: [node.role == manager]
+        resources:
+          reservations:
+            cpus: '0.25'
+            memory: 400M
 
     redis:
       image: redis
@@ -45,3 +53,7 @@ services:
           condition: any
         placement:
           constraints: [node.role == manager]
+        resources:
+          reservations:
+            cpus: '0.25'
+            memory: 100M
