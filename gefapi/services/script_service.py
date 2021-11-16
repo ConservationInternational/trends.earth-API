@@ -85,8 +85,9 @@ class ScriptService(object):
         try:
             logging.info('[DB]: ADD')
             db.session.add(script)
-
             push_script_to_s3(sent_file_path, script.slug + '.tar.gz')
+            db.session.commit()
+
             _ = docker_build.delay(
                 script.id,
                 tag_image=script.slug
@@ -95,7 +96,6 @@ class ScriptService(object):
             logging.error(error)
             raise error
         else:
-           db.session.commit()
         return script
 
     @staticmethod
