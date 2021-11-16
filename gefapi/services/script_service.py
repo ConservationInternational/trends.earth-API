@@ -95,7 +95,7 @@ class ScriptService(object):
         except Exception as error:
             logging.error(error)
             raise error
-        else:
+
         return script
 
     @staticmethod
