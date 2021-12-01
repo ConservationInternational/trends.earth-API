@@ -6,17 +6,20 @@ services:
       environment:
         PORT: 3000
       ports:
-        - "3000:3000"
+        - target: 3000
+          published: 3000
+          protocol: tcp
+          mode: ingress
       env_file:
         - prod.env
       command: start
       depends_on:
         - redis
       deploy:
-        restart_policy:
-          condition: any
         placement:
           constraints: [node.role == manager]
+        restart_policy:
+          condition: any
         resources:
           reservations:
             cpus: '0.25'
@@ -47,12 +50,15 @@ services:
     redis:
       image: redis
       ports:
-        - "6379:6379"
+        - target: 6379
+          published: 6379
+          protocol: tcp
+          mode: ingress
       deploy:
-        restart_policy:
-          condition: any
         placement:
           constraints: [node.role == manager]
+        restart_policy:
+          condition: any
         resources:
           reservations:
             cpus: '0.25'
