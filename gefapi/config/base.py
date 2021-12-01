@@ -33,5 +33,5 @@ SETTINGS = {
     'JWT_AUTH_HEADER_PREFIX': 'Bearer',
     'JWT_EXPIRATION_DELTA': timedelta(seconds=60*60*24),
     'CELERY_BROKER_URL': 'redis://'+os.getenv('REDIS_PORT_6379_TCP_ADDR')+':' + os.getenv('REDIS_PORT_6379_TCP_PORT'),
-    'CELERY_RESULT_BACKEND':'redis://'+os.getenv('REDIS_PORT_6379_TCP_ADDR')+':' + os.getenv('REDIS_PORT_6379_TCP_PORT')
+    'CELERY_RESULT_BACKEND': 'redis://'+os.getenv('REDIS_PORT_6379_TCP_ADDR')+':' + os.getenv('REDIS_PORT_6379_TCP_PORT')
 }
