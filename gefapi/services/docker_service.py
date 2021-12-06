@@ -66,8 +66,8 @@ def docker_build(script_id):
 
 
 @celery.task()
-def docker_run(execution_id, image, environment, params):
-    logging.info('[THREAD] Running script with params %s' % (params))
+def docker_run(execution_id, image, environment):
+    logging.info('[THREAD] Running script')
     logging.debug('Obtaining execution with id %s' % (execution_id))
     execution = Execution.query.get(execution_id)
     execution.status = 'READY'
@@ -76,8 +76,7 @@ def docker_run(execution_id, image, environment, params):
     logging.debug('Running...')
     correct, log = DockerService.run(execution_id=execution_id,
                                      image=image,
-                                     environment=environment,
-                                     params=params)
+                                     environment=environment)
     logging.debug('Execution done')
     logging.debug('Changing status')
     execution = Execution.query.get(execution_id)
@@ -168,13 +167,13 @@ class DockerService(object):
             return False, error
 
     @staticmethod
-    def run(execution_id, image, environment, params):
+    def run(execution_id, image, environment):
         """Run image with environment"""
-        logging.info('Running %s image with params %s' % (image, params))
+        logging.info('Running %s image' % (image))
         container = None
         try:
             environment['ENV'] = 'prod'
-            command = './entrypoint.sh ' + params
+            command = './entrypoint.sh'
 
             if os.getenv('ENVIRONMENT') != 'dev':
                 env = [k + '=' + v for k, v in environment.items()]
@@ -192,7 +191,7 @@ class DockerService(object):
             else:
                 container = docker_client.containers.run(
                     image=REGISTRY_URL + '/' + image,
-                    command=params,
+                    command=command,
                     environment=environment,
                     detach=True,
                     name='execution-' + str(execution_id))
