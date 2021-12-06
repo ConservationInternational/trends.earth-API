@@ -20,16 +20,16 @@ from gefapi.services import EmailService
 from gefapi.services import ScriptService
 from gefapi.services import UserService
 
-EXECUTION_FINISHED_MAIL_CONTENT = "<p>Thank you for using the trends.earth. The below task has {}. More details on this task are below: </p>\
-                                    <ul><li>Task name: {}</li> \
-                                    <li>Job: {}</li> \
-                                    <li>Task ID: {}</li> \
-                                    <li>Start time: {}</li> \
-                                    <li>End time: {}</li> \
-                                    <li>Status: {}</li></ul> \
-                                    <p>For more information, and to view the results, click the \"See Google Earth Engine tasks\" button in the QGIS plugin.</p> \
-                                    <p>Thank you, </br> \
-                                    The trends.earth Team</p>"
+EXECUTION_FINISHED_MAIL_CONTENT = """<p>Thank you for using trends.earth! The below task has {}. More details on this task are below: </p>\
+<ul><li>Task name: {}</li> \
+<li>Job: {}</li> \
+<li>Task ID: {}</li> \
+<li>Start time: {}</li> \
+<li>End time: {}</li> \
+<li>Status: {}</li></ul> \
+<p>For more information, and to view the results, open Trends.Earth and click the \"See Google Earth Engine tasks\" button.</p> \
+<br>\
+The trends.earth Team</p>"""
 
 
 def dict_to_query(params):
