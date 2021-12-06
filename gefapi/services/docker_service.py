@@ -183,7 +183,7 @@ class DockerService(object):
                     command=command,
                     env=env,
                     name='execution-' + str(execution_id),
-                    resources=docker.types.Resouces(cpu_reservation=1e8, cpu_limit=5e8, mem_reservation=1e8, mem_limit=2e9),  # 1e8 is equivalent to 10% of a CPU
+                    resources=docker.types.Resources(cpu_reservation=1e8, cpu_limit=5e8, mem_reservation=1e8, mem_limit=2e9),  # 1e8 is equivalent to 10% of a CPU
                     restart_policy=docker.types.RestartPolicy(
                         condition='on-failure',
                         delay=10,
