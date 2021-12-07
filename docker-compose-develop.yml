@@ -1,74 +1,57 @@
-version: '2'
+version: '3.8'
 
 services:
-    develop:
-      extends:
-        file: base.yml
-        service: base
-      container_name: gef-api-develop
-      ports:
-        - "3000:3000"
-      env_file:
-        - develop.env
-      command: develop
-      volumes:
-        - ./gefapi:/opt/gef-api/gefapi
-        - ./migrations:/opt/gef-api/migrations
-        - /var/run/docker.sock:/tmp/docker.sock
-        - /data/scripts:/data/scripts
-      restart: always
-      links:
-        - database
-        - registry
-        - redis
-    worker:
-      extends:
-        file: base.yml
-        service: base
-      container_name: gef-api-worker-develop
-      env_file:
-        - develop.env
-      command: worker
-      volumes:
-        - ./gefapi:/opt/gef-api/gefapi
-        - ./migrations:/opt/gef-api/migrations
-        - /var/run/docker.sock:/tmp/docker.sock
-        - /data/scripts:/data/scripts
-      restart: always
-      links:
-        - database
-        - registry
-        - redis
+  manager:
+    image: trendsearth_api
+    environment:
+      PORT: 3000
+    ports:
+      - target: 3000
+        published: 3000
+        protocol: tcp
+        mode: ingress
+    env_file:
+      - develop.env
+    command: develop
+    depends_on:
+      - redis
+      - database
+      - registry
+    deploy:
+      restart_policy:
+        condition: any
 
-    database:
-      image: postgres:9.6
-      container_name: gef-api-database
-      env_file:
-        - develop.env
-      volumes:
-          - postgres-data:/var/lib/postgresql/data
-      ports:
-        - 5432:5432
-      restart: always
+  redis:
+    image: redis
+    ports:
+      - target: 6379
+        published: 6379
+        protocol: tcp
+        mode: ingress
+    deploy:
+      restart_policy:
+        condition: any
+      resources:
+        reservations:
+          cpus: '0.25'
+          memory: 100M
 
-    registry:
-        image: registry:2.6.1
-        container_name: gef-api-registry
-        env_file:
-          - develop.env
-        ports:
-          - 5000:5000
-        restart: always
+  database:
+    image: postgres:9.6
+    ports:
+      - 5432:5432
+    env_file:
+      - develop.env
+    deploy:
+      restart_policy:
+        condition: any
 
-    redis:
-        image: redis
-        container_name: gef-api-redis
-        env_file:
-          - develop.env
-        ports:
-          - 6379
-        restart: always
-
-volumes:
-    postgres-data:
-        external: true
+  registry:
+    image: registry:2.6.1
+    env_file:
+      - develop.env
+    ports:
+      - 5000:5000
+    deploy:
+      restart_policy:
+        condition: any

@@ -1,8 +1,12 @@
 import os
 import urllib.request
 
-instance_ip = urllib.request.urlopen(
-    'http://169.254.169.254/latest/meta-data/local-ipv4').read().decode()
+# Only try to load the instance IP when actually running in production
+if os.getenv('ENVIRONMENT') == 'prod':
+    instance_ip = urllib.request.urlopen(
+        'http://169.254.169.254/latest/meta-data/local-ipv4').read().decode()
+else:
+    instance_ip = 'localhost'
 
 SETTINGS = {
     'logging': {
