@@ -5,6 +5,9 @@ services:
     image: trendsearth_api
     environment:
       PORT: 3000
+      ENVIRONMENT: dev
+      DEBUG: "True"
+      FLASK_APP: main.py
     ports:
       - target: 3000
         published: 3000
@@ -13,6 +16,10 @@ services:
     env_file:
       - develop.env
     command: develop
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+      - /var/run/docker.sock:/tmp/docker.sock
     depends_on:
       - redis
       - database
@@ -20,6 +27,29 @@ services:
     deploy:
       restart_policy:
         condition: any
+        
+  worker:
+    image: trendsearth_api
+    environment:
+      PORT: 3000
+      ENVIRONMENT: dev
+      DEBUG: "True"
+      FLASK_APP: main.py
+    env_file:
+      - develop.env
+    command: worker
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+      - /var/run/docker.sock:/tmp/docker.sock
+    depends_on:
+      - redis
+      - database
+      - registry
+    deploy:
+      restart_policy:
+        condition: any
+
 
   redis:
     image: redis
@@ -38,6 +68,10 @@ services:
 
   database:
     image: postgres:9.6
+    environment:
+      POSTGRES_PASSWORD: root
+      POSTGRES_USER: root
+      POSTGRES_DB: gef
     ports:
       - 5432:5432
     env_file:
