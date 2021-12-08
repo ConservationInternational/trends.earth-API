@@ -18,7 +18,7 @@ from slugify import slugify
 from sqlalchemy import or_
 
 from gefapi.services import docker_build
-from gefapi import db
+from gefapi.models.model import db
 from gefapi.s3 import push_script_to_s3
 from gefapi.models import Script, ScriptLog
 from gefapi.config import SETTINGS
@@ -30,7 +30,8 @@ def allowed_file(filename):
         return filename.rsplit('.')[1]+'.'+filename.rsplit('.')[2].lower() in SETTINGS.get('ALLOWED_EXTENSIONS')
     else:
         return '.' in filename and \
-               filename.rsplit('.', 1)[1].lower() in SETTINGS.get('ALLOWED_EXTENSIONS')
+               filename.rsplit('.', 1)[1].lower(
+               ) in SETTINGS.get('ALLOWED_EXTENSIONS')
 
 
 class ScriptService(object):
@@ -42,7 +43,8 @@ class ScriptService(object):
         if sent_file and allowed_file(sent_file.filename):
             logging.info('[SERVICE]: Allowed format')
             filename = secure_filename(sent_file.filename)
-            sent_file_path = os.path.join(SETTINGS.get('UPLOAD_FOLDER'), filename)
+            sent_file_path = os.path.join(
+                SETTINGS.get('UPLOAD_FOLDER'), filename)
             logging.info('[SERVICE]: Saving file')
             try:
                 if not os.path.exists(SETTINGS.get('UPLOAD_FOLDER')):
@@ -74,7 +76,8 @@ class ScriptService(object):
             slug = slugify(script_name)
             currentScript = Script.query.filter_by(slug=slug).first()
             if currentScript:
-                raise ScriptDuplicated(message='Script with name '+name+' generates an existing script slug')
+                raise ScriptDuplicated(
+                    message='Script with name '+name+' generates an existing script slug')
             script = Script(name=name, slug=slug, user_id=user.id)
         else:
             # Updating existing entity
@@ -136,12 +139,14 @@ class ScriptService(object):
             except Exception as error:
                 raise error
         if not script:
-            raise ScriptNotFound(message='Script with id '+script_id+' does not exist')
+            raise ScriptNotFound(message='Script with id ' +
+                                 script_id+' does not exist')
         return script
 
     @staticmethod
     def get_script_logs(script_id, start_date, last_id):
-        logging.info('[SERVICE]: Getting script logs of script %s: ' % (script_id))
+        logging.info(
+            '[SERVICE]: Getting script logs of script %s: ' % (script_id))
         logging.info('[DB]: QUERY')
         try:
             val = UUID(script_id, version=4)
@@ -151,7 +156,8 @@ class ScriptService(object):
         except Exception as error:
             raise error
         if not script:
-            raise ScriptNotFound(message='Script with id '+script_id+' does not exist')
+            raise ScriptNotFound(message='Script with id ' +
+                                 script_id+' does not exist')
 
         if start_date:
             logging.debug(start_date)
@@ -166,7 +172,8 @@ class ScriptService(object):
         logging.info('[SERVICE]: Updating script')
         script = ScriptService.get_script(script_id, user)
         if not script:
-            raise ScriptNotFound(message='Script with id '+script_id+' does not exist')
+            raise ScriptNotFound(message='Script with id ' +
+                                 script_id+' does not exist')
         if user.role == 'ADMIN' or user.email == 'gef@gef.com' or user.id == script.user_id:
             return ScriptService.create_script(sent_file, user, script)
         raise NotAllowed(message='Operation not allowed to this user')
@@ -179,7 +186,8 @@ class ScriptService(object):
         except Exception as error:
             raise error
         if not script:
-            raise ScriptNotFound(message='Script with id '+script_id+' does not exist')
+            raise ScriptNotFound(message='Script with id ' +
+                                 script_id+' does not exist')
 
         try:
             logging.info('[DB]: DELETE')
@@ -215,7 +223,8 @@ class ScriptService(object):
             except Exception as error:
                 raise error
         if not script:
-            raise ScriptNotFound(message='Script with id '+script_id+' does not exist')
+            raise ScriptNotFound(message='Script with id ' +
+                                 script_id+' does not exist')
         script.public = True
         try:
             logging.info('[DB]: SAVE')
@@ -249,7 +258,8 @@ class ScriptService(object):
                     .filter(Script.user_id == user.id) \
                     .first()
         if not script:
-            raise ScriptNotFound(message='Script with id '+script_id+' does not exist')
+            raise ScriptNotFound(message='Script with id ' +
+                                 script_id+' does not exist')
         script.public = False
         try:
             logging.info('[DB]: SAVE')

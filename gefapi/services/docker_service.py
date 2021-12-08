@@ -12,12 +12,14 @@ from shutil import copy
 
 import docker
 from gefapi import celery
-from gefapi import db
+from gefapi.models.model import db
 from gefapi.config import SETTINGS
 from gefapi.models import Execution
 from gefapi.models import Script
 from gefapi.models import ScriptLog
 from gefapi.s3 import get_script_from_s3
+
+from celery import task
 
 REGISTRY_URL = SETTINGS.get('REGISTRY_URL')
 DOCKER_URL = SETTINGS.get('DOCKER_URL')
@@ -26,7 +28,7 @@ api_client = docker.APIClient(base_url=DOCKER_URL)
 docker_client = docker.DockerClient(base_url=DOCKER_URL)
 
 
-@celery.task()
+@task()
 def docker_build(script_id):
     logging.debug('Obtaining script with id %s' % (script_id))
     script = Script.query.get(script_id)
@@ -65,7 +67,7 @@ def docker_build(script_id):
         db.session.commit()
 
 
-@celery.task()
+@task()
 def docker_run(execution_id, image, environment):
     logging.info('[THREAD] Running script')
     logging.debug('Obtaining execution with id %s' % (execution_id))
@@ -183,7 +185,8 @@ class DockerService(object):
                     command=command,
                     env=env,
                     name='execution-' + str(execution_id),
-                    resources=docker.types.Resources(cpu_reservation=int(1e8), cpu_limit=int(5e8), mem_reservation=int(1e8), mem_limit=int(2e9)),  # 1e8 is equivalent to 10% of a CPU
+                    resources=docker.types.Resources(cpu_reservation=int(1e8), cpu_limit=int(
+                        5e8), mem_reservation=int(1e8), mem_limit=int(2e9)),  # 1e8 is equivalent to 10% of a CPU
                     restart_policy=docker.types.RestartPolicy(
                         condition='on-failure',
                         delay=10,

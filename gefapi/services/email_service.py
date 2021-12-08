@@ -23,6 +23,7 @@ class EmailService(object):
                 from_email=from_email,
                 subject=subject
             )
+
             return response
         except Exception as error:
             logging.error(error)

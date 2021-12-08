@@ -8,7 +8,7 @@ import datetime
 import logging
 from uuid import UUID
 
-from gefapi import db
+from gefapi.models.model import db
 from gefapi.config import SETTINGS
 from gefapi.errors import ExecutionNotFound
 from gefapi.errors import ScriptNotFound
@@ -81,7 +81,7 @@ class ExecutionService(object):
             return executions
 
     @staticmethod
-    def create_execution(script_id, params, user):
+    def create_execution(script_id, params, user, is_plugin_execution=True):
         logging.info('[SERVICE]: Creating execution')
         script = ScriptService.get_script(script_id, user)
 
@@ -94,7 +94,8 @@ class ExecutionService(object):
                                       ' is not BUILT')
         execution = Execution(script_id=script.id,
                               params=params,
-                              user_id=user.id)
+                              user_id=user.id,
+                              is_plugin_execution=is_plugin_execution)
         try:
             logging.info('[DB]: ADD')
             db.session.add(execution)
@@ -120,7 +121,8 @@ class ExecutionService(object):
         if user == 'fromservice' or user.role == 'ADMIN':
             try:
                 val = UUID(execution_id, version=4)
-                execution = Execution.query.filter_by(id=execution_id).first()
+                execution = Execution.query.filter_by(
+                    id=execution_id, deleted=False).first()
             except Exception as error:
                 raise error
         else:
@@ -236,3 +238,19 @@ class ExecutionService(object):
                     ExecutionLog.register_date).all()
         else:
             return execution.logs
+
+    @staticmethod
+    def delete_execution(execution_id):
+        logging.info('[SERVICE]: Deleting execution '+execution_id)
+        execution = ExecutionService.get_execution(execution_id=execution_id)
+        if not execution:
+            raise ExecutionNotFound(message='Executon with id ' +
+                                    execution_id + ' does not exist')
+        try:
+            logging.info('[DB]: ADD')
+            execution.deleted = True
+            db.session.add(execution)
+            db.session.commit()
+        except Exception as error:
+            raise error
+        return execution

@@ -7,13 +7,14 @@ import datetime
 import uuid
 
 from gefapi.models import GUID
-from gefapi import db
+from gefapi.models.model import db
 db.GUID = GUID
 
 
 class Script(db.Model):
     """Script Model"""
-    id = db.Column(db.GUID(), default=uuid.uuid4, primary_key=True, autoincrement=False)
+    id = db.Column(db.GUID(), default=uuid.uuid4,
+                   primary_key=True, autoincrement=False)
     name = db.Column(db.String(120), nullable=False)
     slug = db.Column(db.String(80), unique=True, nullable=False)
     description = db.Column(db.Text(), default='')

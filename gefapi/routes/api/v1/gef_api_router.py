@@ -20,12 +20,38 @@ from gefapi.routes.api.v1 import endpoints, error
 from gefapi.validators import validate_user_creation, validate_user_update, \
     validate_file, validate_execution_update, validate_execution_log_creation, \
     validate_profile_update
-from gefapi.services import UserService, ScriptService, ExecutionService
+from gefapi.services import UserService, ScriptService, ExecutionService, EmailService
 from gefapi.errors import UserNotFound, UserDuplicated, InvalidFile, ScriptNotFound, \
     ScriptDuplicated, NotAllowed, ExecutionNotFound, ScriptStateNotValid, EmailError
 
+# EMAIL SEND
+
+
+@endpoints.route('/email', strict_slashes=False, methods=['POST'])
+@jwt_required()
+def send_email():
+    """Send an email"""
+    logging.info('[ROUTER]: Sending email')
+    body = request.get_json()
+    recipients = body.get("recipients")
+    html = body.get("html")
+    subject = body.get("subject")
+    response = None
+    try:
+        response = EmailService.send_html_email(
+            recipients=recipients,
+            html=html,
+            subject=subject
+        )
+
+    except EmailError as error:
+        logging.error('[ROUTER]: ' + error)
+    return response
+
 
 # SCRIPT CREATION
+
+
 @endpoints.route('/script', strict_slashes=False, methods=['POST'])
 @jwt_required()
 @validate_file
@@ -250,7 +276,8 @@ def get_executions():
     exclude = request.args.get('exclude')
     exclude = exclude.split(',') if exclude else []
     try:
-        executions = ExecutionService.get_executions(current_identity, user_id, updated_at)
+        executions = ExecutionService.get_executions(
+            current_identity, user_id, updated_at)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
         return error(status=500, detail='Generic Error')
@@ -298,10 +325,27 @@ def update_execution(execution):
     return jsonify(data=execution.serialize()), 200
 
 
+@endpoints.route('/execution/<execution>', strict_slashes=False, methods=['DELETE'])
+@jwt_required()
+def delete_execution(execution):
+    """Deletes an execution"""
+    logging.info('[ROUTER]: Deleting execution: '+execution)
+    try:
+        execution = ExecutionService.delete_execution(execution)
+    except ScriptNotFound as e:
+        logging.error('[ROUTER]: '+e.message)
+        return error(status=404, detail=e.message)
+    except Exception as e:
+        logging.error('[ROUTER]: '+str(e))
+        return error(status=500, detail='Generic Error')
+    return jsonify(data=execution.serialize()), 200
+
+
 @endpoints.route('/execution/<execution>/log', strict_slashes=False, methods=['GET'])
 def get_execution_logs(execution):
     """Get the exectuion logs"""
-    logging.info('[ROUTER]: Getting exectuion logs of execution %s ' % (execution))
+    logging.info(
+        '[ROUTER]: Getting exectuion logs of execution %s ' % (execution))
     try:
         start = request.args.get('start', None)
         if start:
@@ -320,7 +364,8 @@ def get_execution_logs(execution):
 @endpoints.route('/execution/<execution>/download-results', strict_slashes=False, methods=['GET'])
 def get_download_results(execution):
     """Download results of the exectuion"""
-    logging.info('[ROUTER]: Download execution results of execution %s ' % (execution))
+    logging.info(
+        '[ROUTER]: Download execution results of execution %s ' % (execution))
     try:
         execution = ExecutionService.get_execution(execution)
     except Exception as e:

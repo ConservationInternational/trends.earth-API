@@ -1,8 +1,12 @@
 """The GEF API MODULE"""
 
-from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import absolute_import
+from gefapi.jwt import authenticate, identity
+from flask_jwt import JWT
+from gefapi.routes.api.v1 import endpoints, error
+
 
 import os
 import sys
@@ -19,6 +23,7 @@ from flask_migrate import Migrate
 from flask_cors import CORS, cross_origin
 from gefapi.config import SETTINGS
 from gefapi.celery import make_celery
+from gefapi.models.model import db
 
 
 logging.basicConfig(
@@ -43,12 +48,17 @@ rollbar_handler = RollbarHandler()
 rollbar_handler.setLevel(logging.ERROR)
 logger.addHandler(rollbar_handler)
 
+
 def handle_exception(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
-    logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+    logger.critical("Uncaught exception", exc_info=(
+        exc_type, exc_value, exc_traceback))
+
+
 sys.excepthook = handle_exception
+
 
 @app.before_first_request
 def init_rollbar():
@@ -67,6 +77,7 @@ def init_rollbar():
 
 # Config
 
+
 app.config['SQLALCHEMY_DATABASE_URI'] = SETTINGS.get('SQLALCHEMY_DATABASE_URI')
 app.config['SECRET_KEY'] = SETTINGS.get('SECRET_KEY')
 app.config['UPLOAD_FOLDER'] = SETTINGS.get('UPLOAD_FOLDER')
@@ -77,19 +88,16 @@ app.config['CELERY_BROKER_URL'] = SETTINGS.get('CELERY_BROKER_URL')
 app.config['CELERY_RESULT_BACKEND'] = SETTINGS.get('CELERY_RESULT_BACKEND')
 
 # Database
-db = SQLAlchemy(app)
-
+# db = SQLAlchemy(app)
+db.init_app(app)
 migrate = Migrate(app, db)
 
 celery = make_celery(app)
 
 # DB has to be ready!
-from gefapi.routes.api.v1 import endpoints, error
 # Blueprint Flask Routing
 app.register_blueprint(endpoints, url_prefix='/api/v1')
 
-from flask_jwt import JWT
-from gefapi.jwt import authenticate, identity
 # JWT
 jwt = JWT(app, authenticate, identity)
 
@@ -101,7 +109,8 @@ def request_handler():
 
     if auth_header_value is None and request.args.get('token', None) is not None:
         logging.info(request.args.get('token', ''))
-        auth_header_value = auth_header_prefix + ' ' + request.args.get('token', '')
+        auth_header_value = auth_header_prefix + \
+            ' ' + request.args.get('token', '')
 
     if auth_header_value is None:
         return None

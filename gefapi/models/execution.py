@@ -7,7 +7,7 @@ from __future__ import print_function
 import datetime
 import uuid
 
-from gefapi import db
+from gefapi.models.model import db
 from gefapi.models import GUID
 from sqlalchemy.dialects.postgresql import JSONB
 db.GUID = GUID
@@ -15,7 +15,8 @@ db.GUID = GUID
 
 class Execution(db.Model):
     """Execution Model"""
-    id = db.Column(db.GUID(), default=uuid.uuid4, primary_key=True, autoincrement=False)
+    id = db.Column(db.GUID(), default=uuid.uuid4,
+                   primary_key=True, autoincrement=False)
     start_date = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
     end_date = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
     status = db.Column(db.String(10), default='PENDING')
@@ -28,11 +29,14 @@ class Execution(db.Model):
                            lazy='dynamic')
     script_id = db.Column(db.GUID(), db.ForeignKey('script.id'))
     user_id = db.Column(db.GUID(), db.ForeignKey('user.id'))
+    is_plugin_execution = db.Column(db.Boolean(), default=True, nullable=False)
+    deleted = db.Column(db.Boolean(), default=False, nullable=False)
 
-    def __init__(self, script_id, params, user_id):
+    def __init__(self, script_id, params, user_id, is_plugin_execution=True):
         self.script_id = script_id
         self.params = params
         self.user_id = user_id
+        self.is_plugin_execution = is_plugin_execution
 
     def __repr__(self):
         return '<Execution %r>' % self.id
@@ -54,6 +58,8 @@ class Execution(db.Model):
             'progress': self.progress,
             'params': self.params,
             'results': self.results,
+            'is_plugin_execution': self.is_plugin_execution,
+            'deleted': self.deleted
         }
         if 'logs' in include:
             execution['logs'] = self.serialize_logs
