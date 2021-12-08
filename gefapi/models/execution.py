@@ -29,8 +29,8 @@ class Execution(db.Model):
                            lazy='dynamic')
     script_id = db.Column(db.GUID(), db.ForeignKey('script.id'))
     user_id = db.Column(db.GUID(), db.ForeignKey('user.id'))
-    is_plugin_execution = db.Column(db.Boolean(), default=True, nullable=False)
-    deleted = db.Column(db.Boolean(), default=False, nullable=False)
+    is_plugin_execution = db.Column(db.Boolean(), default=True)
+    deleted = db.Column(db.Boolean(), default=False)
 
     def __init__(self, script_id, params, user_id, is_plugin_execution=True):
         self.script_id = script_id

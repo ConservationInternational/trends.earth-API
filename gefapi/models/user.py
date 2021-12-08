@@ -20,18 +20,18 @@ class User(db.Model):
     id = db.Column(db.GUID(), default=uuid.uuid4,
                    primary_key=True, autoincrement=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    first_name = db.Column(db.String(120), nullable=False, default="")
-    last_name = db.Column(db.String(120), nullable=False, default="")
+    first_name = db.Column(db.String(120), nullable=True, default="")
+    last_name = db.Column(db.String(120), nullable=True, default="")
     name = db.Column(db.String(120), nullable=False)
     country = db.Column(db.String(120))
-    region = db.Column(db.String(120), nullable=False, default="")
+    region = db.Column(db.String(120), default="")
     institution = db.Column(db.String(120))
     password = db.Column(db.String(200), nullable=False)
     created_at = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
     updated_at = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
     role = db.Column(db.String(10))
-    is_plugin_user = db.Column(db.Boolean(), default=True, nullable=False)
-    is_in_mailing_list = db.Column(db.Boolean(), default=False, nullable=False)
+    is_plugin_user = db.Column(db.Boolean(), default=True)
+    is_in_mailing_list = db.Column(db.Boolean(), default=False)
     scripts = db.relationship('Script',
                               backref=db.backref('user'),
                               cascade='all, delete-orphan',
@@ -40,7 +40,7 @@ class User(db.Model):
                                  backref=db.backref('user'),
                                  cascade='all, delete-orphan',
                                  lazy='dynamic')
-    deleted = db.Column(db.Boolean(), default=False, nullable=False)
+    deleted = db.Column(db.Boolean(), default=False)
 
     def __init__(self, email, password, name, country, institution, role='USER', first_name="", last_name="",
                  is_plugin_user=True, is_in_mailing_list=False):
