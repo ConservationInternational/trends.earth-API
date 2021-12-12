@@ -31,6 +31,10 @@ class Script(db.Model):
                                  cascade='all, delete-orphan',
                                  lazy='dynamic')
     public = db.Column(db.Boolean(), default=False, nullable=False)
+    cpu_reservation = db.Column(db.Integer(), default=1e8)  # 1e8 is 10% of a CPU
+    cpu_limit = db.Column(db.Integer(), default=5e8)
+    memory_reservation = db.Column(db.Integer(), default=1e8)
+    memory_limit = db.Column(db.Integer(), default=2e9)
 
     def __init__(self, name, slug, user_id):
         self.name = name
@@ -52,7 +56,11 @@ class Script(db.Model):
             'updated_at': self.updated_at.isoformat(),
             'user_id': self.user_id,
             'status': self.status,
-            'public': self.public or False
+            'public': self.public or False,
+            'cpu_reservation': self.cpu_reservation,
+            'cpu_limit': self.cpu_limit,
+            'memory_reservation': self.memory_reservation,
+            'memory_limit': self.memory_limit
         }
         if 'logs' in include:
             script['logs'] = self.serialize_logs
