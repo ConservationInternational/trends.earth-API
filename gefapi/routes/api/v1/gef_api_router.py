@@ -32,6 +32,9 @@ from gefapi.errors import UserNotFound, UserDuplicated, InvalidFile, ScriptNotFo
 def send_email():
     """Send an email"""
     logging.info('[ROUTER]: Sending email')
+    identity = current_identity
+    if identity.role != 'SERVER':
+        return error(status=403, detail='Forbidden')
     body = request.get_json()
     recipients = body.get("recipients")
     html = body.get("html")
@@ -44,8 +47,8 @@ def send_email():
             subject=subject
         )
 
-    except EmailError as error:
-        logging.error('[ROUTER]: ' + error)
+    except EmailError as email_error:
+        logging.error('[ROUTER]: ' + email_error)
     return response
 
 
