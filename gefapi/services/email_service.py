@@ -29,6 +29,7 @@ class EmailService(object):
                                              html=html,
                                              from_email=from_email,
                                              subject=subject)
+
             return response
         except Exception as error:
             rollbar.report_exc_info()
