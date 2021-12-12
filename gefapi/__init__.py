@@ -1,37 +1,36 @@
 """The GEF API MODULE"""
 
+from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from __future__ import absolute_import
-from gefapi.jwt import authenticate, identity
-from flask_jwt import JWT
-from gefapi.routes.api.v1 import endpoints, error
 
-
+import logging
 import os
 import sys
-import json
-import logging
 
-import rollbar
 import rollbar.contrib.flask
-from rollbar.logger import RollbarHandler
-
-from flask import Flask, request, current_app, got_request_exception
-from flask_sqlalchemy import SQLAlchemy
+from flask import current_app
+from flask import Flask
+from flask import got_request_exception
+from flask import request
+from flask_cors import CORS
+from flask_jwt import JWT
 from flask_migrate import Migrate
-from flask_cors import CORS, cross_origin
-from gefapi.config import SETTINGS
 from gefapi.celery import make_celery
+from gefapi.config import SETTINGS
+from gefapi.jwt import authenticate
+from gefapi.jwt import identity
 from gefapi.models.model import db
-
+from gefapi.routes.api import error
+from gefapi.routes.api.v1 import v1_endpoints
+from gefapi.routes.api.v2 import v2_endpoints
+from rollbar.logger import RollbarHandler
 
 logging.basicConfig(
     level=SETTINGS.get('logging', {}).get('level'),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y%m%d-%H:%M%p',
 )
-
 
 # Flask App
 app = Flask(__name__)
@@ -52,9 +51,10 @@ logger.addHandler(rollbar_handler)
 def handle_exception(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
         return
-    logger.critical("Uncaught exception", exc_info=(
-        exc_type, exc_value, exc_traceback))
+    logger.critical("Uncaught exception",
+                    exc_info=(exc_type, exc_value, exc_traceback))
 
 
 sys.excepthook = handle_exception
@@ -75,8 +75,8 @@ def init_rollbar():
     # send exceptions from `app` to rollbar, using flask's signal system.
     got_request_exception.connect(rollbar.contrib.flask.report_exception, app)
 
-# Config
 
+# Config
 
 app.config['SQLALCHEMY_DATABASE_URI'] = SETTINGS.get('SQLALCHEMY_DATABASE_URI')
 app.config['SECRET_KEY'] = SETTINGS.get('SECRET_KEY')
@@ -96,7 +96,8 @@ celery = make_celery(app)
 
 # DB has to be ready!
 # Blueprint Flask Routing
-app.register_blueprint(endpoints, url_prefix='/api/v1')
+app.register_blueprint(v1_endpoints, url_prefix='/api/v1')
+app.register_blueprint(v2_endpoints, url_prefix='/api/v2')
 
 # JWT
 jwt = JWT(app, authenticate, identity)
@@ -107,10 +108,11 @@ def request_handler():
     auth_header_value = request.headers.get('Authorization', None)
     auth_header_prefix = current_app.config['JWT_AUTH_HEADER_PREFIX']
 
-    if auth_header_value is None and request.args.get('token', None) is not None:
+    if auth_header_value is None and request.args.get('token',
+                                                      None) is not None:
         logging.info(request.args.get('token', ''))
-        auth_header_value = auth_header_prefix + \
-            ' ' + request.args.get('token', '')
+        auth_header_value = auth_header_prefix + ' ' + request.args.get(
+            'token', '')
 
     if auth_header_value is None:
         return None

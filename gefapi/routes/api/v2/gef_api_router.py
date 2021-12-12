@@ -24,7 +24,7 @@ from gefapi.errors import ScriptStateNotValid
 from gefapi.errors import UserDuplicated
 from gefapi.errors import UserNotFound
 from gefapi.routes.api import error
-from gefapi.routes.api.v1 import v1_endpoints
+from gefapi.routes.api.v2 import v2_endpoints
 from gefapi.s3 import get_script_from_s3
 from gefapi.services import EmailService
 from gefapi.services import ExecutionService
@@ -39,7 +39,7 @@ from gefapi.validators import validate_user_update
 # EMAIL SEND
 
 
-@v1_endpoints.route('/email', strict_slashes=False, methods=['POST'])
+@v2_endpoints.route('/email', strict_slashes=False, methods=['POST'])
 @jwt_required()
 def send_email():
     """Send an email"""
@@ -67,7 +67,7 @@ def send_email():
 # SCRIPT CREATION
 
 
-@v1_endpoints.route('/script', strict_slashes=False, methods=['POST'])
+@v2_endpoints.route('/script', strict_slashes=False, methods=['POST'])
 @jwt_required()
 @validate_file
 def create_script():
@@ -98,7 +98,7 @@ def create_script():
     return jsonify(data=user.serialize()), 200
 
 
-@v1_endpoints.route('/script', strict_slashes=False, methods=['GET'])
+@v2_endpoints.route('/script', strict_slashes=False, methods=['GET'])
 @jwt_required()
 def get_scripts():
     """Get all scripts"""
@@ -115,7 +115,7 @@ def get_scripts():
     return jsonify(data=[script.serialize(include) for script in scripts]), 200
 
 
-@v1_endpoints.route('/script/<script>', strict_slashes=False, methods=['GET'])
+@v2_endpoints.route('/script/<script>', strict_slashes=False, methods=['GET'])
 @jwt_required()
 def get_script(script):
     """Get a script"""
@@ -136,7 +136,7 @@ def get_script(script):
     return jsonify(data=script.serialize(include)), 200
 
 
-@v1_endpoints.route('/script/<script>/publish',
+@v2_endpoints.route('/script/<script>/publish',
                     strict_slashes=False,
                     methods=['POST'])
 @jwt_required()
@@ -157,7 +157,7 @@ def publish_script(script):
     return jsonify(data=script.serialize()), 200
 
 
-@v1_endpoints.route('/script/<script>/unpublish',
+@v2_endpoints.route('/script/<script>/unpublish',
                     strict_slashes=False,
                     methods=['POST'])
 @jwt_required()
@@ -178,7 +178,7 @@ def unpublish_script(script):
     return jsonify(data=script.serialize()), 200
 
 
-@v1_endpoints.route('/script/<script>/download',
+@v2_endpoints.route('/script/<script>/download',
                     strict_slashes=False,
                     methods=['GET'])
 @jwt_required()
@@ -208,7 +208,7 @@ def download_script(script):
         return error(status=500, detail='Generic Error')
 
 
-@v1_endpoints.route('/script/<script>/log',
+@v2_endpoints.route('/script/<script>/log',
                     strict_slashes=False,
                     methods=['GET'])
 @jwt_required()
@@ -234,7 +234,7 @@ def get_script_logs(script):
     return jsonify(data=[log.serialize() for log in logs]), 200
 
 
-@v1_endpoints.route('/script/<script>',
+@v2_endpoints.route('/script/<script>',
                     strict_slashes=False,
                     methods=['PATCH'])
 @jwt_required()
@@ -271,7 +271,7 @@ def update_script(script):
     return jsonify(data=script.serialize()), 200
 
 
-@v1_endpoints.route('/script/<script>',
+@v2_endpoints.route('/script/<script>',
                     strict_slashes=False,
                     methods=['DELETE'])
 @jwt_required()
@@ -297,7 +297,7 @@ def delete_script(script):
 
 
 # SCRIPT EXECUTION
-@v1_endpoints.route('/script/<script>/run',
+@v2_endpoints.route('/script/<script>/run',
                     strict_slashes=False,
                     methods=['POST'])
 @jwt_required()
@@ -330,7 +330,7 @@ def run_script(script):
     return jsonify(data=execution.serialize()), 200
 
 
-@v1_endpoints.route('/execution', strict_slashes=False, methods=['GET'])
+@v2_endpoints.route('/execution', strict_slashes=False, methods=['GET'])
 @jwt_required()
 def get_executions():
     """Get all executions"""
@@ -357,7 +357,7 @@ def get_executions():
     ]), 200
 
 
-@v1_endpoints.route('/execution/<execution>',
+@v2_endpoints.route('/execution/<execution>',
                     strict_slashes=False,
                     methods=['GET'])
 @jwt_required()
@@ -382,7 +382,7 @@ def get_execution(execution):
     return jsonify(data=execution.serialize(include, exclude)), 200
 
 
-@v1_endpoints.route('/execution/<execution>',
+@v2_endpoints.route('/execution/<execution>',
                     strict_slashes=False,
                     methods=['PATCH'])
 @jwt_required()
@@ -409,7 +409,7 @@ def update_execution(execution):
     return jsonify(data=execution.serialize()), 200
 
 
-@v1_endpoints.route('/execution/<execution>',
+@v2_endpoints.route('/execution/<execution>',
                     strict_slashes=False,
                     methods=['DELETE'])
 @jwt_required()
@@ -430,7 +430,7 @@ def delete_execution(execution):
     return jsonify(data=execution.serialize()), 200
 
 
-@v1_endpoints.route('/execution/<execution>/log',
+@v2_endpoints.route('/execution/<execution>/log',
                     strict_slashes=False,
                     methods=['GET'])
 def get_execution_logs(execution):
@@ -456,7 +456,7 @@ def get_execution_logs(execution):
     return jsonify(data=[log.serialize() for log in logs]), 200
 
 
-@v1_endpoints.route('/execution/<execution>/download-results',
+@v2_endpoints.route('/execution/<execution>/download-results',
                     strict_slashes=False,
                     methods=['GET'])
 def get_download_results(execution):
@@ -476,7 +476,7 @@ def get_download_results(execution):
         headers={"Content-Disposition": "attachment;filename=results.json"})
 
 
-@v1_endpoints.route('/execution/<execution>/log',
+@v2_endpoints.route('/execution/<execution>/log',
                     strict_slashes=False,
                     methods=['POST'])
 @jwt_required()
@@ -504,7 +504,7 @@ def create_execution_log(execution):
 
 
 # USER
-@v1_endpoints.route('/user', strict_slashes=False, methods=['POST'])
+@v2_endpoints.route('/user', strict_slashes=False, methods=['POST'])
 @validate_user_creation
 def create_user():
     """Create an user"""
@@ -541,7 +541,7 @@ def create_user():
     return jsonify(data=user.serialize()), 200
 
 
-@v1_endpoints.route('/user', strict_slashes=False, methods=['GET'])
+@v2_endpoints.route('/user', strict_slashes=False, methods=['GET'])
 @jwt_required()
 def get_users():
     """Get users"""
@@ -562,7 +562,7 @@ def get_users():
     return jsonify(data=[user.serialize(include) for user in users]), 200
 
 
-@v1_endpoints.route('/user/<user>', strict_slashes=False, methods=['GET'])
+@v2_endpoints.route('/user/<user>', strict_slashes=False, methods=['GET'])
 @jwt_required()
 def get_user(user):
     """Get an user"""
@@ -587,7 +587,7 @@ def get_user(user):
     return jsonify(data=user.serialize(include)), 200
 
 
-@v1_endpoints.route('/user/me', strict_slashes=False, methods=['GET'])
+@v2_endpoints.route('/user/me', strict_slashes=False, methods=['GET'])
 @jwt_required()
 def get_me():
     """Get me"""
@@ -597,7 +597,7 @@ def get_me():
     return jsonify(data=user.serialize()), 200
 
 
-@v1_endpoints.route('/user/me', strict_slashes=False, methods=['PATCH'])
+@v2_endpoints.route('/user/me', strict_slashes=False, methods=['PATCH'])
 @jwt_required()
 def update_profile():
     """Update an user"""
@@ -633,7 +633,7 @@ def update_profile():
     return jsonify(data=user.serialize()), 200
 
 
-@v1_endpoints.route('/user/me', strict_slashes=False, methods=['DELETE'])
+@v2_endpoints.route('/user/me', strict_slashes=False, methods=['DELETE'])
 @jwt_required()
 def delete_profile():
     """Delete Me"""
@@ -653,7 +653,7 @@ def delete_profile():
     return jsonify(data=user.serialize()), 200
 
 
-@v1_endpoints.route('/user/<user>/recover-password',
+@v2_endpoints.route('/user/<user>/recover-password',
                     strict_slashes=False,
                     methods=['POST'])
 def recover_password(user):
@@ -677,7 +677,7 @@ def recover_password(user):
     return jsonify(data=user.serialize()), 200
 
 
-@v1_endpoints.route('/user/<user>', strict_slashes=False, methods=['PATCH'])
+@v2_endpoints.route('/user/<user>', strict_slashes=False, methods=['PATCH'])
 @jwt_required()
 @validate_user_update
 def update_user(user):
@@ -702,7 +702,7 @@ def update_user(user):
     return jsonify(data=user.serialize()), 200
 
 
-@v1_endpoints.route('/user/<user>', strict_slashes=False, methods=['DELETE'])
+@v2_endpoints.route('/user/<user>', strict_slashes=False, methods=['DELETE'])
 @jwt_required()
 def delete_user(user):
     """Delete an user"""
