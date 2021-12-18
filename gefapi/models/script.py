@@ -3,18 +3,22 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import datetime
 import uuid
 
 from gefapi.models import GUID
 from gefapi.models.model import db
+
 db.GUID = GUID
 
 
 class Script(db.Model):
     """Script Model"""
-    id = db.Column(db.GUID(), default=uuid.uuid4,
-                   primary_key=True, autoincrement=False)
+    id = db.Column(db.GUID(),
+                   default=uuid.uuid4,
+                   primary_key=True,
+                   autoincrement=False)
     name = db.Column(db.String(120), nullable=False)
     slug = db.Column(db.String(80), unique=True, nullable=False)
     description = db.Column(db.Text(), default='')
@@ -31,10 +35,11 @@ class Script(db.Model):
                                  cascade='all, delete-orphan',
                                  lazy='dynamic')
     public = db.Column(db.Boolean(), default=False, nullable=False)
-    cpu_reservation = db.Column(db.Integer(), default=1e8)  # 1e8 is 10% of a CPU
-    cpu_limit = db.Column(db.Integer(), default=5e8)
-    memory_reservation = db.Column(db.Integer(), default=1e8)
-    memory_limit = db.Column(db.Integer(), default=2e9)
+    cpu_reservation = db.Column(db.Integer(),
+                                default=1e8)  # 1e8 is 10% of a CPU
+    cpu_limit = db.Column(db.Integer(), default=5e8, nullable=False)
+    memory_reservation = db.Column(db.Integer(), default=1e8, nullable=False)
+    memory_limit = db.Column(db.Integer(), default=2e9, nullable=False)
 
     def __init__(self, name, slug, user_id):
         self.name = name
@@ -62,20 +67,26 @@ class Script(db.Model):
             'memory_reservation': self.memory_reservation,
             'memory_limit': self.memory_limit
         }
+
         if 'logs' in include:
             script['logs'] = self.serialize_logs
+
         if 'user' in include:
             script['user'] = self.user.serialize()
+
         if 'executions' in include:
             script['executions'] = self.serialize_executions
+
         return script
 
     @property
     def serialize_logs(self):
         """Serialize Logs"""
+
         return [item.serialize() for item in self.logs]
 
     @property
     def serialize_executions(self):
         """Serialize Logs"""
+
         return [item.serialize() for item in self.executions]

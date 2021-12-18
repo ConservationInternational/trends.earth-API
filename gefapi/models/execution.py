@@ -7,16 +7,19 @@ from __future__ import print_function
 import datetime
 import uuid
 
-from gefapi.models.model import db
 from gefapi.models import GUID
+from gefapi.models.model import db
 from sqlalchemy.dialects.postgresql import JSONB
+
 db.GUID = GUID
 
 
 class Execution(db.Model):
     """Execution Model"""
-    id = db.Column(db.GUID(), default=uuid.uuid4,
-                   primary_key=True, autoincrement=False)
+    id = db.Column(db.GUID(),
+                   default=uuid.uuid4,
+                   primary_key=True,
+                   autoincrement=False)
     start_date = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
     end_date = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
     status = db.Column(db.String(10), default='PENDING')
@@ -46,6 +49,7 @@ class Execution(db.Model):
         include = include if include else []
         exclude = exclude if exclude else []
         end_date_formatted = None
+
         if self.end_date:
             end_date_formatted = self.end_date.isoformat()
         execution = {
@@ -61,19 +65,26 @@ class Execution(db.Model):
             'is_plugin_execution': self.is_plugin_execution,
             'deleted': self.deleted
         }
+
         if 'logs' in include:
             execution['logs'] = self.serialize_logs
+
         if 'user' in include:
             execution['user'] = self.user.serialize()
+
         if 'script' in include:
             execution['script'] = self.script.serialize()
+
         if 'params' in exclude:
             del execution['params']
+
         if 'results' in exclude:
             del execution['results']
+
         return execution
 
     @property
     def serialize_logs(self):
         """Serialize Logs"""
+
         return [item.serialize() for item in self.logs]
