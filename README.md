@@ -125,16 +125,6 @@ docker build -t trendsearth-api .
     docker stack rm api
     ```
 
-If this is the first time you run it, it may take a few minutes.
-
-## Production deploy
-
-### Setup
-
-1.  Start a stack on docker swarm (using `docker swarm init` if needed)
-
-2.  asdf
-
 ### Code structure
 
 The API has been packed in a Python module (gefapi). It creates and
