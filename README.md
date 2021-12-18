@@ -1,26 +1,28 @@
-# GEF API
+# Trends.Earth API
 
-This project belongs to the GEF Project.
+This project belongs to the Trends.Earth project.
 
-This repo implements the API of the GEF Environment. It implements the
-Scripts, Users and Executions management.
+This repo implements the API used by the Trends.Earth plugin and web
+interfaces. It implements the Scripts, Users and Executions management.
 
-Check out the other parts of the GEF project:
+Check out the other parts of the Trends.Earth project:
 
 -   The Command Line Interface. It allows to create and test custom
     scripts locally. It also can be used to publish the scripts to the
-    GEF Environment [GEF CLI](https://github.com/Vizzuality/GEF-CLI)
--   The GEF core platform [GEF
-    Environment](https://github.com/Vizzuality/GEF-Environment)
--   A web app to explore and manage the API entities [GEF
-    UI](https://github.com/Vizzuality/GEF-UI)
+    Trends.Earth Environment
+    [(Trends.Earth CLI)](https://github.com/conservationinternational/trends.earth-CLI)
+-   The [Trends.Earth Core  
+    Environment](https://github.com/conservationinternational/trends.earth-Environment)
+    used for executing scripts in Trends.Earth
+-   A web app to explore and manage the API entities [(Trends.Earth
+    UI)](https://github.com/conservationinternational/trends.earth-UI)
 
 ## Getting started
 
 ### Requirements
 
 You need to install Docker in your machine if you haven't already
-[Docker](https://www.docker.com/)
+[(Docker)](https://www.docker.com/)
 
 ### Technology
 
@@ -34,25 +36,104 @@ You need to install Docker in your machine if you haven't already
 
 ## Development
 
-### Setup
-
 Follow the next steps to set up the development environment in your
-machine.
+machine or on a cloud server
+
+### For local development (without docker swarm)
 
 1.  Clone the repo and navigate to the folder
 
 ``` ssh
-git clone https://github.com/Vizzuality/GEF-API
+git clone https://github.com/conservationinternational/trends.earth-api
 cd GEF-API
 ```
 
-2.  Run the gefapi.sh shell script in development mode.
+2.  Build the docker image:
 
 ``` ssh
-./gefapi.sh develop
+docker build -t trendsearth-api .
 ```
 
+2.  Start the services:
+
+``` ssh
+docker-compose -f docker-compose-develop.yml up
+```
+
+4.  To stop the services:
+
+``` ssh
+docker-compose down
+```
+
+### On docker swarm (used on staging)
+
+1.  Clone the repo and navigate to the folder
+
+``` ssh
+git clone https://github.com/conservationinternational/trends.earth-api
+cd GEF-API
+```
+
+2.  Build the docker image:
+
+``` ssh
+docker build -t trendsearth-api .
+```
+
+2.  Start a stack running on docker swarm
+
+    -   To run local development version on docker swarm:
+
+        ``` ssh
+        docker stack deploy -c docker-compose-develop.yml api
+        ```
+
+    -   To run on staging:
+
+        ``` ssh
+        docker stack deploy -c docker-compose-staging.yml api
+        ```
+
+3.  Once the services are up:
+
+    -   To check the services are running:
+
+        ``` ssh
+        docker stack ps api
+        ```
+
+    -   To check the logs for the services:
+
+        ``` ssh
+        docker logs -f api_manager
+        ```
+
+        ``` ssh
+        docker logs -f api_worker
+        ```
+
+        ``` ssh
+        docker logs -f redis
+        ```
+
+4.  To remove the stack:
+
+    To check on the services:
+
+    ``` ssh
+    docker stack rm api
+    ```
+
 If this is the first time you run it, it may take a few minutes.
+
+## Production deploy
+
+### Setup
+
+1.  Start a stack on docker swarm (using `docker swarm init` if needed)
+
+2.  asdf
 
 ### Code structure
 
