@@ -11,7 +11,7 @@ Check out the other parts of the Trends.Earth project:
     scripts locally. It also can be used to publish the scripts to the
     Trends.Earth Environment
     [(Trends.Earth CLI)](https://github.com/conservationinternational/trends.earth-CLI)
--   The [Trends.Earth Core  
+-   The [Trends.Earth Core
     Environment](https://github.com/conservationinternational/trends.earth-Environment)
     used for executing scripts in Trends.Earth
 -   A web app to explore and manage the API entities [(Trends.Earth
