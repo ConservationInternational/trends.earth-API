@@ -119,8 +119,6 @@ docker build -t trendsearth-api .
 
 4.  To remove the stack:
 
-    To check on the services:
-
     ``` ssh
     docker stack rm api
     ```
