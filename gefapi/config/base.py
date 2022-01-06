@@ -12,8 +12,6 @@ SETTINGS = {
     'environment': {
         'ROLLBAR_SCRIPT_TOKEN': os.getenv('ROLLBAR_SCRIPT_TOKEN'),
         'ROLLBAR_SERVER_TOKEN': os.getenv('ROLLBAR_SERVER_TOKEN'),
-        'EE_PRIVATE_KEY': os.getenv('EE_PRIVATE_KEY'),
-        'EE_SERVICE_ACCOUNT': os.getenv('EE_SERVICE_ACCOUNT'),
         'EE_SERVICE_ACCOUNT_JSON': os.getenv('EE_SERVICE_ACCOUNT_JSON'),
         'SPARKPOST_API_KEY': os.getenv('SPARKPOST_API_KEY'),
         'API_URL': os.getenv('API_URL'),

@@ -18,6 +18,10 @@ from gefapi.models import Script, ScriptLog, Execution
 from gefapi.config import SETTINGS
 from gefapi.s3 import get_script_from_s3
 
+import rollbar
+
+rollbar.init(os.getenv('ROLLBAR_SERVER_TOKEN'), os.getenv('ENV'))
+
 
 REGISTRY_URL = SETTINGS.get('REGISTRY_URL')
 DOCKER_URL = SETTINGS.get('DOCKER_URL')
@@ -119,6 +123,7 @@ class DockerService(object):
                     pushed = True
         except Exception as error:
             logging.error(error)
+            rollbar.report_exc_info()
             return False, error
 
     @staticmethod
@@ -141,6 +146,7 @@ class DockerService(object):
             return False, error
         except Exception as error:
             logging.error(error)
+            rollbar.report_exc_info()
             return False, error
 
     @staticmethod
@@ -162,5 +168,6 @@ class DockerService(object):
             return False, error
         except Exception as error:
             logging.error(error)
+            rollbar.report_exc_info()
             return False, error
         return True, None

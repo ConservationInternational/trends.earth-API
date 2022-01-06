@@ -8,6 +8,12 @@ import logging
 
 from sparkpost import SparkPost
 
+import rollbar
+
+import os
+
+rollbar.init(os.getenv('ROLLBAR_SERVER_TOKEN'), os.getenv('ENV'))
+
 
 class EmailService(object):
     """MailService Class"""
@@ -25,4 +31,5 @@ class EmailService(object):
                                              subject=subject)
             return response
         except Exception as error:
+            rollbar.report_exc_info()
             logging.exception(error)

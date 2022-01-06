@@ -3,13 +3,13 @@ version: '3.8'
 services:
     prod:
       image: 172.40.1.52:5000/trendsearth_api
-      environment:
-        PORT: 3000
+      networks:
+        - backend
       ports:
         - target: 3000
           published: 3000
-          protocol: tcp
-          mode: ingress
+      environment:
+        PORT: 3000
       env_file:
         - prod.env
       command: start
@@ -27,11 +27,13 @@ services:
 
     worker:
       image: 172.40.1.52:5000/trendsearth_api
-      env_file:
-        - prod.env
+      networks:
+        - backend
       environment:
         PORT: 3000
         FLASK_APP: main.py
+      env_file:
+        - prod.env
       command: worker
       volumes:
         - /var/run/docker.sock:/tmp/docker.sock
@@ -49,11 +51,11 @@ services:
 
     redis:
       image: redis
+      networks:
+        - backend
       ports:
         - target: 6379
           published: 6379
-          protocol: tcp
-          mode: ingress
       deploy:
         placement:
           constraints: [node.role == manager]
@@ -63,3 +65,8 @@ services:
           reservations:
             cpus: '0.25'
             memory: 100M
+networks:
+    frontend:
+      driver: overlay
+    backend:
+      driver: overlay
