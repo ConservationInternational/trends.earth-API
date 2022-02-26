@@ -196,7 +196,8 @@ class DockerService(object):
                     command=params,
                     environment=environment,
                     detach=True,
-                    name='execution-' + str(execution_id))
+                    name='execution-' + str(execution_id),
+                    remove=True)
         except docker.errors.ImageNotFound as error:
             logging.error('Image not found', error)
 
