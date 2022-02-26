@@ -17,8 +17,6 @@ from werkzeug.utils import secure_filename
 from slugify import slugify
 from sqlalchemy import or_
 
-ROLES = SETTINGS.get('ROLES')
-
 import rollbar
 
 from gefapi.services import docker_build
@@ -28,6 +26,7 @@ from gefapi.models import Script, ScriptLog
 from gefapi.config import SETTINGS
 from gefapi.errors import InvalidFile, ScriptNotFound, ScriptDuplicated, NotAllowed
 
+ROLES = SETTINGS.get('ROLES')
 
 def allowed_file(filename):
     if len(filename.rsplit('.')) > 2:
