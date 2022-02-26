@@ -4,6 +4,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import random
 import datetime
 import string
@@ -17,6 +18,10 @@ from gefapi.services import EmailService
 from gefapi.config import SETTINGS
 
 ROLES = SETTINGS.get('ROLES')
+
+import rollbar
+
+rollbar.init(os.getenv('ROLLBAR_SERVER_TOKEN'), os.getenv('ENV'))
 
 
 class UserService(object):
@@ -51,8 +56,10 @@ class UserService(object):
                     subject='[trends.earth] User created'
                 )
             except EmailError as error:
+                rollbar.report_exc_info()
                 raise error
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return user
 
@@ -73,6 +80,7 @@ class UserService(object):
         except ValueError:
             user = User.query.filter_by(email=user_id).first()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         if not user:
             raise UserNotFound(message='User with id '+user_id+' does not exist')
@@ -98,8 +106,10 @@ class UserService(object):
                     subject='[trends.earth] Recover password'
                 )
             except EmailError as error:
+                rollbar.report_exc_info()
                 raise error
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return user
 
@@ -113,6 +123,7 @@ class UserService(object):
             db.session.add(current_user)
             db.session.commit()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return current_user
 
@@ -134,6 +145,7 @@ class UserService(object):
             db.session.add(current_user)
             db.session.commit()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return current_user
 
@@ -148,6 +160,7 @@ class UserService(object):
             db.session.delete(user)
             db.session.commit()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return user
 

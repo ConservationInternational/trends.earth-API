@@ -17,6 +17,10 @@ from werkzeug.utils import secure_filename
 from slugify import slugify
 from sqlalchemy import or_
 
+ROLES = SETTINGS.get('ROLES')
+
+import rollbar
+
 from gefapi.services import docker_build
 from gefapi import db
 from gefapi.s3 import push_script_to_s3
@@ -50,6 +54,7 @@ class ScriptService(object):
                 sent_file.save(sent_file_path)
             except Exception as e:
                 logging.error(e)
+                rollbar.report_exc_info()
                 raise e
             logging.info('[SERVICE]: File saved')
         else:
@@ -66,6 +71,7 @@ class ScriptService(object):
                 config = json.loads(config_content)
                 script_name = config.get('name', None)
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
 
         if script is None:
@@ -93,6 +99,7 @@ class ScriptService(object):
             )
         except Exception as error:
             logging.error(error)
+            rollbar.report_exc_info()
             raise error
 
         return script
@@ -120,6 +127,7 @@ class ScriptService(object):
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
             except Exception as error:
+                rollbar.report_exc_info()
                 raise error
         else:
             try:
@@ -134,6 +142,7 @@ class ScriptService(object):
                     .filter(or_(Script.user_id == user.id, Script.public == True)) \
                     .first()
             except Exception as error:
+                rollbar.report_exc_info()
                 raise error
         if not script:
             raise ScriptNotFound(message='Script with id '+script_id+' does not exist')
@@ -149,6 +158,7 @@ class ScriptService(object):
         except ValueError:
             script = Script.query.filter_by(slug=script_id).first()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         if not script:
             raise ScriptNotFound(message='Script with id '+script_id+' does not exist')
@@ -177,6 +187,7 @@ class ScriptService(object):
         try:
             script = ScriptService.get_script(script_id, user)
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         if not script:
             raise ScriptNotFound(message='Script with id '+script_id+' does not exist')
@@ -186,6 +197,7 @@ class ScriptService(object):
             db.session.delete(script)
             db.session.commit()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return script
 
@@ -199,6 +211,7 @@ class ScriptService(object):
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
             except Exception as error:
+                rollbar.report_exc_info()
                 raise error
         else:
             try:
@@ -213,6 +226,7 @@ class ScriptService(object):
                     .filter(Script.user_id == user.id) \
                     .first()
             except Exception as error:
+                rollbar.report_exc_info()
                 raise error
         if not script:
             raise ScriptNotFound(message='Script with id '+script_id+' does not exist')
@@ -222,6 +236,7 @@ class ScriptService(object):
             db.session.add(script)
             db.session.commit()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return script
 
@@ -235,6 +250,7 @@ class ScriptService(object):
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
             except Exception as error:
+                rollbar.report_exc_info()
                 raise error
         else:
             try:
@@ -256,5 +272,6 @@ class ScriptService(object):
             db.session.add(script)
             db.session.commit()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return script

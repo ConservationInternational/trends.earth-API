@@ -17,6 +17,10 @@ from gefapi.services import ScriptService, docker_run, EmailService, UserService
 from gefapi.config import SETTINGS
 from gefapi.errors import ExecutionNotFound, ScriptNotFound, ScriptStateNotValid
 
+import rollbar
+
+rollbar.init(os.getenv('ROLLBAR_SERVER_TOKEN'), os.getenv('ENV'))
+
 
 EXECUTION_FINISHED_MAIL_CONTENT = "<p>Thank you for using the trends.earth. The below task has {}. More details on this task are below: </p>\
                                     <ul><li>Task name: {}</li> \
@@ -54,6 +58,7 @@ class ExecutionService(object):
                 try:
                     val = UUID(target_user_id, version=4)
                 except Exception as error:
+                    rollbar.report_exc_info()
                     raise error
                 executions = db.session.query(Execution) \
                     .filter(Execution.user_id == target_user_id) \
@@ -86,6 +91,7 @@ class ExecutionService(object):
             db.session.add(execution)
             db.session.commit()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
 
         try:
@@ -96,6 +102,7 @@ class ExecutionService(object):
             logging.debug(param_serial)
             docker_run.delay(execution.id, script.slug, environment, param_serial)
         except Exception as e:
+            rollbar.report_exc_info()
             raise e
         return execution
 
@@ -109,6 +116,7 @@ class ExecutionService(object):
                 val = UUID(execution_id, version=4)
                 execution = Execution.query.filter_by(id=execution_id).first()
             except Exception as error:
+                rollbar.report_exc_info()
                 raise error
         else:
             try:
@@ -118,6 +126,7 @@ class ExecutionService(object):
                     .filter(Execution.user_id == user.id) \
                     .first()
             except Exception as error:
+                rollbar.report_exc_info()
                 raise error
         if not execution:
             raise ExecutionNotFound(message='Ticket Not Found')
@@ -155,6 +164,7 @@ class ExecutionService(object):
             db.session.add(execution)
             db.session.commit()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return execution
 
@@ -174,6 +184,7 @@ class ExecutionService(object):
             db.session.add(execution_log)
             db.session.commit()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return execution_log
 
@@ -184,6 +195,7 @@ class ExecutionService(object):
         try:
             execution = ExecutionService.get_execution(execution_id=execution_id)
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         if not execution:
             raise ExecutionNotFound(message='Execution with id '+execution_id+' does not exist')
