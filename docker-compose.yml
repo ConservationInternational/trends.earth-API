@@ -1,72 +1,72 @@
-version: '3.8'
+version: "3.8"
 
 services:
-    prod:
-      image: 172.40.1.52:5000/trendsearth_api
-      networks:
-        - backend
-      ports:
-        - target: 3000
-          published: 3000
-      environment:
-        PORT: 3000
-      env_file:
-        - prod.env
-      command: start
-      depends_on:
-        - redis
-      deploy:
-        placement:
-          constraints: [node.role == manager]
-        restart_policy:
-          condition: any
-        resources:
-          reservations:
-            cpus: '0.25'
-            memory: 400M
+  prod:
+    image: 172.40.1.52:5000/trendsearth_api
+    networks:
+      - backend
+    ports:
+      - target: 3000
+        published: 3000
+    environment:
+      PORT: 3000
+    env_file:
+      - prod.env
+    command: start
+    depends_on:
+      - redis
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: any
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
 
-    worker:
-      image: 172.40.1.52:5000/trendsearth_api
-      networks:
-        - backend
-      environment:
-        PORT: 3000
-        FLASK_APP: main.py
-      env_file:
-        - prod.env
-      command: worker
-      volumes:
-        - /var/run/docker.sock:/tmp/docker.sock
-      depends_on:
-        - redis
-      deploy:
-        restart_policy:
-          condition: any
-        placement:
-          constraints: [node.role == manager]
-        resources:
-          reservations:
-            cpus: '0.25'
-            memory: 400M
+  worker:
+    image: 172.40.1.52:5000/trendsearth_api
+    networks:
+      - backend
+    environment:
+      PORT: 3000
+      FLASK_APP: main.py
+    env_file:
+      - prod.env
+    command: worker
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    depends_on:
+      - redis
+    deploy:
+      restart_policy:
+        condition: any
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
 
-    redis:
-      image: redis
-      networks:
-        - backend
-      ports:
-        - target: 6379
-          published: 6379
-      deploy:
-        placement:
-          constraints: [node.role == manager]
-        restart_policy:
-          condition: any
-        resources:
-          reservations:
-            cpus: '0.25'
-            memory: 100M
+  redis:
+    image: redis
+    networks:
+      - backend
+    ports:
+      - target: 6379
+        published: 6379
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: any
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 100M
 networks:
-    frontend:
-      driver: overlay
-    backend:
-      driver: overlay
+  frontend:
+    driver: overlay
+  backend:
+    driver: overlay

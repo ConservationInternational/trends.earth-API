@@ -1,32 +1,32 @@
 """The GEF API MODULE"""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import sys
 import json
 import logging
+import os
+import sys
 
-import rollbar
 import rollbar.contrib.flask
+from flask import current_app
+from flask import Flask
+from flask import got_request_exception
+from flask import request
+from flask_cors import CORS
+from flask_cors import cross_origin
+from flask_migrate import Migrate
+from flask_sqlalchemy import SQLAlchemy
 from rollbar.logger import RollbarHandler
 
-from flask import Flask, request, current_app, got_request_exception
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from flask_cors import CORS, cross_origin
-from gefapi.config import SETTINGS
 from gefapi.celery import make_celery
-
+from gefapi.config import SETTINGS
 
 logging.basicConfig(
     level=SETTINGS.get('logging', {}).get('level'),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y%m%d-%H:%M%p',
 )
-
 
 # Flask App
 app = Flask(__name__)
@@ -43,12 +43,17 @@ rollbar_handler = RollbarHandler()
 rollbar_handler.setLevel(logging.ERROR)
 logger.addHandler(rollbar_handler)
 
+
 def handle_exception(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
-    logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+    logger.critical("Uncaught exception",
+                    exc_info=(exc_type, exc_value, exc_traceback))
+
+
 sys.excepthook = handle_exception
+
 
 @app.before_first_request
 def init_rollbar():
@@ -65,6 +70,7 @@ def init_rollbar():
     # send exceptions from `app` to rollbar, using flask's signal system.
     got_request_exception.connect(rollbar.contrib.flask.report_exception, app)
 
+
 # Config
 
 app.config['SQLALCHEMY_DATABASE_URI'] = SETTINGS.get('SQLALCHEMY_DATABASE_URI')
@@ -73,8 +79,8 @@ app.config['UPLOAD_FOLDER'] = SETTINGS.get('UPLOAD_FOLDER')
 app.config['JWT_AUTH_USERNAME_KEY'] = SETTINGS.get('JWT_AUTH_USERNAME_KEY')
 app.config['JWT_AUTH_HEADER_PREFIX'] = SETTINGS.get('JWT_AUTH_HEADER_PREFIX')
 app.config['JWT_EXPIRATION_DELTA'] = SETTINGS.get('JWT_EXPIRATION_DELTA')
-app.config['CELERY_BROKER_URL'] = SETTINGS.get('CELERY_BROKER_URL')
-app.config['CELERY_RESULT_BACKEND'] = SETTINGS.get('CELERY_RESULT_BACKEND')
+app.config['broker_url'] = SETTINGS.get('CELERY_BROKER_URL')
+app.config['result_backend'] = SETTINGS.get('CELERY_RESULT_BACKEND')
 
 # Database
 db = SQLAlchemy(app)
@@ -85,11 +91,14 @@ celery = make_celery(app)
 
 # DB has to be ready!
 from gefapi.routes.api.v1 import endpoints, error
+
 # Blueprint Flask Routing
 app.register_blueprint(endpoints, url_prefix='/api/v1')
 
 from flask_jwt import JWT
+
 from gefapi.jwt import authenticate, identity
+
 # JWT
 jwt = JWT(app, authenticate, identity)
 
@@ -99,9 +108,11 @@ def request_handler():
     auth_header_value = request.headers.get('Authorization', None)
     auth_header_prefix = current_app.config['JWT_AUTH_HEADER_PREFIX']
 
-    if auth_header_value is None and request.args.get('token', None) is not None:
+    if auth_header_value is None and request.args.get('token',
+                                                      None) is not None:
         logging.info(request.args.get('token', ''))
-        auth_header_value = auth_header_prefix + ' ' + request.args.get('token', '')
+        auth_header_value = auth_header_prefix + ' ' + request.args.get(
+            'token', '')
 
     if auth_header_value is None:
         return None

@@ -1,13 +1,13 @@
-version: "2"
+version: "3.8"
 
 services:
-  develop:
+  manager:
     extends:
       file: base.yml
       service: base
-    container_name: gef-api-develop
+    container_name: te_api-manager-develop
     ports:
-      - "3000:3000"
+      - 3000:3000
     env_file:
       - develop.env
     command: develop
@@ -20,11 +20,12 @@ services:
       - database
       - registry
       - redis
+
   worker:
     extends:
       file: base.yml
       service: base
-    container_name: gef-api-worker-develop
+    container_name: te_api_worker-develop
     env_file:
       - develop.env
     command: worker
@@ -40,7 +41,7 @@ services:
 
   database:
     image: postgres:9.6
-    container_name: gef-api-database
+    container_name: te_api-database
     env_file:
       - develop.env
     environment:
@@ -54,7 +55,7 @@ services:
 
   registry:
     image: registry:2.6.1
-    container_name: gef-api-registry
+    container_name: te_api-registry
     env_file:
       - develop.env
     ports:
@@ -63,7 +64,7 @@ services:
 
   redis:
     image: redis
-    container_name: gef-api-redis
+    container_name: te_api-redis
     env_file:
       - develop.env
     ports:

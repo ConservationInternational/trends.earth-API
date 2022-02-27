@@ -1,12 +1,13 @@
 """GEFAPI MODELS MODULE"""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import uuid
-from sqlalchemy.types import TypeDecorator, CHAR
+
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.types import CHAR
+from sqlalchemy.types import TypeDecorator
 
 
 def dump_datetime(value):
@@ -24,6 +25,7 @@ class GUID(TypeDecorator):
 
     """
     impl = CHAR
+    cache_ok = True
 
     def load_dialect_impl(self, dialect):
         if dialect.name == 'postgresql':
@@ -50,8 +52,8 @@ class GUID(TypeDecorator):
             return uuid.UUID(value)
 
 
-from gefapi.models.user import User
-from gefapi.models.script import Script
 from gefapi.models.execution import Execution
-from gefapi.models.script_log import ScriptLog
 from gefapi.models.execution_log import ExecutionLog
+from gefapi.models.script import Script
+from gefapi.models.script_log import ScriptLog
+from gefapi.models.user import User
