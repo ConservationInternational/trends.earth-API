@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+chown $USER:$USER /tmp/docker.sock
+
 case "$1" in
     develop)
         echo "Running Development Server"

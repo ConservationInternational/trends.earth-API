@@ -9,11 +9,6 @@ if os.getenv('ENVIRONMENT') == 'prod':
         'logging': {
             'level': 'INFO'
         },
-        'service': {
-            'port': 3000
-        },
-        'REGISTRY_URL':
-        os.getenv('REGISTRY_URL'),
         'CELERY_BROKER_URL':
         'redis://' + instance_ip + ':' + os.getenv('REDIS_PORT_6379_TCP_PORT'),
         'CELERY_RESULT_BACKEND':

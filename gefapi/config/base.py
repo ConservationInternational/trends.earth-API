@@ -1,6 +1,7 @@
 import os
 from datetime import timedelta
 
+
 SETTINGS = {
     'logging': {
         'level': 'DEBUG'
@@ -15,7 +16,9 @@ SETTINGS = {
         'SPARKPOST_API_KEY': os.getenv('SPARKPOST_API_KEY'),
         'API_URL': os.getenv('API_URL'),
         'API_USER': os.getenv('API_USER'),
-        'API_PASSWORD': os.getenv('API_PASSWORD')
+        'API_PASSWORD': os.getenv('API_PASSWORD'),
+        'PARAMS_S3_PREFIX': os.getenv('PARAMS_S3_PREFIX'),
+        'PARAMS_S3_BUCKET': os.getenv('PARAMS_S3_BUCKET')
     },
     'ROLES': ['ADMIN', 'USER'],
     'SQLALCHEMY_DATABASE_URI':
@@ -26,14 +29,18 @@ SETTINGS = {
     os.getenv('DATABASE_ENV_POSTGRES_DB'),
     'SECRET_KEY':
     'mysecret',
-    'DOCKER_URL':
-    os.getenv('DOCKER_URL'),
+    'DOCKER_HOST':
+    os.getenv('DOCKER_HOST'),
     'REGISTRY_URL':
-    'localhost:' + os.getenv('REGISTRY_PORT_5000_TCP_PORT', ''),
+    os.getenv('REGISTRY_URL'),
     'SCRIPTS_S3_PREFIX':
     os.getenv('SCRIPTS_S3_PREFIX'),
     'SCRIPTS_S3_BUCKET':
     os.getenv('SCRIPTS_S3_BUCKET'),
+    'PARAMS_S3_PREFIX':
+    os.getenv('PARAMS_S3_PREFIX'),
+    'PARAMS_S3_BUCKET':
+    os.getenv('PARAMS_S3_BUCKET'),
     'UPLOAD_FOLDER':
     '/tmp/scripts',
     'ALLOWED_EXTENSIONS':

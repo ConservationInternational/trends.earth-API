@@ -2,15 +2,22 @@ version: "3.8"
 
 services:
   manager:
+    image: trendsearth_api
+    build: .
     extends:
       file: base.yml
       service: base
+    environment:
+      PORT: 3000
+      ENVIRONMENT: dev
+      DEBUG: "True"
+      FLASK_APP: main.py
     container_name: te_api-manager-develop
     ports:
       - 3000:3000
     env_file:
       - develop.env
-    command: develop
+    command: start
     volumes:
       - ./gefapi:/opt/gef-api/gefapi
       - ./migrations:/opt/gef-api/migrations
@@ -22,9 +29,16 @@ services:
       - redis
 
   worker:
+    image: trendsearth_api
+    build: .
     extends:
       file: base.yml
       service: base
+    environment:
+      PORT: 3000
+      ENVIRONMENT: dev
+      DEBUG: "True"
+      FLASK_APP: main.py
     container_name: te_api_worker-develop
     env_file:
       - develop.env
@@ -59,7 +73,7 @@ services:
     env_file:
       - develop.env
     ports:
-      - 5000:5000
+      - 5000
     restart: always
 
   redis:
