@@ -1,7 +1,0 @@
-test:
-  extends:
-    file: base.yml
-    service: base
-  container_name: gef-api-test
-  command: test
-  restart: unless-stopped

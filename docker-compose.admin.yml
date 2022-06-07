@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  admin:
+    image: trendsearth-api
+    build: .
+    environment:
+      PORT: 3000
+    ports:
+      - target: 3000
+    env_file:
+      - staging.env
+    command: start
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+    deploy:
+      placement:
+        constraints: [node.role == manager]
