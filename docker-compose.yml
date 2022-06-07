@@ -9,8 +9,6 @@ services:
     ports:
       - target: 3000
         published: 3000
-        protocol: tcp
-        mode: ingress
     env_file:
       - staging.env
     command: start

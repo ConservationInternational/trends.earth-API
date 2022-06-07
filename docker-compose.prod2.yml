@@ -3,19 +3,19 @@ version: "3.8"
 services:
   manager:
     image: 172.40.1.52:5000/trendsearth-api-v2
-    container_name: trendsearth-api-v2-manager
+    ports:
+      - target: 3000
+        published: 3001
     env_file:
-      - prod.env
+      - prod2.env
 
   worker:
     image: 172.40.1.52:5000/trendsearth-api-v2
-    container_name: trendsearth-api-v2-worker
     env_file:
-      - prod.env
+      - prod2.env
 
   redis:
     image: redis
-    container_name: trendsearth-api-v2-redis
     ports:
       - target: 6379
     networks:
