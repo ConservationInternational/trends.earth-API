@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  manager:
+    image: 172.40.1.52:5000/trendsearth-api-v2
+    container_name: trendsearth-api-v2-manager
+    env_file:
+      - prod.env
+
+  worker:
+    image: 172.40.1.52:5000/trendsearth-api-v2
+    container_name: trendsearth-api-v2-worker
+    env_file:
+      - prod.env
+
+  redis:
+    image: redis
+    container_name: trendsearth-api-v2-redis
+    ports:
+      - target: 6379
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: always
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 100M
+
+networks:
+  backend:
+    name: trendsearth-api-v2-backend
