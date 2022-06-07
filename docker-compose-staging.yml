@@ -92,7 +92,7 @@ services:
         condition: always
 
   registry:
-    image: registry:2.6.1
+    image: registry:2.8.1
     container_name: trendsearth-api-registry
     volumes:
       - registry-data:/var/lib/registry
