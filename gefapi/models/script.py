@@ -35,7 +35,7 @@ class Script(db.Model):
     cpu_limit = db.Column(db.BigInteger(), default=int(5e8))
     # memory reservations are in bytes
     memory_reservation = db.Column(db.BigInteger(), default=int(1e8))
-    memory_limit = db.Column(db.BigInteger(), default=int(2e9))
+    memory_limit = db.Column(db.BigInteger(), default=int(1e9))
 
     def __init__(self, name, slug, user_id, cpu_reservation=None, cpu_limit=None,
                  memory_reservation=None, memory_limit=None):
