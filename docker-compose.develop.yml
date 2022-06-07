@@ -1,0 +1,95 @@
+version: "3.8"
+
+services:
+  manager:
+    build: .
+    environment:
+      ENVIRONMENT: dev
+      DEBUG: "True"
+    env_file:
+      - develop.env
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+    networks:
+      - backend
+      - db
+
+  worker:
+    image: trendsearth_api
+    build: .
+    environment:
+      ENVIRONMENT: dev
+      DEBUG: "True"
+    env_file:
+      - develop.env
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
+      - db
+    restart: always
+
+  redis:
+    image: redis
+    container_name: trendsearth-api-redis
+    ports:
+      - target: 6379
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: always
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 100M
+
+  database:
+    image: postgres:9.6
+    container_name: trendsearth-api-database
+    environment:
+      POSTGRES_PASSWORD: root
+      POSTGRES_USER: root
+      POSTGRES_DB: gef
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - target: 5432
+        published: 5432
+    env_file:
+      - staging.env
+    networks:
+      - db
+    deploy:
+      restart_policy:
+        condition: always
+
+  registry:
+    image: registry:2.8.1
+    container_name: trendsearth-api-registry
+    volumes:
+      - registry-data:/var/lib/registry
+    env_file:
+      - staging.env
+    ports:
+      - target: 5000
+        published: 5000
+    networks:
+      - backend
+    deploy:
+      restart_policy:
+        condition: always
+
+volumes:
+  postgres-data:
+  registry-data:
+
+networks:
+  db:
+    name: trendsearth-api-db
+    driver: overlay

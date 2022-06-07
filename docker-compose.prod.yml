@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  prod:
+    image: 172.40.1.52:5000/trendsearth-api
+    env_file:
+      - prod.env
+
+  worker:
+    image: 172.40.1.52:5000/trendsearth-api
+    env_file:
+      - prod.env
+
+  redis:
+    image: redis
+    container_name: trendsearth-api-redis
+    ports:
+      - target: 6379
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: always
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 100M

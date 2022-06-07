@@ -1,47 +1,50 @@
 version: "3.8"
 
 services:
-  prod:
-    image: 172.40.1.52:5000/trendsearth_api
-    networks:
-      - backend
+  manager:
+    image: trendsearth-api
+    container_name: trendsearth-api-manager
+    build: .
+    environment:
+      PORT: 3000
     ports:
       - target: 3000
         published: 3000
-    environment:
-      PORT: 3000
+        protocol: tcp
+        mode: ingress
     env_file:
-      - prod.env
+      - staging.env
     command: start
-    depends_on:
-      - redis
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
     deploy:
       placement:
         constraints: [node.role == manager]
       restart_policy:
-        condition: any
+        condition: always
       resources:
         reservations:
           cpus: "0.25"
           memory: 400M
 
   worker:
-    image: 172.40.1.52:5000/trendsearth_api
-    networks:
-      - backend
+    image: trendsearth-api
+    container_name: trendsearth-api-worker
+    build: .
+    env_file:
+      - staging.env
     environment:
       PORT: 3000
-      FLASK_APP: main.py
-    env_file:
-      - prod.env
     command: worker
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
-    depends_on:
-      - redis
+    networks:
+      - backend
     deploy:
       restart_policy:
-        condition: any
+        condition: always
       placement:
         constraints: [node.role == manager]
       resources:
@@ -49,24 +52,7 @@ services:
           cpus: "0.25"
           memory: 400M
 
-  redis:
-    image: redis
-    networks:
-      - backend
-    ports:
-      - target: 6379
-        published: 6379
-    deploy:
-      placement:
-        constraints: [node.role == manager]
-      restart_policy:
-        condition: any
-      resources:
-        reservations:
-          cpus: "0.25"
-          memory: 100M
 networks:
-  frontend:
-    driver: overlay
   backend:
+    name: trendsearth-api-backend
     driver: overlay
