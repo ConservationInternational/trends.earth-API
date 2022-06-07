@@ -31,8 +31,6 @@ COPY ./migrations /opt/$NAME/migrations
 COPY ./tests /opt/$NAME/tests
 RUN chown $USER:$USER /opt/$NAME
 
-# Tell Docker we are going to use this ports
-EXPOSE 3000
 USER root
 #USER $USER
 
