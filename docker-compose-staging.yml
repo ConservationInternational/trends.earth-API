@@ -1,0 +1,119 @@
+version: "3.8"
+
+services:
+  manager:
+    image: trendsearth-api
+    container_name: trendsearth-api-manager
+    build: .
+    environment:
+      PORT: 3000
+    ports:
+      - target: 3000
+        published: 3000
+        protocol: tcp
+        mode: ingress
+    env_file:
+      - staging.env
+    command: start
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
+      - db
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: always
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
+
+  worker:
+    image: trendsearth-api
+    container_name: trendsearth-api-worker
+    build: .
+    env_file:
+      - staging.env
+    environment:
+      PORT: 3000
+    command: worker
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
+      - db
+    deploy:
+      restart_policy:
+        condition: always
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
+
+  redis:
+    image: redis
+    container_name: trendsearth-api-redis
+    ports:
+      - target: 6379
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: always
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 100M
+
+  database:
+    image: postgres:9.6
+    container_name: trendsearth-api-database
+    environment:
+      POSTGRES_PASSWORD: root
+      POSTGRES_USER: root
+      POSTGRES_DB: gef
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - target: 5432
+        published: 5432
+    env_file:
+      - staging.env
+    networks:
+      - db
+    deploy:
+      restart_policy:
+        condition: always
+
+  registry:
+    image: registry:2.6.1
+    container_name: trendsearth-api-registry
+    volumes:
+      - registry-data:/var/lib/registry
+    env_file:
+      - staging.env
+    ports:
+      - target: 5000
+        published: 5000
+    networks:
+      - backend
+    deploy:
+      restart_policy:
+        condition: always
+
+volumes:
+  postgres-data:
+  registry-data:
+
+networks:
+  backend:
+    name: trendsearth-api-backend
+
+  db:
+    name: trendsearth-api-db
