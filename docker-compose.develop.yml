@@ -30,9 +30,6 @@ services:
     networks:
       - backend
       - db
-    deploy:
-      restart_policy:
-        condition: unless-stopped
 
   redis:
     image: redis
@@ -44,8 +41,6 @@ services:
     deploy:
       placement:
         constraints: [node.role == manager]
-      restart_policy:
-        condition: unless-stopped
       resources:
         reservations:
           cpus: "0.25"
@@ -67,9 +62,6 @@ services:
       - staging.env
     networks:
       - db
-    deploy:
-      restart_policy:
-        condition: unless-stopped
 
   registry:
     image: registry:2.8.1
@@ -83,9 +75,6 @@ services:
         published: 5000
     networks:
       - backend
-    deploy:
-      restart_policy:
-        condition: unless-stopped
 
 volumes:
   postgres-data:
@@ -93,5 +82,3 @@ volumes:
 
 networks:
   db:
-    name: trendsearth-api-db
-    driver: overlay

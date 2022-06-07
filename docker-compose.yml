@@ -3,7 +3,6 @@ version: "3.8"
 services:
   manager:
     image: trendsearth-api
-    container_name: trendsearth-api-manager
     build: .
     environment:
       PORT: 3000
@@ -22,8 +21,6 @@ services:
     deploy:
       placement:
         constraints: [node.role == manager]
-      restart_policy:
-        condition: unless-stopped
       resources:
         reservations:
           cpus: "0.25"
@@ -31,7 +28,6 @@ services:
 
   worker:
     image: trendsearth-api
-    container_name: trendsearth-api-worker
     build: .
     env_file:
       - staging.env
@@ -43,8 +39,6 @@ services:
     networks:
       - backend
     deploy:
-      restart_policy:
-        condition: unless-stopped
       placement:
         constraints: [node.role == manager]
       resources:
@@ -54,4 +48,3 @@ services:
 
 networks:
   backend:
-    name: trendsearth-api-backend

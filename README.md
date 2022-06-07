@@ -7,15 +7,15 @@ interfaces. It implements the Scripts, Users and Executions management.
 
 Check out the other parts of the Trends.Earth project:
 
--   The Command Line Interface. It allows to create and test custom
-    scripts locally. It also can be used to publish the scripts to the
-    Trends.Earth Environment
-    [(Trends.Earth CLI)](https://github.com/conservationinternational/trends.earth-CLI)
--   The [Trends.Earth Core
-    Environment](https://github.com/conservationinternational/trends.earth-Environment)
-    used for executing scripts in Trends.Earth
--   A web app to explore and manage the API entities [(Trends.Earth
-    UI)](https://github.com/conservationinternational/trends.earth-UI)
+- The Command Line Interface. It allows to create and test custom
+  scripts locally. It also can be used to publish the scripts to the
+  Trends.Earth Environment
+  [(Trends.Earth CLI)](https://github.com/conservationinternational/trends.earth-CLI)
+- The [Trends.Earth Core
+  Environment](https://github.com/conservationinternational/trends.earth-Environment)
+  used for executing scripts in Trends.Earth
+- A web app to explore and manage the API entities [(Trends.Earth
+  UI)](https://github.com/conservationinternational/trends.earth-UI)
 
 ## Getting started
 
@@ -26,13 +26,13 @@ You need to install Docker in your machine if you haven't already
 
 ### Technology
 
--   Docker is used in development and production environment
--   The API is coded in Python 3.6
--   It uses Flask to expose the API Endpoints and handle the HTTP
-    requests
--   It also uses SQLAlchemy as ORM (PostgreSQL)
--   Celery is used to manage the background tasks (Redis)
--   In production mode, the API will be deployed using Gunicorn
+- Docker is used in development and production environment
+- The API is coded in Python 3.6
+- It uses Flask to expose the API Endpoints and handle the HTTP
+  requests
+- It also uses SQLAlchemy as ORM (PostgreSQL)
+- Celery is used to manage the background tasks (Redis)
+- In production mode, the API will be deployed using Gunicorn
 
 ## Development
 
@@ -43,83 +43,75 @@ machine or on a cloud server
 
 1.  Clone the repo and navigate to the folder
 
-``` ssh
+```ssh
 git clone https://github.com/conservationinternational/trends.earth-api
-cd GEF-API
+cd trends.earth-api
 ```
 
 2.  Build the docker image:
 
-``` ssh
-docker build -t trendsearth-api .
+```ssh
+docker compose -f docker-compose.yml -f docker-compose.staging.yml build
 ```
 
 2.  Start the services:
 
-``` ssh
-docker-compose -f docker-compose-develop.yml up
+```ssh
+docker compose -f docker-compose.yml -f docker-compose.staging.yml up
 ```
 
 4.  To stop the services:
 
-``` ssh
-docker-compose down
+```ssh
+docker compose -f docker-compose.yml -f docker-compose.staging.yml down
 ```
 
 ### On docker swarm (used on staging)
 
 1.  Clone the repo and navigate to the folder
 
-``` ssh
+```ssh
 git clone https://github.com/conservationinternational/trends.earth-api
-cd GEF-API
+cd trends.earth-api
 ```
 
 2.  Build the docker image:
 
-``` ssh
+```ssh
 docker build -t trendsearth-api .
 ```
 
 2.  Start a stack running on docker swarm
 
-    -   To run local development version on docker swarm:
-
-        ``` ssh
-        docker stack deploy -c docker-compose-develop.yml api
-        ```
-
-    -   To run on staging:
-
-        ``` ssh
-        docker stack deploy -c docker-compose-staging.yml api
-        ```
+    ```ssh
+    docker stack deploy -c docker-compose.yml -c docker-compose.staging.yml api
+    ```
 
 3.  Once the services are up:
 
-    -   To check the services are running:
+    - To check the services are running:
 
-        ``` ssh
-        docker stack ps api
-        ```
+      ```ssh
+      docker stack ps api
+      ```
 
-    -   To check the logs for the services:
+    - To check the logs for the services:
 
-        ``` ssh
-        docker logs -f api_manager
-        ```
+      ```ssh
+      docker logs -f api_manager
+      ```
 
-        ``` ssh
-        docker logs -f api_worker
-        ```
+      ```ssh
+      docker logs -f api_worker
+      ```
 
-        ``` ssh
-        docker logs -f redis
-        ```
+      ```ssh
+      docker logs -f redis
+      ```
 
 4.  To remove the stack:
 
-    ``` ssh
+    ```ssh
     docker stack rm api
     ```
 

@@ -23,8 +23,6 @@ services:
     deploy:
       placement:
         constraints: [node.role == manager]
-      restart_policy:
-        condition: unless-stopped
       resources:
         reservations:
           cpus: "0.25"
@@ -32,4 +30,3 @@ services:
 
 networks:
   backend:
-    name: trendsearth-api-v2-backend
