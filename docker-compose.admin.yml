@@ -2,18 +2,19 @@ version: "3.8"
 
 services:
   admin:
-    image: trendsearth-api
+    image: 172.40.1.52:5000/trendsearth-api-v2
     build: .
     environment:
       PORT: 3000
     ports:
       - target: 3000
     env_file:
-      - staging.env
+      - prod2.env
     command: start
     volumes:
       - ./gefapi:/opt/gef-api/gefapi
       - ./migrations:/opt/gef-api/migrations
+      - /var/run/docker.sock:/tmp/docker.sock
     deploy:
       placement:
         constraints: [node.role == manager]
