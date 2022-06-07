@@ -1,4 +1,4 @@
-FROM host.docker.internal:5000/trends.earth-environment:0.1.6
+FROM conservationinternational/trends.earth-environment:0.1.6
 
 COPY src /project/gefcore/script
 COPY requirements.txt /project/requirements.txt
