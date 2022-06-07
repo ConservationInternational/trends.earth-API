@@ -14,7 +14,6 @@ from shutil import copy
 
 import docker
 import rollbar
-
 from gefapi import celery
 from gefapi import db
 from gefapi.config import SETTINGS
@@ -191,7 +190,6 @@ class DockerService(object):
     def run(execution_id, image, environment):
         """Run image with environment"""
         logging.info("Running %s image" % (image))
-        container = None
         try:
             environment["ENV"] = "prod"
 
@@ -203,12 +201,20 @@ class DockerService(object):
                     f"execution-{str(execution_id)})",
                 )
                 env = [k + "=" + v for k, v in environment.items()]
-                logging.info(env)
-                service = docker_client.services.create(
+
+                script = Script.query.get(Execution.query.get(execution_id).script_id)
+
+                docker_client.services.create(
                     image=f"{REGISTRY_URL}/{image}",
                     command="./entrypoint.sh",
                     env=env,
                     name="execution-" + str(execution_id),
+                    resources=docker.types.Resources(
+                        cpu_reservation=script.cpu_reservation,
+                        cpu_limit=script.cpu_limit,
+                        mem_reservation=script.memory_reservation,
+                        mem_limit=script.memory_limit
+                    ),
                     restart_policy=docker.types.RestartPolicy(
                         condition="on-failure", delay=10, max_attempts=2, window=0
                     ),
@@ -220,7 +226,7 @@ class DockerService(object):
                     f"{REGISTRY_URL}/{image}, as execution "
                     f"execution-{str(execution_id)})",
                 )
-                container = docker_client.containers.run(
+                docker_client.containers.run(
                     image=f"{REGISTRY_URL}/{image}",
                     command="./entrypoint.sh",
                     environment=environment,

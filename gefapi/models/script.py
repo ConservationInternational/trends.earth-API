@@ -1,13 +1,13 @@
 """SCRIPT MODEL"""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import datetime
 import uuid
 
-from gefapi.models import GUID
 from gefapi import db
+from gefapi.models import GUID
 db.GUID = GUID
 
 
@@ -30,15 +30,22 @@ class Script(db.Model):
                                  cascade='all, delete-orphan',
                                  lazy='dynamic')
     public = db.Column(db.Boolean(), default=False, nullable=False)
-    cpu_reservation = db.Column(db.Integer(), default=1e8)  # 1e8 is 10% of a CPU
-    cpu_limit = db.Column(db.Integer(), default=5e8)
-    memory_reservation = db.Column(db.Integer(), default=1e8)
-    memory_limit = db.Column(db.Integer(), default=2e9)
+    # When setting cpu reservations, note that 1e8 is 10% of a CPU
+    cpu_reservation = db.Column(db.BigInteger(), default=int(1e8))
+    cpu_limit = db.Column(db.BigInteger(), default=int(5e8))
+    # memory reservations are in bytes
+    memory_reservation = db.Column(db.BigInteger(), default=int(1e8))
+    memory_limit = db.Column(db.BigInteger(), default=int(2e9))
 
-    def __init__(self, name, slug, user_id):
+    def __init__(self, name, slug, user_id, cpu_reservation=None, cpu_limit=None,
+                 memory_reservation=None, memory_limit=None):
         self.name = name
         self.slug = slug
         self.user_id = user_id
+        self.cpu_reservation = cpu_reservation
+        self.cpu_limit = cpu_limit
+        self.memory_reservation = memory_reservation
+        self.memory_limit = memory_limit
 
     def __repr__(self):
         return '<Script %r>' % self.name

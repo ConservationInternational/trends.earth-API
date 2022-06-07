@@ -11,10 +11,6 @@ import tarfile
 from uuid import UUID
 
 import rollbar
-from slugify import slugify
-from sqlalchemy import or_
-from werkzeug.utils import secure_filename
-
 from gefapi import db
 from gefapi.config import SETTINGS
 from gefapi.errors import InvalidFile
@@ -25,6 +21,9 @@ from gefapi.models import Script
 from gefapi.models import ScriptLog
 from gefapi.s3 import push_script_to_s3
 from gefapi.services import docker_build
+from slugify import slugify
+from sqlalchemy import or_
+from werkzeug.utils import secure_filename
 
 ROLES = SETTINGS.get('ROLES')
 
@@ -71,6 +70,10 @@ class ScriptService(object):
                 logging.info('[SERVICE]: Config file opened')
                 config = json.loads(config_content)
                 script_name = config.get('name', None)
+                cpu_reservation = config.get('cpu_reservation', None)
+                cpu_limit = config.get('cpu_limit', None)
+                memory_limit = config.get('memory_limit', None)
+                memory_reservation = config.get('memory_reservation', None)
         except Exception as error:
             rollbar.report_exc_info()
             raise error
@@ -83,12 +86,24 @@ class ScriptService(object):
             if currentScript:
                 raise ScriptDuplicated(message='Script with name ' + name +
                                        ' generates an existing script slug')
-            script = Script(name=name, slug=slug, user_id=user.id)
+            script = Script(
+                name=name, slug=slug, user_id=user.id,
+                cpu_reservation=cpu_reservation, cpu_limit=cpu_limit, 
+                memory_reservation=memory_reservation, memory_limit=memory_limit
+            )
         else:
             # Updating existing entity
             logging.debug(script_name)
             script.name = script_name
             script.updated_at = datetime.datetime.utcnow()
+            if cpu_reservation:
+                script.cpu_reservation = cpu_reservation
+            if cpu_limit:
+                script.cpu_limit = cpu_limit
+            if memory_reservation:
+                script.memory_reservation = memory_reservation
+            if memory_limit:
+                script.memory_limit = memory_limit
         # TO DB
         try:
             logging.info('[DB]: ADD')
