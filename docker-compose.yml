@@ -23,7 +23,7 @@ services:
       placement:
         constraints: [node.role == manager]
       restart_policy:
-        condition: any
+        condition: unless-stopped
       resources:
         reservations:
           cpus: "0.25"
@@ -44,7 +44,7 @@ services:
       - backend
     deploy:
       restart_policy:
-        condition: any
+        condition: unless-stopped
       placement:
         constraints: [node.role == manager]
       resources:
