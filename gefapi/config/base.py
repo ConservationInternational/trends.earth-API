@@ -12,6 +12,8 @@ SETTINGS = {
     'environment': {
         'ROLLBAR_SCRIPT_TOKEN': os.getenv('ROLLBAR_SCRIPT_TOKEN'),
         'ROLLBAR_SERVER_TOKEN': os.getenv('ROLLBAR_SERVER_TOKEN'),
+        'GOOGLE_PROJECT_ID': os.getenv('GOOGLE_PROJECT_ID'),
+        'GEE_ENDPOINT': os.getenv('GEE_ENDPOINT'),
         'EE_SERVICE_ACCOUNT_JSON': os.getenv('EE_SERVICE_ACCOUNT_JSON'),
         'SPARKPOST_API_KEY': os.getenv('SPARKPOST_API_KEY'),
         'API_URL': os.getenv('API_URL'),
