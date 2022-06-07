@@ -30,7 +30,9 @@ services:
     networks:
       - backend
       - db
-    restart: always
+    deploy:
+      restart_policy:
+        condition: any
 
   redis:
     image: redis
@@ -43,7 +45,7 @@ services:
       placement:
         constraints: [node.role == manager]
       restart_policy:
-        condition: always
+        condition: any
       resources:
         reservations:
           cpus: "0.25"
@@ -67,7 +69,7 @@ services:
       - db
     deploy:
       restart_policy:
-        condition: always
+        condition: any
 
   registry:
     image: registry:2.8.1
@@ -83,7 +85,7 @@ services:
       - backend
     deploy:
       restart_policy:
-        condition: always
+        condition: any
 
 volumes:
   postgres-data:
