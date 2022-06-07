@@ -1,7 +1,7 @@
 version: "3.8"
 
 services:
-  prod:
+  manager:
     image: 172.40.1.52:5000/trendsearth-api
     env_file:
       - prod.env

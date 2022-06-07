@@ -55,4 +55,3 @@ services:
 networks:
   backend:
     name: trendsearth-api-backend
-    driver: overlay

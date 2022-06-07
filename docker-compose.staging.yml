@@ -1,6 +1,16 @@
 version: "3.8"
 
 services:
+  manager:
+    networks:
+      - backend
+      - db
+
+  worker:
+    networks:
+      - backend
+      - db
+
   redis:
     image: redis
     container_name: trendsearth-api-redis
@@ -29,7 +39,6 @@ services:
       - postgres-data:/var/lib/postgresql/data
     ports:
       - target: 5432
-        published: 5432
     env_file:
       - staging.env
     networks:
@@ -59,8 +68,5 @@ volumes:
   registry-data:
 
 networks:
-  backend:
-    name: trendsearth-api-backend
-
   db:
     name: trendsearth-api-db
