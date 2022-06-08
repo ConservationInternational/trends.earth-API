@@ -60,3 +60,17 @@ SETTINGS = {
     'redis://' + os.getenv('REDIS_PORT_6379_TCP_ADDR') + ':' +
     os.getenv('REDIS_PORT_6379_TCP_PORT')
 }
+
+
+def _add_aws_env_var(variable):
+    if not "environment" in SETTINGS:
+        SETTINGS["environment"] = {}
+
+    SETTINGS["environment"][variable] = os.getenv(variable)
+
+if os.getenv("AWS_ACCESS_KEY_ID"):
+    _add_aws_env_var("AWS_ACCESS_KEY_ID")
+if os.getenv("AWS_SECRET_ACCESS_KEY"):
+    _add_aws_env_var("AWS_SECRET_ACCESS_KEY")
+if os.getenv("AWS_DEFAULT_REGION"):
+    _add_aws_env_var("AWS_DEFAULT_REGION")
