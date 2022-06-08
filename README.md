@@ -115,6 +115,36 @@ docker build -t trendsearth-api .
     docker stack rm api
     ```
 
+### Running a container for maintenance (db migration, etc.)
+
+1.  Startup a maintenance container
+
+```ssh
+docker compose -f docker-compose.admin.yml up
+```
+
+To run in the background (so you can connect to container via another process), add
+`-d`:
+
+```ssh
+docker compose -f docker-compose.admin.yml up -d
+```
+
+2.  Run whatever needs to be done (db migration, etc.). For example
+
+```ssh
+docker exec -it gef-api-v2-admin-1 /bin/bash
+flask db migrate
+flask db upgrade
+exit
+```
+
+3.  Shut it down
+
+```ssh
+docker compose -f docker-compose.admin.yml down
+```
+
 ### Code structure
 
 The API has been packed in a Python module (gefapi). It creates and
