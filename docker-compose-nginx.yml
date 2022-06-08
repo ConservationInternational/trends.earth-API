@@ -1,16 +1,17 @@
 version: "3"
+
 services:
   nginx:
-    image: nginx:1.22.0-alpine
+    image: jonasal/nginx-certbot:3.1.2-nginx1.21.6-alpine
+    restart: unless-stopped
+    env_file:
+      - ./nginx-certbot.env
     ports:
-      - "80:80"
-      - "443:443"
+      - 80:80
+      - 443:443
     volumes:
-      - ./nginx-data/nginx:/etc/nginx/conf.d
-      - ./nginx-data/certbot/conf:/etc/letsencrypt
-      - ./nginx-data/certbot/www:/var/www/certbot
-  certbot:
-    image: certbot/certbot
-    volumes:
-      - ./nginx-data/certbot/conf:/etc/letsencrypt
-      - ./nginx-data/certbot/www:/var/www/certbot
+      - nginx_secrets:/etc/letsencrypt
+      - ./nginx-conf:/etc/nginx/user_conf.d
+
+volumes:
+  nginx_secrets:
