@@ -12,6 +12,13 @@ services:
     volumes:
       - nginx_secrets:/etc/letsencrypt
       - ./nginx-conf:/etc/nginx/user_conf.d
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 100M
 
 volumes:
   nginx_secrets:

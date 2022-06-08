@@ -4,6 +4,11 @@ services:
   manager:
     build: .
     environment:
+      PORT: 3000
+    ports:
+      - target: 3000
+        published: 3000
+    environment:
       ENVIRONMENT: dev
       DEBUG: "True"
     env_file:

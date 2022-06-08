@@ -2,7 +2,9 @@ version: "3.8"
 
 services:
   manager:
-    image: 172.40.1.52:5000/trendsearth-api-v2
+    image: 172.40.1.52:5000/trendsearth-api:v2
+    environment:
+      PORT: 3000
     ports:
       - target: 3000
         published: 3001
@@ -10,7 +12,9 @@ services:
       - prod2.env
 
   worker:
-    image: 172.40.1.52:5000/trendsearth-api-v2
+    image: 172.40.1.52:5000/trendsearth-api:v2
+    environment:
+      PORT: 3000
     env_file:
       - prod2.env
 

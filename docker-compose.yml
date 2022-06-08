@@ -4,13 +4,6 @@ services:
   manager:
     image: trendsearth-api
     build: .
-    environment:
-      PORT: 3000
-    ports:
-      - target: 3000
-        published: 3000
-    env_file:
-      - staging.env
     command: start
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
@@ -27,10 +20,6 @@ services:
   worker:
     image: trendsearth-api
     build: .
-    env_file:
-      - staging.env
-    environment:
-      PORT: 3000
     command: worker
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock

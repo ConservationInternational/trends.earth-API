@@ -2,11 +2,18 @@ version: "3.8"
 
 services:
   manager:
+    environment:
+      PORT: 3000
+    ports:
+      - target: 3000
+        published: 3000
     networks:
       - backend
       - db
 
   worker:
+    environment:
+      PORT: 3000
     networks:
       - backend
       - db
