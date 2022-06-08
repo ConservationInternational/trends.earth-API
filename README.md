@@ -145,6 +145,33 @@ exit
 docker compose -f docker-compose.admin.yml down
 ```
 
+### Deployment
+
+#### Deploy nginx server
+
+1.  Add a `nginx-certbot.env` file specifying the `CERTBOT_EMAIL` to use
+
+2.  Startup the nginx container in the background
+
+```ssh
+docker compose -f docker-compose-nginx.yml up -d
+```
+
+#### Deploy APIv2 stack
+
+1.  Build image and push to registry
+
+    ```ssh
+    docker build -t 172.40.1.52:5000/trendsearth-api:v2 .
+    docker push 172.40.1.52:5000/trendsearth-api:v2
+    ```
+
+2.  Start the stack
+
+    ```ssh
+    docker stack deploy -c docker-compose.yml -c docker-compose.prod2.yml apiv2
+    ```
+
 ### Code structure
 
 The API has been packed in a Python module (gefapi). It creates and
