@@ -3,11 +3,18 @@ version: "3.8"
 services:
   manager:
     image: 172.40.1.52:5000/trendsearth-api
+    environment:
+      PORT: 3000
+    ports:
+      - target: 3000
+        published: 3000
     env_file:
       - prod.env
 
   worker:
     image: 172.40.1.52:5000/trendsearth-api
+    environment:
+      PORT: 3000
     env_file:
       - prod.env
 

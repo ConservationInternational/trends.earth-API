@@ -160,13 +160,16 @@ class ExecutionService(object):
                 execution.progress = 100
                 user = UserService.get_user(str(execution.user_id))
                 script = ScriptService.get_script(str(execution.script_id))
-                email = EmailService.send_html_email(
-                    recipients=[user.email],
-                    html=EXECUTION_FINISHED_MAIL_CONTENT.format(
-                        status, execution.params.get('task_name'), script.name,
-                        str(execution.id), execution.start_date,
-                        execution.end_date, status),
-                    subject='[trends.earth] Execution finished')
+                try:
+                    email = EmailService.send_html_email(
+                        recipients=[user.email],
+                        html=EXECUTION_FINISHED_MAIL_CONTENT.format(
+                            status, execution.params.get('task_name'), script.name,
+                            str(execution.id), execution.start_date,
+                            execution.end_date, status),
+                        subject='[trends.earth] Execution finished')
+                except:
+                    pass
         if progress is not None:
             execution.progress = progress
         if results is not None:
