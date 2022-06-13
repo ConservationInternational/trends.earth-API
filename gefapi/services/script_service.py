@@ -108,7 +108,11 @@ class ScriptService(object):
         try:
             logging.info('[DB]: ADD')
             db.session.add(script)
-            push_script_to_s3(sent_file_path, script.slug + '.tar.gz')
+            try:
+                push_script_to_s3(sent_file_path, script.slug + '.tar.gz')
+            except:
+                rollbar.report_exc_info()
+                logging.error(f'Error pushing {script.slug} to S3')
             db.session.commit()
 
             _ = docker_build.delay(script.id)

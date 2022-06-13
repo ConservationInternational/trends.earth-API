@@ -7,6 +7,8 @@ services:
     ports:
       - target: 3000
         published: 3000
+    env_file:
+      - staging.env
     networks:
       - backend
       - db
@@ -14,6 +16,8 @@ services:
   worker:
     environment:
       PORT: 3000
+    env_file:
+      - staging.env
     networks:
       - backend
       - db
