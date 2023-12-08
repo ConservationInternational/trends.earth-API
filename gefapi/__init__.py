@@ -8,7 +8,6 @@ import logging
 import os
 import sys
 
-import rollbar.contrib.flask
 from flask import current_app
 from flask import Flask
 from flask import got_request_exception
@@ -17,6 +16,8 @@ from flask_cors import CORS
 from flask_cors import cross_origin
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+
+import rollbar.contrib.flask
 from rollbar.logger import RollbarHandler
 
 from gefapi.celery import make_celery
