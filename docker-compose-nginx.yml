@@ -3,7 +3,7 @@ version: "3"
 services:
   nginx:
     image: jonasal/nginx-certbot:3.2.2-nginx1.23.2-alpine
-    restart: unless-stopped
+    restart: always
     env_file:
       - ./nginx-certbot.env
     ports:
