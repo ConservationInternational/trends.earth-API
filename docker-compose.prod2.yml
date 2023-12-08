@@ -34,3 +34,7 @@ services:
 
 networks:
   backend:
+    driver: overlay
+    ipam:
+      config:
+        - subnet: 10.10.0.0/16
