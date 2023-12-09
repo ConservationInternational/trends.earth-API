@@ -177,7 +177,7 @@ class DockerService(object):
                     logging.error(
                         f"Missing values for enviroment variables {missing_vars}"
                     )
-                env = [k + "=" + v for k, v in environment.items()]
+                env = [str(k) + "=" + str(v) for k, v in environment.items()]
                 logging.info(env)
                 container = docker_client.services.create(
                     image=REGISTRY_URL + "/" + image,
