@@ -76,14 +76,23 @@ target/
 celerybeat-schedule
 
 # dotenv
-*.env
+.env
+develop.env
+prod.env
 
 # virtualenv
 venv/
 ENV/
+.venv
+
+# VS Code
+.vscode
 
 # Spyder project settings
 .spyderproject
 
 # Rope project settings
 .ropeproject
+/staging.env
+/develop.env
+/prod.env
