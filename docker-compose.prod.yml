@@ -2,25 +2,24 @@ version: "3.8"
 
 services:
   manager:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: 172.40.1.52:5000/trendsearth-api:v2
     environment:
       PORT: 3000
     ports:
       - target: 3000
-        published: 3000
+        published: 3001
     env_file:
-      - prod.env
+      - prod2.env
 
   worker:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: 172.40.1.52:5000/trendsearth-api:v2
     environment:
       PORT: 3000
     env_file:
-      - prod.env
+      - prod2.env
 
   redis:
     image: redis
-    container_name: trendsearth-api-redis
     ports:
       - target: 6379
     networks:
@@ -32,3 +31,10 @@ services:
         reservations:
           cpus: "0.25"
           memory: 100M
+
+networks:
+  backend:
+    driver: overlay
+    ipam:
+      config:
+        - subnet: 10.10.0.0/16
