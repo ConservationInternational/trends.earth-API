@@ -200,7 +200,11 @@ class DockerService(object):
                     f"{REGISTRY_URL}/{image}, as execution "
                     f"execution-{str(execution_id)})",
                 )
-                env = [k + "=" + v for str(k), str(v) in environment.items()]
+
+                #env = [k + "=" + v for str(k), str(v) in environment.items()]
+                env = []
+                for item in environment.items():
+                    env.append(f'{item[0]}={item[1]}')
 
                 script = Script.query.get(Execution.query.get(execution_id).script_id)
 
