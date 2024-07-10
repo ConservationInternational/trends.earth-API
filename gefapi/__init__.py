@@ -17,6 +17,7 @@ from flask_cors import cross_origin
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
+import rollbar
 import rollbar.contrib.flask
 from rollbar.logger import RollbarHandler
 
@@ -39,10 +40,9 @@ handler = logging.StreamHandler(stream=sys.stdout)
 handler.setLevel(logging.INFO)
 logger.addHandler(handler)
 
-rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
-rollbar_handler = RollbarHandler()
-rollbar_handler.setLevel(logging.ERROR)
-logger.addHandler(rollbar_handler)
+with app.app_context():
+    rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
+    got_request_exception.connect(rollbar.contrib.flask.report_exception, app)
 
 
 def handle_exception(exc_type, exc_value, exc_traceback):
@@ -53,24 +53,6 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
 
 sys.excepthook = handle_exception
-
-
-@app.before_first_request
-def init_rollbar():
-    """init rollbar module"""
-    rollbar.init(
-        SETTINGS.get("ROLLBAR_SERVER_TOKEN"),
-        # environment name
-        os.getenv("ENVIRONMENT"),
-        # server root directory, makes tracebacks prettier
-        root=os.path.dirname(os.path.realpath(__file__)),
-        # flask already sets up logging
-        allow_logging_basic_config=False,
-    )
-
-    # send exceptions from `app` to rollbar, using flask's signal system.
-    got_request_exception.connect(rollbar.contrib.flask.report_exception, app)
-
 
 # Config
 

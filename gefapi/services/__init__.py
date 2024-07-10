@@ -11,12 +11,6 @@ import logging
 import rollbar
 from rollbar.logger import RollbarHandler
 
-from gefapi.services.docker_service import DockerService, docker_build, docker_run
-from gefapi.services.email_service import EmailService
-from gefapi.services.script_service import ScriptService
-from gefapi.services.user_service import UserService
-from gefapi.services.execution_service import ExecutionService
-
 # Ensure all unhandled exceptions are logged, and reported to rollbar
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(stream=sys.stdout)
@@ -34,3 +28,9 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         return
     logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
 sys.excepthook = handle_exception
+
+from gefapi.services.docker_service import DockerService, docker_build, docker_run
+from gefapi.services.email_service import EmailService
+from gefapi.services.script_service import ScriptService
+from gefapi.services.user_service import UserService
+from gefapi.services.execution_service import ExecutionService
