@@ -14,6 +14,7 @@ from flask import got_request_exception
 from flask import request
 from flask_cors import CORS
 from flask_cors import cross_origin
+from flask_compress import Compress
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
@@ -33,6 +34,7 @@ logging.basicConfig(
 # Flask App
 app = Flask(__name__)
 CORS(app)
+Compress(app)
 
 # Ensure all unhandled exceptions are logged, and reported to rollbar
 logger = logging.getLogger(__name__)
