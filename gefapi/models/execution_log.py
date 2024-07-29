@@ -8,7 +8,7 @@ import datetime
 import uuid
 
 from gefapi.models import GUID
-from gefapi.models.model import db
+from gefapi import db
 db.GUID = GUID
 
 
