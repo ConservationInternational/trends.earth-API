@@ -1,8 +1,8 @@
 FROM python:3.9-alpine
-MAINTAINER Alex Zvoleff azvoleff@conservation.org
+LABEL maintainer="Alex Zvoleff azvoleff@conservation.org"
 
-ENV NAME gef-api
-ENV USER gef-api
+ENV NAME=gef-api
+ENV USER=gef-api
 
 RUN apk update && apk upgrade && \
    apk add --no-cache --update bash git openssl-dev build-base alpine-sdk \

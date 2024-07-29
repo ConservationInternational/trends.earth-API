@@ -10,7 +10,8 @@ rollbar.init(os.getenv('ROLLBAR_SERVER_TOKEN'), os.getenv('ENV'))
 
 def celery_base_data_hook(request, data):
     data['framework'] = 'celery'
-    rollbar.BASE_DATA_HOOK = celery_base_data_hook
+
+rollbar.BASE_DATA_HOOK = celery_base_data_hook
 
 
 @task_failure.connect
