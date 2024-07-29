@@ -11,6 +11,8 @@ import tempfile
 
 import boto3
 
+import rollbar
+
 from flask import jsonify, request, send_from_directory, Response, json
 from flask_jwt import jwt_required, current_identity
 
@@ -42,12 +44,15 @@ def create_script():
         user = ScriptService.create_script(sent_file, user)
     except InvalidFile as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=400, detail=e.message)
     except ScriptDuplicated as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=400, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=user.serialize()), 200
 
@@ -63,6 +68,7 @@ def get_scripts():
         scripts = ScriptService.get_scripts(current_identity)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=[script.serialize(include) for script in scripts]), 200
 
@@ -78,9 +84,11 @@ def get_script(script):
         script = ScriptService.get_script(script, current_identity)
     except ScriptNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=script.serialize(include)), 200
 
@@ -94,9 +102,11 @@ def publish_script(script):
         script = ScriptService.publish_script(script, current_identity)
     except ScriptNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=script.serialize()), 200
 
@@ -110,9 +120,11 @@ def unpublish_script(script):
         script = ScriptService.unpublish_script(script, current_identity)
     except ScriptNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=script.serialize()), 200
 
@@ -133,12 +145,15 @@ def download_script(script):
         return send_from_directory(directory=temp_dir, filename=script_file)
     except ScriptNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except NotAllowed as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=403, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
 
 
@@ -155,9 +170,11 @@ def get_script_logs(script):
         logs = ScriptService.get_script_logs(script, start, last_id)
     except ScriptNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=[log.serialize() for log in logs]), 200
 
@@ -178,15 +195,19 @@ def update_script(script):
         script = ScriptService.update_script(script, sent_file, user)
     except InvalidFile as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=400, detail=e.message)
     except ScriptNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except NotAllowed as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=403, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=script.serialize()), 200
 
@@ -203,9 +224,11 @@ def delete_script(script):
         script = ScriptService.delete_script(script, identity)
     except ScriptNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=script.serialize()), 200
 
@@ -226,12 +249,15 @@ def run_script(script):
         execution = ExecutionService.create_execution(script, params, user)
     except ScriptNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except ScriptStateNotValid as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=400, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=execution.serialize()), 200
 
@@ -242,17 +268,29 @@ def get_executions():
     """Get all executions"""
     logging.info('[ROUTER]: Getting all executions: ')
     user_id = request.args.get('user_id', None)
-    updated_at = request.args.get('updated_at', None)
-    if updated_at:
-        updated_at = dateutil.parser.parse(updated_at)
+
+
+    finished_min = request.args.get('finished_min', None)
+    if finished_min is None:
+        # Also support "updated_at" for backwards compatibility
+        finished_min = request.args.get('updated_at', None)
+    if finished_min is not None:
+        finished_min = dateutil.parser.parse(finished_min)
+
+    finished_max = request.args.get('finished_max', None)
+    if finished_max is not None:
+        finished_max = dateutil.parser.parse(finished_max)
+
+
     include = request.args.get('include')
     include = include.split(',') if include else []
     exclude = request.args.get('exclude')
     exclude = exclude.split(',') if exclude else []
     try:
-        executions = ExecutionService.get_executions(current_identity, user_id, updated_at)
+        executions = ExecutionService.get_executions(current_identity, user_id, finished_min, finished_max)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=[execution.serialize(include, exclude) for execution in executions]), 200
 
@@ -270,9 +308,11 @@ def get_execution(execution):
         execution = ExecutionService.get_execution(execution, current_identity)
     except ExecutionNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=execution.serialize(include, exclude)), 200
 
@@ -291,9 +331,11 @@ def update_execution(execution):
         execution = ExecutionService.update_execution(body, execution)
     except ExecutionNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=execution.serialize()), 200
 
@@ -310,9 +352,11 @@ def get_execution_logs(execution):
         logs = ExecutionService.get_execution_logs(execution, start, last_id)
     except ExecutionNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=[log.serialize() for log in logs]), 200
 
@@ -325,6 +369,7 @@ def get_download_results(execution):
         execution = ExecutionService.get_execution(execution)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
 
     return Response(
@@ -348,9 +393,11 @@ def create_execution_log(execution):
         log = ExecutionService.create_execution_log(body, execution)
     except ExecutionNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=log.serialize()), 200
 
@@ -378,9 +425,11 @@ def create_user():
         user = UserService.create_user(body)
     except UserDuplicated as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=400, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=user.serialize()), 200
 
@@ -399,6 +448,7 @@ def get_users():
         users = UserService.get_users()
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=[user.serialize(include) for user in users]), 200
 
@@ -417,9 +467,11 @@ def get_user(user):
         user = UserService.get_user(user)
     except UserNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=user.serialize(include)), 200
 
@@ -457,9 +509,11 @@ def update_profile():
                 return error(status=400, detail='Not updated')
     except UserNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=user.serialize()), 200
 
@@ -474,9 +528,11 @@ def delete_profile():
         user = UserService.delete_user(str(identity.id))
     except UserNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=user.serialize()), 200
 
@@ -489,12 +545,15 @@ def recover_password(user):
         user = UserService.recover_password(user)
     except UserNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except EmailError as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=500, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=user.serialize()), 200
 
@@ -513,9 +572,11 @@ def update_user(user):
         user = UserService.update_user(body, user)
     except UserNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=user.serialize()), 200
 
@@ -534,8 +595,10 @@ def delete_user(user):
         user = UserService.delete_user(user)
     except UserNotFound as e:
         logging.error('[ROUTER]: '+e.message)
+        rollbar.report_exc_info()
         return error(status=404, detail=e.message)
     except Exception as e:
         logging.error('[ROUTER]: '+str(e))
+        rollbar.report_exc_info()
         return error(status=500, detail='Generic Error')
     return jsonify(data=user.serialize()), 200

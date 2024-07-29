@@ -53,11 +53,13 @@ def dict_to_query(params):
 class ExecutionService(object):
     """Execution Class"""
     @staticmethod
-    def get_executions(user, target_user_id=None, updated_at=None):
+    def get_executions(user, target_user_id=None, finished_min=None, finished_max=None):
         logging.info('[SERVICE]: Getting executions')
         logging.info('[DB]: QUERY')
-        if not updated_at:
-            updated_at = datetime.datetime(2000, 12, 1)
+        if not finished_min:
+            finished_min = datetime.datetime(2000, 12, 1)
+        if not finished_max:
+            finished_max = datetime.now()
         # Admin
         if user.role == 'ADMIN':
             # Target User
@@ -69,19 +71,21 @@ class ExecutionService(object):
                     raise error
                 executions = db.session.query(Execution) \
                     .filter(Execution.user_id == target_user_id) \
-                    .filter(Execution.end_date > updated_at) \
+                    .filter(Execution.end_date > finished_min) \
+                    .filter(Execution.end_date <= finished_max) \
                     .order_by(Execution.end_date)
             # All
             else:
-                executions = Execution.query.filter(
-                    Execution.end_date > updated_at).order_by(
-                        Execution.end_date).all()
+                executions = Execution.query.filter(Execution.end_date > finished_min) \
+                    .filter(Execution.end_date <= finished_max) \
+                    .order_by(Execution.end_date).all()
             return executions
         # ME
         else:
             executions = db.session.query(Execution) \
                 .filter(Execution.user_id == user.id) \
-                .filter(Execution.end_date > updated_at) \
+                .filter(Execution.end_date > finished_min) \
+                .filter(Execution.end_date <= finished_max) \
                 .order_by(Execution.end_date)
             return executions
 
