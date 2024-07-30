@@ -141,7 +141,7 @@ class ScriptService(object):
             return scripts
         else:
             scripts = db.session.query(Script).filter(
-                or_(Script.user_id == user.id, Script.public == True)
+                or_(Script.user_id == user.id, Script.public is True)
             )
             return scripts
 
@@ -151,7 +151,7 @@ class ScriptService(object):
         logging.info("[DB]: QUERY")
         if user == "fromservice" or user.role == "ADMIN":
             try:
-                val = UUID(script_id, version=4)
+                UUID(script_id, version=4)
                 script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
@@ -160,18 +160,18 @@ class ScriptService(object):
                 raise error
         else:
             try:
-                val = UUID(script_id, version=4)
+                UUID(script_id, version=4)
                 script = (
                     db.session.query(Script)
                     .filter(Script.id == script_id)
-                    .filter(or_(Script.user_id == user.id, Script.public == True))
+                    .filter(or_(Script.user_id == user.id, Script.public is True))
                     .first()
                 )
             except ValueError:
                 script = (
                     db.session.query(Script)
                     .filter(Script.slug == script_id)
-                    .filter(or_(Script.user_id == user.id, Script.public == True))
+                    .filter(or_(Script.user_id == user.id, Script.public is True))
                     .first()
                 )
             except Exception as error:
@@ -188,7 +188,7 @@ class ScriptService(object):
         logging.info("[SERVICE]: Getting script logs of script %s: " % (script_id))
         logging.info("[DB]: QUERY")
         try:
-            val = UUID(script_id, version=4)
+            UUID(script_id, version=4)
             script = Script.query.filter_by(id=script_id).first()
         except ValueError:
             script = Script.query.filter_by(slug=script_id).first()
@@ -264,7 +264,7 @@ class ScriptService(object):
         logging.info("[SERVICE]: Publishing script: " + script_id)
         if user.role == "ADMIN":
             try:
-                val = UUID(script_id, version=4)
+                UUID(script_id, version=4)
                 script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
@@ -273,7 +273,7 @@ class ScriptService(object):
                 raise error
         else:
             try:
-                val = UUID(script_id, version=4)
+                UUID(script_id, version=4)
                 script = (
                     db.session.query(Script)
                     .filter(Script.id == script_id)
@@ -309,7 +309,7 @@ class ScriptService(object):
         logging.info("[SERVICE]: Unpublishing script: " + script_id)
         if user.role == "ADMIN":
             try:
-                val = UUID(script_id, version=4)
+                UUID(script_id, version=4)
                 script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
@@ -318,7 +318,7 @@ class ScriptService(object):
                 raise error
         else:
             try:
-                val = UUID(script_id, version=4)
+                UUID(script_id, version=4)
                 script = (
                     db.session.query(Script)
                     .filter(Script.id == script_id)

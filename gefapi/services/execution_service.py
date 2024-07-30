@@ -63,7 +63,7 @@ class ExecutionService(object):
             # Target User
             if target_user_id:
                 try:
-                    val = UUID(target_user_id, version=4)
+                    UUID(target_user_id, version=4)
                 except Exception as error:
                     rollbar.report_exc_info()
                     raise error
@@ -128,14 +128,14 @@ class ExecutionService(object):
         # user = 'from service' just in case the requests comes from the service
         if user == "fromservice" or user.role == "ADMIN":
             try:
-                val = UUID(execution_id, version=4)
+                UUID(execution_id, version=4)
                 execution = Execution.query.filter_by(id=execution_id).first()
             except Exception as error:
                 rollbar.report_exc_info()
                 raise error
         else:
             try:
-                val = UUID(execution_id, version=4)
+                UUID(execution_id, version=4)
                 execution = (
                     db.session.query(Execution)
                     .filter(Execution.id == execution_id)
@@ -170,7 +170,7 @@ class ExecutionService(object):
                 user = UserService.get_user(str(execution.user_id))
                 script = ScriptService.get_script(str(execution.script_id))
                 try:
-                    email = EmailService.send_html_email(
+                    EmailService.send_html_email(
                         recipients=[user.email],
                         html=EXECUTION_FINISHED_MAIL_CONTENT.format(
                             status,

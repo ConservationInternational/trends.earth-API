@@ -90,7 +90,7 @@ class UserService(object):
         logging.info("[SERVICE]: Getting user " + user_id)
         logging.info("[DB]: QUERY")
         try:
-            val = UUID(user_id, version=4)
+            UUID(user_id, version=4)
             user = User.query.get(user_id)
         except ValueError:
             user = User.query.filter_by(email=user_id).first()
@@ -115,7 +115,7 @@ class UserService(object):
             db.session.add(user)
             db.session.commit()
             try:
-                email = EmailService.send_html_email(
+                EmailService.send_html_email(
                     recipients=[user.email],
                     html="<p>User: "
                     + user.email

@@ -118,7 +118,7 @@ class DockerService(object):
 
         logging.debug(text)
 
-        if text != None:
+        if text is not None:
             script_log = ScriptLog(text=text, script_id=script_id)
             db.session.add(script_log)
             db.session.commit()
