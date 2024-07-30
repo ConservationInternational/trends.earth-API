@@ -17,16 +17,19 @@ handler = logging.StreamHandler(stream=sys.stdout)
 handler.setLevel(logging.INFO)
 logger.addHandler(handler)
 
-rollbar.init(os.getenv('ROLLBAR_SERVER_TOKEN'), os.getenv('ENV'))
+rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
 rollbar_handler = RollbarHandler()
 rollbar_handler.setLevel(logging.ERROR)
 logger.addHandler(rollbar_handler)
+
 
 def handle_exception(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+
 sys.excepthook = handle_exception
 
 from gefapi.services.docker_service import DockerService, docker_build, docker_run

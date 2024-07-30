@@ -1,4 +1,5 @@
 """GEFAPI CONFIG MODULE"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -16,7 +17,7 @@ from gefapi.config import staging
 def _nested_dict_update(d, u):
     for k, v in u.items():
         if isinstance(v, collections.abc.Mapping):
-                d[k] = _nested_dict_update(d.get(k, {}), v)
+            d[k] = _nested_dict_update(d.get(k, {}), v)
         else:
             d[k] = v
     return d
@@ -24,9 +25,9 @@ def _nested_dict_update(d, u):
 
 SETTINGS = base.SETTINGS
 
-if os.getenv('ENVIRONMENT') == 'staging':
+if os.getenv("ENVIRONMENT") == "staging":
     _nested_dict_update(SETTINGS, staging.SETTINGS)
 
 
-if os.getenv('ENVIRONMENT') == 'prod':
+if os.getenv("ENVIRONMENT") == "prod":
     _nested_dict_update(SETTINGS, prod.SETTINGS)

@@ -1,4 +1,5 @@
 """DOCKER SERVICE"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -201,10 +202,10 @@ class DockerService(object):
                     f"execution-{str(execution_id)})",
                 )
 
-                #env = [k + "=" + v for str(k), str(v) in environment.items()]
+                # env = [k + "=" + v for str(k), str(v) in environment.items()]
                 env = []
                 for item in environment.items():
-                    env.append(f'{item[0]}={item[1]}')
+                    env.append(f"{item[0]}={item[1]}")
 
                 script = Script.query.get(Execution.query.get(execution_id).script_id)
 
@@ -217,7 +218,7 @@ class DockerService(object):
                         cpu_reservation=script.cpu_reservation,
                         cpu_limit=script.cpu_limit,
                         mem_reservation=script.memory_reservation,
-                        mem_limit=script.memory_limit
+                        mem_limit=script.memory_limit,
                     ),
                     restart_policy=docker.types.RestartPolicy(
                         condition="on-failure", delay=10, max_attempts=2, window=0
