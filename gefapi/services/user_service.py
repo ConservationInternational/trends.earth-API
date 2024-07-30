@@ -11,6 +11,8 @@ import string
 import logging
 from uuid import UUID
 
+import rollbar
+
 from gefapi import db
 from gefapi.models import User
 from gefapi.errors import UserNotFound, UserDuplicated, AuthError, EmailError
@@ -18,8 +20,6 @@ from gefapi.services import EmailService
 from gefapi.config import SETTINGS
 
 ROLES = SETTINGS.get("ROLES")
-
-import rollbar
 
 rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
 

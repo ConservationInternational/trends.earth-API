@@ -183,8 +183,9 @@ class ExecutionService(object):
                         ),
                         subject="[trends.earth] Execution finished",
                     )
-                except:
-                    pass
+                except Exception:
+                    rollbar.report_exc_info()
+                    logging.info("Failed to send email - check email service")
         if progress is not None:
             execution.progress = progress
         if results is not None:

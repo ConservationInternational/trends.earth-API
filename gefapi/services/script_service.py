@@ -120,7 +120,7 @@ class ScriptService(object):
             db.session.add(script)
             try:
                 push_script_to_s3(sent_file_path, script.slug + ".tar.gz")
-            except:
+            except Exception:
                 rollbar.report_exc_info()
                 logging.error(f"Error pushing {script.slug} to S3")
             db.session.commit()
