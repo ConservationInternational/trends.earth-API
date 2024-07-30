@@ -11,13 +11,6 @@ from sqlalchemy.types import CHAR
 from sqlalchemy.types import TypeDecorator
 
 
-def dump_datetime(value):
-    """Deserialize datetime object into string form for JSON processing."""
-    if value is None:
-        return None
-    return [value.strftime("%Y-%m-%d"), value.strftime("%H:%M:%S")]
-
-
 class GUID(TypeDecorator):
     """Platform-independent GUID type.
 
@@ -54,8 +47,10 @@ class GUID(TypeDecorator):
             return uuid.UUID(value)
 
 
-from gefapi.models.execution import Execution
-from gefapi.models.execution_log import ExecutionLog
-from gefapi.models.script import Script
-from gefapi.models.script_log import ScriptLog
-from gefapi.models.user import User
+from gefapi.models.execution import Execution  # noqa: E402
+from gefapi.models.execution_log import ExecutionLog  # noqa: E402
+from gefapi.models.script import Script  # noqa: E402
+from gefapi.models.script_log import ScriptLog  # noqa: E402
+from gefapi.models.user import User  # noqa: E402
+
+__all__ = ["Execution", "ExecutionLog", "Script", "ScriptLog", "User"]

@@ -13,4 +13,4 @@ def error(status=400, detail="Bad Request"):
 
 
 endpoints = Blueprint("endpoints", __name__)
-import gefapi.routes.api.v1.gef_api_router
+import gefapi.routes.api.v1.gef_api_router  # noqa: E402, F401
