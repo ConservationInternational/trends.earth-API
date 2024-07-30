@@ -4,7 +4,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
 import logging
 import os
 import sys
@@ -14,14 +13,12 @@ from flask import Flask
 from flask import got_request_exception
 from flask import request
 from flask_cors import CORS
-from flask_cors import cross_origin
 from flask_compress import Compress
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
 import rollbar
 import rollbar.contrib.flask
-from rollbar.logger import RollbarHandler
 
 from gefapi.celery import make_celery
 from gefapi.config import SETTINGS
@@ -76,14 +73,14 @@ migrate = Migrate(app, db)
 celery = make_celery(app)
 
 # DB has to be ready!
-from gefapi.routes.api.v1 import endpoints, error
+from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
 
 # Blueprint Flask Routing
 app.register_blueprint(endpoints, url_prefix="/api/v1")
 
-from flask_jwt import JWT
+from flask_jwt import JWT  # noqa: E402
 
-from gefapi.jwt import authenticate, identity
+from gefapi.jwt import authenticate, identity  # noqa: E402
 
 # JWT
 jwt = JWT(app, authenticate, identity)
