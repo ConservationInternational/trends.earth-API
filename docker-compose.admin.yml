@@ -1,8 +1,6 @@
-version: "3.8"
-
 services:
   admin:
-    image: 172.40.1.52:5000/trendsearth-api-v2
+    image: 172.40.1.52:5000/trendsearth-api
     build: .
     environment:
       PORT: 3000

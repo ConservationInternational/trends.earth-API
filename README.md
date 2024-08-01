@@ -127,13 +127,14 @@ To run in the background (so you can connect to container via another process), 
 `-d`:
 
 ```ssh
+docker compose -f docker-compose.admin.yml build
 docker compose -f docker-compose.admin.yml up -d
 ```
 
 2.  Run whatever needs to be done (db migration, etc.). For example
 
 ```ssh
-docker exec -it gef-api-v2-admin-1 /bin/bash
+docker exec -it trendsearth-api-admin-1 /bin/bash
 flask db migrate
 flask db upgrade
 exit
