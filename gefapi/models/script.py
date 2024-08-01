@@ -43,6 +43,8 @@ class Script(db.Model):
     # memory reservations are in bytes
     memory_reservation = db.Column(db.BigInteger(), default=int(1e8))
     memory_limit = db.Column(db.BigInteger(), default=int(1e9))
+    environment = db.Column(db.Text(), default="trends.earth-environment")
+    environment_version = db.Column(db.Text(), default="2.1.16")
 
     def __init__(
         self,

@@ -52,7 +52,11 @@ def docker_build(script_id):
         db.session.commit()
         logging.debug("Building...")
         correct, log = DockerService.build(
-            script_id=script_id, path=extract_path, tag_image=script.slug
+            script_id=script_id,
+            path=extract_path,
+            tag_image=script.slug,
+            environment=script.environment,
+            environment_version=script.environment_version,
         )
         logging.debug("Changing status")
         script = Script.query.get(script_id)
@@ -147,7 +151,13 @@ class DockerService(object):
             return False, error
 
     @staticmethod
-    def build(script_id, path, tag_image):
+    def build(
+        script_id,
+        path,
+        tag_image,
+        environment,
+        environment_version,
+    ):
         """Build image and push to private docker registry"""
 
         logging.info("Building new image in path %s with tag %s" % (path, tag_image))
@@ -167,6 +177,10 @@ class DockerService(object):
                 forcerm=True,
                 pull=True,
                 nocache=True,
+                buildargs={
+                    "ENVIRONMENT": environment,
+                    "ENVIRONMENT_VERSION": environment_version,
+                },
             )
 
             for line in logs:
