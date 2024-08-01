@@ -77,6 +77,8 @@ class ScriptService(object):
                 cpu_limit = config.get("cpu_limit", None)
                 memory_limit = config.get("memory_limit", None)
                 memory_reservation = config.get("memory_reservation", None)
+                environment = config.get("environment", None)
+                environment_version = config.get("environment_version", None)
         except Exception as error:
             rollbar.report_exc_info()
             raise error
@@ -100,6 +102,8 @@ class ScriptService(object):
                 cpu_limit=cpu_limit,
                 memory_reservation=memory_reservation,
                 memory_limit=memory_limit,
+                environment=environment,
+                environment_version=environment_version,
             )
         else:
             # Updating existing entity
@@ -114,6 +118,10 @@ class ScriptService(object):
                 script.memory_reservation = memory_reservation
             if memory_limit:
                 script.memory_limit = memory_limit
+            if environment:
+                script.environment = environment
+            if environment_version:
+                script.environment_version = environment_version
         # TO DB
         try:
             logging.info("[DB]: ADD")
