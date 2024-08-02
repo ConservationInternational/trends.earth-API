@@ -17,7 +17,6 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
 sys.excepthook = handle_exception
 
-from gefapi.services.auth_service import AuthService  # noqa:E402
 from gefapi.services.docker_service import (  # noqa:E402
     DockerService,
     docker_build,
@@ -36,7 +35,6 @@ __all__ = [
     "docker_run",
     "EmailService",
     "ScriptService",
-    "AuthService",
     "UserService",
     "ExecutionService",
 ]

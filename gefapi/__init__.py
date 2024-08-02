@@ -85,16 +85,16 @@ app.register_blueprint(endpoints, url_prefix="/api/v1")
 
 # Handle authentication via JWT
 jwt = JWTManager(app)
-from gefapi.services import AuthService  # noqa: E402
+from gefapi.services import UserService  # noqa: E402
 
 
 @app.route("/auth", methods=["POST"])
 def create_token():
     logger.info("[JWT]: Attempting auth...")
-    username = request.json.get("email", None)
+    email = request.json.get("email", None)
     password = request.json.get("password", None)
 
-    user = AuthService.auth(username, password)
+    user = UserService.authenticate_user(email, password)
 
     if user is None:
         return jsonify({"msg": "Bad username or password"}), 401

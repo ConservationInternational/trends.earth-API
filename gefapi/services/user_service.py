@@ -182,11 +182,11 @@ class UserService(object):
         return user
 
     @staticmethod
-    def authenticate_user(user_id, password):
-        logger.info("[SERVICE]: Authenticate user " + user_id)
-        user = UserService.get_user(user_id=user_id)
+    def authenticate_user(email, password):
+        logger.info("[SERVICE]: Authenticate user " + email)
+        user = User.query.filter_by(email=email).first()
         if not user:
-            raise UserNotFound(message="User with email " + user_id + " does not exist")
+            raise UserNotFound(message="User with email " + email + " does not exist")
         if not user.check_password(password):
             raise AuthError(message="User or password not valid")
         #  to serialize id with jwt

@@ -36,10 +36,8 @@ services:
 
   database:
     image: postgres:14
-    environment:
-      POSTGRES_PASSWORD: root
-      POSTGRES_USER: root
-      POSTGRES_DB: gef
+    env_file:
+      - staging.env
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
