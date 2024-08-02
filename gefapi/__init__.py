@@ -8,10 +8,10 @@ import sys
 
 import rollbar
 import rollbar.contrib.flask
-from flask import Flask, got_request_exception
+from flask import Flask, got_request_exception, jsonify, request
 from flask_compress import Compress
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import JWTManager, create_access_token
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
@@ -87,6 +87,24 @@ app.register_blueprint(endpoints, url_prefix="/api/v1")
 
 # Handle authentication via JWT
 jwt = JWTManager(app)
+
+
+from gefapi.services import UserService  # noqa:E402
+
+
+@app.route("/auth", methods=["POST"])
+def create_token():
+    logger.info("[JWT]: Attempting auth...")
+    email = request.json.get("email", None)
+    password = request.json.get("password", None)
+
+    user = UserService.authenticate_user(email, password)
+
+    if user is None:
+        return jsonify({"msg": "Bad username or password"}), 401
+
+    access_token = create_access_token(identity=user.id)
+    return jsonify({"access_token": access_token, "user_id": user.id})
 
 
 @app.errorhandler(403)

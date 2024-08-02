@@ -6,9 +6,8 @@ import tempfile
 
 import dateutil.parser
 from flask import Response, json, jsonify, request, send_from_directory
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import get_jwt_identity, jwt_required
 
-from gefapi.auth import get_identity
 from gefapi.errors import (
     EmailError,
     ExecutionNotFound,
@@ -32,6 +31,17 @@ from gefapi.validators import (
 )
 
 logger = logging.getLogger()
+
+
+def get_identity():
+    user = None
+    try:
+        id = get_jwt_identity()
+        user = UserService.get_user(id)
+    except Exception as e:
+        logger.error(str(e))
+        logger.error("[JWT]: Error getting user for %s" % (id))
+    return user
 
 
 # SCRIPT CREATION
