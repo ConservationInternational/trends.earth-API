@@ -1,22 +1,20 @@
 """SCRIPT SERVICE"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
-import random
 import datetime
-import string
 import logging
+import random
+import string
 from uuid import UUID
 
 import rollbar
 
 from gefapi import db
-from gefapi.models import User
-from gefapi.errors import UserNotFound, UserDuplicated, AuthError, EmailError
-from gefapi.services import EmailService
 from gefapi.config import SETTINGS
+from gefapi.errors import AuthError, EmailError, UserDuplicated, UserNotFound
+from gefapi.models import User
+from gefapi.services import EmailService
 
 ROLES = SETTINGS.get("ROLES")
 

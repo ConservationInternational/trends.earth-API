@@ -1,8 +1,6 @@
 """SCRIPT SERVICE"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import datetime
 import logging
@@ -12,15 +10,9 @@ import rollbar
 
 from gefapi import db
 from gefapi.config import SETTINGS
-from gefapi.errors import ExecutionNotFound
-from gefapi.errors import ScriptNotFound
-from gefapi.errors import ScriptStateNotValid
-from gefapi.models import Execution
-from gefapi.models import ExecutionLog
-from gefapi.services import docker_run
-from gefapi.services import EmailService
-from gefapi.services import ScriptService
-from gefapi.services import UserService
+from gefapi.errors import ExecutionNotFound, ScriptNotFound, ScriptStateNotValid
+from gefapi.models import Execution, ExecutionLog
+from gefapi.services import EmailService, ScriptService, UserService, docker_run
 
 logger = logging.getLogger()
 

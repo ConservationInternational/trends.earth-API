@@ -1,14 +1,11 @@
 """GEFAPI MODELS MODULE"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import uuid
 
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.types import CHAR
-from sqlalchemy.types import TypeDecorator
+from sqlalchemy.types import CHAR, TypeDecorator
 
 
 class GUID(TypeDecorator):

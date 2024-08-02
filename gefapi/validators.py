@@ -1,13 +1,12 @@
 """GEFAPI VALIDATORS"""
 
 import re
-
-from gefapi.routes.api.v1 import error
-from gefapi.config import SETTINGS
-
 from functools import wraps
+
 from flask import request
 
+from gefapi.config import SETTINGS
+from gefapi.routes.api.v1 import error
 
 ROLES = SETTINGS.get("ROLES")
 EMAIL_REGEX = re.compile(r"^[A-Za-z0-9\.\+_-]+@[A-Za-z0-9\._-]+\.[a-zA-Z]*$")

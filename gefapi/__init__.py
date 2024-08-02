@@ -1,29 +1,22 @@
 """The GEF API MODULE"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import logging
 import os
 import sys
 
-from flask import current_app
-from flask import Flask
-from flask import got_request_exception
-from flask import request
-from flask_cors import CORS
+import rollbar
+import rollbar.contrib.flask
+from flask import Flask, current_app, got_request_exception, request
 from flask_compress import Compress
+from flask_cors import CORS
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
-import rollbar
-import rollbar.contrib.flask
 # from rollbar.logger import RollbarHandler
-
 from gefapi.celery import make_celery
 from gefapi.config import SETTINGS
-
 
 # Flask App
 app = Flask(__name__)

@@ -1,38 +1,34 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
-import os
-import dateutil.parser
 import logging
+import os
 import tempfile
 
+import dateutil.parser
+from flask import Response, json, jsonify, request, send_from_directory
+from flask_jwt import current_identity, jwt_required
 
-from flask import jsonify, request, send_from_directory, Response, json
-from flask_jwt import jwt_required, current_identity
-
-from gefapi.s3 import get_script_from_s3
+from gefapi.errors import (
+    EmailError,
+    ExecutionNotFound,
+    InvalidFile,
+    NotAllowed,
+    ScriptDuplicated,
+    ScriptNotFound,
+    ScriptStateNotValid,
+    UserDuplicated,
+    UserNotFound,
+)
 from gefapi.routes.api.v1 import endpoints, error
+from gefapi.s3 import get_script_from_s3
+from gefapi.services import ExecutionService, ScriptService, UserService
 from gefapi.validators import (
+    validate_execution_log_creation,
+    validate_execution_update,
+    validate_file,
     validate_user_creation,
     validate_user_update,
-    validate_file,
-    validate_execution_update,
-    validate_execution_log_creation,
 )
-from gefapi.services import UserService, ScriptService, ExecutionService
-from gefapi.errors import (
-    UserNotFound,
-    UserDuplicated,
-    InvalidFile,
-    ScriptNotFound,
-    ScriptDuplicated,
-    NotAllowed,
-    ExecutionNotFound,
-    ScriptStateNotValid,
-    EmailError,
-)
-
 
 logger = logging.getLogger()
 

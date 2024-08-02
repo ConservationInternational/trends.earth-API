@@ -1,7 +1,6 @@
+import rollbar
 from celery import Celery
 from celery.signals import task_failure
-
-import rollbar
 
 
 def celery_base_data_hook(request, data):

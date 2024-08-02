@@ -1,8 +1,6 @@
 """SCRIPT SERVICE"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import datetime
 import json
@@ -12,19 +10,16 @@ import tarfile
 from uuid import UUID
 
 import rollbar
-from gefapi import db
-from gefapi.config import SETTINGS
-from gefapi.errors import InvalidFile
-from gefapi.errors import NotAllowed
-from gefapi.errors import ScriptDuplicated
-from gefapi.errors import ScriptNotFound
-from gefapi.models import Script
-from gefapi.models import ScriptLog
-from gefapi.s3 import push_script_to_s3
-from gefapi.services import docker_build
 from slugify import slugify
 from sqlalchemy import or_
 from werkzeug.utils import secure_filename
+
+from gefapi import db
+from gefapi.config import SETTINGS
+from gefapi.errors import InvalidFile, NotAllowed, ScriptDuplicated, ScriptNotFound
+from gefapi.models import Script, ScriptLog
+from gefapi.s3 import push_script_to_s3
+from gefapi.services import docker_build
 
 ROLES = SETTINGS.get("ROLES")
 

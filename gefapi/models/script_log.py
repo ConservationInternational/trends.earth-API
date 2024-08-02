@@ -1,13 +1,11 @@
 """SCRIPT LOG MODEL"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import datetime
 
-from gefapi.models import GUID
 from gefapi import db
+from gefapi.models import GUID
 
 db.GUID = GUID
 

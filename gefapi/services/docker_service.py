@@ -1,8 +1,6 @@
 """DOCKER SERVICE"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import gzip
 import json
@@ -15,14 +13,11 @@ from shutil import copy
 
 import docker
 import rollbar
-from gefapi import celery
-from gefapi import db
+
+from gefapi import celery, db
 from gefapi.config import SETTINGS
-from gefapi.models import Execution
-from gefapi.models import Script
-from gefapi.models import ScriptLog
-from gefapi.s3 import get_script_from_s3
-from gefapi.s3 import push_params_to_s3
+from gefapi.models import Execution, Script, ScriptLog
+from gefapi.s3 import get_script_from_s3, push_params_to_s3
 
 REGISTRY_URL = SETTINGS.get("REGISTRY_URL")
 DOCKER_HOST = SETTINGS.get("DOCKER_HOST")

@@ -1,15 +1,11 @@
 """GEFAPI CONFIG MODULE"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import collections.abc
 import os
 
-from gefapi.config import base
-from gefapi.config import prod
-from gefapi.config import staging
+from gefapi.config import base, prod, staging
 
 
 # Below is from https://stackoverflow.com/a/3233356. Needed to handle the "environment"

@@ -6,9 +6,10 @@ Create Date: 2017-04-05 13:39:32.398761
 
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
+
 from gefapi.models import GUID
 
 # revision identifiers, used by Alembic.

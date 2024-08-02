@@ -1,15 +1,14 @@
 """EXECUTION MODEL"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import datetime
 import uuid
 
+from sqlalchemy.dialects.postgresql import JSONB
+
 from gefapi import db
 from gefapi.models import GUID
-from sqlalchemy.dialects.postgresql import JSONB
 
 db.GUID = GUID
 
