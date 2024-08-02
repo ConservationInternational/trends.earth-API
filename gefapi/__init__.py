@@ -65,7 +65,7 @@ sys.excepthook = handle_exception
 app.config["SQLALCHEMY_DATABASE_URI"] = SETTINGS.get("SQLALCHEMY_DATABASE_URI")
 app.config["UPLOAD_FOLDER"] = SETTINGS.get("UPLOAD_FOLDER")
 app.config["JWT_SECRET_KEY"] = SETTINGS.get("SECRET_KEY")
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = SETTINGS.get("JWT_EXPIRATION_DELTA")
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = SETTINGS.get("JWT_ACCESS_TOKEN_EXPIRES")
 app.config["broker_url"] = SETTINGS.get("CELERY_BROKER_URL")
 app.config["result_backend"] = SETTINGS.get("CELERY_RESULT_BACKEND")
 

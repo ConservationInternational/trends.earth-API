@@ -78,7 +78,7 @@ cd trends.earth-api
 2.  Build the docker image:
 
 ```ssh
-docker build -t trendsearth-api-staging .
+docker build -t 172.40.1.52:5000/trendsearth-api-staging .
 ```
 
 2.  Start a stack running on docker swarm
@@ -158,7 +158,7 @@ docker compose -f docker-compose.admin.yml down
 docker compose -f docker-compose-nginx.yml up -d
 ```
 
-#### Deploy APIv2 stack
+#### Deploy API stack
 
 1.  Build image and push to registry
 

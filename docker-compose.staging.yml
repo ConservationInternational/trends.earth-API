@@ -1,9 +1,6 @@
-version: "3.8"
-
 services:
-  manager-staging:
+  manager:
     image: 172.40.1.52:5000/trendsearth-api-staging
-    build: .
     command: start
     environment:
       PORT: 3000
@@ -20,9 +17,8 @@ services:
       placement:
         constraints: [node.role == manager]
 
-  worker-staging:
+  worker:
     image: 172.40.1.52:5000/trendsearth-api-staging
-    build: .
     command: worker
     environment:
       PORT: 3000
@@ -37,7 +33,7 @@ services:
         constraints: [node.role == manager]
 
 
-  redis-staging:
+  redis:
     image: redis
     ports:
       - target: 6379
@@ -52,4 +48,4 @@ networks:
     driver: overlay
     ipam:
       config:
-        - subnet: 10.10.0.0/16
+        - subnet: 10.1.0.0/16
