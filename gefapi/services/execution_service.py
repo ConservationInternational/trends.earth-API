@@ -6,7 +6,6 @@ from __future__ import print_function
 
 import datetime
 import logging
-import os
 from uuid import UUID
 
 import rollbar
