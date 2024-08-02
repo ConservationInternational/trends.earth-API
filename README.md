@@ -51,19 +51,19 @@ cd trends.earth-api
 2.  Build the docker image:
 
 ```ssh
-docker compose -f docker-compose.yml -f docker-compose.staging.yml build
+docker compose -f docker-compose.staging.yml build
 ```
 
 2.  Start the services:
 
 ```ssh
-docker compose -f docker-compose.yml -f docker-compose.staging.yml up
+docker compose -f docker-compose.staging.yml up
 ```
 
 4.  To stop the services:
 
 ```ssh
-docker compose -f docker-compose.yml -f docker-compose.staging.yml down
+docker compose -f docker-compose.staging.yml down
 ```
 
 ### On docker swarm (used on staging)
@@ -78,13 +78,13 @@ cd trends.earth-api
 2.  Build the docker image:
 
 ```ssh
-docker build -t trendsearth-api .
+docker build -t trendsearth-api-staging .
 ```
 
 2.  Start a stack running on docker swarm
 
     ```ssh
-    docker stack deploy -c docker-compose.yml -c docker-compose.staging.yml api
+    docker stack deploy -c docker-compose.staging.yml api-staging
     ```
 
 3.  Once the services are up:
@@ -92,27 +92,27 @@ docker build -t trendsearth-api .
     - To check the services are running:
 
       ```ssh
-      docker stack ps api
+      docker stack ps api-staging
       ```
 
     - To check the logs for the services:
 
       ```ssh
-      docker logs -f api_manager
+      docker logs -f api_manager-staging
       ```
 
       ```ssh
-      docker logs -f api_worker
+      docker logs -f api_worker-staging
       ```
 
       ```ssh
-      docker logs -f redis
+      docker logs -f redis-staging
       ```
 
 4.  To remove the stack:
 
     ```ssh
-    docker stack rm api
+    docker stack rm api-staging
     ```
 
 ### Running a container for maintenance (db migration, etc.)

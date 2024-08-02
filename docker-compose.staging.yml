@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   manager-staging:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: 172.40.1.52:5000/trendsearth-api-staging
     build: .
     command: start
     environment:
@@ -19,13 +19,9 @@ services:
     deploy:
       placement:
         constraints: [node.role == manager]
-      resources:
-        reservations:
-          cpus: "0.25"
-          memory: 400M
 
   worker-staging:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: 172.40.1.52:5000/trendsearth-api-staging
     build: .
     command: worker
     environment:
@@ -39,10 +35,6 @@ services:
     deploy:
       placement:
         constraints: [node.role == manager]
-      resources:
-        reservations:
-          cpus: "0.25"
-          memory: 400M
 
 
   redis-staging:
@@ -54,10 +46,6 @@ services:
     deploy:
       placement:
         constraints: [node.role == manager]
-      resources:
-        reservations:
-          cpus: "0.25"
-          memory: 100M
 
 networks:
   backend:
