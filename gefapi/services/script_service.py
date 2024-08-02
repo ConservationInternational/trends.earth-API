@@ -23,7 +23,6 @@ from gefapi.models import ScriptLog
 from gefapi.s3 import push_script_to_s3
 from gefapi.services import docker_build
 from slugify import slugify
-from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
 ROLES = SETTINGS.get("ROLES")

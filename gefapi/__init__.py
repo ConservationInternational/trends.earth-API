@@ -19,7 +19,7 @@ from flask_sqlalchemy import SQLAlchemy
 
 import rollbar
 import rollbar.contrib.flask
-from rollbar.logger import RollbarHandler
+# from rollbar.logger import RollbarHandler
 
 from gefapi.celery import make_celery
 from gefapi.config import SETTINGS
