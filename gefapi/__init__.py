@@ -42,7 +42,7 @@ logger.setLevel(logging.DEBUG)
 # Ensure all unhandled exceptions are logged, and reported to rollbar
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler = logging.StreamHandler(stream=sys.stdout)
-handler.setLevel(logging.DEBUG)
+handler.setLevel(logging.INFO)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
