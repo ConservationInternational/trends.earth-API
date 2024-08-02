@@ -6,8 +6,9 @@ import tempfile
 
 import dateutil.parser
 from flask import Response, json, jsonify, request, send_from_directory
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask_jwt_extended import jwt_required
 
+from gefapi.auth import get_identity
 from gefapi.errors import (
     EmailError,
     ExecutionNotFound,
@@ -45,7 +46,7 @@ def create_script():
     sent_file = request.files.get("file")
     if sent_file.filename == "":
         sent_file.filename = "script"
-    user = get_jwt_identity()
+    user = get_identity()
     try:
         user = ScriptService.create_script(sent_file, user)
     except InvalidFile as e:
@@ -68,7 +69,7 @@ def get_scripts():
     include = request.args.get("include")
     include = include.split(",") if include else []
     try:
-        scripts = ScriptService.get_scripts(get_jwt_identity())
+        scripts = ScriptService.get_scripts(get_identity())
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
@@ -83,7 +84,7 @@ def get_script(script):
     include = request.args.get("include")
     include = include.split(",") if include else []
     try:
-        script = ScriptService.get_script(script, get_jwt_identity())
+        script = ScriptService.get_script(script, get_identity())
     except ScriptNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
@@ -99,7 +100,7 @@ def publish_script(script):
     """Publish a script"""
     logger.info("[ROUTER]: Publishing script " + script)
     try:
-        script = ScriptService.publish_script(script, get_jwt_identity())
+        script = ScriptService.publish_script(script, get_identity())
     except ScriptNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
@@ -115,7 +116,7 @@ def unpublish_script(script):
     """Unpublish a script"""
     logger.info("[ROUTER]: Unpublishsing script " + script)
     try:
-        script = ScriptService.unpublish_script(script, get_jwt_identity())
+        script = ScriptService.unpublish_script(script, get_identity())
     except ScriptNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
@@ -131,7 +132,7 @@ def download_script(script):
     """Download a script"""
     logger.info("[ROUTER]: Download script " + script)
     try:
-        script = ScriptService.get_script(script, get_jwt_identity())
+        script = ScriptService.get_script(script, get_identity())
 
         temp_dir = tempfile.TemporaryDirectory().name
         script_file = script.slug + ".tar.gz"
@@ -179,7 +180,7 @@ def update_script(script):
     sent_file = request.files.get("file")
     if sent_file.filename == "":
         sent_file.filename = "script"
-    user = get_jwt_identity()
+    user = get_identity()
     # if user.role != 'ADMIN' and user.email != 'gef@gef.com':
     #     return error(status=403, detail='Forbidden')
     try:
@@ -204,7 +205,7 @@ def update_script(script):
 def delete_script(script):
     """Delete a script"""
     logger.info("[ROUTER]: Deleting script: " + script)
-    identity = get_jwt_identity()
+    identity = get_identity()
     if identity.role != "ADMIN" and identity.email != "gef@gef.com":
         return error(status=403, detail="Forbidden")
     try:
@@ -224,7 +225,7 @@ def delete_script(script):
 def run_script(script):
     """Run a script"""
     logger.info("[ROUTER]: Running script: " + script)
-    user = get_jwt_identity()
+    user = get_identity()
     try:
         params = request.args.to_dict() if request.args else {}
         if request.get_json(silent=True):
@@ -259,7 +260,7 @@ def get_executions():
     exclude = exclude.split(",") if exclude else []
     try:
         executions = ExecutionService.get_executions(
-            get_jwt_identity(), user_id, updated_at
+            get_identity(), user_id, updated_at
         )
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
@@ -279,7 +280,7 @@ def get_execution(execution):
     exclude = request.args.get("exclude")
     exclude = exclude.split(",") if exclude else []
     try:
-        execution = ExecutionService.get_execution(execution, get_jwt_identity())
+        execution = ExecutionService.get_execution(execution, get_identity())
     except ExecutionNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
@@ -296,7 +297,7 @@ def update_execution(execution):
     """Update an execution"""
     logger.info("[ROUTER]: Updating execution " + execution)
     body = request.get_json()
-    user = get_jwt_identity()
+    user = get_identity()
     if user.role != "ADMIN" and user.email != "gef@gef.com":
         return error(status=403, detail="Forbidden")
     try:
@@ -355,7 +356,7 @@ def create_execution_log(execution):
     """Create log of an execution"""
     logger.info("[ROUTER]: Creating execution log for " + execution)
     body = request.get_json()
-    user = get_jwt_identity()
+    user = get_identity()
     if user.role != "ADMIN" and user.email != "gef@gef.com":
         return error(status=403, detail="Forbidden")
     try:
@@ -383,7 +384,7 @@ def create_user():
             pass
 
         identity()
-    identity = get_jwt_identity()
+    identity = get_identity()
     if identity:
         user_role = body.get("role", "USER")
         if identity.role == "USER" and user_role == "ADMIN":
@@ -408,7 +409,7 @@ def get_users():
     logger.info("[ROUTER]: Getting all users")
     include = request.args.get("include")
     include = include.split(",") if include else []
-    identity = get_jwt_identity()
+    identity = get_identity()
     if identity.role != "ADMIN" and identity.email != "gef@gef.com":
         return error(status=403, detail="Forbidden")
     try:
@@ -426,7 +427,7 @@ def get_user(user):
     logger.info("[ROUTER]: Getting user" + user)
     include = request.args.get("include")
     include = include.split(",") if include else []
-    identity = get_jwt_identity()
+    identity = get_identity()
     if identity.role != "ADMIN" and identity.email != "gef@gef.com":
         return error(status=403, detail="Forbidden")
     try:
@@ -445,7 +446,7 @@ def get_user(user):
 def get_me():
     """Get me"""
     logger.info("[ROUTER]: Getting my user")
-    user = get_jwt_identity()
+    user = get_identity()
     return jsonify(data=user.serialize()), 200
 
 
@@ -455,7 +456,7 @@ def update_profile():
     """Update an user"""
     logger.info("[ROUTER]: Updating profile")
     body = request.get_json()
-    identity = get_jwt_identity()
+    identity = get_identity()
     try:
         password = body.get("password", None)
         repeat_password = body.get("repeatPassword", None)
@@ -489,7 +490,7 @@ def update_profile():
 def delete_profile():
     """Delete Me"""
     logger.info("[ROUTER]: Delete me")
-    identity = get_jwt_identity()
+    identity = get_identity()
     try:
         user = UserService.delete_user(str(identity.id))
     except UserNotFound as e:
@@ -528,7 +529,7 @@ def update_user(user):
     """Update an user"""
     logger.info("[ROUTER]: Updating user" + user)
     body = request.get_json()
-    identity = get_jwt_identity()
+    identity = get_identity()
     if identity.role != "ADMIN" and identity.email != "gef@gef.com":
         return error(status=403, detail="Forbidden")
     try:
@@ -547,7 +548,7 @@ def update_user(user):
 def delete_user(user):
     """Delete an user"""
     logger.info("[ROUTER]: Deleting user" + user)
-    identity = get_jwt_identity()
+    identity = get_identity()
     if user == "gef@gef.com":
         return error(status=403, detail="Forbidden")
     if identity.role != "ADMIN" and identity.email != "gef@gef.com":
