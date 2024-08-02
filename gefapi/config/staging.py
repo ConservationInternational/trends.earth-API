@@ -1,1 +1,1 @@
-SETTINGS = {"logging": {"level": "DEBUG"}, "service": {"port": 3000}}
+SETTINGS = {"logging": {"level": "DEBUG"}}

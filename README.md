@@ -163,14 +163,14 @@ docker compose -f docker-compose-nginx.yml up -d
 1.  Build image and push to registry
 
     ```ssh
-    docker build -t 172.40.1.52:5000/trendsearth-api:v2 .
-    docker push 172.40.1.52:5000/trendsearth-api:v2
+    docker build -t 172.40.1.52:5000/trendsearth-api .
+    docker push 172.40.1.52:5000/trendsearth-api
     ```
 
 2.  Start the stack
 
     ```ssh
-    docker stack deploy -c docker-compose.yml -c docker-compose.prod2.yml apiv2
+    docker stack deploy -c docker-compose.prod.yml api
     ```
 
 ### Code structure

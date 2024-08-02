@@ -1,26 +1,51 @@
+version: "3.8"
+
 services:
-  manager:
+  manager-staging:
+    image: 172.40.1.52:5000/trendsearth-api
+    build: .
+    command: start
     environment:
       PORT: 3000
     ports:
       - target: 3000
-        published: 3000
+        published: 3002
     env_file:
       - staging.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
     networks:
       - backend
-      - db
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
 
-  worker:
+  worker-staging:
+    image: 172.40.1.52:5000/trendsearth-api
+    build: .
+    command: worker
     environment:
       PORT: 3000
     env_file:
-      - staging.env
+      - prod2.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
     networks:
       - backend
-      - db
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
 
-  redis:
+
+  redis-staging:
     image: redis
     ports:
       - target: 6379
@@ -34,33 +59,9 @@ services:
           cpus: "0.25"
           memory: 100M
 
-  database:
-    image: postgres:14
-    env_file:
-      - staging.env
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    ports:
-      - target: 5432
-        published: 5432
-    networks:
-      - db
-
-  registry:
-    image: registry:2.8.1
-    volumes:
-      - registry-data:/var/lib/registry
-    env_file:
-      - staging.env
-    ports:
-      - target: 5000
-        published: 5000
-    networks:
-      - backend
-
-volumes:
-  postgres-data:
-  registry-data:
-
 networks:
-  db:
+  backend:
+    driver: overlay
+    ipam:
+      config:
+        - subnet: 10.10.0.0/16

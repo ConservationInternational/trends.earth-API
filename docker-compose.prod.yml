@@ -2,7 +2,9 @@ version: "3.8"
 
 services:
   manager:
-    image: 172.40.1.52:5000/trendsearth-api:v2
+    image: 172.40.1.52:5000/trendsearth-api
+    build: .
+    command: start
     environment:
       PORT: 3000
     ports:
@@ -10,13 +12,38 @@ services:
         published: 3001
     env_file:
       - prod2.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
 
   worker:
-    image: 172.40.1.52:5000/trendsearth-api:v2
+    image: 172.40.1.52:5000/trendsearth-api
+    build: .
+    command: worker
     environment:
       PORT: 3000
     env_file:
       - prod2.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
+
 
   redis:
     image: redis
