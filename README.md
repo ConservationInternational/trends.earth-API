@@ -79,6 +79,7 @@ cd trends.earth-api
 
 ```ssh
 docker build -t 172.40.1.52:5000/trendsearth-api-staging .
+docker push 172.40.1.52:5000/trendsearth-api-staging
 ```
 
 2.  Start a stack running on docker swarm
