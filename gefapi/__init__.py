@@ -33,15 +33,14 @@ Compress(app)
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
-#logging.basicConfig(
+# logging.basicConfig(
 #    level=logging.DEBUG,
 #    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 #    datefmt="%Y%m%d-%H:%M%p",
-#)
+# )
 
 # Ensure all unhandled exceptions are logged, and reported to rollbar
-formatter = logging.Formatter(
-    "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler = logging.StreamHandler(stream=sys.stdout)
 handler.setLevel(logging.DEBUG)
 handler.setFormatter(formatter)
@@ -49,9 +48,9 @@ logger.addHandler(handler)
 
 rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
 
-#rollbar_handler = RollbarHandler()
-#rollbar_handler.setLevel(logging.ERROR)
-#logger.addHandler(rollbar_handler)
+# rollbar_handler = RollbarHandler()
+# rollbar_handler.setLevel(logging.ERROR)
+# logger.addHandler(rollbar_handler)
 
 
 with app.app_context():
