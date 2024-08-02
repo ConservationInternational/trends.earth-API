@@ -23,6 +23,8 @@ from gefapi.services import EmailService
 from gefapi.services import ScriptService
 from gefapi.services import UserService
 
+logger = logging.getLogger()
+
 rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
 
 EXECUTION_FINISHED_MAIL_CONTENT = """
@@ -54,8 +56,8 @@ class ExecutionService(object):
 
     @staticmethod
     def get_executions(user, target_user_id=None, updated_at=None):
-        logging.info("[SERVICE]: Getting executions")
-        logging.info("[DB]: QUERY")
+        logger.info("[SERVICE]: Getting executions")
+        logger.info("[DB]: QUERY")
         if not updated_at:
             updated_at = datetime.datetime(2000, 12, 1)
         # Admin
@@ -93,7 +95,7 @@ class ExecutionService(object):
 
     @staticmethod
     def create_execution(script_id, params, user):
-        logging.info("[SERVICE]: Creating execution")
+        logger.info("[SERVICE]: Creating execution")
         script = ScriptService.get_script(script_id, user)
         if not script:
             raise ScriptNotFound(
@@ -105,7 +107,7 @@ class ExecutionService(object):
             )
         execution = Execution(script_id=script.id, params=params, user_id=user.id)
         try:
-            logging.info("[DB]: ADD")
+            logger.info("[DB]: ADD")
             db.session.add(execution)
             db.session.commit()
         except Exception as error:
@@ -123,8 +125,8 @@ class ExecutionService(object):
 
     @staticmethod
     def get_execution(execution_id, user="fromservice"):
-        logging.info("[SERVICE]: Getting execution " + execution_id)
-        logging.info("[DB]: QUERY")
+        logger.info("[SERVICE]: Getting execution " + execution_id)
+        logger.info("[DB]: QUERY")
         # user = 'from service' just in case the requests comes from the service
         if user == "fromservice" or user.role == "ADMIN":
             try:
@@ -151,7 +153,7 @@ class ExecutionService(object):
 
     @staticmethod
     def update_execution(execution, execution_id):
-        logging.info("[SERVICE]: Updating execution")
+        logger.info("[SERVICE]: Updating execution")
         status = execution.get("status", None)
         progress = execution.get("progress", None)
         results = execution.get("results", None)
@@ -185,13 +187,13 @@ class ExecutionService(object):
                     )
                 except Exception:
                     rollbar.report_exc_info()
-                    logging.info("Failed to send email - check email service")
+                    logger.info("Failed to send email - check email service")
         if progress is not None:
             execution.progress = progress
         if results is not None:
             execution.results = results
         try:
-            logging.info("[DB]: ADD")
+            logger.info("[DB]: ADD")
             db.session.add(execution)
             db.session.commit()
         except Exception as error:
@@ -201,7 +203,7 @@ class ExecutionService(object):
 
     @staticmethod
     def create_execution_log(log, execution_id):
-        logging.info("[SERVICE]: Creating execution log")
+        logger.info("[SERVICE]: Creating execution log")
         text = log.get("text", None)
         level = log.get("level", None)
         if text is None or level is None:
@@ -213,7 +215,7 @@ class ExecutionService(object):
             )
         execution_log = ExecutionLog(text=text, level=level, execution_id=execution.id)
         try:
-            logging.info("[DB]: ADD")
+            logger.info("[DB]: ADD")
             db.session.add(execution_log)
             db.session.commit()
         except Exception as error:
@@ -223,10 +225,10 @@ class ExecutionService(object):
 
     @staticmethod
     def get_execution_logs(execution_id, start_date, last_id):
-        logging.info(
+        logger.info(
             "[SERVICE]: Getting execution logs of execution %s: " % (execution_id)
         )
-        logging.info("[DB]: QUERY")
+        logger.info("[DB]: QUERY")
         try:
             execution = ExecutionService.get_execution(execution_id=execution_id)
         except Exception as error:
@@ -238,7 +240,7 @@ class ExecutionService(object):
             )
 
         if start_date:
-            logging.debug(start_date)
+            logger.debug(start_date)
             return (
                 ExecutionLog.query.filter(
                     ExecutionLog.execution_id == execution.id,

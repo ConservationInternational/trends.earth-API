@@ -19,6 +19,7 @@ from flask_sqlalchemy import SQLAlchemy
 
 import rollbar
 import rollbar.contrib.flask
+from rollbar.logger import RollbarHandler
 
 from gefapi.celery import make_celery
 from gefapi.config import SETTINGS
@@ -37,8 +38,14 @@ Compress(app)
 # Ensure all unhandled exceptions are logged, and reported to rollbar
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(stream=sys.stdout)
-handler.setLevel(logging.INFO)
+handler.setLevel(SETTINGS.get("logging", {}).get("level"))
 logger.addHandler(handler)
+
+rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
+rollbar_handler = RollbarHandler()
+rollbar_handler.setLevel(logging.ERROR)
+logger.addHandler(rollbar_handler)
+
 
 with app.app_context():
     rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))

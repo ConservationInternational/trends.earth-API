@@ -4,7 +4,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import random
 import datetime
 import string
@@ -21,7 +20,8 @@ from gefapi.config import SETTINGS
 
 ROLES = SETTINGS.get("ROLES")
 
-rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
+
+logger = logging.getLogger()
 
 
 class UserService(object):
@@ -29,7 +29,7 @@ class UserService(object):
 
     @staticmethod
     def create_user(user):
-        logging.info("[SERVICE]: Creating user")
+        logger.info("[SERVICE]: Creating user")
         email = user.get("email", None)
         password = user.get("password", None)
         password = (
@@ -57,7 +57,7 @@ class UserService(object):
             institution=institution,
         )
         try:
-            logging.info("[DB]: ADD")
+            logger.info("[DB]: ADD")
             db.session.add(user)
             db.session.commit()
             try:
@@ -80,15 +80,15 @@ class UserService(object):
 
     @staticmethod
     def get_users():
-        logging.info("[SERVICE]: Getting users")
-        logging.info("[DB]: QUERY")
+        logger.info("[SERVICE]: Getting users")
+        logger.info("[DB]: QUERY")
         users = User.query.all()
         return users
 
     @staticmethod
     def get_user(user_id):
-        logging.info("[SERVICE]: Getting user " + user_id)
-        logging.info("[DB]: QUERY")
+        logger.info("[SERVICE]: Getting user " + user_id)
+        logger.info("[DB]: QUERY")
         try:
             UUID(user_id, version=4)
             user = User.query.get(user_id)
@@ -103,15 +103,15 @@ class UserService(object):
 
     @staticmethod
     def recover_password(user_id):
-        logging.info("[SERVICE]: Recovering password" + user_id)
-        logging.info("[DB]: QUERY")
+        logger.info("[SERVICE]: Recovering password" + user_id)
+        logger.info("[DB]: QUERY")
         user = UserService.get_user(user_id=user_id)
         if not user:
             raise UserNotFound(message="User with id " + user_id + " does not exist")
         password = "".join(random.choices(string.ascii_uppercase + string.digits, k=20))
         user.password = user.set_password(password=password)
         try:
-            logging.info("[DB]: ADD")
+            logger.info("[DB]: ADD")
             db.session.add(user)
             db.session.commit()
             try:
@@ -134,11 +134,11 @@ class UserService(object):
 
     @staticmethod
     def update_profile_password(user, current_user):
-        logging.info("[SERVICE]: Updating user password")
+        logger.info("[SERVICE]: Updating user password")
         password = user.get("password")
         current_user.password = current_user.set_password(password=password)
         try:
-            logging.info("[DB]: ADD")
+            logger.info("[DB]: ADD")
             db.session.add(current_user)
             db.session.commit()
         except Exception as error:
@@ -148,7 +148,7 @@ class UserService(object):
 
     @staticmethod
     def update_user(user, user_id):
-        logging.info("[SERVICE]: Updating user")
+        logger.info("[SERVICE]: Updating user")
         current_user = UserService.get_user(user_id=user_id)
         if not current_user:
             raise UserNotFound(message="User with id " + user_id + " does not exist")
@@ -160,7 +160,7 @@ class UserService(object):
         current_user.institution = user.get("institution", current_user.institution)
         current_user.updated_at = datetime.datetime.utcnow()
         try:
-            logging.info("[DB]: ADD")
+            logger.info("[DB]: ADD")
             db.session.add(current_user)
             db.session.commit()
         except Exception as error:
@@ -170,12 +170,12 @@ class UserService(object):
 
     @staticmethod
     def delete_user(user_id):
-        logging.info("[SERVICE]: Deleting user" + user_id)
+        logger.info("[SERVICE]: Deleting user" + user_id)
         user = UserService.get_user(user_id=user_id)
         if not user:
             raise UserNotFound(message="User with email " + user_id + " does not exist")
         try:
-            logging.info("[DB]: DELETE")
+            logger.info("[DB]: DELETE")
             db.session.delete(user)
             db.session.commit()
         except Exception as error:
@@ -185,7 +185,7 @@ class UserService(object):
 
     @staticmethod
     def authenticate_user(user_id, password):
-        logging.info("[SERVICE]: Authenticate user " + user_id)
+        logger.info("[SERVICE]: Authenticate user " + user_id)
         user = UserService.get_user(user_id=user_id)
         if not user:
             raise UserNotFound(message="User with email " + user_id + " does not exist")

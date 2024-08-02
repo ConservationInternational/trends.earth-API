@@ -8,14 +8,16 @@ import logging
 
 from gefapi.services import UserService
 
+logger = logging.getLogger()
+
 
 def authenticate(email, password):
-    logging.info("[JWT]: Auth user " + email)
+    logger.info("[JWT]: Auth user " + email)
     user = None
     try:
         user = UserService.authenticate_user(user_id=str(email), password=str(password))
     except Exception:
-        logging.error("[JWT]: Error")
+        logger.error("[JWT]: Error")
     return user
 
 
@@ -25,6 +27,6 @@ def identity(payload):
     try:
         user = UserService.get_user(user_id=user_id)
     except Exception as e:
-        logging.error(str(e))
-        logging.error("[JWT]: Error")
+        logger.error(str(e))
+        logger.error("[JWT]: Error")
     return user
