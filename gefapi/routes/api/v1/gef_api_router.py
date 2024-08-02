@@ -101,7 +101,7 @@ def get_script(script):
 @jwt_required()
 def publish_script(script):
     """Publish a script"""
-    logger.info("[ROUTER]: Publishsing script " + script)
+    logger.info("[ROUTER]: Publishing script " + script)
     try:
         script = ScriptService.publish_script(script, current_identity)
     except ScriptNotFound as e:
