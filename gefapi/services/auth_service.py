@@ -14,4 +14,4 @@ class AuthService(object):
     def auth(username, password):
         logger.info("[SERVICE]: Authorizing user " + username)
         logger.info("[DB]: QUERY")
-        return User.query.filter_by(username=username, password=password).first()
+        return User.query.filter_by(email=username, password=password).first()
