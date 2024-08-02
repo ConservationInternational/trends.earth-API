@@ -55,6 +55,8 @@ class Script(db.Model):
         cpu_limit=None,
         memory_reservation=None,
         memory_limit=None,
+        environment=None,
+        environment_version=None,
     ):
         self.name = name
         self.slug = slug
@@ -63,6 +65,8 @@ class Script(db.Model):
         self.cpu_limit = cpu_limit
         self.memory_reservation = memory_reservation
         self.memory_limit = memory_limit
+        self.environment = environment
+        self.environment_version = environment_version
 
     def __repr__(self):
         return "<Script %r>" % self.name
@@ -84,6 +88,8 @@ class Script(db.Model):
             "cpu_limit": self.cpu_limit,
             "memory_reservation": self.memory_reservation,
             "memory_limit": self.memory_limit,
+            "environment": self.environment,
+            "environment_version": self.environment_version,
         }
         if "logs" in include:
             script["logs"] = self.serialize_logs
