@@ -35,7 +35,7 @@ services:
           memory: 100M
 
   database:
-    image: postgres:9.6
+    image: postgres:14
     environment:
       POSTGRES_PASSWORD: root
       POSTGRES_USER: root
@@ -44,6 +44,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
     ports:
       - target: 5432
+        published: 5432
     networks:
       - db
 

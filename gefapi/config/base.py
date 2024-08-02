@@ -37,9 +37,7 @@ SETTINGS = {
     "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
     "UPLOAD_FOLDER": "/tmp/scripts",
     "ALLOWED_EXTENSIONS": set(["tar.gz"]),
-    "JWT_AUTH_USERNAME_KEY": "email",
-    "JWT_AUTH_HEADER_PREFIX": "Bearer",
-    "JWT_EXPIRATION_DELTA": timedelta(seconds=60 * 60 * 24),
+    "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 24),
     "CELERY_BROKER_URL": "redis://"
     + os.getenv("REDIS_PORT_6379_TCP_ADDR")
     + ":"

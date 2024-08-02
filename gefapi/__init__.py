@@ -8,9 +8,10 @@ import sys
 
 import rollbar
 import rollbar.contrib.flask
-from flask import Flask, current_app, got_request_exception, request
+from flask import Flask, got_request_exception, jsonify, request
 from flask_compress import Compress
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager, create_access_token
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
@@ -62,11 +63,9 @@ sys.excepthook = handle_exception
 # Config
 
 app.config["SQLALCHEMY_DATABASE_URI"] = SETTINGS.get("SQLALCHEMY_DATABASE_URI")
-app.config["SECRET_KEY"] = SETTINGS.get("SECRET_KEY")
 app.config["UPLOAD_FOLDER"] = SETTINGS.get("UPLOAD_FOLDER")
-app.config["JWT_AUTH_USERNAME_KEY"] = SETTINGS.get("JWT_AUTH_USERNAME_KEY")
-app.config["JWT_AUTH_HEADER_PREFIX"] = SETTINGS.get("JWT_AUTH_HEADER_PREFIX")
-app.config["JWT_EXPIRATION_DELTA"] = SETTINGS.get("JWT_EXPIRATION_DELTA")
+app.config["JWT_SECRET_KEY"] = SETTINGS.get("SECRET_KEY")
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = SETTINGS.get("JWT_EXPIRATION_DELTA")
 app.config["broker_url"] = SETTINGS.get("CELERY_BROKER_URL")
 app.config["result_backend"] = SETTINGS.get("CELERY_RESULT_BACKEND")
 
@@ -83,50 +82,25 @@ from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
 # Blueprint Flask Routing
 app.register_blueprint(endpoints, url_prefix="/api/v1")
 
-from flask_jwt import JWT  # noqa: E402
 
-from gefapi.jwt import authenticate, identity  # noqa: E402
-
-# JWT
-jwt = JWT(app, authenticate, identity)
+# Handle authentication via JWT
+jwt = JWTManager(app)
+from gefapi.services import AuthService  # noqa: E402
 
 
-class JWTError(Exception):
-    def __init__(self, error, description, status_code=401, headers=None):
-        self.error = error
-        self.description = description
-        self.status_code = status_code
-        self.headers = headers
+@app.route("/auth", methods=["POST"])
+def create_token():
+    logger.info("[JWT]: Attempting auth...")
+    username = request.json.get("email", None)
+    password = request.json.get("password", None)
 
-    def __repr__(self):
-        return "JWTError: %s" % self.error
+    user = AuthService.auth(username, password)
 
-    def __str__(self):
-        return "%s. %s" % (self.error, self.description)
+    if user is None:
+        return jsonify({"msg": "Bad username or password"}), 401
 
-
-@jwt.request_handler
-def request_handler():
-    auth_header_value = request.headers.get("Authorization", None)
-    auth_header_prefix = current_app.config["JWT_AUTH_HEADER_PREFIX"]
-
-    if auth_header_value is None and request.args.get("token", None) is not None:
-        logger.info(request.args.get("token", ""))
-        auth_header_value = auth_header_prefix + " " + request.args.get("token", "")
-
-    if auth_header_value is None:
-        return None
-
-    parts = auth_header_value.split()
-
-    if parts[0].lower() != auth_header_prefix.lower():
-        raise JWTError("Invalid JWT header", "Unsupported authorization type")
-    elif len(parts) == 1:
-        raise JWTError("Invalid JWT header", "Token missing")
-    elif len(parts) > 2:
-        raise JWTError("Invalid JWT header", "Token contains spaces")
-
-    return parts[1]
+    access_token = create_access_token(identity=user.id)
+    return jsonify({"token": access_token, "user_id": user.id})
 
 
 @app.errorhandler(403)
