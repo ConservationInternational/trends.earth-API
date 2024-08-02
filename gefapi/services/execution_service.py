@@ -6,7 +6,6 @@ from __future__ import print_function
 
 import datetime
 import logging
-import os
 from uuid import UUID
 
 import rollbar
@@ -24,8 +23,6 @@ from gefapi.services import ScriptService
 from gefapi.services import UserService
 
 logger = logging.getLogger()
-
-rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
 
 EXECUTION_FINISHED_MAIL_CONTENT = """
 <p>Thank you for using Trends.Earth. The below task has {}. More details on this task
