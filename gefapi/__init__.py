@@ -113,7 +113,7 @@ def request_handler():
     auth_header_prefix = current_app.config["JWT_AUTH_HEADER_PREFIX"]
 
     if auth_header_value is None and request.args.get("token", None) is not None:
-        logging.info(request.args.get("token", ""))
+        logger.info(request.args.get("token", ""))
         auth_header_value = auth_header_prefix + " " + request.args.get("token", "")
 
     if auth_header_value is None:

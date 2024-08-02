@@ -160,18 +160,20 @@ class ScriptService(object):
         logger.info("[SERVICE]: Getting script: " + script_id)
         logger.info("[DB]: QUERY")
         if user == "fromservice" or user.role == "ADMIN":
-            logging.info("[SERVICE]: trying to get script %s for service or admin" % (script_id))
+            logger.info(
+                "[SERVICE]: trying to get script %s for service or admin" % (script_id)
+            )
             try:
                 script = Script.query.filter_by(id=UUID(script_id, version=4)).first()
             except ValueError:
-                logging.info("[SERVICE]: valueerror")
+                logger.info("[SERVICE]: valueerror")
                 script = Script.query.filter_by(slug=script_id).first()
             except Exception as error:
                 rollbar.report_exc_info()
                 raise error
         else:
             try:
-                logging.info("[SERVICE]: trying to get script %s" % (script_id))
+                logger.info("[SERVICE]: trying to get script %s" % (script_id))
                 script = (
                     db.session.query(Script)
                     .filter(Script.id == UUID(script_id, version=4))
@@ -179,7 +181,7 @@ class ScriptService(object):
                     .first()
                 )
             except ValueError:
-                logging.info("[SERVICE]: valueerror")
+                logger.info("[SERVICE]: valueerror")
                 script = (
                     db.session.query(Script)
                     .filter(Script.slug == script_id)
