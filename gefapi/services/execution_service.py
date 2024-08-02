@@ -25,8 +25,6 @@ from gefapi.services import UserService
 
 logger = logging.getLogger()
 
-rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
-
 EXECUTION_FINISHED_MAIL_CONTENT = """
 <p>Thank you for using Trends.Earth. The below task has {}. More details on this task
 are below: </p>

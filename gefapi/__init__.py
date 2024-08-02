@@ -24,31 +24,37 @@ from rollbar.logger import RollbarHandler
 from gefapi.celery import make_celery
 from gefapi.config import SETTINGS
 
-logging.basicConfig(
-    level=SETTINGS.get("logging", {}).get("level"),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    datefmt="%Y%m%d-%H:%M%p",
-)
 
 # Flask App
 app = Flask(__name__)
 CORS(app)
 Compress(app)
 
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+#logging.basicConfig(
+#    level=logging.DEBUG,
+#    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+#    datefmt="%Y%m%d-%H:%M%p",
+#)
+
 # Ensure all unhandled exceptions are logged, and reported to rollbar
-logger = logging.getLogger(__name__)
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler = logging.StreamHandler(stream=sys.stdout)
-handler.setLevel(SETTINGS.get("logging", {}).get("level"))
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
-rollbar_handler = RollbarHandler()
-rollbar_handler.setLevel(logging.ERROR)
-logger.addHandler(rollbar_handler)
+
+#rollbar_handler = RollbarHandler()
+#rollbar_handler.setLevel(logging.ERROR)
+#logger.addHandler(rollbar_handler)
 
 
 with app.app_context():
-    rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
     got_request_exception.connect(rollbar.contrib.flask.report_exception, app)
 
 

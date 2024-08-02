@@ -5,8 +5,6 @@ from celery.signals import task_failure
 
 import rollbar
 
-rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
-
 
 def celery_base_data_hook(request, data):
     data["framework"] = "celery"
