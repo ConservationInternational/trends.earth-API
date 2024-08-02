@@ -38,6 +38,8 @@ SETTINGS = {
     "UPLOAD_FOLDER": "/tmp/scripts",
     "ALLOWED_EXTENSIONS": set(["tar.gz"]),
     "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 24),
+    "JWT_QUERY_STRING_NAME": "token",
+    "JWT_TOKEN_LOCATION": ["headers", "query_string"],
     "CELERY_BROKER_URL": "redis://"
     + os.getenv("REDIS_PORT_6379_TCP_ADDR")
     + ":"
