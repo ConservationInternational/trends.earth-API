@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import tarfile
+from uuid import UUID
 
 import rollbar
 from gefapi import db
@@ -150,7 +151,7 @@ class ScriptService(object):
             return scripts
         else:
             scripts = db.session.query(Script).filter(
-                or_(Script.user_id == user.id, Script.public is True)
+                (Script.user_id == user.id) | Script.public
             )
             return scripts
 
@@ -163,6 +164,7 @@ class ScriptService(object):
                 "[SERVICE]: trying to get script %s for service or admin" % (script_id)
             )
             try:
+                UUID(script_id, version=4)
                 script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 logger.info("[SERVICE]: valueerror")
@@ -173,10 +175,11 @@ class ScriptService(object):
         else:
             try:
                 logger.info("[SERVICE]: trying to get script %s" % (script_id))
+                UUID(script_id, version=4)
                 script = (
                     db.session.query(Script)
                     .filter(Script.id == script_id)
-                    .filter(or_(Script.user_id == user.id, Script.public is True))
+                    .filter((Script.user_id == user.id) | Script.public)
                     .first()
                 )
             except ValueError:
@@ -184,7 +187,7 @@ class ScriptService(object):
                 script = (
                     db.session.query(Script)
                     .filter(Script.slug == script_id)
-                    .filter(or_(Script.user_id == user.id, Script.public is True))
+                    .filter((Script.user_id == user.id) | Script.public)
                     .first()
                 )
             except Exception as error:
@@ -201,6 +204,7 @@ class ScriptService(object):
         logger.info("[SERVICE]: Getting script logs of script %s: " % (script_id))
         logger.info("[DB]: QUERY")
         try:
+            UUID(script_id, version=4)
             script = Script.query.filter_by(id=script_id).first()
         except ValueError:
             script = Script.query.filter_by(slug=script_id).first()
@@ -276,6 +280,7 @@ class ScriptService(object):
         logger.info("[SERVICE]: Publishing script: " + script_id)
         if user.role == "ADMIN":
             try:
+                UUID(script_id, version=4)
                 script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
@@ -319,6 +324,7 @@ class ScriptService(object):
         logger.info("[SERVICE]: Unpublishing script: " + script_id)
         if user.role == "ADMIN":
             try:
+                UUID(script_id, version=4)
                 script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
