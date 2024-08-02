@@ -23,6 +23,7 @@ from gefapi.models import ScriptLog
 from gefapi.s3 import push_script_to_s3
 from gefapi.services import docker_build
 from slugify import slugify
+from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
 ROLES = SETTINGS.get("ROLES")
@@ -150,7 +151,7 @@ class ScriptService(object):
             return scripts
         else:
             scripts = db.session.query(Script).filter(
-                (Script.user_id == user.id) | Script.public
+                or_(Script.user_id == user.id, Script.public)
             )
             return scripts
 
@@ -178,7 +179,7 @@ class ScriptService(object):
                 script = (
                     db.session.query(Script)
                     .filter(Script.id == script_id)
-                    .filter((Script.user_id == user.id) | Script.public)
+                    .filter(or_(Script.user_id == user.id, Script.public))
                     .first()
                 )
             except ValueError:
@@ -186,7 +187,7 @@ class ScriptService(object):
                 script = (
                     db.session.query(Script)
                     .filter(Script.slug == script_id)
-                    .filter((Script.user_id == user.id) | Script.public)
+                    .filter(or_(Script.user_id == user.id, Script.public))
                     .first()
                 )
             except Exception as error:
