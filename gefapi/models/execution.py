@@ -16,7 +16,12 @@ db.GUID = GUID
 class Execution(db.Model):
     """Execution Model"""
 
-    id = db.Column(db.GUID(), default=uuid.uuid4, primary_key=True, autoincrement=False)
+    id = db.Column(
+        db.GUID(),
+        default=lambda: str(uuid.uuid4()),
+        primary_key=True,
+        autoincrement=False,
+    )
     start_date = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
     end_date = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
     status = db.Column(db.String(10), default="PENDING")

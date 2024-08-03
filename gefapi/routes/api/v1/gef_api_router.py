@@ -33,6 +33,7 @@ from gefapi.validators import (
 logger = logging.getLogger()
 
 
+@jwt_required()
 def get_identity():
     user = None
     try:
