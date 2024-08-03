@@ -27,12 +27,6 @@ Compress(app)
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
-# logging.basicConfig(
-#    level=logging.DEBUG,
-#    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-#    datefmt="%Y%m%d-%H:%M%p",
-# )
-
 # Ensure all unhandled exceptions are logged, and reported to rollbar
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler = logging.StreamHandler(stream=sys.stdout)
@@ -41,26 +35,8 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
-
-# rollbar_handler = RollbarHandler()
-# rollbar_handler.setLevel(logging.ERROR)
-# logger.addHandler(rollbar_handler)
-
-
 with app.app_context():
     got_request_exception.connect(rollbar.contrib.flask.report_exception, app)
-
-
-def handle_exception(exc_type, exc_value, exc_traceback):
-    if issubclass(exc_type, KeyboardInterrupt):
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
-        return
-    logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
-
-
-sys.excepthook = handle_exception
-
-# Config
 
 app.config["SQLALCHEMY_DATABASE_URI"] = SETTINGS.get("SQLALCHEMY_DATABASE_URI")
 app.config["UPLOAD_FOLDER"] = SETTINGS.get("UPLOAD_FOLDER")
