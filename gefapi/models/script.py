@@ -91,8 +91,6 @@ class Script(db.Model):
             "cpu_limit": self.cpu_limit,
             "memory_reservation": self.memory_reservation,
             "memory_limit": self.memory_limit,
-            "environment": self.environment,
-            "environment_version": self.environment_version,
         }
         if "logs" in include:
             script["logs"] = self.serialize_logs
@@ -100,6 +98,9 @@ class Script(db.Model):
             script["user"] = self.user.serialize()
         if "executions" in include:
             script["executions"] = self.serialize_executions
+        if "environment" in include:
+            script["environment"] = self.environment
+            script["environment_version"] = self.environment_version
         return script
 
     @property
