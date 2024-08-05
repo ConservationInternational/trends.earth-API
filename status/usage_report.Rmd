@@ -38,6 +38,8 @@ grat_wintri <-
 period_start <- today() - years(1)
 period_end <- now()
 
+#readRenviron("rstudio.env")
+
 con <- dbConnect(
     RPostgres::Postgres(),
     user=Sys.getenv("POSTGRES_USER"),
@@ -72,21 +74,41 @@ There have been `r user %>% filter(created_at >= (today() - years(1))) %>% summa
 
 # Detailed statistics
 
-## Statistics over the past 48 hours
+## Statistics over the past 72 hours
 
 ### Hourly job submissions
 
 ```{r fig.width=12}
 jobs %>%
-    filter(start_date >= today() - hours(48)) -> jobs_past_48_hours
+    filter(start_date >= now(tzone='UTC') - hours(24*3)) %>%
+    mutate(time=floor_date(start_date, unit='hours')) -> jobs_past_72_hours
 
-jobs_past_48_hours %>%
-    group_by(hour=floor_date(start_date, unit='hours'), status) %>%
+# Make a dataframew with median jobs per hour so that the plot can also show the
+# generally expected number of tasks per day/hour
+data.frame(time=seq(min(jobs_past_72_hours$time),
+                    max(jobs_past_72_hours$time), by='hour')) %>%
+    mutate(wday=wday(time), hour=hour(time)) %>%
+    left_join(
+        group_by(jobs) %>%
+            mutate(time=floor_date(start_date, unit='hours')) %>%
+            group_by(time) %>%
+            summarise(n=n()) %>%
+            group_by(wday=wday(time), hour=hour(time)) %>%
+            summarise(median_n=median(n))
+    ) -> median_n
+
+jobs_past_72_hours %>%
+    group_by(time, status) %>%
     summarise(n=n()) %>%
+    mutate(wday=wday(time), hour=hour(time)) %>%
     ggplot() +
     theme_minimal(base_size = 16) +
-    geom_bar(aes(hour, n, fill=status), stat='identity') +
-    scale_x_datetime(date_labels="%b %d - %I%p", date_breaks="12 hours") +
+    geom_bar(aes(time, n, fill=status), stat='identity', alpha=.4) +
+    guides(fill=guide_legend("Job status")) +
+    new_scale_fill() +
+    geom_bar(data=median_n, aes(time, median_n, fill='Median\nnumber of jobs\nover past year'), stat='identity', alpha=.1) +
+    scale_fill_manual(name=element_blank(), values='black') +
+    scale_x_datetime(date_labels="%H %Z\n%a\n%b %d", date_breaks="6 hours") +
     xlab('Time (UTC)') +
     ylab('Number of jobs submitted')
 ```
@@ -95,7 +117,7 @@ jobs_past_48_hours %>%
 ```{r fig.width=12}
 
 # Top task types
-jobs_past_48_hours %>%
+jobs_past_72_hours %>%
     ggplot() +
     theme_minimal(base_size = 16) +
     geom_bar(aes(forcats::fct_infreq(task), fill=status)) +
@@ -107,11 +129,11 @@ jobs_past_48_hours %>%
 ### Ten top users and their tasks
 ```{r fig.width=12}
 # Top 10 users and their top job slugs / statuses
-jobs_past_48_hours %>%
+jobs_past_72_hours %>%
     group_by(user_id) %>%
     summarise(n=n()) %>%
     slice_max(order_by=n, n=10) %>%
-    left_join(jobs_past_48_hours) %>%
+    left_join(jobs_past_72_hours) %>%
     left_join(user, by=c("user_id"="id")) %>%
     ggplot() +
     theme_minimal(base_size = 16) +
@@ -123,11 +145,11 @@ jobs_past_48_hours %>%
 
 ### Ten top users and their task statuses
 ```{r fig.width=12}
-jobs_past_48_hours %>%
+jobs_past_72_hours %>%
     group_by(user_id) %>%
     summarise(n=n()) %>%
     slice_max(order_by=n, n=10) %>%
-    left_join(jobs_past_48_hours) %>%
+    left_join(jobs_past_72_hours) %>%
     left_join(user, by=c("user_id"="id")) %>%
     ggplot() +
     theme_minimal(base_size = 16) +
@@ -140,7 +162,7 @@ jobs_past_48_hours %>%
 ### Code versions being used
 ```{r fig.width=12}
 # Code versions being used
-jobs_past_48_hours %>%
+jobs_past_72_hours %>%
     ggplot() +
     theme_minimal(base_size = 16) +
     geom_bar(aes(forcats::fct_infreq(version), fill=task)) +
@@ -153,7 +175,7 @@ jobs_past_48_hours %>%
 ### Task status by code version
 ```{r fig.width=12}
 # Code versions being used
-jobs_past_48_hours %>%
+jobs_past_72_hours %>%
     ggplot() +
     theme_minimal(base_size = 16) +
     geom_bar(aes(forcats::fct_infreq(version), fill=status)) +
