@@ -66,6 +66,7 @@ jwt = JWTManager(app)
 
 
 from gefapi.services import UserService  # noqa:E402
+from gefapi.models import User  # noqa:E402
 
 
 @app.route("/auth", methods=["POST"])
@@ -81,6 +82,12 @@ def create_token():
 
     access_token = create_access_token(identity=user.id)
     return jsonify({"access_token": access_token, "user_id": user.id})
+
+
+@jwt.user_lookup_loader
+def user_lookup_callback(_jwt_header, jwt_data):
+    identity = jwt_data["sub"]
+    return User.query.filter_by(id=identity).one_or_none()
 
 
 @app.errorhandler(403)
