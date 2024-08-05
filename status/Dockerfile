@@ -1,5 +1,5 @@
 FROM rocker/r2u:24.04
-MAINTAINER Alex Zvoleff azvoleff@conservation.org
+LABEL maintainer="Alex Zvoleff azvoleff@conservation.org"
 
 RUN apt-get update && \
     apt-get install -yq git pandoc \
@@ -12,7 +12,9 @@ RUN apt-get update && \
     mkdir -p /work
 
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
-ENV LANG en_US.UTF-8 ENV LANGUAGE en_US:en ENV LC_ALL en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 
 RUN chown $USER:$USER /work
 
