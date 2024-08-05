@@ -1,0 +1,382 @@
+---
+title: "Trends.Earth Usage Report"
+author: "Automated run on Trends.Earth API server"
+date: "`r format(Sys.time(),'%A, %B %d, %Y %H:%M:%S %Z')`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(RPostgres)
+library(ggplot2)
+library(scales)
+library(dplyr)
+library(stringr)
+library(lubridate)
+library(foreach)
+library(jsonlite)
+library(geojsonsf)
+library(forcats)
+library(ggrepel)
+library(RColorBrewer)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(cowplot)
+library(lwgeom)
+library(logger)
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+crs_wintri <- "+proj=wintri +datum=WGS84 +no_defs +over"
+world_wintri <- st_transform_proj(world, crs = crs_wintri)
+grat_wintri <- 
+  st_graticule(lat = c(-89.9, seq(-60, 60, 30), 89.9),
+               lon = c(-179.9, seq(-135, 135, 45), 179.9)) %>%
+  st_transform_proj(crs = crs_wintri)
+
+period_start <- today() - years(1)
+period_end <- now()
+
+con <- dbConnect(
+    RPostgres::Postgres(),
+    user=Sys.getenv("POSTGRES_USER"),
+    password=Sys.getenv("POSTGRES_PASSWORD"),
+    host=Sys.getenv('POSTGRES_HOST'),
+    port=Sys.getenv("POSTGRES_PORT"),
+    dbname=Sys.getenv("POSTGRES_DB_NAME")
+)
+
+script <- tbl(con, "script") %>% collect()
+user <- tbl(con, "user") %>% collect()
+jobs <- tbl(con, "execution") %>%
+    select(script_id, user_id, status, start_date) %>%
+    filter(start_date >= period_start,
+           start_date <= period_end) %>%
+    collect() %>%
+    left_join(select(script, id, name, slug), by=c('script_id' = 'id')) %>%
+    left_join(select(user, id, email), by=c('user_id' = 'id')) %>%
+    filter(!str_detect(email, 'trends.earth')) %>%
+    select(-email, -name) %>%
+    mutate(task=str_remove(slug, '[0-9-]*$'),
+           version=gsub('-', '.', str_extract(slug, '[0-9]+[0-9-]*$')),
+           task=factor(task))
+
+```
+
+# Overall statistics
+
+There have been `r jobs %>% filter(start_date >= (today() - years(1))) %>% summarize(n=n())` jobs run in the last year, `r jobs %>% filter(start_date >= (today() - months(1))) %>% summarize(n=n())` in the past month, `r jobs %>% filter(start_date >= (today() - days(7))) %>% summarize(n=n())` in the past week, and  `r jobs %>% filter(start_date >= (today() - days(1))) %>% summarize(n=n())` in the past day.
+
+There have been `r user %>% filter(created_at >= (today() - years(1))) %>% summarize(n=n())` users added in the last year, `r user %>% filter(created_at >= (today() - months(1))) %>% summarize(n=n())` in the past month, `r user %>% filter(created_at >= (today() - days(7))) %>% summarize(n=n())` in the past week, and  `r user %>% filter(created_at >= (today() - days(1))) %>% summarize(n=n())` in the past day.
+
+# Detailed statistics
+
+## Statistics over the past 48 hours
+
+### Hourly job submissions
+
+```{r fig.width=12}
+jobs %>%
+    filter(start_date >= today() - hours(48)) -> jobs_past_48_hours
+
+jobs_past_48_hours %>%
+    group_by(hour=floor_date(start_date, unit='hours'), status) %>%
+    summarise(n=n()) %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(hour, n, fill=status), stat='identity') +
+    scale_x_datetime(date_labels="%b %d - %I%p", date_breaks="12 hours") +
+    xlab('Time (UTC)') +
+    ylab('Number of jobs submitted')
+```
+
+### Job status by task type
+```{r fig.width=12}
+
+# Top task types
+jobs_past_48_hours %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(forcats::fct_infreq(task), fill=status)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    xlab('Task') +
+    ylab('Number of jobs submitted')
+```
+
+### Ten top users and their tasks
+```{r fig.width=12}
+# Top 10 users and their top job slugs / statuses
+jobs_past_48_hours %>%
+    group_by(user_id) %>%
+    summarise(n=n()) %>%
+    slice_max(order_by=n, n=10) %>%
+    left_join(jobs_past_48_hours) %>%
+    left_join(user, by=c("user_id"="id")) %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(forcats::fct_infreq(email), fill=task)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    xlab('User') +
+    ylab('Number of jobs submitted')
+```
+
+### Ten top users and their task statuses
+```{r fig.width=12}
+jobs_past_48_hours %>%
+    group_by(user_id) %>%
+    summarise(n=n()) %>%
+    slice_max(order_by=n, n=10) %>%
+    left_join(jobs_past_48_hours) %>%
+    left_join(user, by=c("user_id"="id")) %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(forcats::fct_infreq(email), fill=status)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    xlab('User') +
+    ylab('Number of jobs submitted')
+```
+
+### Code versions being used
+```{r fig.width=12}
+# Code versions being used
+jobs_past_48_hours %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(forcats::fct_infreq(version), fill=task)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    xlab('Version') +
+    ylab('Number of jobs submitted')
+
+```
+
+### Task status by code version
+```{r fig.width=12}
+# Code versions being used
+jobs_past_48_hours %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(forcats::fct_infreq(version), fill=status)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    xlab('Version') +
+    ylab('Number of jobs submitted')
+
+```
+
+## Statistics over the past month
+
+```{r jobs_past_month_types, fig.width=12}
+jobs %>%
+    group_by(task, year=year(start_date), month=month(start_date), day=day(start_date)) %>%
+    mutate(date=ymd(paste(year, month, day, sep='-'))) %>%
+    filter(date >= today() - months(1)) -> jobs_last_month
+
+# Top task types
+jobs_last_month %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(forcats::fct_infreq(task), fill=status)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    xlab('Task') +
+    ylab('Number of jobs submitted')
+
+# Code versions being used
+jobs_last_month %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(forcats::fct_infreq(version), fill=task)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    xlab('Version') +
+    ylab('Number of jobs submitted')
+
+
+# Top 10 users and their top job slugs / statuses
+jobs_last_month %>%
+    group_by(user_id) %>%
+    summarise(n=n()) %>%
+    slice_max(order_by=n, n=10) %>%
+    left_join(jobs_last_month) %>%
+    left_join(user, by=c("user_id"="id")) %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(forcats::fct_infreq(email), fill=task)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    xlab('User') +
+    ylab('Number of jobs submitted')
+
+jobs_last_month %>%
+    group_by(user_id) %>%
+    summarise(n=n()) %>%
+    slice_max(order_by=n, n=10) %>%
+    left_join(jobs_last_month) %>%
+    left_join(user, by=c("user_id"="id")) %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(forcats::fct_infreq(email), fill=status)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    xlab('User') +
+    ylab('Number of jobs submitted')
+
+```
+
+```{r jobs_past_month_number, fig.width=12}
+jobs %>%
+    group_by(task, year=year(start_date), month=month(start_date), day=day(start_date)) %>%
+    summarise(n=n()) %>%
+    mutate(date=ymd(paste(year, month, day, sep='-'))) %>%
+    filter(date >= today() - months(1)) -> daily_tasks
+
+daily_tasks %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_line(aes(date, n, colour=task, linetype=task)) +
+    geom_point(aes(date, n, colour=task, shape=task)) +
+    scale_colour_manual('Task', values = rep(c('#000000', '#3B69B0', '#D97D33', '#419753'), 3)) +
+    scale_linetype_manual('Task', values = rep(1:4, 3)) +
+    scale_shape_manual('Task', values = rep(1:4, each=3)) +
+    xlab('Date') +
+    ylab('Number of jobs submitted per day')
+
+jobs %>%
+    filter(start_date >= today() - months(1)) %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(start_date, fill=status)) +
+    xlab('Date') +
+    ylab('Number of jobs submitted per day')
+
+user %>%
+    filter(created_at >= period_start,
+           created_at <= period_end) %>%
+    group_by(year=year(created_at), month=month(created_at), day=day(created_at)) %>%
+    summarise(n=n()) %>%
+    mutate(date=ymd(paste(year, month, day, sep='-'))) %>%
+    filter(date >= today() - months(1)) -> daily_users
+
+daily_users %>% group_by(date) %>%
+    summarise(n=sum(n)) %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(date, n), stat='identity') +
+    xlab('Date') +
+    ylab('Number of new users per day')
+```
+
+## Over the past year
+
+```{r jobs_past_year, fig.width=12}
+jobs %>% group_by(task, year=year(start_date), month=month(start_date)) %>%
+    filter(status == 'FINISHED') %>%
+    summarise(n=n()) %>%
+    mutate(date=ymd(paste(year, month, '01', sep='-'))) -> monthly_tasks
+
+monthly_tasks %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_line(aes(date, n, colour=task, linetype=task)) +
+    geom_point(aes(date, n, colour=task, shape=task)) +
+    scale_colour_manual('Task', values = rep(c('#000000', '#3B69B0', '#D97D33', '#419753'), 3)) +
+    scale_linetype_manual('Task', values = rep(1:4, 3)) +
+    scale_shape_manual('Task', values = rep(1:4, each=3)) +
+    xlab('Date') +
+    ylab('Number of jobs submitted per month')
+
+monthly_tasks %>%
+  group_by(date) %>%
+  summarise(n=sum(n)) %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(date, n), stat='identity') +
+    xlab('Date') +
+    ylab('Number of jobs submitted per month')
+
+user %>%
+    filter(created_at >= (today() - months(12))) %>%
+    group_by(year=year(created_at), month=month(created_at)) %>%
+    summarise(n=n()) %>%
+    mutate(date=ymd(paste(year, month, '01', sep='-'))) -> monthly_users
+
+monthly_users %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(date, n), stat='identity') +
+    xlab('Date') +
+    ylab('Number of new users per month')
+
+```
+
+
+## User statistics
+
+In the last year, users have joined from `r length(unique(user$country))` different countries.
+
+```{r users_location_past_year, fig.width=12}
+user_count <- nrow(user)
+country_count <- length(unique(user$country))
+
+user %>%
+    group_by(country) %>%
+    summarise(n=n()) %>%
+    mutate(frac=n/sum(n)) %>%
+    arrange(desc(n)) %>%
+    top_n(20) %>%
+    mutate(country=fct_reorder(country, n, .desc=TRUE)) %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(country, frac), stat='identity') +
+    ylab('Fraction of all users') +
+    ggtitle(paste0('Top 20 countries by number of users who joined between ', period_start,' to ', period_end, '\n(total users = ', user_count, ', total countries = ', country_count, ')')) +
+    scale_y_continuous(labels=percent) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=.5),
+          axis.title.x=element_blank(),
+          axis.ticks.x=element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank())
+
+n_top <- 15
+mycolors <- rev(colorRampPalette(brewer.pal(8, "YlGn")[1:6])(n_top+1))
+
+user %>%
+    group_by(country) %>%
+    summarise(n=n()) %>%
+    mutate(frac=n/sum(n)) %>%
+    arrange(desc(n)) %>%
+    slice_head(n=n_top) -> top_x_country_users
+
+top_x_country_users %>%
+    bind_rows(data.frame(country=paste0('Other\n(countries with < ', round(top_x_country_users$frac[n_top], 2)*100, '%)'),
+                         n=user_count-sum(top_x_country_users$n),
+                         frac=1-sum(top_x_country_users$frac))) %>%
+    mutate(country=fct_reorder(country, n, .desc=TRUE)) %>%
+    ggplot(aes(x="", y=frac, fill=country)) +
+    theme_minimal(base_size = 16) +
+    geom_bar(width=1, stat='identity', colour='grey') +
+    coord_polar("y", start=3) +
+    ylab('Fraction of all users') +
+    labs(caption=paste0('Total users = ', user_count, ', Total number of countries = ', country_count)) +
+    theme(axis.text = element_blank(),
+          axis.title = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.grid.major = element_blank(),
+          plot.caption = element_text(hjust=0.5, size=rel(1)),
+          legend.position='none') +
+    geom_text_repel(aes(label = paste0(round(frac*100), '%', ' - ', country)),
+              position = position_stack(vjust = 0.5), size=5)
+
+
+group_by(user, country) %>% summarise(n=n()) -> user_countries
+
+# Fix some names so our users data matches with the R boundary data
+user_countries$country[user_countries$country == 'United States'] <- 'United States of America'
+user_countries$country[user_countries$country == 'Swaziland'] <- 'eSwatini'
+user_countries$country[user_countries$country == 'Macedonia'] <- 'North Macedonia'
+
+left_join(world_wintri, user_countries, by=c('name'='country')) %>%
+    ggplot() +
+    geom_sf(aes(fill=n)) +
+    geom_sf(data=grat_wintri, color = "gray90", size = 0.05/.pt) + 
+    coord_sf(datum=st_crs("+proj=wintri +datum=WGS84 +no_defs +over")) +
+    labs(fill='Number of\nnew users') +
+    theme_map()
+
+```

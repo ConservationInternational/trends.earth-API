@@ -6,7 +6,7 @@ RUN apt-get update && \
         r-cran-tidyverse r-cran-rpostgres r-cran-jsonlite \
         r-cran-geojsonsf r-cran-ggrepel r-cran-rcolorbrewer \
         r-cran-rnaturalearth r-cran-rnaturalearthdata r-cran-cowplot r-cran-lwgeom \
-        r-cran-knitr r-cran-foreach && \
+        r-cran-knitr r-cran-foreach r-cran-logger && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*  && \
     mkdir -p /work
