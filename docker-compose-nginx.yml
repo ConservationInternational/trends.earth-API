@@ -10,6 +10,7 @@ services:
     volumes:
       - nginx_secrets:/etc/letsencrypt
       - ./nginx-conf:/etc/nginx/user_conf.d
+      - status-public:/public
     deploy:
       placement:
         constraints: [node.role == manager]
@@ -20,3 +21,4 @@ services:
 
 volumes:
   nginx_secrets:
+  status-public:
