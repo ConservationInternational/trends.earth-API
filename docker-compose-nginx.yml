@@ -22,3 +22,4 @@ services:
 volumes:
   nginx_secrets:
   status-public:
+    name: "status-public"
