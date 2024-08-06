@@ -26,6 +26,7 @@ library(rnaturalearthdata)
 library(cowplot)
 library(lwgeom)
 library(logger)
+library(ggnewscale)
 
 world <- ne_countries(scale = "medium", returnclass = "sf")
 crs_wintri <- "+proj=wintri +datum=WGS84 +no_defs +over"
@@ -50,7 +51,9 @@ con <- dbConnect(
 )
 
 script <- tbl(con, "script") %>% collect()
-user <- tbl(con, "user") %>% collect()
+user <- tbl(con, "user") %>%
+    collect() %>%
+    mutate(email=abbreviate(email, 20))
 jobs <- tbl(con, "execution") %>%
     select(script_id, user_id, status, start_date) %>%
     filter(start_date >= period_start,
