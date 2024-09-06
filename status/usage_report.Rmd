@@ -296,9 +296,15 @@ daily_users %>% group_by(date) %>%
 
 ## Over the past year
 
-```{r jobs_past_year, fig.width=12}
+```{r jobs_past_year_stats, fig.width=12}
 jobs %>%
-    filter(start_date >= (now() - years(1))) %>%
+    filter(start_date >= (now() - years(1))) -> jobs_past_year
+```
+
+Over the past year `r nrow(jobs_past_year)` have been run.
+
+```{r jobs_past_year, fig.width=12}
+jobs_past_year %>%
     group_by(task, year=year(start_date), month=month(start_date)) %>%
     filter(status == 'FINISHED') %>%
     summarise(n=n()) %>%
@@ -340,6 +346,8 @@ monthly_users %>%
 ```
 
 ## All time
+
+Since the beginning of Trends.Earth `r nrow(jobs)` have been run.
 
 ```{r jobs_all_time, fig.width=12}
 jobs %>%
