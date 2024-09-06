@@ -54,10 +54,9 @@ script <- tbl(con, "script") %>% collect()
 user <- tbl(con, "user") %>%
     collect() %>%
     mutate(email=abbreviate(email, 20))
+
 jobs <- tbl(con, "execution") %>%
     select(script_id, user_id, status, start_date) %>%
-    filter(start_date >= period_start,
-           start_date <= period_end) %>%
     collect() %>%
     left_join(select(script, id, name, slug), by=c('script_id' = 'id')) %>%
     left_join(select(user, id, email), by=c('user_id' = 'id')) %>%
@@ -67,6 +66,14 @@ jobs <- tbl(con, "execution") %>%
            version=gsub('-', '.', str_extract(slug, '[0-9]+[0-9-]*$')),
            task=factor(task))
 
+# Rename deprecated task names
+jobs$task[jobs$task == 'sdg-sub-indicators'] <- 'sdg-15-3-1-sub-indicators'
+jobs$task[jobs$task == 'vegetation-productivity'] <- 'productivity'
+jobs$task[jobs$task == 'productivity-performance'] <- 'productivity'
+jobs$task[jobs$task == 'productivity-state'] <- 'productivity'
+jobs$task[jobs$task == 'productivity-trajectory'] <- 'productivity'
+jobs <- jobs[jobs$task != 'test', ]
+jobs$task <- factor(jobs$task)
 ```
 
 # Overall statistics
@@ -290,7 +297,9 @@ daily_users %>% group_by(date) %>%
 ## Over the past year
 
 ```{r jobs_past_year, fig.width=12}
-jobs %>% group_by(task, year=year(start_date), month=month(start_date)) %>%
+jobs %>%
+    filter(start_date >= (now() - years(1))) %>%
+    group_by(task, year=year(start_date), month=month(start_date)) %>%
     filter(status == 'FINISHED') %>%
     summarise(n=n()) %>%
     mutate(date=ymd(paste(year, month, '01', sep='-'))) -> monthly_tasks
@@ -300,9 +309,9 @@ monthly_tasks %>%
     theme_minimal(base_size = 16) +
     geom_line(aes(date, n, colour=task, linetype=task)) +
     geom_point(aes(date, n, colour=task, shape=task)) +
-    scale_colour_manual('Task', values = rep(c('#000000', '#3B69B0', '#D97D33', '#419753'), 3)) +
-    scale_linetype_manual('Task', values = rep(1:4, 3)) +
-    scale_shape_manual('Task', values = rep(1:4, each=3)) +
+    scale_colour_manual('Task', values = rep(c('#000000', '#1b9e77', '#d95f02', '#7570b3', '#e7298a'), 3)) +
+    scale_linetype_manual('Task', values = rep(1:4, 4)) +
+    scale_shape_manual('Task', values = rep(1:4, each=4)) +
     xlab('Date') +
     ylab('Number of jobs submitted per month')
 
@@ -330,12 +339,137 @@ monthly_users %>%
 
 ```
 
+## All time
+
+```{r jobs_all_time, fig.width=12}
+jobs %>%
+    group_by(task, year=year(start_date), month=month(start_date)) %>%
+    filter(status == 'FINISHED') %>%
+    summarise(n=n()) %>%
+    mutate(date=ymd(paste(year, month, '01', sep='-'))) -> monthly_tasks
+
+monthly_tasks %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_line(aes(date, n, colour=task, linetype=task)) +
+    geom_point(aes(date, n, colour=task, shape=task)) +
+    scale_colour_manual('Task', values = rep(c('#000000', '#1b9e77', '#d95f02', '#7570b3', '#e7298a'), 3)) +
+    scale_linetype_manual('Task', values = rep(1:4, 4)) +
+    scale_shape_manual('Task', values = rep(1:4, each=4)) +
+    xlab('Date') +
+    ylab('Number of jobs submitted per month')
+
+monthly_tasks %>%
+  group_by(date) %>%
+  summarise(n=sum(n)) %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(date, n), stat='identity') +
+    xlab('Date') +
+    ylab('Number of jobs submitted per month')
+
+user %>%
+    group_by(year=year(created_at), month=month(created_at)) %>%
+    summarise(n=n()) %>%
+    mutate(date=ymd(paste(year, month, '01', sep='-'))) -> monthly_users
+
+monthly_users %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(date, n), stat='identity') +
+    xlab('Date') +
+    ylab('Number of new users per month')
+
+```
+
 
 ## User statistics
 
-In the last year, users have joined from `r length(unique(user$country))` different countries.
+### Past year
+
+```{r users_past_year}
+user %>%
+    filter(created_at >= (today() - months(12))) -> user_past_year
+```
+
+In the last year, `r nrow(user_past_year)` users have joined from `r length(unique(user_past_year$country))` different countries.
 
 ```{r users_location_past_year, fig.width=12}
+user_count <- nrow(user_past_year)
+country_count <- length(unique(user_past_year$country))
+
+user_past_year %>%
+    group_by(country) %>%
+    summarise(n=n()) %>%
+    mutate(frac=n/sum(n)) %>%
+    arrange(desc(n)) %>%
+    top_n(20) %>%
+    mutate(country=fct_reorder(country, n, .desc=TRUE)) %>%
+    ggplot() +
+    theme_minimal(base_size = 16) +
+    geom_bar(aes(country, frac), stat='identity') +
+    ylab('Fraction of all users') +
+    ggtitle(paste0('Top 20 countries by number of users who joined between ', period_start,' to ', period_end, '\n(total users = ', user_count, ', total countries = ', country_count, ')')) +
+    scale_y_continuous(labels=percent) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=.5),
+          axis.title.x=element_blank(),
+          axis.ticks.x=element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank())
+
+n_top <- 15
+mycolors <- rev(colorRampPalette(brewer.pal(8, "YlGn")[1:6])(n_top+1))
+
+user_past_year %>%
+    group_by(country) %>%
+    summarise(n=n()) %>%
+    mutate(frac=n/sum(n)) %>%
+    arrange(desc(n)) %>%
+    slice_head(n=n_top) -> top_x_country_users
+
+top_x_country_users %>%
+    bind_rows(data.frame(country=paste0('Other\n(countries with < ', round(top_x_country_users$frac[n_top], 2)*100, '%)'),
+                         n=user_count-sum(top_x_country_users$n),
+                         frac=1-sum(top_x_country_users$frac))) %>%
+    mutate(country=fct_reorder(country, n, .desc=TRUE)) %>%
+    ggplot(aes(x="", y=frac, fill=country)) +
+    theme_minimal(base_size = 16) +
+    geom_bar(width=1, stat='identity', colour='grey') +
+    coord_polar("y", start=3) +
+    ylab('Fraction of all users') +
+    labs(caption=paste0('Total users = ', user_count, ', Total number of countries = ', country_count)) +
+    theme(axis.text = element_blank(),
+          axis.title = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.grid.major = element_blank(),
+          plot.caption = element_text(hjust=0.5, size=rel(1)),
+          legend.position='none') +
+    geom_text_repel(aes(label = paste0(round(frac*100), '%', ' - ', country)),
+              position = position_stack(vjust = 0.5), size=5)
+
+
+group_by(user, country) %>% summarise(n=n()) -> user_countries
+
+# Fix some names so our users data matches with the R boundary data
+user_countries$country[user_countries$country == 'United States'] <- 'United States of America'
+user_countries$country[user_countries$country == 'Swaziland'] <- 'eSwatini'
+user_countries$country[user_countries$country == 'Macedonia'] <- 'North Macedonia'
+
+left_join(world_wintri, user_countries, by=c('name'='country')) %>%
+    ggplot() +
+    geom_sf(aes(fill=n)) +
+    geom_sf(data=grat_wintri, color = "gray90", size = 0.05/.pt) + 
+    coord_sf(datum=st_crs("+proj=wintri +datum=WGS84 +no_defs +over")) +
+    labs(fill='Number of\nnew users') +
+    theme_map()
+
+```
+
+### All time
+
+Since the beginning of Trends.Earth `r nrow(user)` users have joined from `r length(unique(user$country))` different countries.
+
+```{r users_location_all_time, fig.width=12}
 user_count <- nrow(user)
 country_count <- length(unique(user$country))
 
@@ -361,7 +495,7 @@ user %>%
 n_top <- 15
 mycolors <- rev(colorRampPalette(brewer.pal(8, "YlGn")[1:6])(n_top+1))
 
-user %>%
+user  %>%
     group_by(country) %>%
     summarise(n=n()) %>%
     mutate(frac=n/sum(n)) %>%
