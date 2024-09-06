@@ -417,7 +417,7 @@ user_past_year %>%
     theme_minimal(base_size = 16) +
     geom_bar(aes(country, frac), stat='identity') +
     ylab('Fraction of all users') +
-    ggtitle(paste0('Top 20 countries by number of users who joined between ', period_start,' to ', period_end, '\n(total users = ', user_count, ', total countries = ', country_count, ')')) +
+    ggtitle(paste0('Top 20 countries by number of users who joined between ', date(period_start),' and ', date(period_end), '\n(total users = ', user_count, ', total countries = ', country_count, ')')) +
     scale_y_continuous(labels=percent) +
     theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=.5),
           axis.title.x=element_blank(),
@@ -492,7 +492,7 @@ user %>%
     theme_minimal(base_size = 16) +
     geom_bar(aes(country, frac), stat='identity') +
     ylab('Fraction of all users') +
-    ggtitle(paste0('Top 20 countries by number of users who joined between ', period_start,' to ', period_end, '\n(total users = ', user_count, ', total countries = ', country_count, ')')) +
+    ggtitle(paste0('Top 20 countries by number of users who joined between ', date(min(user$created_at)),' to ', date(period_end), '\n(total users = ', user_count, ', total countries = ', country_count, ')')) +
     scale_y_continuous(labels=percent) +
     theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=.5),
           axis.title.x=element_blank(),
