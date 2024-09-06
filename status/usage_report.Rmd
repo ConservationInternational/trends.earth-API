@@ -456,7 +456,7 @@ top_x_country_users %>%
               position = position_stack(vjust = 0.5), size=5)
 
 
-group_by(user, country) %>% summarise(n=n()) -> user_countries
+group_by(user_past_year, country) %>% summarise(n=n()) -> user_countries
 
 # Fix some names so our users data matches with the R boundary data
 user_countries$country[user_countries$country == 'United States'] <- 'United States of America'
