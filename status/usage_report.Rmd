@@ -301,7 +301,7 @@ jobs %>%
     filter(start_date >= (now() - years(1))) -> jobs_past_year
 ```
 
-Over the past year `r nrow(jobs_past_year)` have been run.
+Over the past year `r nrow(jobs_past_year)` jobs have been run.
 
 ```{r jobs_past_year, fig.width=12}
 jobs_past_year %>%
@@ -347,7 +347,7 @@ monthly_users %>%
 
 ## All time
 
-Since the beginning of Trends.Earth `r nrow(jobs)` have been run.
+Since the beginning of Trends.Earth `r nrow(jobs)` jobs have been run.
 
 ```{r jobs_all_time, fig.width=12}
 jobs %>%
