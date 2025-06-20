@@ -59,9 +59,12 @@ class ExecutionService(object):
     ):
         logger.info("[SERVICE]: Getting executions")
         logger.info("[DB]: QUERY")
-        if not updated_at:
-            updated_at = datetime.datetime(2000, 12, 1)
         query = None
+        if page < 1:
+            raise Exception("Page must be greater than 0")
+        if per_page < 1:
+            raise Exception("Per page must be greater than 0")
+
         # Admin
         if user.role == "ADMIN":
             # Target User
@@ -81,8 +84,6 @@ class ExecutionService(object):
         else:
             query = db.session.query(Execution).filter(Execution.user_id == user.id)
 
-        query = query.filter(Execution.end_date > updated_at)
-
         if status:
             query = query.filter(Execution.status == status)
         if start_date_gte:
@@ -93,6 +94,10 @@ class ExecutionService(object):
             query = query.filter(Execution.end_date >= end_date_gte)
         if end_date_lte:
             query = query.filter(Execution.end_date <= end_date_lte)
+        elif updated_at:
+            # For backwards compatibility, if no end_date_lte is provided,
+            # filter by updated_at
+            query = query.filter(Execution.end_date >= updated_at)
 
         if sort:
             sort_field = sort[1:] if sort.startswith("-") else sort
@@ -102,6 +107,7 @@ class ExecutionService(object):
                     getattr(getattr(Execution, sort_field), sort_direction)()
                 )
         else:
+            # Default to sorting by end_date for backwards compatibility
             query = query.order_by(Execution.end_date.desc())
 
         total = query.count()

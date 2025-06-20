@@ -266,6 +266,7 @@ def get_executions():
     end_date_lte = request.args.get("end_date_lte", None)
     if end_date_lte:
         end_date_lte = dateutil.parser.parse(end_date_lte)
+
     sort = request.args.get("sort", None)
     include = request.args.get("include")
     include = include.split(",") if include else []
@@ -351,7 +352,7 @@ def update_execution(execution):
 @endpoints.route("/execution/<execution>/log", strict_slashes=False, methods=["GET"])
 def get_execution_logs(execution):
     """Get the exectuion logs"""
-    logger.info("[ROUTER]: Getting exectuion logs of execution %s " % (execution))
+    logger.info("[ROUTER]: Getting execution logs of execution %s " % (execution))
     try:
         start = request.args.get("start", None)
         if start:
