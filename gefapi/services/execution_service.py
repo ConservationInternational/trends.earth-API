@@ -45,7 +45,17 @@ class ExecutionService(object):
 
     @staticmethod
     def get_executions(
-        user, target_user_id=None, updated_at=None, page=1, per_page=2000
+        user,
+        target_user_id=None,
+        updated_at=None,
+        status=None,
+        start_date_gte=None,
+        start_date_lte=None,
+        end_date_gte=None,
+        end_date_lte=None,
+        sort=None,
+        page=1,
+        per_page=2000,
     ):
         logger.info("[SERVICE]: Getting executions")
         logger.info("[DB]: QUERY")
@@ -61,25 +71,39 @@ class ExecutionService(object):
                 except Exception as error:
                     rollbar.report_exc_info()
                     raise error
-                query = (
-                    db.session.query(Execution)
-                    .filter(Execution.user_id == target_user_id)
-                    .filter(Execution.end_date > updated_at)
-                    .order_by(Execution.end_date)
+                query = db.session.query(Execution).filter(
+                    Execution.user_id == target_user_id
                 )
             # All
             else:
-                query = Execution.query.filter(
-                    Execution.end_date > updated_at
-                ).order_by(Execution.end_date)
+                query = Execution.query
         # ME
         else:
-            query = (
-                db.session.query(Execution)
-                .filter(Execution.user_id == user.id)
-                .filter(Execution.end_date > updated_at)
-                .order_by(Execution.end_date)
-            )
+            query = db.session.query(Execution).filter(Execution.user_id == user.id)
+
+        query = query.filter(Execution.end_date > updated_at)
+
+        if status:
+            query = query.filter(Execution.status == status)
+        if start_date_gte:
+            query = query.filter(Execution.start_date >= start_date_gte)
+        if start_date_lte:
+            query = query.filter(Execution.start_date <= start_date_lte)
+        if end_date_gte:
+            query = query.filter(Execution.end_date >= end_date_gte)
+        if end_date_lte:
+            query = query.filter(Execution.end_date <= end_date_lte)
+
+        if sort:
+            sort_field = sort[1:] if sort.startswith("-") else sort
+            sort_direction = "desc" if sort.startswith("-") else "asc"
+            if hasattr(Execution, sort_field):
+                query = query.order_by(
+                    getattr(getattr(Execution, sort_field), sort_direction)()
+                )
+        else:
+            query = query.order_by(Execution.end_date.desc())
+
         total = query.count()
         executions = query.offset((page - 1) * per_page).limit(per_page).all()
         return executions, total

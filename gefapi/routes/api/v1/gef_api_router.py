@@ -253,6 +253,20 @@ def get_executions():
     updated_at = request.args.get("updated_at", None)
     if updated_at:
         updated_at = dateutil.parser.parse(updated_at)
+    status = request.args.get("status", None)
+    start_date_gte = request.args.get("start_date_gte", None)
+    if start_date_gte:
+        start_date_gte = dateutil.parser.parse(start_date_gte)
+    start_date_lte = request.args.get("start_date_lte", None)
+    if start_date_lte:
+        start_date_lte = dateutil.parser.parse(start_date_lte)
+    end_date_gte = request.args.get("end_date_gte", None)
+    if end_date_gte:
+        end_date_gte = dateutil.parser.parse(end_date_gte)
+    end_date_lte = request.args.get("end_date_lte", None)
+    if end_date_lte:
+        end_date_lte = dateutil.parser.parse(end_date_lte)
+    sort = request.args.get("sort", None)
     include = request.args.get("include")
     include = include.split(",") if include else []
     exclude = request.args.get("exclude")
@@ -267,17 +281,30 @@ def get_executions():
         page, per_page = 1, 1000
     try:
         executions, total = ExecutionService.get_executions(
-            current_user, user_id, updated_at, page=page, per_page=per_page
+            current_user,
+            user_id,
+            updated_at,
+            status=status,
+            start_date_gte=start_date_gte,
+            start_date_lte=start_date_lte,
+            end_date_gte=end_date_gte,
+            end_date_lte=end_date_lte,
+            sort=sort,
+            page=page,
+            per_page=per_page,
         )
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(
-        data=[execution.serialize(include, exclude) for execution in executions],
-        page=page,
-        per_page=per_page,
-        total=total,
-    ), 200
+    return (
+        jsonify(
+            data=[execution.serialize(include, exclude) for execution in executions],
+            page=page,
+            per_page=per_page,
+            total=total,
+        ),
+        200,
+    )
 
 
 @endpoints.route("/execution/<execution>", strict_slashes=False, methods=["GET"])
