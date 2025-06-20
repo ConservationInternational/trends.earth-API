@@ -44,11 +44,14 @@ class ExecutionService(object):
     """Execution Class"""
 
     @staticmethod
-    def get_executions(user, target_user_id=None, updated_at=None):
+    def get_executions(
+        user, target_user_id=None, updated_at=None, page=1, per_page=2000
+    ):
         logger.info("[SERVICE]: Getting executions")
         logger.info("[DB]: QUERY")
         if not updated_at:
             updated_at = datetime.datetime(2000, 12, 1)
+        query = None
         # Admin
         if user.role == "ADMIN":
             # Target User
@@ -58,7 +61,7 @@ class ExecutionService(object):
                 except Exception as error:
                     rollbar.report_exc_info()
                     raise error
-                executions = (
+                query = (
                     db.session.query(Execution)
                     .filter(Execution.user_id == target_user_id)
                     .filter(Execution.end_date > updated_at)
@@ -66,21 +69,20 @@ class ExecutionService(object):
                 )
             # All
             else:
-                executions = (
-                    Execution.query.filter(Execution.end_date > updated_at)
-                    .order_by(Execution.end_date)
-                    .all()
-                )
-            return executions
+                query = Execution.query.filter(
+                    Execution.end_date > updated_at
+                ).order_by(Execution.end_date)
         # ME
         else:
-            executions = (
+            query = (
                 db.session.query(Execution)
                 .filter(Execution.user_id == user.id)
                 .filter(Execution.end_date > updated_at)
                 .order_by(Execution.end_date)
             )
-            return executions
+        total = query.count()
+        executions = query.offset((page - 1) * per_page).limit(per_page).all()
+        return executions, total
 
     @staticmethod
     def create_execution(script_id, params, user):

@@ -6,7 +6,7 @@ import tempfile
 
 import dateutil.parser
 from flask import Response, json, jsonify, request, send_from_directory
-from flask_jwt_extended import jwt_required, current_user
+from flask_jwt_extended import current_user, jwt_required
 
 from gefapi.errors import (
     EmailError,
@@ -257,13 +257,26 @@ def get_executions():
     include = include.split(",") if include else []
     exclude = request.args.get("exclude")
     exclude = exclude.split(",") if exclude else []
+    # Pagination parameters
     try:
-        executions = ExecutionService.get_executions(current_user, user_id, updated_at)
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 20))
+        page = max(page, 1)
+        per_page = min(max(per_page, 1), 100)
+    except Exception:
+        page, per_page = 1, 1000
+    try:
+        executions, total = ExecutionService.get_executions(
+            current_user, user_id, updated_at, page=page, per_page=per_page
+        )
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
     return jsonify(
-        data=[execution.serialize(include, exclude) for execution in executions]
+        data=[execution.serialize(include, exclude) for execution in executions],
+        page=page,
+        per_page=per_page,
+        total=total,
     ), 200
 
 
