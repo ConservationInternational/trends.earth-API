@@ -105,12 +105,11 @@ jobs:
         else
           git commit -m "Auto-update API documentation [skip ci]"
           git push
-        fi
-      env:
+        fi      env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Upload API documentation as artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: api-documentation
         path: |
