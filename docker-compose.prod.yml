@@ -42,6 +42,25 @@ services:
           cpus: "0.25"
           memory: 400M
 
+  beat:
+    image: 172.40.1.52:5000/trendsearth-api
+    build: .
+    command: beat
+    environment:
+      PORT: 3000
+    env_file:
+      - prod.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
 
   redis:
     image: redis

@@ -17,7 +17,11 @@ case "$1" in
         ;;
     worker)
         echo "Running celery"
-        exec celery -A gefapi.celery worker -E -B --loglevel=DEBUG
+        exec celery -A gefapi.celery:celery worker -E --loglevel=DEBUG
+        ;;
+    beat)
+        echo "Running celery beat"
+        exec celery -A gefapi.celery:celery beat --loglevel=DEBUG
         ;;
     *)
         exec "$@"
