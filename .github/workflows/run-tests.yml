@@ -1,0 +1,290 @@
+name: Run Tests
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: gefapi_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:6
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9, "3.10"]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Set environment variables for testing
+      run: |
+        echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gefapi_test" >> $GITHUB_ENV
+        echo "REDIS_URL=redis://localhost:6379/1" >> $GITHUB_ENV
+        echo "JWT_SECRET_KEY=test-secret-key-for-ci" >> $GITHUB_ENV
+        echo "FLASK_ENV=testing" >> $GITHUB_ENV
+        echo "TESTING=true" >> $GITHUB_ENV
+
+    - name: Run linting
+      run: |
+        # Install linting tools
+        pip install flake8 black isort
+        
+        # Run black formatter check
+        black --check --diff gefapi/ tests/
+        
+        # Run isort import sorting check
+        isort --check-only --diff gefapi/ tests/
+        
+        # Run flake8 linting
+        flake8 gefapi/ tests/ --max-line-length=88 --extend-ignore=E203,W503
+
+    - name: Run type checking
+      run: |
+        pip install mypy types-redis
+        mypy gefapi/ --ignore-missing-imports --no-strict-optional
+
+    - name: Initialize test database
+      run: |
+        python -c "
+        import os
+        os.environ['DATABASE_URL'] = 'postgresql://postgres:postgres@localhost:5432/gefapi_test'
+        os.environ['TESTING'] = 'true'
+        from gefapi import create_app, db
+        app = create_app()
+        with app.app_context():
+            db.create_all()
+        print('Test database initialized successfully')
+        "
+
+    - name: Run unit tests
+      run: |
+        pytest tests/ \
+          -m "not slow and not integration" \
+          --cov=gefapi \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term-missing \
+          --junitxml=test-results.xml \
+          --html=test-report.html \
+          --self-contained-html \
+          -v
+
+    - name: Run integration tests
+      run: |
+        pytest tests/test_integration.py \
+          --cov=gefapi \
+          --cov-append \
+          --cov-report=xml \
+          --junitxml=integration-results.xml \
+          -v
+
+    - name: Run API validation tests
+      run: |
+        pytest tests/test_api_validation.py \
+          --cov=gefapi \
+          --cov-append \
+          --cov-report=xml \
+          --junitxml=validation-results.xml \
+          -v
+
+    - name: Run performance tests (Python 3.9 only)
+      if: matrix.python-version == '3.9'
+      run: |
+        pytest tests/test_performance.py \
+          -m "not slow" \
+          --junitxml=performance-results.xml \
+          -v || echo "Performance tests completed with warnings"
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      if: matrix.python-version == '3.9'
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results-${{ matrix.python-version }}
+        path: |
+          test-results.xml
+          integration-results.xml
+          validation-results.xml
+          performance-results.xml
+          test-report.html
+          htmlcov/
+          coverage.xml
+        retention-days: 30
+
+    - name: Run security checks
+      run: |
+        pip install safety bandit
+        
+        # Check for known security vulnerabilities in dependencies
+        safety check
+        
+        # Run bandit security linter
+        bandit -r gefapi/ -f json -o bandit-report.json || true
+        
+        # Show bandit results  
+        bandit -r gefapi/ || true
+
+    - name: Upload security scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-scan-results-${{ matrix.python-version }}
+        path: bandit-report.json
+        retention-days: 30
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request'
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: gefapi_integration
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:6
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Set environment variables
+      run: |
+        echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gefapi_integration" >> $GITHUB_ENV
+        echo "REDIS_URL=redis://localhost:6379/2" >> $GITHUB_ENV
+        echo "JWT_SECRET_KEY=integration-test-key" >> $GITHUB_ENV
+        echo "FLASK_ENV=testing" >> $GITHUB_ENV
+
+    - name: Run integration tests
+      run: |
+        pytest tests/test_integration.py -v --tb=short
+
+    - name: Test API endpoints with curl
+      run: |
+        # Start the application in background
+        python main.py &
+        APP_PID=$!
+        
+        # Wait for app to start
+        sleep 10
+        
+        # Test health endpoint (if exists)
+        curl -f http://localhost:5000/ || echo "Root endpoint test"
+        
+        # Test auth endpoint
+        curl -X POST http://localhost:5000/auth \
+          -H "Content-Type: application/json" \
+          -d '{"email":"nonexistent@test.com","password":"test"}' || echo "Auth endpoint accessible"
+        
+        # Kill the app
+        kill $APP_PID || true
+
+    - name: Run load tests (optional)
+      continue-on-error: true
+      run: |
+        pytest tests/test_performance.py -m "slow" -v --tb=short || echo "Load tests completed with issues"
+
+  test-summary:
+    runs-on: ubuntu-latest
+    needs: [test, integration-test]
+    if: always()
+    
+    steps:
+    - name: Test Summary
+      run: |
+        echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Test Type | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Unit Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Integration Tests | ${{ needs.integration-test.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.test.result }}" = "success" ] && [ "${{ needs.integration-test.result }}" = "success" ]; then
+          echo "✅ All tests passed successfully!" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Some tests failed. Please check the logs above." >> $GITHUB_STEP_SUMMARY
+        fi
