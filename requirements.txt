@@ -8,7 +8,7 @@ Flask-Compress==1.15
 boto3==1.34.153
 psycopg2==2.9.9
 SQLAlchemy==2.0.31
-requests==2.32.3
+requests==2.32.4
 docker==7.1.0
 python-dateutil==2.9.0.post0
 python-slugify==8.0.4
