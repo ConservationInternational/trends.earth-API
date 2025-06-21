@@ -2,6 +2,7 @@
 
 from __future__ import absolute_import, division, print_function
 
+import datetime
 import logging
 
 import psutil
@@ -12,7 +13,7 @@ from sqlalchemy import func
 from gefapi import celery, db
 from gefapi.models import Execution, Script, StatusLog, User
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 class StatusMonitoringTask(Task):
@@ -26,10 +27,11 @@ class StatusMonitoringTask(Task):
 @celery.task(base=StatusMonitoringTask, bind=True)
 def collect_system_status(self):
     """Collect system status and save to status_log table"""
-    logger.info("[TASK]: Collecting system status")
+    logger.info("[TASK]: Starting system status collection")
 
     try:
         # Count executions by status
+        logger.info("[TASK]: Querying execution counts")
         execution_counts = (
             db.session.query(Execution.status, func.count(Execution.id))
             .group_by(Execution.status)
@@ -37,21 +39,36 @@ def collect_system_status(self):
         )
 
         execution_status_map = dict(execution_counts)
-        executions_active = execution_status_map.get("ACTIVE", 0)
+        executions_active = execution_status_map.get(
+            "RUNNING", 0
+        ) + execution_status_map.get("PENDING", 0)
         executions_ready = execution_status_map.get("READY", 0)
         executions_running = execution_status_map.get("RUNNING", 0)
         executions_finished = execution_status_map.get("FINISHED", 0)
 
+        logger.info(
+            f"[TASK]: Execution counts - Active: {executions_active}, Running: {executions_running}, Finished: {executions_finished}"
+        )
+
         # Count users and scripts
-        users_count = db.session.query(func.count(User.id)).scalar()
-        scripts_count = db.session.query(func.count(Script.id)).scalar()
+        logger.info("[TASK]: Querying user and script counts")
+        users_count = db.session.query(func.count(User.id)).scalar() or 0
+        scripts_count = db.session.query(func.count(Script.id)).scalar() or 0
+
+        logger.info(f"[TASK]: Counts - Users: {users_count}, Scripts: {scripts_count}")
 
         # Get system metrics
+        logger.info("[TASK]: Collecting system metrics")
         memory = psutil.virtual_memory()
         memory_available_percent = memory.available / memory.total * 100
         cpu_usage_percent = psutil.cpu_percent(interval=1)
 
+        logger.info(
+            f"[TASK]: System metrics - CPU: {cpu_usage_percent}%, Memory Available: {memory_available_percent:.1f}%"
+        )
+
         # Create status log entry
+        logger.info("[TASK]: Creating status log entry")
         status_log = StatusLog(
             executions_active=executions_active,
             executions_ready=executions_ready,
@@ -63,15 +80,34 @@ def collect_system_status(self):
             cpu_usage_percent=cpu_usage_percent,
         )
 
-        logger.info("[DB]: ADD")
+        logger.info("[DB]: Adding status log to database")
         db.session.add(status_log)
         db.session.commit()
 
-        logger.info(f"[TASK]: Status log created with ID {status_log.id}")
-        return status_log.serialize()
+        logger.info(
+            f"[TASK]: Status log created successfully with ID {status_log.id} at {status_log.timestamp}"
+        )
+
+        # Return serialized data for task result
+        result = status_log.serialize()
+        logger.info(f"[TASK]: Task completed successfully, returning: {result}")
+        return result
 
     except Exception as error:
         logger.error(f"[TASK]: Error collecting system status: {str(error)}")
-        rollbar.report_exc_info()
-        db.session.rollback()
+        logger.exception("Full traceback:")
+
+        # Try to rollback the session
+        try:
+            db.session.rollback()
+        except:
+            pass
+
+        # Report to rollbar if available
+        try:
+            rollbar.report_exc_info()
+        except:
+            pass
+
+        # Re-raise the error so Celery can handle it
         raise error

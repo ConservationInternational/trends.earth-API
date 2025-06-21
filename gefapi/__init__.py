@@ -55,6 +55,8 @@ migrate = Migrate(app, db)
 celery = make_celery(app)
 
 # DB has to be ready!
+# Import tasks to register them with Celery
+from gefapi import tasks  # noqa: E402
 from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
 
 # Blueprint Flask Routing
@@ -65,8 +67,8 @@ app.register_blueprint(endpoints, url_prefix="/api/v1")
 jwt = JWTManager(app)
 
 
-from gefapi.services import UserService  # noqa:E402
 from gefapi.models import User  # noqa:E402
+from gefapi.services import UserService  # noqa:E402
 
 
 @app.route("/auth", methods=["POST"])
