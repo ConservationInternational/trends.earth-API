@@ -63,6 +63,8 @@ class Execution(db.Model):
             "params": self.params,
             "results": self.results,
         }
+        if "duration" in include:
+            execution["duration"] = self.calculate_duration()
         if "logs" in include:
             execution["logs"] = self.serialize_logs
         if "user" in include:
@@ -74,6 +76,17 @@ class Execution(db.Model):
         if "results" in exclude:
             del execution["results"]
         return execution
+
+    def calculate_duration(self):
+        """Calculate the duration of the execution in seconds"""
+        if self.end_date:
+            # Task is finished, calculate actual duration
+            duration = self.end_date - self.start_date
+        else:
+            # Task is still running, calculate current duration
+            duration = datetime.datetime.utcnow() - self.start_date
+
+        return duration.total_seconds()
 
     @property
     def serialize_logs(self):

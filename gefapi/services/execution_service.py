@@ -7,11 +7,13 @@ import logging
 from uuid import UUID
 
 import rollbar
+from sqlalchemy import case, func
+from sqlalchemy.orm import joinedload
 
 from gefapi import db
 from gefapi.config import SETTINGS
 from gefapi.errors import ExecutionNotFound, ScriptNotFound, ScriptStateNotValid
-from gefapi.models import Execution, ExecutionLog
+from gefapi.models import Execution, ExecutionLog, Script, User
 from gefapi.services import EmailService, ScriptService, UserService, docker_run
 
 logger = logging.getLogger()
@@ -59,31 +61,41 @@ class ExecutionService(object):
     ):
         logger.info("[SERVICE]: Getting executions")
         logger.info("[DB]: QUERY")
-        query = None
         if page < 1:
             raise Exception("Page must be greater than 0")
         if per_page < 1:
             raise Exception("Per page must be greater than 0")
 
-        # Admin
+        # Determine if we need joins for sorting
+        needs_joins = sort and (
+            sort.lstrip("-") in ["script_name", "user_name", "duration"]
+        )
+
+        # Build base query
+        if needs_joins:
+            query = (
+                db.session.query(Execution)
+                .join(Script, Execution.script_id == Script.id)
+                .join(User, Execution.user_id == User.id)
+            )
+        else:
+            query = db.session.query(Execution)
+
+        # Apply user filters
         if user.role == "ADMIN":
-            # Target User
             if target_user_id:
                 try:
                     UUID(target_user_id, version=4)
                 except Exception as error:
                     rollbar.report_exc_info()
                     raise error
-                query = db.session.query(Execution).filter(
-                    Execution.user_id == target_user_id
-                )
-            # All
-            else:
-                query = Execution.query
-        # ME
+                query = query.filter(Execution.user_id == target_user_id)
+            # For admin, no additional user filter needed
         else:
-            query = db.session.query(Execution).filter(Execution.user_id == user.id)
+            # For non-admin users, only show their own executions
+            query = query.filter(Execution.user_id == user.id)
 
+        # Apply other filters
         if status:
             query = query.filter(Execution.status == status)
         if start_date_gte:
@@ -99,10 +111,39 @@ class ExecutionService(object):
             # filter by updated_at
             query = query.filter(Execution.end_date >= updated_at)
 
+        # Apply sorting
         if sort:
             sort_field = sort[1:] if sort.startswith("-") else sort
             sort_direction = "desc" if sort.startswith("-") else "asc"
-            if hasattr(Execution, sort_field):
+
+            if sort_field == "duration":
+                # Calculate duration for sorting
+                duration_expr = case(
+                    (
+                        Execution.end_date.isnot(None),
+                        func.extract(
+                            "epoch", Execution.end_date - Execution.start_date
+                        ),
+                    ),
+                    else_=func.extract(
+                        "epoch", func.now() - Execution.start_date
+                    ),  # For running tasks
+                )
+                if sort_direction == "desc":
+                    query = query.order_by(duration_expr.desc())
+                else:
+                    query = query.order_by(duration_expr.asc())
+            elif sort_field == "script_name":
+                if sort_direction == "desc":
+                    query = query.order_by(Script.name.desc())
+                else:
+                    query = query.order_by(Script.name.asc())
+            elif sort_field == "user_name":
+                if sort_direction == "desc":
+                    query = query.order_by(User.name.desc())
+                else:
+                    query = query.order_by(User.name.asc())
+            elif hasattr(Execution, sort_field):
                 query = query.order_by(
                     getattr(getattr(Execution, sort_field), sort_direction)()
                 )
