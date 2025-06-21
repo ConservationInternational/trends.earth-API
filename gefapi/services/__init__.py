@@ -24,6 +24,7 @@ from gefapi.services.docker_service import (  # noqa:E402
 )
 from gefapi.services.email_service import EmailService  # noqa:E402
 from gefapi.services.script_service import ScriptService  # noqa:E402
+from gefapi.services.status_service import StatusService  # noqa:E402
 from gefapi.services.user_service import UserService  # noqa:E402
 
 # Import last to avoid circular dependency
@@ -35,6 +36,7 @@ __all__ = [
     "docker_run",
     "EmailService",
     "ScriptService",
+    "StatusService",
     "UserService",
     "ExecutionService",
 ]

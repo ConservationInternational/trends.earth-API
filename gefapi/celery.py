@@ -22,6 +22,16 @@ def make_celery(app):
         broker=app.config["broker_url"],
     )
     celery.conf.update(app.config)
+
+    # Configure periodic tasks
+    celery.conf.beat_schedule = {
+        "collect-system-status": {
+            "task": "gefapi.tasks.status_monitoring.collect_system_status",
+            "schedule": 120.0,  # Every 2 minutes (120 seconds)
+        },
+    }
+    celery.conf.timezone = "UTC"
+
     TaskBase = celery.Task
 
     class ContextTask(TaskBase):

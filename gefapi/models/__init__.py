@@ -54,6 +54,7 @@ from gefapi.models.execution import Execution  # noqa: E402
 from gefapi.models.execution_log import ExecutionLog  # noqa: E402
 from gefapi.models.script import Script  # noqa: E402
 from gefapi.models.script_log import ScriptLog  # noqa: E402
+from gefapi.models.status_log import StatusLog  # noqa: E402
 from gefapi.models.user import User  # noqa: E402
 
-__all__ = ["Execution", "ExecutionLog", "Script", "ScriptLog", "User"]
+__all__ = ["Execution", "ExecutionLog", "Script", "ScriptLog", "StatusLog", "User"]

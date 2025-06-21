@@ -21,7 +21,7 @@ from gefapi.errors import (
 )
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.s3 import get_script_from_s3
-from gefapi.services import ExecutionService, ScriptService, UserService
+from gefapi.services import ExecutionService, ScriptService, StatusService, UserService
 from gefapi.validators import (
     validate_execution_log_creation,
     validate_execution_update,
@@ -602,3 +602,58 @@ def delete_user(user):
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
     return jsonify(data=user.serialize()), 200
+
+
+@endpoints.route("/status", strict_slashes=False, methods=["GET"])
+@jwt_required()
+def get_status_logs():
+    """Get system status logs (Admin only)"""
+    logger.info("[ROUTER]: Getting status logs")
+
+    # Check if user is admin
+    identity = current_user
+    if identity.role != "ADMIN" and identity.email != "gef@gef.com":
+        return error(status=403, detail="Forbidden")
+
+    # Parse date filters
+    start_date = request.args.get("start_date", None)
+    if start_date:
+        start_date = dateutil.parser.parse(start_date)
+
+    end_date = request.args.get("end_date", None)
+    if end_date:
+        end_date = dateutil.parser.parse(end_date)
+
+    # Parse sorting
+    sort = request.args.get("sort", None)
+
+    # Parse pagination
+    try:
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 100))
+        page = max(page, 1)
+        per_page = min(max(per_page, 1), 1000)
+    except Exception:
+        page, per_page = 1, 100
+
+    try:
+        status_logs, total = StatusService.get_status_logs(
+            start_date=start_date,
+            end_date=end_date,
+            sort=sort,
+            page=page,
+            per_page=per_page,
+        )
+    except Exception as e:
+        logger.error("[ROUTER]: " + str(e))
+        return error(status=500, detail="Generic Error")
+
+    return (
+        jsonify(
+            data=[status_log.serialize() for status_log in status_logs],
+            page=page,
+            per_page=per_page,
+            total=total,
+        ),
+        200,
+    )
