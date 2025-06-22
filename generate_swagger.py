@@ -15,72 +15,111 @@ from gefapi import app
 
 # Define Marshmallow schemas for API documentation
 class UserSchema(Schema):
-    id = fields.UUID(required=True, description="Unique identifier for the user")
-    email = fields.Email(required=True, description="User's email address")
-    name = fields.Str(description="User's full name")
-    country = fields.Str(description="User's country")
-    institution = fields.Str(description="User's institution")
-    role = fields.Str(description="User role (USER, ADMIN)")
-    created_at = fields.DateTime(description="Account creation timestamp")
+    id = fields.UUID(
+        required=True, metadata={"description": "Unique identifier for the user"}
+    )
+    email = fields.Email(
+        required=True, metadata={"description": "User's email address"}
+    )
+    name = fields.Str(metadata={"description": "User's full name"})
+    country = fields.Str(metadata={"description": "User's country"})
+    institution = fields.Str(metadata={"description": "User's institution"})
+    role = fields.Str(metadata={"description": "User role (USER, ADMIN)"})
+    created_at = fields.DateTime(metadata={"description": "Account creation timestamp"})
 
 
 class ScriptSchema(Schema):
-    id = fields.UUID(required=True, description="Unique identifier for the script")
-    name = fields.Str(required=True, description="Script name")
-    slug = fields.Str(required=True, description="URL-friendly script identifier")
-    status = fields.Str(description="Script status (PENDING, SUCCESS, FAILED)")
-    public = fields.Bool(description="Whether script is publicly accessible")
-    user_id = fields.UUID(description="ID of script owner")
-    created_at = fields.DateTime(description="Script creation timestamp")
-    cpu_reservation = fields.Int(description="Reserved CPU resources")
-    cpu_limit = fields.Int(description="Maximum CPU limit")
-    memory_reservation = fields.Int(description="Reserved memory (MB)")
-    memory_limit = fields.Int(description="Maximum memory limit (MB)")
+    id = fields.UUID(
+        required=True, metadata={"description": "Unique identifier for the script"}
+    )
+    name = fields.Str(required=True, metadata={"description": "Script name"})
+    slug = fields.Str(
+        required=True, metadata={"description": "URL-friendly script identifier"}
+    )
+    status = fields.Str(
+        metadata={"description": "Script status (PENDING, SUCCESS, FAILED)"}
+    )
+    public = fields.Bool(
+        metadata={"description": "Whether script is publicly accessible"}
+    )
+    user_id = fields.UUID(metadata={"description": "ID of script owner"})
+    created_at = fields.DateTime(metadata={"description": "Script creation timestamp"})
+    cpu_reservation = fields.Int(metadata={"description": "Reserved CPU resources"})
+    cpu_limit = fields.Int(metadata={"description": "Maximum CPU limit"})
+    memory_reservation = fields.Int(metadata={"description": "Reserved memory (MB)"})
+    memory_limit = fields.Int(metadata={"description": "Maximum memory limit (MB)"})
 
 
 class ExecutionSchema(Schema):
-    id = fields.UUID(required=True, description="Unique identifier for the execution")
-    script_id = fields.UUID(required=True, description="ID of the executed script")
-    user_id = fields.UUID(required=True, description="ID of user who ran the script")
-    status = fields.Str(
-        description="Execution status (PENDING, RUNNING, FINISHED, FAILED)"
+    id = fields.UUID(
+        required=True, metadata={"description": "Unique identifier for the execution"}
     )
-    progress = fields.Int(description="Execution progress percentage (0-100)")
-    start_date = fields.DateTime(description="Execution start timestamp")
-    end_date = fields.DateTime(description="Execution end timestamp")
-    duration = fields.Float(description="Execution duration in seconds (when included)")
-    params = fields.Dict(description="Execution parameters")
-    results = fields.Dict(description="Execution results")
+    script_id = fields.UUID(
+        required=True, metadata={"description": "ID of the executed script"}
+    )
+    user_id = fields.UUID(
+        required=True, metadata={"description": "ID of user who ran the script"}
+    )
+    status = fields.Str(
+        metadata={
+            "description": "Execution status (PENDING, RUNNING, FINISHED, FAILED)"
+        }
+    )
+    progress = fields.Int(
+        metadata={"description": "Execution progress percentage (0-100)"}
+    )
+    start_date = fields.DateTime(metadata={"description": "Execution start timestamp"})
+    end_date = fields.DateTime(metadata={"description": "Execution end timestamp"})
+    duration = fields.Float(
+        metadata={"description": "Execution duration in seconds (when included)"}
+    )
+    params = fields.Dict(metadata={"description": "Execution parameters"})
+    results = fields.Dict(metadata={"description": "Execution results"})
 
 
 class StatusLogSchema(Schema):
-    id = fields.Int(required=True, description="Unique identifier for the status log")
-    timestamp = fields.DateTime(
-        required=True, description="Status measurement timestamp"
+    id = fields.Int(
+        required=True, metadata={"description": "Unique identifier for the status log"}
     )
-    executions_active = fields.Int(description="Number of active executions")
-    executions_ready = fields.Int(description="Number of ready executions")
-    executions_running = fields.Int(description="Number of running executions")
-    executions_finished = fields.Int(description="Number of finished executions")
-    users_count = fields.Int(description="Total number of users")
-    scripts_count = fields.Int(description="Total number of scripts")
-    memory_available_percent = fields.Float(description="Available memory percentage")
-    cpu_usage_percent = fields.Float(description="CPU usage percentage")
+    timestamp = fields.DateTime(
+        required=True, metadata={"description": "Status measurement timestamp"}
+    )
+    executions_active = fields.Int(
+        metadata={"description": "Number of active executions"}
+    )
+    executions_ready = fields.Int(
+        metadata={"description": "Number of ready executions"}
+    )
+    executions_running = fields.Int(
+        metadata={"description": "Number of running executions"}
+    )
+    executions_finished = fields.Int(
+        metadata={"description": "Number of finished executions"}
+    )
+    users_count = fields.Int(metadata={"description": "Total number of users"})
+    scripts_count = fields.Int(metadata={"description": "Total number of scripts"})
+    memory_available_percent = fields.Float(
+        metadata={"description": "Available memory percentage"}
+    )
+    cpu_usage_percent = fields.Float(metadata={"description": "CPU usage percentage"})
 
 
 class ExecutionLogSchema(Schema):
-    id = fields.Int(required=True, description="Unique identifier for the log entry")
-    text = fields.Str(required=True, description="Log message text")
-    level = fields.Str(
-        required=True, description="Log level (DEBUG, INFO, WARNING, ERROR)"
+    id = fields.Int(
+        required=True, metadata={"description": "Unique identifier for the log entry"}
     )
-    register_date = fields.DateTime(description="Log entry timestamp")
-    execution_id = fields.UUID(description="ID of associated execution")
+    text = fields.Str(required=True, metadata={"description": "Log message text"})
+    level = fields.Str(
+        required=True,
+        metadata={"description": "Log level (DEBUG, INFO, WARNING, ERROR)"},
+    )
+    register_date = fields.DateTime(metadata={"description": "Log entry timestamp"})
+    execution_id = fields.UUID(metadata={"description": "ID of associated execution"})
 
 
 class ErrorSchema(Schema):
-    error = fields.Str(required=True, description="Error message")
-    detail = fields.Str(description="Detailed error description")
+    error = fields.Str(required=True, metadata={"description": "Error message"})
+    detail = fields.Str(metadata={"description": "Detailed error description"})
 
 
 def create_api_spec():
