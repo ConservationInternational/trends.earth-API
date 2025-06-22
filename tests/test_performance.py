@@ -2,10 +2,10 @@
 Performance tests for Trends.Earth API
 """
 
-import concurrent.futures
-import time
 from collections import defaultdict
+import concurrent.futures
 from threading import Lock
+import time
 
 import pytest
 
@@ -163,12 +163,13 @@ class TestPerformance:
             # Check memory every 20 requests
             if i % 20 == 0:
                 current_memory = process.memory_info().rss / 1024 / 1024  # MB
-                memory_increase = current_memory - initial_memory
-
-                # Memory should not increase dramatically
+                memory_increase = (
+                    current_memory - initial_memory
+                )  # Memory should not increase dramatically
                 if memory_increase > 100:  # 100MB increase is concerning
                     pytest.skip(
-                        f"Potential memory leak detected: {memory_increase:.1f}MB increase"
+                        f"Potential memory leak detected: "
+                        f"{memory_increase:.1f}MB increase"
                     )
 
         final_memory = process.memory_info().rss / 1024 / 1024  # MB
@@ -334,5 +335,5 @@ class TestStressTesting:
                 try:
                     data = response.json
                     assert isinstance(data, dict), "Response should be JSON object"
-                except:
+                except Exception:
                     pytest.fail(f"Invalid JSON response from {endpoint}")

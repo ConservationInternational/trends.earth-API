@@ -2,10 +2,7 @@
 Tests for API validation, edge cases, and error handling
 """
 
-import json
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 class TestAPIValidation:
@@ -115,16 +112,15 @@ class TestRateLimiting:
 
             if response.status_code == 429:  # Rate limited
                 break
-            elif response.status_code == 401:  # Normal auth failure
-                failed_attempts += 1
-
-        # Should eventually rate limit or at least handle gracefully
+            if response.status_code == 401:  # Normal auth failure
+                failed_attempts += (
+                    1  # Should eventually rate limit or at least handle gracefully
+                )
         assert failed_attempts > 0  # Some attempts should fail normally
 
     def test_concurrent_requests(self, client, auth_headers_user):
         """Test handling concurrent requests"""
         import concurrent.futures
-        import threading
 
         def make_request():
             return client.get("/api/v1/user/me", headers=auth_headers_user)
@@ -157,13 +153,11 @@ class TestErrorRecovery:
         response = client.get("/api/v1/script", headers=auth_headers_admin)
 
         # Should return appropriate error response, not crash
-        assert response.status_code in [500, 503]
-
-        # Response should be valid JSON
+        assert response.status_code in [500, 503]  # Response should be valid JSON
         try:
             error_data = response.json
             assert "error" in error_data
-        except:
+        except Exception:
             pass  # Some error responses might not be JSON
 
     @patch("gefapi.services.docker_service.DockerService")
@@ -223,12 +217,16 @@ class TestAPIConsistency:
             },
             headers=auth_headers_admin,
         )
-        assert response.status_code in [200, 400]  # Either success or validation error
-
-        # Test with missing content type
+        assert response.status_code in [
+            200,
+            400,
+        ]  # Either success or validation error        # Test with missing content type
         response = client.post(
             "/api/v1/user",
-            data='{"email": "test2@test.com", "password": "pass123", "name": "Test", "role": "USER"}',
+            data=(
+                '{"email": "test2@test.com", "password": "pass123", '
+                '"name": "Test", "role": "USER"}'
+            ),
             headers=auth_headers_admin,
         )
         # Should handle missing content type appropriately
@@ -278,21 +276,21 @@ class TestSecurityHeaders:
 
     def test_security_headers_present(self, client):
         """Test that appropriate security headers are present"""
-        response = client.get("/")
-
-        # Check for common security headers (may not all be implemented)
-        headers_to_check = [
-            "X-Content-Type-Options",
-            "X-Frame-Options",
-            "X-XSS-Protection",
-            "Strict-Transport-Security",
-        ]
+        response = client.get(
+            "/"
+        )  # Check for common security headers (may not all be implemented)
+        # headers_to_check = [
+        #     "X-Content-Type-Options",
+        #     "X-Frame-Options",
+        #     "X-XSS-Protection",
+        #     "Strict-Transport-Security",
+        # ]
 
         # At least some security headers should be present in a production app
         # This is more of a reminder to implement them
-        security_headers_present = any(
-            header in response.headers for header in headers_to_check
-        )
+        # security_headers_present = any(
+        #     header in response.headers for header in headers_to_check
+        # )
 
         # For now, just ensure the response is valid
         assert response.status_code in [200, 404, 405]

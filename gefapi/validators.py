@@ -1,7 +1,7 @@
 """GEFAPI VALIDATORS"""
 
-import re
 from functools import wraps
+import re
 
 from flask import request
 
@@ -20,9 +20,8 @@ def validate_user_creation(func):
         json_data = request.get_json()
         if "email" not in json_data:
             return error(status=400, detail="Email is required")
-        else:
-            if not EMAIL_REGEX.match(json_data.get("email")):
-                return error(status=400, detail="Email not valid")
+        if not EMAIL_REGEX.match(json_data.get("email")):
+            return error(status=400, detail="Email not valid")
         if "name" not in json_data:
             return error(status=400, detail="Name is required")
         if "role" in json_data:

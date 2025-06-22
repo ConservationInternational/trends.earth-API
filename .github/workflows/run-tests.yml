@@ -31,8 +31,7 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
-        ports:
+          --health-retries 5        ports:
           - 6379:6379
 
     strategy:
@@ -70,19 +69,15 @@ jobs:
         echo "FLASK_ENV=testing" >> $GITHUB_ENV
         echo "TESTING=true" >> $GITHUB_ENV
 
-    - name: Run linting
+    - name: Run linting and formatting checks
       run: |
-        # Install linting tools
-        pip install flake8 black isort
+        # Install ruff (already in requirements-dev.txt)
         
-        # Run black formatter check
-        black --check --diff gefapi/ tests/
+        # Run ruff linting
+        python -m ruff check gefapi/ tests/
         
-        # Run isort import sorting check
-        isort --check-only --diff gefapi/ tests/
-        
-        # Run flake8 linting
-        flake8 gefapi/ tests/ --max-line-length=88 --extend-ignore=E203,W503
+        # Run ruff formatting check
+        python -m ruff format --check gefapi/ tests/
 
     - name: Run type checking
       run: |

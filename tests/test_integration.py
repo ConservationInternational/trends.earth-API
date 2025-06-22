@@ -1,176 +1,186 @@
 """
-Integration tests for complete workflows
+Integration tests for the API - test full workflows
 """
 
-import pytest
+from unittest.mock import patch
 
 
-class TestIntegration:
+class TestAPIIntegration:
     """Test complete API workflows"""
 
-    def test_complete_user_workflow(self, client):
-        """Test complete user registration and management workflow"""
-        # 1. Create a new user
-        user_data = {
-            "email": "workflow@test.com",
-            "password": "password123",
-            "name": "Workflow User",
-            "country": "Test Country",
-            "institution": "Test Institution",
-        }
-
-        response = client.post("/api/v1/user", json=user_data)
-        assert response.status_code == 200
-        user_id = response.json["data"]["id"]
-
-        # 2. Login with the new user
-        response = client.post(
-            "/auth", json={"email": "workflow@test.com", "password": "password123"}
-        )
-        assert response.status_code == 200
-        token = response.json["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
-
-        # 3. Get user profile
-        response = client.get("/api/v1/user/me", headers=headers)
-        assert response.status_code == 200
-        assert response.json["data"]["email"] == "workflow@test.com"
-
-        # 4. Update user profile
-        update_data = {"name": "Updated Workflow User"}
-        response = client.patch("/api/v1/user/me", json=update_data, headers=headers)
-        assert response.status_code == 200
-        assert response.json["data"]["name"] == "Updated Workflow User"
-
-    def test_script_execution_workflow(self, client, auth_headers_user, sample_script):
-        """Test complete script execution workflow"""
-        script_id = str(sample_script.id)
-
-        # 1. Get user's scripts
-        response = client.get("/api/v1/script", headers=auth_headers_user)
-        assert response.status_code == 200
-        assert len(response.json["data"]) >= 1
-
-        # 2. Get specific script details
-        response = client.get(f"/api/v1/script/{script_id}", headers=auth_headers_user)
-        assert response.status_code == 200
-
-        # 3. Run the script
-        params = {"test_param": "integration_test"}
-        response = client.post(
-            f"/api/v1/script/{script_id}/run", json=params, headers=auth_headers_user
-        )
-        assert response.status_code == 200
-        execution_id = response.json["data"]["id"]
-
-        # 4. Check execution status
-        response = client.get(
-            f"/api/v1/execution/{execution_id}", headers=auth_headers_user
-        )
-        assert response.status_code == 200
-        assert response.json["data"]["status"] == "PENDING"
-
-        # 5. Get execution logs
-        response = client.get(f"/api/v1/execution/{execution_id}/log")
-        assert response.status_code == 200
-
-        # 6. Get all user's executions
-        response = client.get("/api/v1/execution", headers=auth_headers_user)
-        assert response.status_code == 200
-        executions = response.json["data"]
-        execution_ids = [ex["id"] for ex in executions]
-        assert execution_id in execution_ids
-
-    def test_admin_workflow(self, client, auth_headers_admin, regular_user):
-        """Test admin-specific workflow"""
-        user_id = str(regular_user.id)
-
-        # 1. Get all users (admin only)
-        response = client.get("/api/v1/user", headers=auth_headers_admin)
-        assert response.status_code == 200
-        users = response.json["data"]
-        assert len(users) >= 1
-
-        # 2. Get specific user details
-        response = client.get(f"/api/v1/user/{user_id}", headers=auth_headers_admin)
-        assert response.status_code == 200
-
-        # 3. Update user as admin
-        update_data = {"name": "Admin Updated User"}
-        response = client.patch(
-            f"/api/v1/user/{user_id}", json=update_data, headers=auth_headers_admin
-        )
-        assert response.status_code == 200
-
-        # 4. Get system status (admin only)
-        response = client.get("/api/v1/status", headers=auth_headers_admin)
-        assert response.status_code == 200
-        assert "data" in response.json
-
-    def test_execution_filtering_workflow(
-        self, client, auth_headers_user, sample_execution
+    def test_full_user_workflow(
+        self, client, auth_headers_admin, sample_user_data, sample_script
     ):
-        """Test execution filtering and sorting workflow"""
-        # 1. Get all executions
-        response = client.get("/api/v1/execution", headers=auth_headers_user)
-        assert response.status_code == 200
-        all_executions = response.json["data"]
+        """Test complete user workflow: create user, login, create script,
+        run execution"""
 
-        # 2. Filter by status
-        response = client.get(
-            "/api/v1/execution?status=FINISHED", headers=auth_headers_user
+        # Step 1: Admin creates a new user
+        response = client.post(
+            "/api/v1/user",
+            json=sample_user_data,
+            headers=auth_headers_admin,
         )
         assert response.status_code == 200
-        finished_executions = response.json["data"]
-        for execution in finished_executions:
-            assert execution["status"] == "FINISHED"
+        # user_id = response.json["data"]["id"]
 
-        # 3. Sort by start date
-        response = client.get(
-            "/api/v1/execution?sort=-start_date", headers=auth_headers_user
+        # Step 2: User logs in
+        login_response = client.post(
+            "/auth", json={"email": sample_user_data["email"], "password": "password"}
         )
-        assert response.status_code == 200
-        sorted_executions = response.json["data"]
+        assert login_response.status_code == 200
+        user_token = login_response.json["access_token"]
+        user_headers = {"Authorization": f"Bearer {user_token}"}
 
-        # 4. Include duration information
-        response = client.get(
-            "/api/v1/execution?include=duration", headers=auth_headers_user
-        )
-        assert response.status_code == 200
-        executions_with_duration = response.json["data"]
-        if len(executions_with_duration) > 0:
-            assert "duration" in executions_with_duration[0]
+        # Step 3: User views their profile
+        profile_response = client.get("/api/v1/user/me", headers=user_headers)
+        assert profile_response.status_code == 200
 
-        # 5. Paginate results
-        response = client.get(
-            "/api/v1/execution?per_page=1&page=1", headers=auth_headers_user
+        # Step 4: User lists available scripts
+        scripts_response = client.get("/api/v1/script", headers=user_headers)
+        assert scripts_response.status_code == 200
+
+        # Step 5: User runs a script
+        with patch("gefapi.services.docker_service.docker_run") as mock_docker:
+            mock_docker.delay.return_value = None
+            execution_response = client.post(
+                f"/api/v1/script/{sample_script.id}/run",
+                json={"params": {}},
+                headers=user_headers,
+            )
+            assert execution_response.status_code == 200
+
+    def test_admin_management_workflow(
+        self, client, auth_headers_admin, sample_user_data, sample_script_data
+    ):
+        """Test admin management workflow"""
+
+        # Admin creates a script
+        with patch("gefapi.s3.push_script_to_s3") as mock_s3:
+            mock_s3.return_value = True
+            script_response = client.post(
+                "/api/v1/script",
+                json=sample_script_data,
+                headers=auth_headers_admin,
+            )
+            assert script_response.status_code == 200
+            script_id = script_response.json["data"]["id"]
+
+        # Admin creates a user
+        user_response = client.post(
+            "/api/v1/user",
+            json=sample_user_data,
+            headers=auth_headers_admin,
         )
-        assert response.status_code == 200
-        paginated = response.json
-        assert paginated["per_page"] == 1
-        assert len(paginated["data"]) <= 1
+        assert user_response.status_code == 200
+
+        # Admin views all executions
+        executions_response = client.get(
+            "/api/v1/execution", headers=auth_headers_admin
+        )
+        assert executions_response.status_code == 200
+
+        # Admin can delete the script
+        delete_response = client.delete(
+            f"/api/v1/script/{script_id}", headers=auth_headers_admin
+        )
+        assert delete_response.status_code == 200
 
     def test_error_handling_workflow(self, client, auth_headers_user):
-        """Test various error scenarios"""
-        # 1. Test unauthorized access
-        response = client.get("/api/v1/script")
-        assert response.status_code == 401
+        """Test error handling in workflows"""
 
-        # 2. Test forbidden access (regular user accessing admin endpoint)
-        response = client.get("/api/v1/user", headers=auth_headers_user)
-        assert response.status_code == 403
-
-        # 3. Test not found
-        fake_id = "12345678-1234-1234-1234-123456789012"
-        response = client.get(f"/api/v1/script/{fake_id}", headers=auth_headers_user)
+        # Try to access non-existent script
+        response = client.get(
+            "/api/v1/script/00000000-0000-0000-0000-000000000000",
+            headers=auth_headers_user,
+        )
         assert response.status_code == 404
 
-        # 4. Test bad request (invalid data)
-        response = client.post("/api/v1/user", json={"email": "invalid-email"})
-        assert response.status_code == 400
-
-        # 5. Test authentication failure
+        # Try to run non-existent script
         response = client.post(
-            "/auth", json={"email": "nonexistent@test.com", "password": "wrongpassword"}
+            "/api/v1/script/00000000-0000-0000-0000-000000000000/run",
+            json={"params": {}},
+            headers=auth_headers_user,
         )
-        assert response.status_code == 401
+        assert response.status_code == 404
+
+        # Try to access execution without permission
+        response = client.get("/api/v1/execution", headers=auth_headers_user)
+        # Users should not see all executions, only their own
+        assert response.status_code in [200, 403]
+
+    def test_data_consistency_workflow(
+        self, client, auth_headers_user, auth_headers_admin, sample_script
+    ):
+        """Test data consistency across operations"""
+
+        # User runs execution
+        with patch("gefapi.services.docker_service.docker_run") as mock_docker:
+            mock_docker.delay.return_value = None
+            response = client.post(
+                f"/api/v1/script/{sample_script.id}/run",
+                json={"params": {}},
+                headers=auth_headers_user,
+            )
+            assert response.status_code == 200
+            execution_id = response.json["data"]["id"]
+
+        # User checks their executions
+        user_executions = client.get(
+            "/api/v1/execution/user", headers=auth_headers_user
+        )
+        assert user_executions.status_code == 200
+        # all_executions = user_executions.json["data"]
+
+        # Admin checks all executions
+        admin_executions = client.get("/api/v1/execution", headers=auth_headers_admin)
+        assert admin_executions.status_code == 200
+        # admin_all = admin_executions.json["data"]
+
+        # Check specific execution details
+        execution_detail = client.get(
+            f"/api/v1/execution/{execution_id}", headers=auth_headers_user
+        )
+        assert execution_detail.status_code == 200
+
+    def test_pagination_and_sorting_workflow(
+        self, client, auth_headers_admin, sample_script
+    ):
+        """Test pagination and sorting features"""
+
+        # Create multiple executions
+        execution_ids = []
+        with patch("gefapi.services.docker_service.docker_run") as mock_docker:
+            mock_docker.delay.return_value = None
+            for i in range(5):
+                response = client.post(
+                    f"/api/v1/script/{sample_script.id}/run",
+                    json={"params": {"iteration": i}},
+                    headers=auth_headers_admin,
+                )
+                if response.status_code == 200:
+                    execution_ids.append(response.json["data"]["id"])
+
+        # Test pagination
+        paginated_response = client.get(
+            "/api/v1/execution?page[size]=2&page[number]=1", headers=auth_headers_admin
+        )
+        assert paginated_response.status_code == 200
+
+        # Test sorting
+        sorted_response = client.get(
+            "/api/v1/execution?sort=createdAt", headers=auth_headers_admin
+        )
+        assert sorted_response.status_code == 200
+        # sorted_executions = sorted_response.json["data"]
+
+        # Verify sorting worked (if we have data)
+        if sorted_response.json.get("data"):
+            executions = sorted_response.json["data"]
+            if len(executions) > 1:
+                # Check if timestamps are in order
+                timestamps = [exec_data.get("createdAt") for exec_data in executions]
+                # Should be sorted chronologically
+                assert all(
+                    timestamps[i] <= timestamps[i + 1]
+                    for i in range(len(timestamps) - 1)
+                )

@@ -175,9 +175,11 @@ def auth_headers_user(user_token):
 @pytest.fixture(autouse=True)
 def mock_external_services():
     """Mock external services like S3, email, etc."""
-    with patch("gefapi.services.docker_service.docker_build"), patch(
-        "gefapi.services.docker_service.docker_run"
-    ), patch("gefapi.services.email_service.EmailService.send_html_email"), patch(
-        "gefapi.s3.get_script_from_s3"
-    ), patch("gefapi.s3.upload_script_to_s3"):
+    with (
+        patch("gefapi.services.docker_service.docker_build"),
+        patch("gefapi.services.docker_service.docker_run"),
+        patch("gefapi.services.email_service.EmailService.send_html_email"),
+        patch("gefapi.s3.get_script_from_s3"),
+        patch("gefapi.s3.upload_script_to_s3"),
+    ):
         yield

@@ -3,13 +3,11 @@
 Generate OpenAPI/Swagger specification for Trends.Earth API
 """
 
-import json
-import os
 from datetime import datetime
+import json
 
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
-from flask import Flask
 from marshmallow import Schema, fields
 
 from gefapi import create_app
@@ -92,11 +90,13 @@ def create_api_spec():
         title="Trends.Earth API",
         version="1.0.0",
         openapi_version="3.0.2",
-        info=dict(
-            description="API for managing Scripts, Users, and Executions in Trends.Earth",
-            contact=dict(name="Trends.Earth Team", url="https://trends.earth"),
-            license=dict(name="MIT", url="https://opensource.org/licenses/MIT"),
-        ),
+        info={
+            "description": (
+                "API for managing Scripts, Users, and Executions in Trends.Earth"
+            ),
+            "contact": {"name": "Trends.Earth Team", "url": "https://trends.earth"},
+            "license": {"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
+        },
         servers=[
             {"url": "https://api.trends.earth", "description": "Production server"},
             {
@@ -532,9 +532,7 @@ def main():
         spec = create_api_spec()
 
         # Convert to dictionary
-        spec_dict = spec.to_dict()
-
-        # Add generation timestamp
+        spec_dict = spec.to_dict()  # Add generation timestamp
         spec_dict["info"]["x-generated-at"] = datetime.utcnow().isoformat()
 
         # Save to file
@@ -542,10 +540,11 @@ def main():
             json.dump(spec_dict, f, indent=2, sort_keys=True)
 
         print("✅ OpenAPI specification generated successfully!")
-        print(f"📄 File: swagger.json")
+        print("📄 File: swagger.json")
         print(f"📊 Endpoints documented: {len(spec_dict.get('paths', {}))}")
         print(
-            f"🏗️  Schemas defined: {len(spec_dict.get('components', {}).get('schemas', {}))}"
+            f"🏗️  Schemas defined: "
+            f"{len(spec_dict.get('components', {}).get('schemas', {}))}"
         )
 
 

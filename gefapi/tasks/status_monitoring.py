@@ -1,13 +1,11 @@
 """STATUS MONITORING TASKS"""
 
-from __future__ import absolute_import, division, print_function
-
-import datetime
+import contextlib
 import logging
 
+from celery import Task
 import psutil
 import rollbar
-from celery import Task
 from sqlalchemy import func
 
 from gefapi import celery, db
@@ -47,7 +45,8 @@ def collect_system_status(self):
         executions_finished = execution_status_map.get("FINISHED", 0)
 
         logger.info(
-            f"[TASK]: Execution counts - Active: {executions_active}, Running: {executions_running}, Finished: {executions_finished}"
+            f"[TASK]: Execution counts - Active: {executions_active}, "
+            f"Running: {executions_running}, Finished: {executions_finished}"
         )
 
         # Count users and scripts
@@ -64,7 +63,8 @@ def collect_system_status(self):
         cpu_usage_percent = psutil.cpu_percent(interval=1)
 
         logger.info(
-            f"[TASK]: System metrics - CPU: {cpu_usage_percent}%, Memory Available: {memory_available_percent:.1f}%"
+            f"[TASK]: System metrics - CPU: {cpu_usage_percent}%, "
+            f"Memory Available: {memory_available_percent:.1f}%"
         )
 
         # Create status log entry
@@ -85,29 +85,22 @@ def collect_system_status(self):
         db.session.commit()
 
         logger.info(
-            f"[TASK]: Status log created successfully with ID {status_log.id} at {status_log.timestamp}"
-        )
-
-        # Return serialized data for task result
+            f"[TASK]: Status log created successfully with ID {status_log.id} "
+            f"at {status_log.timestamp}"
+        )  # Return serialized data for task result
         result = status_log.serialize()
         logger.info(f"[TASK]: Task completed successfully, returning: {result}")
         return result
 
     except Exception as error:
         logger.error(f"[TASK]: Error collecting system status: {str(error)}")
-        logger.exception("Full traceback:")
-
-        # Try to rollback the session
-        try:
+        logger.exception("Full traceback:")  # Try to rollback the session
+        with contextlib.suppress(Exception):
             db.session.rollback()
-        except:
-            pass
 
         # Report to rollbar if available
-        try:
+        with contextlib.suppress(Exception):
             rollbar.report_exc_info()
-        except:
-            pass
 
         # Re-raise the error so Celery can handle it
         raise error

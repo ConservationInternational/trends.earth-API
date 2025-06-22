@@ -2,11 +2,10 @@
 Testing utilities and helpers for Trends.Earth API tests
 """
 
-import io
-import json
-import tempfile
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+import io
+import tempfile
+from typing import Any, Optional
 from unittest.mock import MagicMock
 
 
@@ -30,18 +29,18 @@ class TestUtils:
             return f.name
 
     @staticmethod
-    def get_auth_header(token: str) -> Dict[str, str]:
+    def get_auth_header(token: str) -> dict[str, str]:
         """Get authorization header for API requests"""
         return {"Authorization": f"Bearer {token}"}
 
     @staticmethod
-    def assert_response_structure(response_data: Dict[str, Any], required_fields: list):
+    def assert_response_structure(response_data: dict[str, Any], required_fields: list):
         """Assert that response has required structure"""
         for field in required_fields:
             assert field in response_data, f"Missing required field: {field}"
 
     @staticmethod
-    def assert_pagination_structure(response_data: Dict[str, Any]):
+    def assert_pagination_structure(response_data: dict[str, Any]):
         """Assert that response has pagination structure"""
         TestUtils.assert_response_structure(
             response_data, ["data", "page", "per_page", "total", "pages"]
@@ -77,7 +76,7 @@ class StatusTestUtils:
     """Testing utilities for status endpoints"""
 
     @staticmethod
-    def create_sample_status_data() -> Dict[str, Any]:
+    def create_sample_status_data() -> dict[str, Any]:
         """Create sample status data for testing"""
         return {
             "timestamp": datetime.utcnow().isoformat(),

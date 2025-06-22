@@ -6,9 +6,9 @@ This script helps developers run tests locally before pushing to GitHub
 
 import argparse
 import os
+from pathlib import Path
 import subprocess
 import sys
-from pathlib import Path
 
 
 def run_command(cmd, description, ignore_errors=False):
@@ -18,7 +18,11 @@ def run_command(cmd, description, ignore_errors=False):
 
     try:
         result = subprocess.run(
-            cmd, shell=True, check=True, capture_output=True, text=True
+            cmd,
+            shell=True,
+            check=True,
+            capture_output=True,
+            text=True,  # noqa: S602
         )
         print(f"✅ {description} completed successfully")
         if result.stdout:
@@ -33,9 +37,8 @@ def run_command(cmd, description, ignore_errors=False):
 
         if not ignore_errors:
             return False
-        else:
-            print("⚠️  Continuing despite errors...")
-            return True
+        print("⚠️  Continuing despite errors...")
+        return True
 
 
 def check_dependencies():
@@ -143,11 +146,10 @@ def main():
         print("=" * 50)
 
         linting_commands = [
-            ("black --check --diff gefapi/ tests/", "Black formatter check", True),
-            ("isort --check-only --diff gefapi/ tests/", "Import sorting check", True),
+            ("python -m ruff check gefapi/ tests/", "Ruff linting", True),
             (
-                "flake8 gefapi/ tests/ --max-line-length=88 --extend-ignore=E203,W503",
-                "Flake8 linting",
+                "python -m ruff format --check gefapi/ tests/",
+                "Ruff formatting check",
                 True,
             ),
         ]
@@ -229,7 +231,7 @@ def main():
     else:
         print("❌ Some tests failed. Please fix the issues before pushing.")
 
-    print(f"\n📋 Test artifacts:")
+    print("\n📋 Test artifacts:")
     if os.path.exists("htmlcov/index.html"):
         print(f"  Coverage report: {os.path.abspath('htmlcov/index.html')}")
     if os.path.exists("test-report.html"):
