@@ -107,9 +107,9 @@ class TestPerformance:
             assert success_rate > 0.8, f"Success rate too low: {success_rate:.2%}"
 
             # Should handle at least 80% of concurrent requests successfully
-            assert (
-                len(results.get("errors", [])) < 4
-            ), f"Too many errors: {results.get('errors', [])}"
+            assert len(results.get("errors", [])) < 4, (
+                f"Too many errors: {results.get('errors', [])}"
+            )
 
     @pytest.mark.slow
     def test_database_query_performance(self, client, auth_headers_admin):
@@ -176,9 +176,9 @@ class TestPerformance:
         memory_increase = final_memory - initial_memory
 
         # Memory increase should be reasonable (< 50MB for 100 requests)
-        assert (
-            memory_increase < 50
-        ), f"Memory increase too high: {memory_increase:.1f}MB"
+        assert memory_increase < 50, (
+            f"Memory increase too high: {memory_increase:.1f}MB"
+        )
 
 
 class TestLoadTesting:
@@ -214,9 +214,9 @@ class TestLoadTesting:
         success_rate = results["success"] / total_requests if total_requests > 0 else 0
 
         assert success_rate > 0.9, f"Auth success rate too low: {success_rate:.2%}"
-        assert (
-            len(results["errors"]) < 5
-        ), f"Too many auth errors: {results['errors'][:5]}"
+        assert len(results["errors"]) < 5, (
+            f"Too many auth errors: {results['errors'][:5]}"
+        )
 
     @pytest.mark.slow
     def test_api_throughput(self, client, auth_headers_user):
@@ -258,9 +258,9 @@ class TestLoadTesting:
             throughput = total_requests / total_elapsed  # requests per second
 
             # Performance expectations
-            assert (
-                avg_response_time < 1.0
-            ), f"Average response time too high: {avg_response_time:.2f}s"
+            assert avg_response_time < 1.0, (
+                f"Average response time too high: {avg_response_time:.2f}s"
+            )
             assert throughput > 5.0, f"Throughput too low: {throughput:.1f} req/s"
             assert len(errors) < 5, f"Too many errors: {errors[:5]}"
 
@@ -300,9 +300,9 @@ class TestStressTesting:
 
         # Should not have too many errors (some rate limiting is OK)
         error_rate = len(errors) / 100
-        assert (
-            error_rate < 0.3
-        ), f"Error rate too high: {error_rate:.2%}, errors: {errors[:5]}"
+        assert error_rate < 0.3, (
+            f"Error rate too high: {error_rate:.2%}, errors: {errors[:5]}"
+        )
 
     @pytest.mark.slow
     def test_large_response_handling(self, client, auth_headers_admin):
@@ -320,9 +320,9 @@ class TestStressTesting:
             elapsed = time.time() - start_time
 
             # Should handle large responses within reasonable time
-            assert (
-                elapsed < 10.0
-            ), f"Large response too slow for {endpoint}: {elapsed:.2f}s"
+            assert elapsed < 10.0, (
+                f"Large response too slow for {endpoint}: {elapsed:.2f}s"
+            )
 
             # Should return valid response
             assert response.status_code in [

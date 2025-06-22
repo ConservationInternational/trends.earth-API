@@ -306,6 +306,6 @@ class TestSecurityHeaders:
             # Should not expose sensitive fields
             sensitive_fields = ["password", "password_hash", "secret", "token"]
             for field in sensitive_fields:
-                assert (
-                    field not in user_data
-                ), f"Sensitive field '{field}' exposed in user data"
+                assert field not in user_data, (
+                    f"Sensitive field '{field}' exposed in user data"
+                )
