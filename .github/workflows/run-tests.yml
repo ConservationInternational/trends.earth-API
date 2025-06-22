@@ -72,8 +72,7 @@ jobs:
     - name: Run linting and formatting checks
       run: |
         # Install ruff (already in requirements-dev.txt)
-        
-        # Run ruff linting
+          # Run ruff linting
         python -m ruff check gefapi/ tests/
         
         # Run ruff formatting check
@@ -81,6 +80,7 @@ jobs:
 
     - name: Initialize test database
       run: |
+        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         python -c "
         import os
         os.environ['DATABASE_URL'] = 'postgresql://postgres:postgres@localhost:5432/gefapi_test'
@@ -93,6 +93,7 @@ jobs:
 
     - name: Run unit tests
       run: |
+        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         pytest tests/ \
           -m "not slow and not integration" \
           --cov=gefapi \
@@ -106,6 +107,7 @@ jobs:
 
     - name: Run integration tests
       run: |
+        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         pytest tests/test_integration.py \
           --cov=gefapi \
           --cov-append \
@@ -115,6 +117,7 @@ jobs:
 
     - name: Run API validation tests
       run: |
+        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         pytest tests/test_api_validation.py \
           --cov=gefapi \
           --cov-append \
@@ -125,6 +128,7 @@ jobs:
     - name: Run performance tests (Python 3.9 only)
       if: matrix.python-version == '3.9'
       run: |
+        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         pytest tests/test_performance.py \
           -m "not slow" \
           --junitxml=performance-results.xml \

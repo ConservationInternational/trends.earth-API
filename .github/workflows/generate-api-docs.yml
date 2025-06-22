@@ -69,14 +69,15 @@ jobs:
 
     - name: Initialize database
       run: |
-        python -c "
-        from gefapi import app, db
+        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+        python -c "        from gefapi import app, db
         with app.app_context():
             db.create_all()
         "
 
     - name: Generate OpenAPI specification
       run: |
+        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         python generate_swagger.py
 
     - name: Install Swagger Codegen CLI
@@ -98,7 +99,18 @@ jobs:
 
     - name: Generate Swagger UI
       run: |
-        npx swagger-ui-dist-cli -f swagger.json -d docs/swagger-ui/
+        # Create swagger-ui directory
+        mkdir -p docs/swagger-ui
+        
+        # Download swagger-ui-dist and extract
+        npm install swagger-ui-dist
+        cp -r node_modules/swagger-ui-dist/* docs/swagger-ui/
+        
+        # Replace the default swagger.json with our generated one
+        sed -i 's|https://petstore.swagger.io/v2/swagger.json|../swagger.json|g' docs/swagger-ui/index.html
+        
+        # Update the title
+        sed -i 's|<title>Swagger UI</title>|<title>Trends.Earth API Documentation</title>|g' docs/swagger-ui/index.html
         
     - name: Commit and push documentation
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
