@@ -9,7 +9,8 @@ from unittest.mock import patch
 import pytest
 from werkzeug.security import generate_password_hash
 
-from gefapi import create_app, db
+from gefapi import app as flask_app
+from gefapi import db
 from gefapi.models import Execution, Script, StatusLog, User
 
 
@@ -31,7 +32,7 @@ def app():
         "broker_url": "redis://localhost:6379/1",
     }
 
-    app = create_app()
+    app = flask_app
     app.config.update(test_config)
 
     with app.app_context():

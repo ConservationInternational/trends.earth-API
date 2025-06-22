@@ -70,8 +70,7 @@ jobs:
     - name: Initialize database
       run: |
         python -c "
-        from gefapi import create_app, db
-        app = create_app()
+        from gefapi import app, db
         with app.app_context():
             db.create_all()
         "

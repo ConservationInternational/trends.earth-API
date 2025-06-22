@@ -69,11 +69,11 @@ jobs:
         echo "JWT_SECRET_KEY=test-secret-key-for-ci" >> $GITHUB_ENV
         echo "FLASK_ENV=testing" >> $GITHUB_ENV
         echo "TESTING=true" >> $GITHUB_ENV
-
     - name: Run linting and formatting checks
       run: |
         # Install ruff (already in requirements-dev.txt)
-          # Run ruff linting
+        
+        # Run ruff linting
         python -m ruff check gefapi/ tests/
         
         # Run ruff formatting check
@@ -85,8 +85,7 @@ jobs:
         import os
         os.environ['DATABASE_URL'] = 'postgresql://postgres:postgres@localhost:5432/gefapi_test'
         os.environ['TESTING'] = 'true'
-        from gefapi import create_app, db
-        app = create_app()
+        from gefapi import app, db
         with app.app_context():
             db.create_all()
         print('Test database initialized successfully')
@@ -272,9 +271,8 @@ jobs:
         echo "| Unit Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Integration Tests | ${{ needs.integration-test.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        
         if [ "${{ needs.test.result }}" = "success" ] && [ "${{ needs.integration-test.result }}" = "success" ]; then
-          echo "✅ All tests passed successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "[PASS] All tests passed successfully!" >> $GITHUB_STEP_SUMMARY
         else
-          echo "❌ Some tests failed. Please check the logs above." >> $GITHUB_STEP_SUMMARY
+          echo "[FAIL] Some tests failed. Please check the logs above." >> $GITHUB_STEP_SUMMARY
         fi

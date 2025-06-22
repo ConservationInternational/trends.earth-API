@@ -10,7 +10,7 @@ from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from marshmallow import Schema, fields
 
-from gefapi import create_app
+from gefapi import app
 
 
 # Define Marshmallow schemas for API documentation
@@ -524,8 +524,8 @@ def add_status_paths(spec):
 
 def main():
     """Generate and save OpenAPI specification"""
-    # Create Flask app to get application context
-    app = create_app()
+    # Use the Flask app to get application context
+    # app is already available from the import
 
     with app.app_context():
         # Create API specification
