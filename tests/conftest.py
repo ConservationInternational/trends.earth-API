@@ -185,6 +185,7 @@ def mock_external_services():
         patch("gefapi.services.docker_service.docker_run"),
         patch("gefapi.services.email_service.EmailService.send_html_email"),
         patch("gefapi.s3.get_script_from_s3"),
-        patch("gefapi.s3.upload_script_to_s3"),
+        patch("gefapi.s3.push_script_to_s3"),
+        patch("gefapi.s3.push_params_to_s3"),
     ):
         yield
