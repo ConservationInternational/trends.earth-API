@@ -1,0 +1,127 @@
+name: Generate API Documentation
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: gefapi
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:6
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install flask-restx
+        pip install apispec[flask]
+        pip install marshmallow
+
+    - name: Set environment variables
+      run: |
+        echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gefapi" >> $GITHUB_ENV
+        echo "DATABASE_ENV_POSTGRES_USER=postgres" >> $GITHUB_ENV
+        echo "DATABASE_ENV_POSTGRES_PASSWORD=postgres" >> $GITHUB_ENV
+        echo "DATABASE_PORT_5432_TCP_ADDR=localhost" >> $GITHUB_ENV
+        echo "DATABASE_PORT_5432_TCP_PORT=5432" >> $GITHUB_ENV
+        echo "DATABASE_ENV_POSTGRES_DB=gefapi" >> $GITHUB_ENV
+        echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
+        echo "JWT_SECRET_KEY=test-secret-key" >> $GITHUB_ENV
+        echo "FLASK_ENV=development" >> $GITHUB_ENV
+        echo "TESTING=false" >> $GITHUB_ENV
+        echo "API_URL=http://localhost:5000" >> $GITHUB_ENV
+        echo "DOCKER_HOST=unix:///var/run/docker.sock" >> $GITHUB_ENV
+
+    - name: Initialize database
+      run: |
+        python -c "
+        from gefapi import create_app, db
+        app = create_app()
+        with app.app_context():
+            db.create_all()
+        "
+
+    - name: Generate OpenAPI specification
+      run: |
+        python generate_swagger.py
+
+    - name: Install Swagger Codegen CLI
+      run: |
+        wget https://repo1.maven.org/maven2/io/swagger/codegen/v3/swagger-codegen-cli/3.0.46/swagger-codegen-cli-3.0.46.jar -O swagger-codegen-cli.jar
+
+    - name: Generate HTML documentation
+      run: |
+        java -jar swagger-codegen-cli.jar generate \
+          -i swagger.json \
+          -l html2 \
+          -o docs/api/ \
+          --additional-properties appName="Trends.Earth API",appDescription="API for managing Scripts, Users, and Executions in Trends.Earth"
+
+    - name: Setup Node.js for Swagger UI
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Generate Swagger UI
+      run: |
+        npx swagger-ui-dist-cli -f swagger.json -d docs/swagger-ui/
+        
+    - name: Commit and push documentation
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add docs/
+        git add swagger.json
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Auto-update API documentation [skip ci]"
+          git push
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload API documentation as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-documentation
+        path: |
+          swagger.json
+          docs/
+        retention-days: 30
