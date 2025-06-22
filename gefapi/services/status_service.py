@@ -1,10 +1,6 @@
 """STATUS SERVICE"""
 
-from __future__ import absolute_import, division, print_function
-
 import logging
-
-import rollbar
 
 from gefapi import db
 from gefapi.models import StatusLog
@@ -12,7 +8,7 @@ from gefapi.models import StatusLog
 logger = logging.getLogger()
 
 
-class StatusService(object):
+class StatusService:
     """Status Service Class"""
 
     @staticmethod

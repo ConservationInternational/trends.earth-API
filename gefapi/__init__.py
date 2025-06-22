@@ -1,19 +1,17 @@
 """The GEF API MODULE"""
 
-from __future__ import absolute_import, division, print_function
-
 import logging
 import os
 import sys
 
-import rollbar
-import rollbar.contrib.flask
 from flask import Flask, got_request_exception, jsonify, request
 from flask_compress import Compress
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+import rollbar
+import rollbar.contrib.flask
 
 # from rollbar.logger import RollbarHandler
 from gefapi.celery import make_celery
@@ -56,7 +54,7 @@ celery = make_celery(app)
 
 # DB has to be ready!
 # Import tasks to register them with Celery
-from gefapi import tasks  # noqa: E402
+from gefapi import tasks  # noqa: E402,F401
 from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
 
 # Blueprint Flask Routing

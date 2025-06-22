@@ -1,7 +1,5 @@
 """SCRIPT SERVICE"""
 
-from __future__ import absolute_import, division, print_function
-
 import datetime
 import json
 import logging
@@ -31,13 +29,12 @@ def allowed_file(filename):
         return filename.rsplit(".")[1] + "." + filename.rsplit(".")[
             2
         ].lower() in SETTINGS.get("ALLOWED_EXTENSIONS")
-    else:
-        return "." in filename and filename.rsplit(".", 1)[1].lower() in SETTINGS.get(
-            "ALLOWED_EXTENSIONS"
-        )
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in SETTINGS.get(
+        "ALLOWED_EXTENSIONS"
+    )
 
 
-class ScriptService(object):
+class ScriptService:
     """Script Class"""
 
     @staticmethod
@@ -84,8 +81,8 @@ class ScriptService(object):
             # Creating new entity
             name = script_name
             slug = slugify(script_name)
-            currentScript = Script.query.filter_by(slug=slug).first()
-            if currentScript:
+            current_script = Script.query.filter_by(slug=slug).first()
+            if current_script:
                 raise ScriptDuplicated(
                     message="Script with name "
                     + name
@@ -144,11 +141,10 @@ class ScriptService(object):
         if user.role == "ADMIN":
             scripts = Script.query.all()
             return scripts
-        else:
-            scripts = db.session.query(Script).filter(
-                or_(Script.user_id == user.id, Script.public)
-            )
-            return scripts
+        scripts = db.session.query(Script).filter(
+            or_(Script.user_id == user.id, Script.public)
+        )
+        return scripts
 
     @staticmethod
     def get_script(script_id, user="fromservice"):
@@ -156,7 +152,7 @@ class ScriptService(object):
         logger.info("[DB]: QUERY")
         if user == "fromservice" or user.role == "ADMIN":
             logger.info(
-                "[SERVICE]: trying to get script %s for service or admin" % (script_id)
+                f"[SERVICE]: trying to get script {script_id} for service or admin"
             )
             try:
                 UUID(script_id, version=4)
@@ -169,7 +165,7 @@ class ScriptService(object):
                 raise error
         else:
             try:
-                logger.info("[SERVICE]: trying to get script %s" % (script_id))
+                logger.info(f"[SERVICE]: trying to get script {script_id}")
                 UUID(script_id, version=4)
                 script = (
                     db.session.query(Script)
@@ -196,7 +192,7 @@ class ScriptService(object):
 
     @staticmethod
     def get_script_logs(script_id, start_date, last_id):
-        logger.info("[SERVICE]: Getting script logs of script %s: " % (script_id))
+        logger.info(f"[SERVICE]: Getting script logs of script {script_id}: ")
         logger.info("[DB]: QUERY")
         try:
             UUID(script_id, version=4)
@@ -221,7 +217,7 @@ class ScriptService(object):
                 .order_by(ScriptLog.register_date)
                 .all()
             )
-        elif last_id:
+        if last_id:
             return (
                 ScriptLog.query.filter(
                     ScriptLog.script_id == script.id, ScriptLog.id > last_id
@@ -229,8 +225,7 @@ class ScriptService(object):
                 .order_by(ScriptLog.register_date)
                 .all()
             )
-        else:
-            return script.logs
+        return script.logs
 
     @staticmethod
     def update_script(script_id, sent_file, user):

@@ -1,7 +1,5 @@
 """GEFAPI CONFIG MODULE"""
 
-from __future__ import absolute_import, division, print_function
-
 import collections.abc
 import os
 

@@ -1,7 +1,5 @@
 """GEFAPI SERVICES MODULE"""
 
-from __future__ import absolute_import, division, print_function
-
 import logging
 import sys
 
@@ -17,15 +15,15 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
 sys.excepthook = handle_exception
 
-from gefapi.services.docker_service import (  # noqa:E402
-    DockerService,
+from gefapi.services.docker_service import (
+    DockerService,  # noqa: E402
     docker_build,
     docker_run,
 )
-from gefapi.services.email_service import EmailService  # noqa:E402
-from gefapi.services.script_service import ScriptService  # noqa:E402
-from gefapi.services.status_service import StatusService  # noqa:E402
-from gefapi.services.user_service import UserService  # noqa:E402
+from gefapi.services.email_service import EmailService  # noqa: E402
+from gefapi.services.script_service import ScriptService  # noqa: E402
+from gefapi.services.status_service import StatusService  # noqa: E402
+from gefapi.services.user_service import UserService  # noqa: E402
 
 # Import last to avoid circular dependency
 from gefapi.services.execution_service import ExecutionService  # noqa:E402, isort:skip

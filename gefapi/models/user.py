@@ -1,7 +1,5 @@
 """USER MODEL"""
 
-from __future__ import absolute_import, division, print_function
-
 import datetime
 import uuid
 
@@ -52,7 +50,7 @@ class User(db.Model):
         self.institution = institution
 
     def __repr__(self):
-        return "<User %r>" % self.email
+        return f"<User {self.email!r}>"
 
     def serialize(self, include=None):
         """Return object data in easily serializeable format"""

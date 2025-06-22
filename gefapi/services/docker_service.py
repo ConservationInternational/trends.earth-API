@@ -1,15 +1,13 @@
 """DOCKER SERVICE"""
 
-from __future__ import absolute_import, division, print_function
-
 import gzip
 import json
 import logging
 import os
-import tarfile
-import tempfile
 from pathlib import Path
 from shutil import copy
+import tarfile
+import tempfile
 
 import docker
 import rollbar
@@ -29,7 +27,7 @@ logger = logging.getLogger()
 
 @celery.task()
 def docker_build(script_id):
-    logger.debug("Obtaining script with id %s" % (script_id))
+    logger.debug(f"Obtaining script with id {script_id}")
     script = Script.query.get(script_id)
     script_file = script.slug + ".tar.gz"
 
@@ -67,8 +65,8 @@ def docker_build(script_id):
 
 @celery.task()
 def docker_run(execution_id, image, environment, params):
-    logger.info("[THREAD] Running script with image %s" % (image))
-    logger.debug("Obtaining execution with id %s" % (execution_id))
+    logger.info(f"[THREAD] Running script with image {image}")
+    logger.debug(f"Obtaining execution with id {execution_id}")
     execution = Execution.query.get(execution_id)
     execution.status = "READY"
     db.session.add(execution)
@@ -99,7 +97,7 @@ def docker_run(execution_id, image, environment, params):
     db.session.commit()
 
 
-class DockerService(object):
+class DockerService:
     """Docker Service"""
 
     @staticmethod
@@ -125,7 +123,7 @@ class DockerService(object):
     @staticmethod
     def push(script_id, tag_image):
         """Push image to private docker registry"""
-        logger.debug("Pushing image with tag %s" % (tag_image))
+        logger.debug(f"Pushing image with tag {tag_image}")
         pushed = False
         try:
             for line in docker_client.images.push(
@@ -134,7 +132,7 @@ class DockerService(object):
                 DockerService.save_build_log(script_id=script_id, line=line)
                 if "aux" in line and pushed:
                     return True, line["aux"]
-                elif "status" in line and line["status"] == "Pushed":
+                if "status" in line and line["status"] == "Pushed":
                     pushed = True
 
             # If we get here, the build failed
@@ -155,7 +153,7 @@ class DockerService(object):
     ):
         """Build image and push to private docker registry"""
 
-        logger.info("Building new image in path %s with tag %s" % (path, tag_image))
+        logger.info(f"Building new image in path {path} with tag {tag_image}")
         try:
             logger.debug("[SERVICE]: Copying dockerfile")
             dockerfile = os.path.join(
@@ -181,8 +179,7 @@ class DockerService(object):
             for line in logs:
                 if "errorDetail" in line:
                     return False, line["errorDetail"]
-                else:
-                    DockerService.save_build_log(script_id=script_id, line=line)
+                DockerService.save_build_log(script_id=script_id, line=line)
 
             return DockerService.push(script_id=script_id, tag_image=tag_image)
 
@@ -199,14 +196,14 @@ class DockerService(object):
     @staticmethod
     def run(execution_id, image, environment):
         """Run image with environment"""
-        logger.info("Running %s image" % (image))
+        logger.info(f"Running {image} image")
         try:
             environment["ENV"] = "prod"
 
             if os.getenv("ENVIRONMENT") not in ["dev"]:
                 logger.info(
                     "Creating service (running in "
-                    f'{os.getenv("ENVIRONMENT")} environment, with image '
+                    f"{os.getenv('ENVIRONMENT')} environment, with image "
                     f"{REGISTRY_URL}/{image}, as execution "
                     f"execution-{str(execution_id)})",
                 )
@@ -236,7 +233,7 @@ class DockerService(object):
             else:
                 logger.info(
                     "Creating container (running in "
-                    f'{os.getenv("ENVIRONMENT")} environment, with image '
+                    f"{os.getenv('ENVIRONMENT')} environment, with image "
                     f"{REGISTRY_URL}/{image}, as execution "
                     f"execution-{str(execution_id)})",
                 )

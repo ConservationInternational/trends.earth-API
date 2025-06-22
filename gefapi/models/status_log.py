@@ -1,7 +1,5 @@
 """STATUS LOG MODEL"""
 
-from __future__ import absolute_import, division, print_function
-
 import datetime
 
 from gefapi import db
@@ -25,9 +23,7 @@ class StatusLog(db.Model):
 
     # Other counts
     users_count = db.Column(db.Integer(), default=0)
-    scripts_count = db.Column(db.Integer(), default=0)
-
-    # System metrics
+    scripts_count = db.Column(db.Integer(), default=0)  # System metrics
     memory_available_percent = db.Column(db.Float(), default=0.0)
     cpu_usage_percent = db.Column(db.Float(), default=0.0)
 
@@ -52,7 +48,7 @@ class StatusLog(db.Model):
         self.cpu_usage_percent = cpu_usage_percent
 
     def __repr__(self):
-        return "<StatusLog %r>" % self.id
+        return f"<StatusLog {self.id!r}>"
 
     def serialize(self):
         """Return object data in easily serializeable format"""

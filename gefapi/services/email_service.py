@@ -1,7 +1,5 @@
 """SCRIPT SERVICE"""
 
-from __future__ import absolute_import, division, print_function
-
 import logging
 
 import rollbar
@@ -10,17 +8,19 @@ from sparkpost import SparkPost
 logger = logging.getLogger()
 
 
-class EmailService(object):
+class EmailService:
     """MailService Class"""
 
     @staticmethod
     def send_html_email(
-        recipients=[],
+        recipients=None,
         html="",
         from_email="api@trends.earth",
         subject="[trends.earth] Undefined Subject",
     ):
-        logger.debug("Sending email with subject %s" % (subject))
+        if recipients is None:
+            recipients = []
+        logger.debug(f"Sending email with subject {subject}")
         try:
             sp = SparkPost()
             response = sp.transmissions.send(

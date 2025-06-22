@@ -1,7 +1,5 @@
 """EXECUTION MODEL"""
 
-from __future__ import absolute_import, division, print_function
-
 import datetime
 import uuid
 
@@ -43,7 +41,7 @@ class Execution(db.Model):
         self.user_id = user_id
 
     def __repr__(self):
-        return "<Execution %r>" % self.id
+        return f"<Execution {self.id!r}>"
 
     def serialize(self, include=None, exclude=None):
         """Return object data in easily serializeable format"""

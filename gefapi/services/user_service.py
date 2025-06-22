@@ -1,7 +1,5 @@
 """SCRIPT SERVICE"""
 
-from __future__ import absolute_import, division, print_function
-
 import datetime
 import logging
 import random
@@ -22,7 +20,7 @@ ROLES = SETTINGS.get("ROLES")
 logger = logging.getLogger()
 
 
-class UserService(object):
+class UserService:
     """User Class"""
 
     @staticmethod

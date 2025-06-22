@@ -1,14 +1,11 @@
 """SCRIPT SERVICE"""
 
-from __future__ import absolute_import, division, print_function
-
 import datetime
 import logging
 from uuid import UUID
 
 import rollbar
 from sqlalchemy import case, func
-from sqlalchemy.orm import joinedload
 
 from gefapi import db
 from gefapi.config import SETTINGS
@@ -30,19 +27,19 @@ are below: </p>
     <li>Status: {}</li>
 </ul>
 <p>For more information, and to view the results, return to QGIS and click the
-"Datasets" tab in the Trends.Earth plugin window.<\p>
+"Datasets" tab in the Trends.Earth plugin window.</p>
 <p>Thank you, </br>The Trends.Earth team</p>
 """
 
 
 def dict_to_query(params):
     query = ""
-    for key in params.keys():
+    for key in params:
         query += key + "=" + params.get(key) + "&"
     return query[0:-1]
 
 
-class ExecutionService(object):
+class ExecutionService:
     """Execution Class"""
 
     @staticmethod
@@ -287,9 +284,7 @@ class ExecutionService(object):
 
     @staticmethod
     def get_execution_logs(execution_id, start_date, last_id):
-        logger.info(
-            "[SERVICE]: Getting execution logs of execution %s: " % (execution_id)
-        )
+        logger.info(f"[SERVICE]: Getting execution logs of execution {execution_id}: ")
         logger.info("[DB]: QUERY")
         try:
             execution = ExecutionService.get_execution(execution_id=execution_id)
@@ -311,7 +306,7 @@ class ExecutionService(object):
                 .order_by(ExecutionLog.register_date)
                 .all()
             )
-        elif last_id:
+        if last_id:
             return (
                 ExecutionLog.query.filter(
                     ExecutionLog.execution_id == execution.id, ExecutionLog.id > last_id
@@ -319,5 +314,4 @@ class ExecutionService(object):
                 .order_by(ExecutionLog.register_date)
                 .all()
             )
-        else:
-            return execution.logs
+        return execution.logs

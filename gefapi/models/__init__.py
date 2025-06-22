@@ -1,16 +1,15 @@
 """GEFAPI MODELS MODULE"""
 
-from __future__ import absolute_import, division, print_function
-
-import uuid
 from operator import attrgetter
+import uuid
 
 from sqlalchemy.dialects.mssql import UNIQUEIDENTIFIER
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.types import CHAR, TypeDecorator
 
 
-# Below is from https://docs.sqlalchemy.org/en/20/core/custom_types.html#backend-agnostic-guid-typehttps://docs.sqlalchemy.org/en/20/core/custom_types.html#backend-agnostic-guid-type
+# Below is from https://docs.sqlalchemy.org/en/20/core/custom_types.html
+# #backend-agnostic-guid-type
 class GUID(TypeDecorator):
     """Platform-independent GUID type.
 
@@ -28,26 +27,23 @@ class GUID(TypeDecorator):
     def load_dialect_impl(self, dialect):
         if dialect.name == "postgresql":
             return dialect.type_descriptor(UUID())
-        elif dialect.name == "mssql":
+        if dialect.name == "mssql":
             return dialect.type_descriptor(UNIQUEIDENTIFIER())
-        else:
-            return dialect.type_descriptor(self._default_type)
+        return dialect.type_descriptor(self._default_type)
 
     def process_bind_param(self, value, dialect):
         if value is None or dialect.name in ("postgresql", "mssql"):
             return value
-        else:
-            if not isinstance(value, uuid.UUID):
-                value = uuid.UUID(value)
-            return self._uuid_as_str(value)
+        if not isinstance(value, uuid.UUID):
+            value = uuid.UUID(value)
+        return self._uuid_as_str(value)
 
     def process_result_value(self, value, dialect):
         if value is None:
             return value
-        else:
-            if not isinstance(value, uuid.UUID):
-                value = uuid.UUID(value)
-            return value
+        if not isinstance(value, uuid.UUID):
+            value = uuid.UUID(value)
+        return value
 
 
 from gefapi.models.execution import Execution  # noqa: E402

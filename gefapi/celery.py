@@ -1,6 +1,6 @@
-import rollbar
 from celery import Celery
 from celery.signals import task_failure
+import rollbar
 
 
 def celery_base_data_hook(request, data):
@@ -32,14 +32,14 @@ def make_celery(app):
     }
     celery.conf.timezone = "UTC"
 
-    TaskBase = celery.Task
+    task_base = celery.Task
 
-    class ContextTask(TaskBase):
+    class ContextTask(task_base):
         abstract = True
 
         def __call__(self, *args, **kwargs):
             with app.app_context():
-                return TaskBase.__call__(self, *args, **kwargs)
+                return task_base.__call__(self, *args, **kwargs)
 
     celery.Task = ContextTask
     return celery

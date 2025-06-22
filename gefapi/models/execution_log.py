@@ -1,7 +1,5 @@
 """EXECUTION LOG MODEL"""
 
-from __future__ import absolute_import, division, print_function
-
 import datetime
 
 from gefapi import db
@@ -26,7 +24,7 @@ class ExecutionLog(db.Model):
         self.execution_id = execution_id
 
     def __repr__(self):
-        return "<ExecutionLog %r>" % self.id
+        return f"<ExecutionLog {self.id!r}>"
 
     def serialize(self):
         """Return object data in easily serializeable format"""

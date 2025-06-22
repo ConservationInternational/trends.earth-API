@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
 import logging
 import os
 import tempfile
@@ -154,7 +152,7 @@ def download_script(script):
 @jwt_required()
 def get_script_logs(script):
     """Get a script logs"""
-    logger.info("[ROUTER]: Getting script logs of script %s " % (script))
+    logger.info(f"[ROUTER]: Getting script logs of script {script} ")
     try:
         start = request.args.get("start", None)
         if start:
@@ -352,7 +350,7 @@ def update_execution(execution):
 @endpoints.route("/execution/<execution>/log", strict_slashes=False, methods=["GET"])
 def get_execution_logs(execution):
     """Get the exectuion logs"""
-    logger.info("[ROUTER]: Getting execution logs of execution %s " % (execution))
+    logger.info(f"[ROUTER]: Getting execution logs of execution {execution} ")
     try:
         start = request.args.get("start", None)
         if start:
@@ -373,7 +371,7 @@ def get_execution_logs(execution):
 )
 def get_download_results(execution):
     """Download results of the exectuion"""
-    logger.info("[ROUTER]: Download execution results of execution %s " % (execution))
+    logger.info(f"[ROUTER]: Download execution results of execution {execution} ")
     try:
         execution = ExecutionService.get_execution(execution)
     except Exception as e:

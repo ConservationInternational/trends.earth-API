@@ -1,5 +1,5 @@
-import os
 from datetime import timedelta
+import os
 
 SETTINGS = {
     "logging": {"level": "DEBUG"},
@@ -36,7 +36,7 @@ SETTINGS = {
     "PARAMS_S3_PREFIX": os.getenv("PARAMS_S3_PREFIX"),
     "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
     "UPLOAD_FOLDER": "/tmp/scripts",
-    "ALLOWED_EXTENSIONS": set(["tar.gz"]),
+    "ALLOWED_EXTENSIONS": {"tar.gz"},
     "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 24),
     "JWT_QUERY_STRING_NAME": "token",
     "JWT_TOKEN_LOCATION": ["headers", "query_string"],

@@ -1,7 +1,5 @@
 """SCRIPT LOG MODEL"""
 
-from __future__ import absolute_import, division, print_function
-
 import datetime
 
 from gefapi import db
@@ -24,7 +22,7 @@ class ScriptLog(db.Model):
         self.script_id = script_id
 
     def __repr__(self):
-        return "<ScriptLog %r>" % self.id
+        return f"<ScriptLog {self.id!r}>"
 
     def serialize(self):
         """Return object data in easily serializeable format"""

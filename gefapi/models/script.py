@@ -1,7 +1,5 @@
 """SCRIPT MODEL"""
 
-from __future__ import absolute_import, division, print_function
-
 import datetime
 import uuid
 
@@ -72,7 +70,7 @@ class Script(db.Model):
         self.environment_version = environment_version
 
     def __repr__(self):
-        return "<Script %r>" % self.name
+        return f"<Script {self.name!r}>"
 
     def serialize(self, include=None):
         """Return object data in easily serializeable format"""
