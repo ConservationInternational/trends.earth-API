@@ -70,7 +70,8 @@ jobs:
     - name: Initialize database
       run: |
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-        python -c "        from gefapi import app, db
+        python -c "
+        from gefapi import app, db
         with app.app_context():
             db.create_all()
         "
