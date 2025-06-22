@@ -18,16 +18,19 @@ SETTINGS = {
         "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
     },
     "ROLES": ["ADMIN", "USER"],
-    "SQLALCHEMY_DATABASE_URI": "postgresql://"
-    + os.getenv("DATABASE_ENV_POSTGRES_USER")
-    + ":"
-    + os.getenv("DATABASE_ENV_POSTGRES_PASSWORD")
-    + "@"
-    + os.getenv("DATABASE_PORT_5432_TCP_ADDR")
-    + ":"
-    + os.getenv("DATABASE_PORT_5432_TCP_PORT")
-    + "/"
-    + os.getenv("DATABASE_ENV_POSTGRES_DB"),
+    "SQLALCHEMY_DATABASE_URI": os.getenv("DATABASE_URL")
+    or (
+        "postgresql://"
+        + (os.getenv("DATABASE_ENV_POSTGRES_USER") or "postgres")
+        + ":"
+        + (os.getenv("DATABASE_ENV_POSTGRES_PASSWORD") or "postgres")
+        + "@"
+        + (os.getenv("DATABASE_PORT_5432_TCP_ADDR") or "localhost")
+        + ":"
+        + (os.getenv("DATABASE_PORT_5432_TCP_PORT") or "5432")
+        + "/"
+        + (os.getenv("DATABASE_ENV_POSTGRES_DB") or "postgres")
+    ),
     "SECRET_KEY": "mysecret",
     "DOCKER_HOST": os.getenv("DOCKER_HOST"),
     "REGISTRY_URL": os.getenv("REGISTRY_URL"),
@@ -40,14 +43,35 @@ SETTINGS = {
     "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 24),
     "JWT_QUERY_STRING_NAME": "token",
     "JWT_TOKEN_LOCATION": ["headers", "query_string"],
-    "CELERY_BROKER_URL": "redis://"
-    + os.getenv("REDIS_PORT_6379_TCP_ADDR")
-    + ":"
-    + os.getenv("REDIS_PORT_6379_TCP_PORT"),
-    "CELERY_RESULT_BACKEND": "redis://"
-    + os.getenv("REDIS_PORT_6379_TCP_ADDR")
-    + ":"
-    + os.getenv("REDIS_PORT_6379_TCP_PORT"),
+    "CELERY_BROKER_URL": os.getenv("REDIS_URL")
+    or (
+        "redis://"
+        + (os.getenv("REDIS_PORT_6379_TCP_ADDR") or "localhost")
+        + ":"
+        + (os.getenv("REDIS_PORT_6379_TCP_PORT") or "6379")
+    ),
+    "CELERY_RESULT_BACKEND": os.getenv("REDIS_URL")
+    or (
+        "redis://"
+        + (os.getenv("REDIS_PORT_6379_TCP_ADDR") or "localhost")
+        + ":"
+        + (os.getenv("REDIS_PORT_6379_TCP_PORT") or "6379")
+    ),
+    # Celery also expects lowercase versions
+    "broker_url": os.getenv("REDIS_URL")
+    or (
+        "redis://"
+        + (os.getenv("REDIS_PORT_6379_TCP_ADDR") or "localhost")
+        + ":"
+        + (os.getenv("REDIS_PORT_6379_TCP_PORT") or "6379")
+    ),
+    "result_backend": os.getenv("REDIS_URL")
+    or (
+        "redis://"
+        + (os.getenv("REDIS_PORT_6379_TCP_ADDR") or "localhost")
+        + ":"
+        + (os.getenv("REDIS_PORT_6379_TCP_PORT") or "6379")
+    ),
 }
 
 

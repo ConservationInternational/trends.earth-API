@@ -73,9 +73,10 @@ jobs:
     - name: Run linting and formatting checks
       run: |
         # Install ruff (already in requirements-dev.txt)
+          # Run ruff linting
+        python -m ruff check gefapi/ tests/
         
-        # Run ruff linting
-        python -m ruff check gefapi/ tests/        # Run ruff formatting check
+        # Run ruff formatting check
         python -m ruff format --check gefapi/ tests/
 
     - name: Initialize test database
