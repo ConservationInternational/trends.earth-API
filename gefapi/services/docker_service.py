@@ -12,7 +12,8 @@ import tempfile
 import docker
 import rollbar
 
-from gefapi import celery, db
+from gefapi import celery as celery_app  # Rename to avoid mypy confusion
+from gefapi import db
 from gefapi.config import SETTINGS
 from gefapi.models import Execution, Script, ScriptLog
 from gefapi.s3 import get_script_from_s3, push_params_to_s3
@@ -25,7 +26,7 @@ docker_client = docker.DockerClient(base_url=DOCKER_HOST)
 logger = logging.getLogger()
 
 
-@celery.task()
+@celery_app.task()
 def docker_build(script_id):
     logger.debug(f"Obtaining script with id {script_id}")
     script = Script.query.get(script_id)
@@ -63,7 +64,7 @@ def docker_build(script_id):
         db.session.commit()
 
 
-@celery.task()
+@celery_app.task()
 def docker_run(execution_id, image, environment, params):
     logger.info(f"[THREAD] Running script with image {image}")
     logger.debug(f"Obtaining execution with id {execution_id}")

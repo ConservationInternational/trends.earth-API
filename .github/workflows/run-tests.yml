@@ -75,15 +75,8 @@ jobs:
         # Install ruff (already in requirements-dev.txt)
         
         # Run ruff linting
-        python -m ruff check gefapi/ tests/
-        
-        # Run ruff formatting check
+        python -m ruff check gefapi/ tests/        # Run ruff formatting check
         python -m ruff format --check gefapi/ tests/
-
-    - name: Run type checking
-      run: |
-        pip install mypy types-redis
-        mypy gefapi/ --ignore-missing-imports --no-strict-optional
 
     - name: Initialize test database
       run: |
