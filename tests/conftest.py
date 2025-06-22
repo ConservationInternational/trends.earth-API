@@ -3,8 +3,12 @@ Test configuration and fixtures for Trends.Earth API tests
 """
 
 import os
+import sys
 import tempfile
 from unittest.mock import patch
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 from werkzeug.security import generate_password_hash

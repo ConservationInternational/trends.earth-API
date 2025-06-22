@@ -34,7 +34,7 @@ jobs:
           --health-retries 5
         ports:
           - 6379:6379
-
+    
     strategy:
       matrix:
         python-version: [3.9, "3.10", 3.11]
@@ -61,7 +61,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
-
     - name: Set environment variables for testing
       run: |
         echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gefapi_test" >> $GITHUB_ENV
@@ -69,10 +68,12 @@ jobs:
         echo "JWT_SECRET_KEY=test-secret-key-for-ci" >> $GITHUB_ENV
         echo "FLASK_ENV=testing" >> $GITHUB_ENV
         echo "TESTING=true" >> $GITHUB_ENV
+        echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+
     - name: Run linting and formatting checks
       run: |
         # Install ruff (already in requirements-dev.txt)
-          # Run ruff linting
+        # Run ruff linting
         python -m ruff check gefapi/ tests/
         
         # Run ruff formatting check

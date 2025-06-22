@@ -2,6 +2,40 @@
 requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "trends-earth-api"
+version = "1.0.0"
+description = "API for managing Scripts, Users, and Executions in Trends.Earth"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "flask",
+    "flask-cors",
+    "flask-compress", 
+    "flask-jwt-extended",
+    "flask-migrate",
+    "flask-sqlalchemy",
+    "psycopg2-binary",
+    "celery",
+    "redis",
+    "rollbar",
+    "sqlalchemy",
+    "werkzeug",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-html",
+    "ruff",
+    "mypy",
+    "types-redis",
+]
+
+[tool.setuptools]
+packages = ["gefapi"]
+
 [tool.ruff]
 # Same as Black's default line length
 line-length = 88

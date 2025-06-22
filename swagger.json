@@ -1,1021 +1,786 @@
 {
-  "swagger": "2.0",
-  "info": {
-    "title": "GEF API",
-    "description": "GEF API Documentation",
-    "termsOfService": "TODO",
-    "contact": {
-      "name": "TODO",
-      "url": "http://todo.com",
-      "email": "todo@too.com"
-    },
-    "license": {
-      "name": "todo",
-      "url": "http://todo.com"
-    },
-    "version": "1.0.0"
-  },
-  "host": "TODO",
-  "schemes": [
-    "https",
-    "http"
-  ],
-  "consumes": [
-    "application/vnd.api+json"
-  ],
-  "produces": [
-    "application/vnd.api+json"
-  ],
-  "securityDefinitions": {
-    "UserSecurity": {
-      "type": "apiKey",
-      "in": "header",
-      "name": "Authorization",
-      "description": "JWT AUTH ```Bearer {{TOKEN}}```"
-    }
-  },
-  "paths": {
-    "/script": {
-      "get": {
-        "description": "Get all scripts",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "200": {
-            "description": "Scripts obtained",
+  "components": {
+    "responses": {
+      "ForbiddenError": {
+        "content": {
+          "application/json": {
             "schema": {
-              "$ref": "#/definitions/Scripts"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
+              "$ref": "#/components/schemas/Error"
             }
           }
-        }
+        },
+        "description": "Insufficient permissions"
       },
-      "post": {
-        "description": "Create a new script",
-        "consumes": [
-          "multipart/form-data"
-        ],
-        "produces": [
-          "application/vnd.api+json",
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "file",
-            "in": "formData",
-            "description": "The uploaded file data",
-            "required": true,
-            "type": "file"
-          }
-        ],
-        "security": [
-          {
-            "UserSecurity": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Created script",
+      "NotFoundError": {
+        "content": {
+          "application/json": {
             "schema": {
-              "$ref": "#/definitions/Script"
-            }
-          },
-          "400": {
-            "description": "InvalidFile, ScriptDuplicated error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
+              "$ref": "#/components/schemas/Error"
             }
           }
-        }
+        },
+        "description": "Resource not found"
+      },
+      "UnauthorizedError": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Authentication required"
       }
     },
-    "/script/{script}": {
+    "schemas": {
+      "Error": {
+        "properties": {
+          "detail": {
+            "description": "Detailed error description",
+            "type": "string"
+          },
+          "error": {
+            "description": "Error message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "Execution": {
+        "properties": {
+          "duration": {
+            "description": "Execution duration in seconds (when included)",
+            "type": "number"
+          },
+          "end_date": {
+            "description": "Execution end timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique identifier for the execution",
+            "format": "uuid",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {},
+            "description": "Execution parameters",
+            "type": "object"
+          },
+          "progress": {
+            "description": "Execution progress percentage (0-100)",
+            "type": "integer"
+          },
+          "results": {
+            "additionalProperties": {},
+            "description": "Execution results",
+            "type": "object"
+          },
+          "script_id": {
+            "description": "ID of the executed script",
+            "format": "uuid",
+            "type": "string"
+          },
+          "start_date": {
+            "description": "Execution start timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "description": "Execution status (PENDING, RUNNING, FINISHED, FAILED)",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "ID of user who ran the script",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "script_id",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "ExecutionLog": {
+        "properties": {
+          "execution_id": {
+            "description": "ID of associated execution",
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique identifier for the log entry",
+            "type": "integer"
+          },
+          "level": {
+            "description": "Log level (DEBUG, INFO, WARNING, ERROR)",
+            "type": "string"
+          },
+          "register_date": {
+            "description": "Log entry timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "text": {
+            "description": "Log message text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "level",
+          "text"
+        ],
+        "type": "object"
+      },
+      "Script": {
+        "properties": {
+          "cpu_limit": {
+            "description": "Maximum CPU limit",
+            "type": "integer"
+          },
+          "cpu_reservation": {
+            "description": "Reserved CPU resources",
+            "type": "integer"
+          },
+          "created_at": {
+            "description": "Script creation timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique identifier for the script",
+            "format": "uuid",
+            "type": "string"
+          },
+          "memory_limit": {
+            "description": "Maximum memory limit (MB)",
+            "type": "integer"
+          },
+          "memory_reservation": {
+            "description": "Reserved memory (MB)",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Script name",
+            "type": "string"
+          },
+          "public": {
+            "description": "Whether script is publicly accessible",
+            "type": "boolean"
+          },
+          "slug": {
+            "description": "URL-friendly script identifier",
+            "type": "string"
+          },
+          "status": {
+            "description": "Script status (PENDING, SUCCESS, FAILED)",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "ID of script owner",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ],
+        "type": "object"
+      },
+      "StatusLog": {
+        "properties": {
+          "cpu_usage_percent": {
+            "description": "CPU usage percentage",
+            "type": "number"
+          },
+          "executions_active": {
+            "description": "Number of active executions",
+            "type": "integer"
+          },
+          "executions_finished": {
+            "description": "Number of finished executions",
+            "type": "integer"
+          },
+          "executions_ready": {
+            "description": "Number of ready executions",
+            "type": "integer"
+          },
+          "executions_running": {
+            "description": "Number of running executions",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Unique identifier for the status log",
+            "type": "integer"
+          },
+          "memory_available_percent": {
+            "description": "Available memory percentage",
+            "type": "number"
+          },
+          "scripts_count": {
+            "description": "Total number of scripts",
+            "type": "integer"
+          },
+          "timestamp": {
+            "description": "Status measurement timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "users_count": {
+            "description": "Total number of users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "User": {
+        "properties": {
+          "country": {
+            "description": "User's country",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Account creation timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "description": "User's email address",
+            "format": "email",
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique identifier for the user",
+            "format": "uuid",
+            "type": "string"
+          },
+          "institution": {
+            "description": "User's institution",
+            "type": "string"
+          },
+          "name": {
+            "description": "User's full name",
+            "type": "string"
+          },
+          "role": {
+            "description": "User role (USER, ADMIN)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "id"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "Trends.Earth Team",
+      "url": "https://trends.earth"
+    },
+    "description": "API for managing Scripts, Users, and Executions in Trends.Earth",
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    },
+    "title": "Trends.Earth API",
+    "version": "1.0.0",
+    "x-generated-at": "2025-06-22T19:23:05.031803"
+  },
+  "openapi": "3.0.2",
+  "paths": {
+    "/api/v1/execution": {
       "get": {
-        "description": "Get a script by slug or id",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
+        "description": "Get list of executions with filtering and sorting",
         "parameters": [
           {
-            "name": "script",
-            "in": "path",
-            "description": "Script id or slug",
-            "required": true,
-            "type": "string"
+            "description": "Filter by execution status",
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "enum": [
+                "PENDING",
+                "RUNNING",
+                "FINISHED",
+                "FAILED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter executions started after this date",
+            "in": "query",
+            "name": "start_date_gte",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter executions started before this date",
+            "in": "query",
+            "name": "start_date_lte",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter executions ended after this date",
+            "in": "query",
+            "name": "end_date_gte",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter executions ended before this date",
+            "in": "query",
+            "name": "end_date_lte",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort field (prefix with - for descending)",
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "example": "-start_date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Additional data to include",
+            "in": "query",
+            "name": "include",
+            "schema": {
+              "example": "duration,user,script",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Data to exclude",
+            "in": "query",
+            "name": "exclude",
+            "schema": {
+              "example": "params,results",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page number",
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Items per page",
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Script object",
-            "schema": {
-              "$ref": "#/definitions/Script"
-            }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/Execution"
+                      },
+                      "type": "array"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "List of executions"
           },
-          "404": {
-            "description": "ScriptNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
           }
-        }
-      },
-      "patch": {
-        "description": "Update a script",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "script",
-            "in": "path",
-            "description": "Script id or slug",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/Script"
-            }
-          }
-        ],
+        },
         "security": [
           {
-            "UserSecurity": []
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List executions",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/script": {
+      "get": {
+        "description": "Get list of user's scripts",
+        "parameters": [
+          {
+            "description": "Additional data to include",
+            "in": "query",
+            "name": "include",
+            "schema": {
+              "example": "executions,logs",
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Updated script",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/Script"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "List of scripts"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List scripts",
+        "tags": [
+          "Scripts"
+        ]
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "description": "Get system monitoring data (Admin only)",
+        "parameters": [
+          {
+            "description": "Filter logs from this date",
+            "in": "query",
+            "name": "start_date",
             "schema": {
-              "$ref": "#/definitions/Script"
+              "format": "date-time",
+              "type": "string"
             }
           },
-          "400": {
-            "description": "InvalidFile error",
+          {
+            "description": "Filter logs until this date",
+            "in": "query",
+            "name": "end_date",
             "schema": {
-              "$ref": "#/definitions/Error"
+              "format": "date-time",
+              "type": "string"
             }
+          },
+          {
+            "description": "Sort field",
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "default": "-timestamp",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page number",
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Items per page",
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/StatusLog"
+                      },
+                      "type": "array"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "System status logs"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
           },
           "403": {
-            "description": "NotAllowed error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "404": {
-            "description": "ScriptNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
+            "$ref": "#/components/responses/ForbiddenError"
           }
-        }
-      },
-      "delete": {
-        "description": "Delete a script",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "script",
-            "in": "path",
-            "description": "Script id or slug",
-            "required": true,
-            "type": "string"
-          }
-        ],
+        },
         "security": [
           {
-            "UserSecurity": []
+            "bearerAuth": []
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Updated script",
-            "schema": {
-              "$ref": "#/definitions/Script"
-            }
-          },
-          "404": {
-            "description": "ScriptNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
+        "summary": "Get system status logs",
+        "tags": [
+          "System Status"
+        ]
       }
     },
-    "/script/{script}/log": {
+    "/api/v1/user": {
       "get": {
-        "description": "Get script logs",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
+        "description": "Get list of all users (Admin only)",
         "parameters": [
           {
-            "name": "script",
-            "in": "path",
-            "description": "Script id or slug",
-            "required": true,
-            "type": "string"
+            "description": "Additional data to include",
+            "in": "query",
+            "name": "include",
+            "schema": {
+              "example": "scripts,executions",
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Logs",
-            "schema": {
-              "$ref": "#/definitions/Logs"
-            }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/User"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "List of users"
           },
-          "404": {
-            "description": "ScriptNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
           },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
           }
-        }
-      }
-    },
-    "/script/{script}/run": {
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List users",
+        "tags": [
+          "Users"
+        ]
+      },
       "post": {
-        "description": "Run a script. Create an execution",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "script",
-            "in": "path",
-            "description": "Script id or slug",
-            "required": true,
-            "type": "string"
-          }
-        ],
+        "description": "Create a new user account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "country": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "institution": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "Logs",
-            "schema": {
-              "$ref": "#/definitions/Execution"
-            }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/User"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "User created successfully"
           },
           "400": {
-            "description": "ScriptStateNotValid error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "404": {
-            "description": "ScriptNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
+            "$ref": "#/components/responses/BadRequestError"
           }
-        }
+        },
+        "summary": "Create user",
+        "tags": [
+          "Users"
+        ]
       }
     },
-    "/execution": {
-      "get": {
-        "description": "Get all executions",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "200": {
-            "description": "Executions",
-            "schema": {
-              "$ref": "#/definitions/Executions"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/execution/{execution}": {
-      "get": {
-        "description": "Get a execution by id",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "execution",
-            "in": "path",
-            "description": "Execution id",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Execution object",
-            "schema": {
-              "$ref": "#/definitions/Execution"
-            }
-          },
-          "404": {
-            "description": "ExecutionNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
-      },
-      "patch": {
-        "description": "Update an execution status and/or progress",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "execution",
-            "in": "path",
-            "description": "Execution id",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/Execution"
-            }
-          }
-        ],
-        "security": [
-          {
-            "UserSecurity": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Updated script",
-            "schema": {
-              "$ref": "#/definitions/Script"
-            }
-          },
-          "404": {
-            "description": "ExecutionNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/execution/{execution}/log": {
-      "get": {
-        "description": "Get execution logs",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "execution",
-            "in": "path",
-            "description": "execution id",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Logs",
-            "schema": {
-              "$ref": "#/definitions/Logs"
-            }
-          },
-          "404": {
-            "description": "ExecutionNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
-      },
+    "/auth": {
       "post": {
-        "description": "Post execution logs",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "execution",
-            "in": "path",
-            "description": "execution id",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/Log"
+        "description": "Authenticate user with email and password",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "email": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "type": "object"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "Logs",
-            "schema": {
-              "$ref": "#/definitions/Logs"
-            }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "access_token": {
+                      "type": "string"
+                    },
+                    "user": {
+                      "$ref": "#/components/schemas/User"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful authentication"
           },
-          "404": {
-            "description": "ExecutionNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
           }
-        }
-      }
-    },
-    "/user": {
-      "get": {
-        "description": "Get all users",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "200": {
-            "description": "users obtained",
-            "schema": {
-              "$ref": "#/definitions/Users"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
-      },
-      "post": {
-        "description": "Create a new user",
-        "consumes": [
-          "multipart/form-data"
-        ],
-        "produces": [
-          "application/vnd.api+json",
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/User"
-            }
-          }
-        ],
-        "security": [
-          {
-            "UserSecurity": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Created user",
-            "schema": {
-              "$ref": "#/definitions/User"
-            }
-          },
-          "400": {
-            "description": "UserDuplicated error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/user/{user}": {
-      "get": {
-        "description": "Get a user by email or id",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "user",
-            "in": "path",
-            "description": "user id or email",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "User object",
-            "schema": {
-              "$ref": "#/definitions/User"
-            }
-          },
-          "404": {
-            "description": "UserNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
-      },
-      "patch": {
-        "description": "Update an user",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "user",
-            "in": "path",
-            "description": "user id or email",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/User"
-            }
-          }
-        ],
-        "security": [
-          {
-            "UserSecurity": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Updated user",
-            "schema": {
-              "$ref": "#/definitions/Script"
-            }
-          },
-          "404": {
-            "description": "UserNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
-      },
-      "delete": {
-        "description": "Delete an user",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "user",
-            "in": "path",
-            "description": "user id or slug",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "security": [
-          {
-            "UserSecurity": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Deleted user",
-            "schema": {
-              "$ref": "#/definitions/User"
-            }
-          },
-          "404": {
-            "description": "UserNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/user/me": {
-      "get": {
-        "description": "Get my identity",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "200": {
-            "description": "user obtained",
-            "schema": {
-              "$ref": "#/definitions/User"
-            }
-          },
-          "500": {
-            "description": "Generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/user/{user}/recover-password": {
-      "post": {
-        "description": "Recover password",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "parameters": [
-          {
-            "name": "user",
-            "in": "path",
-            "description": "user id or slug",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "user obtained",
-            "schema": {
-              "$ref": "#/definitions/User"
-            }
-          },
-          "404": {
-            "description": "UserNotFound error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Email or generic error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
+        },
+        "summary": "Authenticate user",
+        "tags": [
+          "Authentication"
+        ]
       }
     }
   },
-  "definitions": {
-    "Error": {
-      "type": "object",
-      "description": "Error",
-      "properties": {
-        "status": {
-          "type": "string",
-          "description": "HTTP Status code"
-        },
-        "detail": {
-          "type": "string",
-          "description": "Short detail about the error"
-        }
-      }
+  "servers": [
+    {
+      "description": "Production server",
+      "url": "https://api.trends.earth"
     },
-    "Script": {
-      "type": "object",
-      "description": "Script Model",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "script id"
-        },
-        "name": {
-          "type": "string",
-          "description": "script name"
-        },
-        "slug": {
-          "type": "string",
-          "description": "script slug"
-        },
-        "created_at": {
-          "type": "string",
-          "format": "date",
-          "description": "creation date"
-        },
-        "user_id": {
-          "type": "string",
-          "format": "UUID",
-          "description": "user id"
-        },
-        "status": {
-          "type": "string",
-          "description": "script status"
-        },
-        "logs": {
-          "type": "array",
-          "description": "script status",
-          "items": {
-            "$ref": "#/definitions/Log"
-          }
-        },
-        "executions": {
-          "type": "array",
-          "description": "script status",
-          "items": {
-            "$ref": "#/definitions/Execution"
-          }
-        }
-      }
+    {
+      "description": "Staging server",
+      "url": "https://staging-api.trends.earth"
     },
-    "Scripts": {
-      "type": "object",
-      "properties": {
-        "data": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Script"
-          }
-        }
-      }
-    },
-    "User": {
-      "type": "object",
-      "description": "User Model",
-      "properties": {
-        "id": {
-          "type": "string",
-          "format": "UUID",
-          "description": "user id"
-        },
-        "email": {
-          "type": "string",
-          "format": "email",
-          "description": "user email"
-        },
-        "created_at": {
-          "type": "string",
-          "format": "date",
-          "description": "creation date"
-        },
-        "role": {
-          "type": "string",
-          "description": "user role"
-        },
-        "scripts": {
-          "type": "array",
-          "description": "user scripts",
-          "items": {
-            "$ref": "#/definitions/Script"
-          }
-        }
-      }
-    },
-    "Users": {
-      "type": "object",
-      "properties": {
-        "data": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/User"
-          }
-        }
-      }
-    },
-    "Log": {
-      "type": "object",
-      "description": "Log Model",
-      "properties": {
-        "id": {
-          "type": "integer",
-          "description": "log id"
-        },
-        "text": {
-          "type": "string",
-          "description": "log information"
-        },
-        "register_date": {
-          "type": "string",
-          "format": "date",
-          "description": "log time"
-        },
-        "script_id": {
-          "type": "string",
-          "format": "UUID",
-          "description": "script id"
-        }
-      }
-    },
-    "Logs": {
-      "type": "object",
-      "properties": {
-        "data": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Log"
-          }
-        }
-      }
-    },
-    "Execution": {
-      "type": "object",
-      "description": "Execution Model",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "execution id"
-        },
-        "start_date": {
-          "type": "string",
-          "format": "date",
-          "description": "start date"
-        },
-        "end_date": {
-          "type": "string",
-          "format": "date",
-          "description": "end date"
-        },
-        "status": {
-          "type": "string",
-          "description": "execution status"
-        },
-        "progress": {
-          "type": "integer",
-          "description": "execution progress"
-        },
-        "params": {
-          "type": "object",
-          "description": "params set in the request"
-        },
-        "results": {
-          "type": "object",
-          "description": "script results"
-        },
-        "script": {
-          "type": "string",
-          "format": "UUID",
-          "description": "script id"
-        },
-        "logs": {
-          "type": "array",
-          "description": "script status",
-          "items": {
-            "$ref": "#/definitions/Log"
-          }
-        }
-      }
-    },
-    "Executions": {
-      "type": "object",
-      "properties": {
-        "data": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Execution"
-          }
-        }
-      }
+    {
+      "description": "Development server",
+      "url": "http://localhost:5000"
     }
-  }
+  ]
 }
