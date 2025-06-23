@@ -4,7 +4,10 @@ Integration tests for the API - test full workflows
 
 from unittest.mock import patch
 
+import pytest
 
+
+@pytest.mark.integration
 class TestAPIIntegration:
     """Test complete API workflows"""
 
