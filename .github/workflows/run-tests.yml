@@ -93,6 +93,7 @@ jobs:
         "
 
     - name: Run unit tests
+      timeout-minutes: 15
       run: |
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         pytest tests/ \
@@ -104,9 +105,11 @@ jobs:
           --junitxml=test-results.xml \
           --html=test-report.html \
           --self-contained-html \
+          --timeout=300 \
           -v
 
     - name: Run integration tests
+      timeout-minutes: 10
       run: |
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         pytest tests/test_integration.py \
@@ -114,9 +117,11 @@ jobs:
           --cov-append \
           --cov-report=xml \
           --junitxml=integration-results.xml \
+          --timeout=300 \
           -v
 
     - name: Run API validation tests
+      timeout-minutes: 10
       run: |
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         pytest tests/test_api_validation.py \
@@ -124,6 +129,7 @@ jobs:
           --cov-append \
           --cov-report=xml \
           --junitxml=validation-results.xml \
+          --timeout=300 \
           -v
 
     - name: Run performance tests (Python 3.9 only)

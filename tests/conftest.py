@@ -21,19 +21,26 @@ from gefapi.models import Execution, Script, StatusLog, User
 @pytest.fixture(scope="session")
 def app():
     """Create application for testing"""
-    # Create temporary database file
-    db_fd, db_path = tempfile.mkstemp()
+    # Use environment DATABASE_URL if available (for CI), otherwise use SQLite
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        # Create temporary database file for local testing
+        db_fd, db_path = tempfile.mkstemp()
+        database_url = f"sqlite:///{db_path}"
+    else:
+        db_fd = None
+        db_path = None
 
     # Test configuration
     test_config = {
         "TESTING": True,
-        "SQLALCHEMY_DATABASE_URI": f"sqlite:///{db_path}",
+        "SQLALCHEMY_DATABASE_URI": database_url,
         "SQLALCHEMY_TRACK_MODIFICATIONS": False,
         "JWT_SECRET_KEY": "test-secret-key",
         "WTF_CSRF_ENABLED": False,
-        "REDIS_URL": "redis://localhost:6379/1",  # Use different Redis DB for tests
-        "result_backend": "redis://localhost:6379/1",
-        "broker_url": "redis://localhost:6379/1",
+        "REDIS_URL": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
+        "result_backend": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
+        "broker_url": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
     }
 
     app = flask_app
@@ -42,10 +49,10 @@ def app():
     with app.app_context():
         db.create_all()
         yield app
-        db.drop_all()
-
-    os.close(db_fd)
-    os.unlink(db_path)
+        db.drop_all()  # Clean up SQLite file if we created one
+    if db_fd is not None and db_path is not None:
+        os.close(db_fd)
+        os.unlink(db_path)
 
 
 @pytest.fixture
@@ -122,9 +129,9 @@ def sample_script(app, regular_user):
             name="Test Script",
             slug="test-script",
             user_id=regular_user.id,
-            status="SUCCESS",
-            public=True,
         )
+        script.status = "SUCCESS"
+        script.public = True
         db.session.add(script)
         db.session.commit()
         return script
