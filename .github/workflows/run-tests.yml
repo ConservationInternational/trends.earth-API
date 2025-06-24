@@ -125,7 +125,8 @@ jobs:
           --self-contained-html \
           --timeout=120 \
           --cov-fail-under=25 \
-          -v# Integration tests temporarily disabled due to hanging issues
+          -v
+    # Integration tests temporarily disabled due to hanging issues
     # - name: Run integration tests (optional)
     #   timeout-minutes: 5
     #   continue-on-error: true
