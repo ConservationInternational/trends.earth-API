@@ -2,8 +2,6 @@
 Test pagination behavior for executions endpoint
 """
 
-import pytest
-
 from tests.test_utils import TestUtils
 
 
