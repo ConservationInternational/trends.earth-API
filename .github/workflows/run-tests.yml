@@ -201,7 +201,7 @@ jobs:
         pip install safety bandit
         
         # Check for known security vulnerabilities in dependencies
-        safety check
+        safety scan
         
         # Run bandit security linter
         bandit -r gefapi/ -f json -o bandit-report.json || true
