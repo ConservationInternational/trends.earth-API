@@ -154,18 +154,24 @@ docker compose -f docker-compose.admin.yml down
 - `sort` - Sort results (supports: `status`, `start_date`, `end_date`, `duration`, `script_name`, `user_name`)
 - `include` - Include additional data (`duration`, `user`, `script`, `logs`)
 - `exclude` - Exclude data (`params`, `results`)
-- `page` - Page number (default: 1)
-- `per_page` - Items per page (default: 20, max: 100)
+- `page` - Page number (only used if pagination is requested, defaults to 1)
+- `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
+
+**Pagination:**
+By default, all executions are returned without pagination. To enable pagination, include either `page` or `per_page` parameters in your request. When pagination is enabled, the response will include `page`, `per_page`, and `total` fields.
 
 **Examples:**
 ```bash
-# Get finished executions with duration, sorted by longest first
+# Get all finished executions with duration, sorted by longest first (no pagination)
 GET /api/v1/execution?status=FINISHED&include=duration&sort=-duration
 
-# Get executions from last week, sorted by script name
+# Get first page of executions (pagination enabled)
+GET /api/v1/execution?page=1&per_page=10
+
+# Get executions from last week, sorted by script name (no pagination)
 GET /api/v1/execution?start_date_gte=2025-06-14&sort=script_name&include=script
 
-# Get running executions with user info
+# Get running executions with user info (no pagination)
 GET /api/v1/execution?status=RUNNING&include=user,duration&sort=-start_date
 ```
 

@@ -55,13 +55,17 @@ class ExecutionService:
         sort=None,
         page=1,
         per_page=2000,
+        paginate=True,
     ):
         logger.info("[SERVICE]: Getting executions")
         logger.info("[DB]: QUERY")
-        if page < 1:
-            raise Exception("Page must be greater than 0")
-        if per_page < 1:
-            raise Exception("Per page must be greater than 0")
+
+        # Validate pagination parameters only when pagination is requested
+        if paginate:
+            if page < 1:
+                raise Exception("Page must be greater than 0")
+            if per_page < 1:
+                raise Exception("Per page must be greater than 0")
 
         # Determine if we need joins for sorting
         needs_joins = sort and (
@@ -148,8 +152,15 @@ class ExecutionService:
             # Default to sorting by end_date for backwards compatibility
             query = query.order_by(Execution.end_date.desc())
 
-        total = query.count()
-        executions = query.offset((page - 1) * per_page).limit(per_page).all()
+        if paginate:
+            # Apply pagination only when requested
+            total = query.count()
+            executions = query.offset((page - 1) * per_page).limit(per_page).all()
+        else:
+            # Return all results without pagination
+            executions = query.all()
+            total = len(executions)
+
         return executions, total
 
     @staticmethod

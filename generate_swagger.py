@@ -440,18 +440,17 @@ def add_execution_paths(spec):
                     {
                         "name": "page",
                         "in": "query",
-                        "description": "Page number",
-                        "schema": {"type": "integer", "minimum": 1, "default": 1},
+                        "description": "Page number (only applies if pagination is requested)",
+                        "schema": {"type": "integer", "minimum": 1},
                     },
                     {
                         "name": "per_page",
                         "in": "query",
-                        "description": "Items per page",
+                        "description": "Items per page (only applies if pagination is requested)",
                         "schema": {
                             "type": "integer",
                             "minimum": 1,
                             "maximum": 100,
-                            "default": 20,
                         },
                     },
                 ],
@@ -469,10 +468,20 @@ def add_execution_paths(spec):
                                                 "$ref": "#/components/schemas/Execution"
                                             },
                                         },
-                                        "page": {"type": "integer"},
-                                        "per_page": {"type": "integer"},
-                                        "total": {"type": "integer"},
+                                        "page": {
+                                            "type": "integer",
+                                            "description": "Current page number (only included when pagination is requested)",
+                                        },
+                                        "per_page": {
+                                            "type": "integer",
+                                            "description": "Items per page (only included when pagination is requested)",
+                                        },
+                                        "total": {
+                                            "type": "integer",
+                                            "description": "Total number of items (only included when pagination is requested)",
+                                        },
                                     },
+                                    "required": ["data"],
                                 }
                             }
                         },

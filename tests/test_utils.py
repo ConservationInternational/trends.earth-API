@@ -40,11 +40,23 @@ class TestUtils:
             assert field in response_data, f"Missing required field: {field}"
 
     @staticmethod
-    def assert_pagination_structure(response_data: dict[str, Any]):
-        """Assert that response has pagination structure"""
-        TestUtils.assert_response_structure(
-            response_data, ["data", "page", "per_page", "total", "pages"]
-        )
+    def assert_pagination_structure(
+        response_data: dict[str, Any], is_paginated: bool = True
+    ):
+        """Assert that response has appropriate structure based on pagination"""
+        if is_paginated:
+            TestUtils.assert_response_structure(
+                response_data, ["data", "page", "per_page", "total"]
+            )
+        else:
+            # Non-paginated responses only require data field
+            TestUtils.assert_response_structure(response_data, ["data"])
+            # Ensure pagination fields are NOT present
+            pagination_fields = ["page", "per_page", "total"]
+            for field in pagination_fields:
+                assert field not in response_data, (
+                    f"Unexpected pagination field in non-paginated response: {field}"
+                )
 
     @staticmethod
     def create_mock_celery_task():

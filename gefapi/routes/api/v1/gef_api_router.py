@@ -270,14 +270,25 @@ def get_executions():
     include = include.split(",") if include else []
     exclude = request.args.get("exclude")
     exclude = exclude.split(",") if exclude else []
-    # Pagination parameters
-    try:
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 20))
-        page = max(page, 1)
-        per_page = min(max(per_page, 1), 100)
-    except Exception:
-        page, per_page = 1, 1000
+    # Pagination parameters - only paginate if user requests it
+    page_param = request.args.get("page", None)
+    per_page_param = request.args.get("per_page", None)
+
+    if page_param is not None or per_page_param is not None:
+        # User requested pagination
+        try:
+            page = int(page_param) if page_param is not None else 1
+            per_page = int(per_page_param) if per_page_param is not None else 20
+            page = max(page, 1)
+            per_page = min(max(per_page, 1), 100)
+            paginate = True
+        except Exception:
+            page, per_page = 1, 20
+            paginate = True
+    else:
+        # No pagination requested
+        page, per_page = None, None
+        paginate = False
     try:
         executions, total = ExecutionService.get_executions(
             current_user,
@@ -291,19 +302,26 @@ def get_executions():
             sort=sort,
             page=page,
             per_page=per_page,
+            paginate=paginate,
         )
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return (
-        jsonify(
-            data=[execution.serialize(include, exclude) for execution in executions],
-            page=page,
-            per_page=per_page,
-            total=total,
-        ),
-        200,
-    )
+
+    response_data = {
+        "data": [execution.serialize(include, exclude) for execution in executions]
+    }
+    # Only include pagination metadata if pagination was requested
+    if paginate:
+        response_data.update(
+            {
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+            }
+        )
+
+    return jsonify(response_data), 200
 
 
 @endpoints.route("/execution/<execution>", strict_slashes=False, methods=["GET"])
