@@ -114,7 +114,7 @@ jobs:
         sed -i 's|<title>Swagger UI</title>|<title>Trends.Earth API Documentation</title>|g' docs/swagger-ui/index.html
         
     - name: Commit and push documentation
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
