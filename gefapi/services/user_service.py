@@ -75,11 +75,71 @@ class UserService:
         return user
 
     @staticmethod
-    def get_users():
+    def get_users(
+        role=None,
+        country=None,
+        institution=None,
+        created_at_gte=None,
+        created_at_lte=None,
+        updated_at_gte=None,
+        updated_at_lte=None,
+        sort=None,
+        page=1,
+        per_page=2000,
+        paginate=False,
+    ):
         logger.info("[SERVICE]: Getting users")
         logger.info("[DB]: QUERY")
-        users = User.query.all()
-        return users
+
+        # Validate pagination parameters only when pagination is requested
+        if paginate:
+            if page < 1:
+                raise Exception("Page must be greater than 0")
+            if per_page < 1:
+                raise Exception("Per page must be greater than 0")
+
+        # Build base query
+        query = db.session.query(User)
+
+        # Apply filters
+        if role:
+            query = query.filter(User.role == role)
+        if country:
+            query = query.filter(User.country.ilike(f"%{country}%"))
+        if institution:
+            query = query.filter(User.institution.ilike(f"%{institution}%"))
+        if created_at_gte:
+            query = query.filter(User.created_at >= created_at_gte)
+        if created_at_lte:
+            query = query.filter(User.created_at <= created_at_lte)
+        if updated_at_gte:
+            query = query.filter(User.updated_at >= updated_at_gte)
+        if updated_at_lte:
+            query = query.filter(User.updated_at <= updated_at_lte)
+
+        # Apply sorting
+        if sort:
+            sort_field = sort[1:] if sort.startswith("-") else sort
+            sort_direction = "desc" if sort.startswith("-") else "asc"
+
+            if hasattr(User, sort_field):
+                query = query.order_by(
+                    getattr(getattr(User, sort_field), sort_direction)()
+                )
+        else:
+            # Default to sorting by created_at desc
+            query = query.order_by(User.created_at.desc())
+
+        if paginate:
+            # Apply pagination only when requested
+            total = query.count()
+            users = query.offset((page - 1) * per_page).limit(per_page).all()
+        else:
+            # Return all results without pagination
+            users = query.all()
+            total = len(users)
+
+        return users, total
 
     @staticmethod
     def get_user(user_id):

@@ -16,7 +16,7 @@ This project belongs to the Trends.Earth project and implements the API used by 
 
 ## Technology Stack
 
-- **Python 3.6+** - Main programming language
+- **Python 3.9+** - Main programming language
 - **Flask** - Web framework for API endpoints
 - **SQLAlchemy** - ORM for database operations (PostgreSQL)
 - **Celery** - Background task management (with Redis)
@@ -120,11 +120,18 @@ docker compose -f docker-compose.admin.yml down
 
 ## API Endpoints
 
+The API provides comprehensive filtering, sorting, and pagination capabilities for listing endpoints. All query parameters are optional, ensuring backward compatibility with existing implementations.
+
+**Common Features:**
+- **Filtering**: Support for date ranges, status filters, and field-specific filters
+- **Sorting**: Sort by any field in ascending (default) or descending order (use `-` prefix)
+- **Pagination**: Optional pagination (enabled only when `page` or `per_page` parameters are provided)
+
 ### Authentication
 - `POST /auth` - User authentication
 
 ### Scripts
-- `GET /api/v1/script` - List all scripts
+- `GET /api/v1/script` - List all scripts with filtering, sorting, and pagination
 - `GET /api/v1/script/<script_id>` - Get specific script
 - `POST /api/v1/script` - Create new script
 - `PATCH /api/v1/script/<script_id>` - Update script
@@ -133,6 +140,46 @@ docker compose -f docker-compose.admin.yml down
 - `POST /api/v1/script/<script_id>/unpublish` - Unpublish script
 - `GET /api/v1/script/<script_id>/download` - Download script
 - `GET /api/v1/script/<script_id>/log` - Get script logs
+
+#### Script Filtering & Sorting
+
+**Query Parameters:**
+- `status` - Filter by script status (e.g., `PENDING`, `SUCCESS`, `FAILED`)
+- `public` - Filter by public/private scripts (`true`/`false`)
+- `user_id` - Filter scripts by user ID (Admin only)
+- `created_at_gte` - Filter scripts created on or after date (ISO 8601 format)
+- `created_at_lte` - Filter scripts created on or before date (ISO 8601 format)
+- `updated_at_gte` - Filter scripts updated on or after date (ISO 8601 format)
+- `updated_at_lte` - Filter scripts updated on or before date (ISO 8601 format)
+- `sort` - Sort results by field (supports: `name`, `slug`, `created_at`, `updated_at`, `status`)
+- `include` - Include additional data in response
+- `page` - Page number (only used if pagination is requested, defaults to 1)
+- `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
+
+**Access Control:**
+- **Regular users**: Can see their own scripts + public scripts
+- **Admin users**: Can see all scripts and filter by `user_id`
+
+**Pagination:**
+By default, all scripts are returned without pagination. To enable pagination, include either `page` or `per_page` parameters in your request. When pagination is enabled, the response will include `page`, `per_page`, and `total` fields.
+
+**Examples:**
+```bash
+# Get public scripts, sorted by creation date (newest first)
+GET /api/v1/script?public=true&sort=-created_at
+
+# Get first page of scripts with pagination
+GET /api/v1/script?page=1&per_page=10
+
+# Get scripts created in the last week
+GET /api/v1/script?created_at_gte=2025-06-19T00:00:00Z
+
+# Get PENDING scripts for a specific user (Admin only)
+GET /api/v1/script?status=PENDING&user_id=550e8400-e29b-41d4-a716-446655440000
+
+# Get scripts sorted by name (no pagination)
+GET /api/v1/script?sort=name
+```
 
 ### Executions
 - `POST /api/v1/script/<script_id>/run` - Run a script
@@ -176,7 +223,7 @@ GET /api/v1/execution?status=RUNNING&include=user,duration&sort=-start_date
 ```
 
 ### Users
-- `GET /api/v1/user` - List all users (Admin only)
+- `GET /api/v1/user` - List all users with filtering, sorting, and pagination (Admin only)
 - `GET /api/v1/user/<user_id>` - Get specific user (Admin only)
 - `GET /api/v1/user/me` - Get current user profile
 - `POST /api/v1/user` - Create new user
@@ -185,6 +232,45 @@ GET /api/v1/execution?status=RUNNING&include=user,duration&sort=-start_date
 - `DELETE /api/v1/user/<user_id>` - Delete user (Admin only)
 - `DELETE /api/v1/user/me` - Delete own account
 - `POST /api/v1/user/<user_id>/recover-password` - Password recovery
+
+#### User Filtering & Sorting (Admin Only)
+
+**Query Parameters:**
+- `role` - Filter by user role (e.g., `USER`, `ADMIN`)
+- `country` - Filter by country (partial match, case-insensitive)
+- `institution` - Filter by institution (partial match, case-insensitive)
+- `created_at_gte` - Filter users created on or after date (ISO 8601 format)
+- `created_at_lte` - Filter users created on or before date (ISO 8601 format)
+- `updated_at_gte` - Filter users updated on or after date (ISO 8601 format)
+- `updated_at_lte` - Filter users updated on or before date (ISO 8601 format)
+- `sort` - Sort results by field (supports: `name`, `email`, `country`, `institution`, `created_at`, `updated_at`, `role`)
+- `include` - Include additional data in response
+- `page` - Page number (only used if pagination is requested, defaults to 1)
+- `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
+
+**Access Control:**
+- **Admin only**: Only administrators and the special `gef@gef.com` user can access this endpoint
+
+**Pagination:**
+By default, all users are returned without pagination. To enable pagination, include either `page` or `per_page` parameters in your request. When pagination is enabled, the response will include `page`, `per_page`, and `total` fields.
+
+**Examples:**
+```bash
+# Get users from USA, sorted by name
+GET /api/v1/user?country=USA&sort=name
+
+# Get first page of admin users
+GET /api/v1/user?role=ADMIN&page=1&per_page=10
+
+# Get users created in the last month
+GET /api/v1/user?created_at_gte=2025-05-26T00:00:00Z
+
+# Get users from universities (partial match)
+GET /api/v1/user?institution=University
+
+# Get users sorted by creation date (newest first, no pagination)
+GET /api/v1/user?sort=-created_at
+```
 
 ### System Status (Admin Only)
 - `GET /api/v1/status` - Get system status logs

@@ -135,16 +135,86 @@ class ScriptService:
         return script
 
     @staticmethod
-    def get_scripts(user):
+    def get_scripts(
+        user,
+        status=None,
+        public=None,
+        user_id=None,
+        created_at_gte=None,
+        created_at_lte=None,
+        updated_at_gte=None,
+        updated_at_lte=None,
+        sort=None,
+        page=1,
+        per_page=2000,
+        paginate=False,
+    ):
         logger.info("[SERVICE]: Getting scripts")
         logger.info("[DB]: QUERY")
+
+        # Validate pagination parameters only when pagination is requested
+        if paginate:
+            if page < 1:
+                raise Exception("Page must be greater than 0")
+            if per_page < 1:
+                raise Exception("Per page must be greater than 0")
+
+        # Build base query
+        query = db.session.query(Script)
+
+        # Apply user access control
         if user.role == "ADMIN":
-            scripts = Script.query.all()
-            return scripts
-        scripts = db.session.query(Script).filter(
-            or_(Script.user_id == user.id, Script.public)
-        )
-        return scripts
+            # Admins can see all scripts, but can filter by user_id
+            if user_id:
+                try:
+                    from uuid import UUID
+
+                    UUID(user_id, version=4)
+                    query = query.filter(Script.user_id == user_id)
+                except Exception:
+                    # If not a valid UUID, treat as no filter
+                    pass
+        else:
+            # Non-admin users can only see their own scripts or public scripts
+            query = query.filter(or_(Script.user_id == user.id, Script.public))
+
+        # Apply filters
+        if status:
+            query = query.filter(Script.status == status)
+        if public is not None:
+            query = query.filter(Script.public == public)
+        if created_at_gte:
+            query = query.filter(Script.created_at >= created_at_gte)
+        if created_at_lte:
+            query = query.filter(Script.created_at <= created_at_lte)
+        if updated_at_gte:
+            query = query.filter(Script.updated_at >= updated_at_gte)
+        if updated_at_lte:
+            query = query.filter(Script.updated_at <= updated_at_lte)
+
+        # Apply sorting
+        if sort:
+            sort_field = sort[1:] if sort.startswith("-") else sort
+            sort_direction = "desc" if sort.startswith("-") else "asc"
+
+            if hasattr(Script, sort_field):
+                query = query.order_by(
+                    getattr(getattr(Script, sort_field), sort_direction)()
+                )
+        else:
+            # Default to sorting by created_at desc
+            query = query.order_by(Script.created_at.desc())
+
+        if paginate:
+            # Apply pagination only when requested
+            total = query.count()
+            scripts = query.offset((page - 1) * per_page).limit(per_page).all()
+        else:
+            # Return all results without pagination
+            scripts = query.all()
+            total = len(scripts)
+
+        return scripts, total
 
     @staticmethod
     def get_script(script_id, user="fromservice"):
