@@ -32,6 +32,6 @@ jobs:
 
       - name: Run linting and formatting checks
         run: |
-          poetry run ruff --output-format=github gefapi/ tests/
+          poetry run ruff check gefapi/ tests/
           poetry run ruff format --check gefapi/ tests/
         
