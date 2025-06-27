@@ -306,7 +306,7 @@
     },
     "title": "Trends.Earth API",
     "version": "1.0.0",
-    "x-generated-at": "2025-06-22T19:23:05.031803"
+    "x-generated-at": "2025-06-26T19:02:58.988641"
   },
   "openapi": "3.0.2",
   "paths": {
@@ -392,21 +392,19 @@
             }
           },
           {
-            "description": "Page number",
+            "description": "Page number (only applies if pagination is requested)",
             "in": "query",
             "name": "page",
             "schema": {
-              "default": 1,
               "minimum": 1,
               "type": "integer"
             }
           },
           {
-            "description": "Items per page",
+            "description": "Items per page (only applies if pagination is requested)",
             "in": "query",
             "name": "per_page",
             "schema": {
-              "default": 20,
               "maximum": 100,
               "minimum": 1,
               "type": "integer"
@@ -426,15 +424,21 @@
                       "type": "array"
                     },
                     "page": {
+                      "description": "Current page number (only included when pagination is requested)",
                       "type": "integer"
                     },
                     "per_page": {
+                      "description": "Items per page (only included when pagination is requested)",
                       "type": "integer"
                     },
                     "total": {
+                      "description": "Total number of items (only included when pagination is requested)",
                       "type": "integer"
                     }
                   },
+                  "required": [
+                    "data"
+                  ],
                   "type": "object"
                 }
               }
