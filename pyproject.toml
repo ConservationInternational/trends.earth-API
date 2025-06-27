@@ -26,6 +26,7 @@ sqlalchemy = "*"
 werkzeug = "*"
 psutil = "*"
 boto3 = "*"
+docker = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
