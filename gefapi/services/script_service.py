@@ -171,9 +171,11 @@ class ScriptService:
 
                     UUID(user_id, version=4)
                     query = query.filter(Script.user_id == user_id)
-                except Exception:
+                except Exception as e:
                     # If not a valid UUID, treat as no filter
-                    pass
+                    import logging
+
+                    logging.warning(f"Invalid user_id filter in script query: {e}")
         else:
             # Non-admin users can only see their own scripts or public scripts
             query = query.filter(or_(Script.user_id == user.id, Script.public))

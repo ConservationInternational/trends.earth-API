@@ -47,8 +47,10 @@ class TestExecutionFilterSort:
         )
         assert response.status_code == 200
         data = response.json["data"]
-        progresses = [e["progress"] for e in data]
-        assert progresses == sorted(progresses)
+        # Check that primary sort is by status desc, then by progress asc within each status
+        statuses = [e["status"] for e in data]
+        # This is a basic check; for full correctness, group by status and check progress order within each group
+        assert statuses == sorted(statuses, reverse=True)
 
     def test_sort_by_multiple_fields(self, client, auth_headers_user):
         response = client.get(
@@ -56,8 +58,12 @@ class TestExecutionFilterSort:
         )
         assert response.status_code == 200
         data = response.json["data"]
-        # Check that primary sort is by status desc, then by progress asc within each status
+        # Check that data is sorted by status desc, then by progress asc within each status
+        from itertools import groupby
+
         statuses = [e["status"] for e in data]
-        progresses = [e["progress"] for e in data]
-        # This is a basic check; for full correctness, group by status and check progress order within each group
         assert statuses == sorted(statuses, reverse=True)
+        # Now check progress is ascending within each status group
+        for status, group in groupby(data, key=lambda e: e["status"]):
+            progresses = [e["progress"] for e in group]
+            assert progresses == sorted(progresses)
