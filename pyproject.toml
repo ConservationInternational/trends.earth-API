@@ -33,6 +33,7 @@ slugify = "*"
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
 pytest-cov = "*"
+pytest-timeout = "*"
 pytest-html = "*"
 ruff = "*"
 mypy = "*"
