@@ -244,6 +244,7 @@ GET /api/v1/script?include=user,logs
 - `end_date_gte` - Filter executions ended after date
 - `end_date_lte` - Filter executions ended before date
 - `sort` - Sort results (supports: `status`, `start_date`, `end_date`, `duration`, `script_name`, `user_name`)
+- `sort_sql` - SQL-style sorting expression(s), comma-separated. Allows advanced multi-field sorting, e.g. `sort_sql=status desc,progress asc`. Supported fields: any column in the executions table, plus `duration`, `script_name`, and `user_name`. Example: `sort_sql=status desc,progress asc` will sort by status descending, then by progress ascending. If both `sort` and `sort_sql` are provided, `sort_sql` takes precedence.
 - `include` - Comma-separated list of extra fields to include in each execution result. Supported values:
   - `duration`: include duration in seconds
   - `user`: include full user object as `user`

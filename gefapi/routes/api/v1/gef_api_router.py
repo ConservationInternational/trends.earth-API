@@ -357,6 +357,7 @@ def get_executions():
     # Pagination parameters - only paginate if user requests it
     page_param = request.args.get("page", None)
     per_page_param = request.args.get("per_page", None)
+    sort_sql = request.args.get("sort_sql", None)
 
     if page_param is not None or per_page_param is not None:
         # User requested pagination
@@ -388,6 +389,7 @@ def get_executions():
             per_page=per_page,
             paginate=paginate,
             filter_param=filter_param,
+            sort_sql=sort_sql
         )
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
