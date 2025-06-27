@@ -152,7 +152,10 @@ The API provides comprehensive filtering, sorting, and pagination capabilities f
 - `updated_at_gte` - Filter scripts updated on or after date (ISO 8601 format)
 - `updated_at_lte` - Filter scripts updated on or before date (ISO 8601 format)
 - `sort` - Sort results by field (supports: `name`, `slug`, `created_at`, `updated_at`, `status`)
-- `include` - Include additional data in response
+- `include` - Comma-separated list of extra fields to include in each script result. Supported values:
+  - `user`: include full user object as `user`
+  - `user_name`: include only the user's name as `user_name`
+  - `logs`, `executions`, `environment`: see below
 - `page` - Page number (only used if pagination is requested, defaults to 1)
 - `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
 
@@ -179,6 +182,48 @@ GET /api/v1/script?status=PENDING&user_id=550e8400-e29b-41d4-a716-446655440000
 
 # Get scripts sorted by name (no pagination)
 GET /api/v1/script?sort=name
+
+# Get scripts and include user name in each result
+GET /api/v1/script?include=user_name
+
+# Get scripts and include full user object and logs
+GET /api/v1/script?include=user,logs
+```
+
+**Example Response with `include=user_name`:**
+```json
+{
+  "data": [
+    {
+      "id": "...",
+      "name": "My Script",
+      ...,
+      "user_id": "...",
+      "user_name": "Jane Doe"
+    },
+    ...
+  ]
+}
+```
+
+**Example Response with `include=user`:**
+```json
+{
+  "data": [
+    {
+      "id": "...",
+      "name": "My Script",
+      ...,
+      "user_id": "...",
+      "user": {
+        "id": "...",
+        "name": "Jane Doe",
+        ...
+      }
+    },
+    ...
+  ]
+}
 ```
 
 ### Executions
@@ -199,8 +244,14 @@ GET /api/v1/script?sort=name
 - `end_date_gte` - Filter executions ended after date
 - `end_date_lte` - Filter executions ended before date
 - `sort` - Sort results (supports: `status`, `start_date`, `end_date`, `duration`, `script_name`, `user_name`)
-- `include` - Include additional data (`duration`, `user`, `script`, `logs`)
-- `exclude` - Exclude data (`params`, `results`)
+- `include` - Comma-separated list of extra fields to include in each execution result. Supported values:
+  - `duration`: include duration in seconds
+  - `user`: include full user object as `user`
+  - `user_name`: include only the user's name as `user_name`
+  - `script`: include full script object as `script`
+  - `script_name`: include only the script's name as `script_name`
+  - `logs`: include execution logs
+- `exclude` - Comma-separated list of fields to exclude (e.g., `params,results`)
 - `page` - Page number (only used if pagination is requested, defaults to 1)
 - `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
 
@@ -216,10 +267,51 @@ GET /api/v1/execution?status=FINISHED&include=duration&sort=-duration
 GET /api/v1/execution?page=1&per_page=10
 
 # Get executions from last week, sorted by script name (no pagination)
-GET /api/v1/execution?start_date_gte=2025-06-14&sort=script_name&include=script
+GET /api/v1/execution?start_date_gte=2025-06-14&sort=script_name&include=script_name
 
 # Get running executions with user info (no pagination)
-GET /api/v1/execution?status=RUNNING&include=user,duration&sort=-start_date
+GET /api/v1/execution?status=RUNNING&include=user,user_name,duration&sort=-start_date
+```
+
+**Example Response with `include=user_name,script_name`:**
+```json
+{
+  "data": [
+    {
+      "id": "...",
+      "script_id": "...",
+      "user_id": "...",
+      "user_name": "Jane Doe",
+      "script_name": "My Script",
+      ...
+    },
+    ...
+  ]
+}
+```
+
+**Example Response with `include=user,script`:**
+```json
+{
+  "data": [
+    {
+      "id": "...",
+      "script_id": "...",
+      "user_id": "...",
+      "user": {
+        "id": "...",
+        "name": "Jane Doe",
+        ...
+      },
+      "script": {
+        "id": "...",
+        "name": "My Script",
+        ...
+      }
+    },
+    ...
+  ]
+}
 ```
 
 ### Users

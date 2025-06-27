@@ -94,6 +94,8 @@ class Script(db.Model):
             script["logs"] = self.serialize_logs
         if "user" in include:
             script["user"] = self.user.serialize()
+        if "user_name" in include:
+            script["user_name"] = getattr(self.user, "name", None)
         if "executions" in include:
             script["executions"] = self.serialize_executions
         if "environment" in include:

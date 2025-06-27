@@ -67,8 +67,12 @@ class Execution(db.Model):
             execution["logs"] = self.serialize_logs
         if "user" in include:
             execution["user"] = self.user.serialize()
+        if "user_name" in include:
+            execution["user_name"] = getattr(self.user, "name", None)
         if "script" in include:
             execution["script"] = self.script.serialize()
+        if "script_name" in include:
+            execution["script_name"] = getattr(self.script, "name", None)
         if "params" in exclude:
             del execution["params"]
         if "results" in exclude:
