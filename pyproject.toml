@@ -25,6 +25,7 @@ rollbar = "*"
 sqlalchemy = "*"
 werkzeug = "*"
 psutil = "*"
+boto3 = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
