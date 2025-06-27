@@ -32,6 +32,9 @@ pytest-html = "*"
 ruff = "*"
 mypy = "*"
 types-redis = "*"
+flask-restx = "*"
+apispec = { version = "*", extras = ["flask"] }
+marshmallow = "*"
 
 [tool.setuptools]
 packages = ["gefapi"]

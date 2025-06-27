@@ -62,19 +62,26 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Cache pip dependencies
+    - name: Cache Poetry dependencies
       uses: actions/cache@v3
       with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        path: |
+          ~/.cache/pypoetry
+          ~/.cache/pip
+        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
         restore-keys: |
-          ${{ runner.os }}-pip-
+          ${{ runner.os }}-poetry-
 
-    - name: Install dependencies
+    - name: Install Poetry
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -r requirements-dev.txt
+        pip install poetry
+
+    - name: Install dependencies with Poetry
+      run: |
+        poetry config virtualenvs.create false
+        poetry install --no-interaction --no-ansi --with dev
+
     - name: Set environment variables for testing
       run: |
         echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gefapi_test" >> $GITHUB_ENV
@@ -86,17 +93,13 @@ jobs:
 
     - name: Run linting and formatting checks
       run: |
-        # Install ruff (already in requirements-dev.txt)
-        # Run ruff linting
-        python -m ruff check gefapi/ tests/
-        
-        # Run ruff formatting check
-        python -m ruff format --check gefapi/ tests/
+        poetry run ruff check gefapi/ tests/
+        poetry run ruff format --check gefapi/ tests/
 
     - name: Initialize test database
       run: |
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-        python -c "
+        poetry run python -c "
         import os
         os.environ['DATABASE_URL'] = 'postgresql://postgres:postgres@localhost:5432/gefapi_test'
         os.environ['TESTING'] = 'true'
@@ -109,7 +112,7 @@ jobs:
       timeout-minutes: 10
       run: |
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-        pytest \
+        poetry run pytest \
           tests/test_smoke.py \
           tests/test_api_validation.py::TestAPIValidation::test_invalid_json_payload \
           tests/test_api_validation.py::TestSecurityHeaders::test_security_headers_present \
@@ -126,31 +129,13 @@ jobs:
           --timeout=120 \
           --cov-fail-under=25 \
           -v
-    # Integration tests temporarily disabled due to hanging issues
-    # - name: Run integration tests (optional)
-    #   timeout-minutes: 5
-    #   continue-on-error: true
-    #   run: |
-    #     export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-    #     pytest tests/test_integration.py \
-    #       --maxfail=1 \
-    #       --tb=line \
-    #       --cov=gefapi \
-    #       --cov-append \
-    #       --cov-report=xml \
-    #       --cov-report=html \
-    #       --junitxml=integration-results.xml \
-    #       --timeout=60 \
-    #       --cov-fail-under=30 \
-    #       -x \
-    #       -v || echo "Integration tests completed with issues"
 
     - name: Run API validation tests (optional)
       timeout-minutes: 5
       continue-on-error: true
       run: |
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-        pytest tests/test_api_validation.py \
+        poetry run pytest tests/test_api_validation.py \
           --maxfail=1 \
           --tb=line \
           --cov=gefapi \
@@ -167,7 +152,7 @@ jobs:
       if: matrix.python-version == '3.9'
       run: |
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-        pytest tests/test_performance.py \
+        poetry run pytest tests/test_performance.py \
           -m "not slow" \
           --junitxml=performance-results.xml \
           -v || echo "Performance tests completed with warnings"
