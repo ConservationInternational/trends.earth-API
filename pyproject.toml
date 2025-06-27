@@ -6,8 +6,9 @@ build-backend = "poetry.core.masonry.api"
 name = "trends-earth-api"
 version = "1.0.0"
 description = "API for managing Scripts, Users, and Executions in Trends.Earth"
-authors = ["Alex Zvoleff <azvoleff@conservation.org"]
+authors = ["Alex Zvoleff <azvoleff@conservation.org>"]
 readme = "README.md"
+packages = [{ include = "gefapi" }]
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.12"
