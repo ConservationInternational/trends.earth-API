@@ -1,7 +1,10 @@
 #!/bin/bash
 set -e
 
-chown $USER:$USER /tmp/docker.sock
+# Only chown if the file exists (prevents errors if not mounted)
+if [ -e /tmp/docker.sock ]; then
+    chown $USER:$USER /tmp/docker.sock
+fi
 
 case "$1" in
     develop)

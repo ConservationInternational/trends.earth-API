@@ -24,7 +24,7 @@ redis = "*"
 rollbar = "*"
 sqlalchemy = "*"
 werkzeug = "*"
-pustil = "*"
+psutil = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"

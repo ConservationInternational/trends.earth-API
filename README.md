@@ -449,6 +449,10 @@ GET /api/v1/user?sort=-created_at
 ### Local Development
 
 ```bash
+
+# Build image
+docker compose -f docker-compose.develop.yml build
+
 # Start all services
 docker compose -f docker-compose.develop.yml up
 
