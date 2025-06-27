@@ -27,6 +27,7 @@ werkzeug = "*"
 psutil = "*"
 boto3 = "*"
 docker = "*"
+sparkpost = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
