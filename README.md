@@ -459,7 +459,7 @@ docker compose -f docker-compose.develop.yml up api
 docker compose -f docker-compose.develop.yml logs -f api
 
 # Run tests
-docker compose -f docker-compose.develop.yml exec api python -m pytest
+docker compose -f docker-compose.develop.yml run --rm api python -m pytest
 ```
 
 ### Code Structure

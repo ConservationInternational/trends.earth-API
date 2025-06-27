@@ -1,16 +1,13 @@
-version: "3.8"
-
 services:
-  manager:
+  api:
     build: .
     environment:
       PORT: 3000
+      ENVIRONMENT: dev
+      DEBUG: "True"
     ports:
       - target: 3000
         published: 3000
-    environment:
-      ENVIRONMENT: dev
-      DEBUG: "True"
     env_file:
       - develop.env
     volumes:
@@ -87,3 +84,4 @@ volumes:
 
 networks:
   db:
+  backend:
