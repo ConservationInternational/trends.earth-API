@@ -2176,6 +2176,17 @@ files = [
 ]
 
 [[package]]
+name = "slugify"
+version = "0.0.1"
+description = "A generic slugifier."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "slugify-0.0.1.tar.gz", hash = "sha256:c5703cc11c1a6947536f3ce8bb306766b8bb5a84a53717f5a703ce0f18235e4c"},
+]
+
+[[package]]
 name = "sparkpost"
 version = "1.3.10"
 description = "SparkPost Python API client"
@@ -2628,4 +2639,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<3.12"
-content-hash = "f585d443a1314a4785508810c833fc4856a5a0aeb6dc660173f4367caf2f0154"
+content-hash = "67d23603385a8548bcd2200d38abc2ffe761c24b4693654d68fc217a15050d7f"

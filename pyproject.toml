@@ -28,6 +28,7 @@ psutil = "*"
 boto3 = "*"
 docker = "*"
 sparkpost = "*"
+slugify = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
