@@ -67,44 +67,9 @@ def get_scripts():
     # Parse query parameters
     include = request.args.get("include")
     include = include.split(",") if include else []
-
-    # Filter parameters
-    status = request.args.get("status", None)
-    public = request.args.get("public", None)
-    if public is not None:
-        public = public.lower() in ("true", "1", "yes")
-    user_id = request.args.get("user_id", None)
-
-    # Date filters
-    created_at_gte = request.args.get("created_at_gte", None)
-    if created_at_gte:
-        try:
-            created_at_gte = dateutil.parser.parse(created_at_gte)
-        except Exception:
-            created_at_gte = None
-
-    created_at_lte = request.args.get("created_at_lte", None)
-    if created_at_lte:
-        try:
-            created_at_lte = dateutil.parser.parse(created_at_lte)
-        except Exception:
-            created_at_lte = None
-
-    updated_at_gte = request.args.get("updated_at_gte", None)
-    if updated_at_gte:
-        try:
-            updated_at_gte = dateutil.parser.parse(updated_at_gte)
-        except Exception:
-            updated_at_gte = None
-
-    updated_at_lte = request.args.get("updated_at_lte", None)
-    if updated_at_lte:
-        try:
-            updated_at_lte = dateutil.parser.parse(updated_at_lte)
-        except Exception:
-            updated_at_lte = None
-
-    # Sorting
+    exclude = request.args.get("exclude")
+    exclude = exclude.split(",") if exclude else []
+    filter_param = request.args.get("filter", None)
     sort = request.args.get("sort", None)
 
     # Pagination parameters - only paginate if user requests it
@@ -112,7 +77,6 @@ def get_scripts():
     per_page_param = request.args.get("per_page", None)
 
     if page_param is not None or per_page_param is not None:
-        # User requested pagination
         try:
             page = int(page_param) if page_param is not None else 1
             per_page = int(per_page_param) if per_page_param is not None else 20
@@ -123,20 +87,13 @@ def get_scripts():
             page, per_page = 1, 20
             paginate = True
     else:
-        # No pagination requested
         page, per_page = 1, 2000
         paginate = False
 
     try:
         scripts, total = ScriptService.get_scripts(
             current_user,
-            status=status,
-            public=public,
-            user_id=user_id,
-            created_at_gte=created_at_gte,
-            created_at_lte=created_at_lte,
-            updated_at_gte=updated_at_gte,
-            updated_at_lte=updated_at_lte,
+            filter_param=filter_param,
             sort=sort,
             page=page,
             per_page=per_page,
@@ -146,8 +103,7 @@ def get_scripts():
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
 
-    response_data = {"data": [script.serialize(include) for script in scripts]}
-    # Only include pagination metadata if pagination was requested
+    response_data = {"data": [script.serialize(include, exclude) for script in scripts]}
     if paginate:
         response_data["page"] = page
         response_data["per_page"] = per_page
@@ -528,58 +484,21 @@ def get_users():
     """Get users"""
     logger.info("[ROUTER]: Getting all users")
 
-    # Check authorization first
     identity = current_user
     if identity.role != "ADMIN" and identity.email != "gef@gef.com":
         return error(status=403, detail="Forbidden")
 
-    # Parse query parameters
     include = request.args.get("include")
     include = include.split(",") if include else []
-
-    # Filter parameters
-    role = request.args.get("role", None)
-    country = request.args.get("country", None)
-    institution = request.args.get("institution", None)
-
-    # Date filters
-    created_at_gte = request.args.get("created_at_gte", None)
-    if created_at_gte:
-        try:
-            created_at_gte = dateutil.parser.parse(created_at_gte)
-        except Exception:
-            created_at_gte = None
-
-    created_at_lte = request.args.get("created_at_lte", None)
-    if created_at_lte:
-        try:
-            created_at_lte = dateutil.parser.parse(created_at_lte)
-        except Exception:
-            created_at_lte = None
-
-    updated_at_gte = request.args.get("updated_at_gte", None)
-    if updated_at_gte:
-        try:
-            updated_at_gte = dateutil.parser.parse(updated_at_gte)
-        except Exception:
-            updated_at_gte = None
-
-    updated_at_lte = request.args.get("updated_at_lte", None)
-    if updated_at_lte:
-        try:
-            updated_at_lte = dateutil.parser.parse(updated_at_lte)
-        except Exception:
-            updated_at_lte = None
-
-    # Sorting
+    exclude = request.args.get("exclude")
+    exclude = exclude.split(",") if exclude else []
+    filter_param = request.args.get("filter", None)
     sort = request.args.get("sort", None)
 
-    # Pagination parameters - only paginate if user requests it
     page_param = request.args.get("page", None)
     per_page_param = request.args.get("per_page", None)
 
     if page_param is not None or per_page_param is not None:
-        # User requested pagination
         try:
             page = int(page_param) if page_param is not None else 1
             per_page = int(per_page_param) if per_page_param is not None else 20
@@ -590,19 +509,12 @@ def get_users():
             page, per_page = 1, 20
             paginate = True
     else:
-        # No pagination requested
         page, per_page = 1, 2000
         paginate = False
 
     try:
         users, total = UserService.get_users(
-            role=role,
-            country=country,
-            institution=institution,
-            created_at_gte=created_at_gte,
-            created_at_lte=created_at_lte,
-            updated_at_gte=updated_at_gte,
-            updated_at_lte=updated_at_lte,
+            filter_param=filter_param,
             sort=sort,
             page=page,
             per_page=per_page,
@@ -612,8 +524,7 @@ def get_users():
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
 
-    response_data = {"data": [user.serialize(include) for user in users]}
-    # Only include pagination metadata if pagination was requested
+    response_data = {"data": [user.serialize(include, exclude) for user in users]}
     if paginate:
         response_data["page"] = page
         response_data["per_page"] = per_page

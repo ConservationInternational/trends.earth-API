@@ -144,18 +144,13 @@ The API provides comprehensive filtering, sorting, and pagination capabilities f
 #### Script Filtering & Sorting
 
 **Query Parameters:**
-- `status` - Filter by script status (e.g., `PENDING`, `SUCCESS`, `FAILED`)
-- `public` - Filter by public/private scripts (`true`/`false`)
-- `user_id` - Filter scripts by user ID (Admin only)
-- `created_at_gte` - Filter scripts created on or after date (ISO 8601 format)
-- `created_at_lte` - Filter scripts created on or before date (ISO 8601 format)
-- `updated_at_gte` - Filter scripts updated on or after date (ISO 8601 format)
-- `updated_at_lte` - Filter scripts updated on or before date (ISO 8601 format)
-- `sort` - Sort results by field (supports: `name`, `slug`, `created_at`, `updated_at`, `status`)
+- `filter` - SQL-style filter expression(s), comma-separated. Supported operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `like`. Example: `status=SUCCESS,public=true,name like 'foo%'`
+- `sort` - SQL-style sorting expression(s), comma-separated. Allows advanced multi-field sorting, e.g. `sort=status desc,name asc`. Supported fields: any column in the scripts table, plus `user_name`. Example: `sort=status desc,name asc` will sort by status descending, then by name ascending.
 - `include` - Comma-separated list of extra fields to include in each script result. Supported values:
   - `user`: include full user object as `user`
   - `user_name`: include only the user's name as `user_name`
   - `logs`, `executions`, `environment`: see below
+- `exclude` - Comma-separated list of fields to exclude (e.g., `environment`)
 - `page` - Page number (only used if pagination is requested, defaults to 1)
 - `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
 
@@ -169,16 +164,16 @@ By default, all scripts are returned without pagination. To enable pagination, i
 **Examples:**
 ```bash
 # Get public scripts, sorted by creation date (newest first)
-GET /api/v1/script?public=true&sort=-created_at
+GET /api/v1/script?filter=public=true&sort=-created_at
 
 # Get first page of scripts with pagination
 GET /api/v1/script?page=1&per_page=10
 
 # Get scripts created in the last week
-GET /api/v1/script?created_at_gte=2025-06-19T00:00:00Z
+GET /api/v1/script?filter=created_at>2025-06-19T00:00:00Z
 
 # Get PENDING scripts for a specific user (Admin only)
-GET /api/v1/script?status=PENDING&user_id=550e8400-e29b-41d4-a716-446655440000
+GET /api/v1/script?filter=status=PENDING,user_id=550e8400-e29b-41d4-a716-446655440000
 
 # Get scripts sorted by name (no pagination)
 GET /api/v1/script?sort=name
@@ -335,15 +330,10 @@ GET /api/v1/execution?filter=script_id like 'abc%'
 #### User Filtering & Sorting (Admin Only)
 
 **Query Parameters:**
-- `role` - Filter by user role (e.g., `USER`, `ADMIN`)
-- `country` - Filter by country (partial match, case-insensitive)
-- `institution` - Filter by institution (partial match, case-insensitive)
-- `created_at_gte` - Filter users created on or after date (ISO 8601 format)
-- `created_at_lte` - Filter users created on or before date (ISO 8601 format)
-- `updated_at_gte` - Filter users updated on or after date (ISO 8601 format)
-- `updated_at_lte` - Filter users updated on or before date (ISO 8601 format)
-- `sort` - Sort results by field (supports: `name`, `email`, `country`, `institution`, `created_at`, `updated_at`, `role`)
+- `filter` - SQL-style filter expression(s), comma-separated. Supported operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `like`. Example: `role=ADMIN,country like 'US%'`
+- `sort` - SQL-style sorting expression(s), comma-separated. Allows advanced multi-field sorting, e.g. `sort=name asc,email desc`. Supported fields: any column in the users table. Example: `sort=name asc,email desc` will sort by name ascending, then by email descending.
 - `include` - Include additional data in response
+- `exclude` - Comma-separated list of fields to exclude (e.g., `institution`)
 - `page` - Page number (only used if pagination is requested, defaults to 1)
 - `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
 
@@ -356,21 +346,20 @@ By default, all users are returned without pagination. To enable pagination, inc
 **Examples:**
 ```bash
 # Get users from USA, sorted by name
-GET /api/v1/user?country=USA&sort=name
+GET /api/v1/user?filter=country=USA&sort=name
 
 # Get first page of admin users
-GET /api/v1/user?role=ADMIN&page=1&per_page=10
+GET /api/v1/user?filter=role=ADMIN&page=1&per_page=10
 
 # Get users created in the last month
-GET /api/v1/user?created_at_gte=2025-05-26T00:00:00Z
+GET /api/v1/user?filter=created_at>2025-05-26T00:00:00Z
 
 # Get users from universities (partial match)
-GET /api/v1/user?institution=University
+GET /api/v1/user?filter=institution like 'University%'
 
 # Get users sorted by creation date (newest first, no pagination)
 GET /api/v1/user?sort=-created_at
 ```
-
 ### System Status (Admin Only)
 - `GET /api/v1/status` - Get system status logs
 

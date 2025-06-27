@@ -76,13 +76,7 @@ class UserService:
 
     @staticmethod
     def get_users(
-        role=None,
-        country=None,
-        institution=None,
-        created_at_gte=None,
-        created_at_lte=None,
-        updated_at_gte=None,
-        updated_at_lte=None,
+        filter_param=None,
         sort=None,
         page=1,
         per_page=2000,
@@ -91,51 +85,74 @@ class UserService:
         logger.info("[SERVICE]: Getting users")
         logger.info("[DB]: QUERY")
 
-        # Validate pagination parameters only when pagination is requested
         if paginate:
             if page < 1:
                 raise Exception("Page must be greater than 0")
             if per_page < 1:
                 raise Exception("Per page must be greater than 0")
 
-        # Build base query
         query = db.session.query(User)
 
-        # Apply filters
-        if role:
-            query = query.filter(User.role == role)
-        if country:
-            query = query.filter(User.country.ilike(f"%{country}%"))
-        if institution:
-            query = query.filter(User.institution.ilike(f"%{institution}%"))
-        if created_at_gte:
-            query = query.filter(User.created_at >= created_at_gte)
-        if created_at_lte:
-            query = query.filter(User.created_at <= created_at_lte)
-        if updated_at_gte:
-            query = query.filter(User.updated_at >= updated_at_gte)
-        if updated_at_lte:
-            query = query.filter(User.updated_at <= updated_at_lte)
+        # SQL-style filter_param
+        if filter_param:
+            import re
 
-        # Apply sorting
-        if sort:
-            sort_field = sort[1:] if sort.startswith("-") else sort
-            sort_direction = "desc" if sort.startswith("-") else "asc"
+            from sqlalchemy import and_
 
-            if hasattr(User, sort_field):
-                query = query.order_by(
-                    getattr(getattr(User, sort_field), sort_direction)()
+            filter_clauses = []
+            for expr in filter_param.split(","):
+                expr = expr.strip()
+                m = re.match(
+                    r"(\w+)\s*(=|!=|>=|<=|>|<| like )\s*(.+)", expr, re.IGNORECASE
                 )
+                if m:
+                    field, op, value = m.groups()
+                    field = field.strip()
+                    op = op.strip().lower()
+                    value = value.strip().strip("'\"")
+                    col = getattr(User, field, None)
+                    if col is not None:
+                        if op == "=":
+                            filter_clauses.append(col == value)
+                        elif op == "!=":
+                            filter_clauses.append(col != value)
+                        elif op == ">":
+                            filter_clauses.append(col > value)
+                        elif op == "<":
+                            filter_clauses.append(col < value)
+                        elif op == ">=":
+                            filter_clauses.append(col >= value)
+                        elif op == "<=":
+                            filter_clauses.append(col <= value)
+                        elif op == "like":
+                            filter_clauses.append(col.like(value))
+            if filter_clauses:
+                query = query.filter(and_(*filter_clauses))
+
+        # SQL-style sorting
+        if sort:
+            from sqlalchemy import asc, desc
+
+            for sort_expr in sort.split(","):
+                sort_expr = sort_expr.strip()
+                if not sort_expr:
+                    continue
+                parts = sort_expr.split()
+                field = parts[0]
+                direction = parts[1].lower() if len(parts) > 1 else "asc"
+                col = getattr(User, field, None)
+                if col is not None:
+                    if direction == "desc":
+                        query = query.order_by(desc(col))
+                    else:
+                        query = query.order_by(asc(col))
         else:
-            # Default to sorting by created_at desc
             query = query.order_by(User.created_at.desc())
 
         if paginate:
-            # Apply pagination only when requested
             total = query.count()
             users = query.offset((page - 1) * per_page).limit(per_page).all()
         else:
-            # Return all results without pagination
             users = query.all()
             total = len(users)
 
