@@ -18,6 +18,7 @@ WORKDIR /opt/$NAME
 
 # Copy only poetry files first for better caching
 COPY pyproject.toml poetry.lock* ./
+COPY README.md ./README.md
 RUN poetry config virtualenvs.create false && poetry install --no-interaction --no-ansi
 
 # Copy the rest of the application
