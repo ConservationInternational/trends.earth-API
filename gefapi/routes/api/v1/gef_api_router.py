@@ -335,20 +335,6 @@ def get_executions():
     if updated_at:
         updated_at = dateutil.parser.parse(updated_at)
     status = request.args.get("status", None)
-    start_date_gte = request.args.get("start_date_gte", None)
-    if start_date_gte:
-        start_date_gte = dateutil.parser.parse(start_date_gte)
-    start_date_lte = request.args.get("start_date_lte", None)
-    if start_date_lte:
-        start_date_lte = dateutil.parser.parse(start_date_lte)
-    end_date_gte = request.args.get("end_date_gte", None)
-    if end_date_gte:
-        end_date_gte = dateutil.parser.parse(end_date_gte)
-    end_date_lte = request.args.get("end_date_lte", None)
-    if end_date_lte:
-        end_date_lte = dateutil.parser.parse(end_date_lte)
-
-    sort = request.args.get("sort", None)
     include = request.args.get("include")
     include = include.split(",") if include else []
     exclude = request.args.get("exclude")
@@ -357,7 +343,7 @@ def get_executions():
     # Pagination parameters - only paginate if user requests it
     page_param = request.args.get("page", None)
     per_page_param = request.args.get("per_page", None)
-    sort_sql = request.args.get("sort_sql", None)
+    sort = request.args.get("sort", None)
 
     if page_param is not None or per_page_param is not None:
         # User requested pagination
@@ -380,16 +366,11 @@ def get_executions():
             user_id,
             updated_at,
             status=status,
-            start_date_gte=start_date_gte,
-            start_date_lte=start_date_lte,
-            end_date_gte=end_date_gte,
-            end_date_lte=end_date_lte,
-            sort=sort,
             page=page,
             per_page=per_page,
             paginate=paginate,
             filter_param=filter_param,
-            sort_sql=sort_sql
+            sort=sort,
         )
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))

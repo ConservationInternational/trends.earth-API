@@ -48,15 +48,11 @@ class ExecutionService:
         target_user_id=None,
         updated_at=None,
         status=None,
-        start_date_gte=None,
-        start_date_lte=None,
-        end_date_gte=None,
-        end_date_lte=None,
-        sort=None,
         page=1,
         per_page=2000,
         paginate=True,
         filter_param=None,
+        sort=None,
     ):
         logger.info("[SERVICE]: Getting executions")
         logger.info("[DB]: QUERY")
@@ -68,20 +64,7 @@ class ExecutionService:
             if per_page < 1:
                 raise Exception("Per page must be greater than 0")
 
-        # Determine if we need joins for sorting
-        needs_joins = sort and (
-            sort.lstrip("-") in ["script_name", "user_name", "duration"]
-        )
-
-        # Build base query
-        if needs_joins:
-            query = (
-                db.session.query(Execution)
-                .join(Script, Execution.script_id == Script.id)
-                .join(User, Execution.user_id == User.id)
-            )
-        else:
-            query = db.session.query(Execution)
+        query = db.session.query(Execution)
 
         # Apply user filters
         if user.role == "ADMIN":
@@ -100,22 +83,11 @@ class ExecutionService:
         # Apply other filters
         if status:
             query = query.filter(Execution.status == status)
-        if start_date_gte:
-            query = query.filter(Execution.start_date >= start_date_gte)
-        if start_date_lte:
-            query = query.filter(Execution.start_date <= start_date_lte)
-        if end_date_gte:
-            query = query.filter(Execution.end_date >= end_date_gte)
-        if end_date_lte:
-            query = query.filter(Execution.end_date <= end_date_lte)
-        elif updated_at:
-            # For backwards compatibility, if no end_date_lte is provided,
-            # filter by updated_at
+        if updated_at:
             query = query.filter(Execution.end_date >= updated_at)
 
         # Apply SQL-style filter_param if present
         if filter_param:
-            # Support: field=value, field!=value, field>value, field<value, field>=value, field<=value, field like value
             import re
 
             from sqlalchemy import and_
@@ -123,7 +95,6 @@ class ExecutionService:
             filter_clauses = []
             for expr in filter_param.split(","):
                 expr = expr.strip()
-                # Match field op value
                 m = re.match(
                     r"(\w+)\s*(=|!=|>=|<=|>|<| like )\s*(.+)", expr, re.IGNORECASE
                 )
@@ -151,52 +122,63 @@ class ExecutionService:
             if filter_clauses:
                 query = query.filter(and_(*filter_clauses))
 
-        # Apply sorting
+        # Apply SQL-style sorting if present
         if sort:
-            sort_field = sort[1:] if sort.startswith("-") else sort
-            sort_direction = "desc" if sort.startswith("-") else "asc"
+            from sqlalchemy import asc, desc
 
-            if sort_field == "duration":
-                # Calculate duration for sorting
-                duration_expr = case(
-                    (
-                        Execution.end_date.isnot(None),
-                        func.extract(
-                            "epoch", Execution.end_date - Execution.start_date
+            for sort_expr in sort.split(","):
+                sort_expr = sort_expr.strip()
+                if not sort_expr:
+                    continue
+                parts = sort_expr.split()
+                field = parts[0]
+                direction = parts[1].lower() if len(parts) > 1 else "asc"
+                col = getattr(Execution, field, None)
+                if col is not None:
+                    if direction == "desc":
+                        query = query.order_by(desc(col))
+                    else:
+                        query = query.order_by(asc(col))
+                elif field == "duration":
+                    duration_expr = case(
+                        (
+                            Execution.end_date.isnot(None),
+                            func.extract(
+                                "epoch", Execution.end_date - Execution.start_date
+                            ),
                         ),
-                    ),
-                    else_=func.extract(
-                        "epoch", func.now() - Execution.start_date
-                    ),  # For running tasks
-                )
-                if sort_direction == "desc":
-                    query = query.order_by(duration_expr.desc())
-                else:
-                    query = query.order_by(duration_expr.asc())
-            elif sort_field == "script_name":
-                if sort_direction == "desc":
-                    query = query.order_by(Script.name.desc())
-                else:
-                    query = query.order_by(Script.name.asc())
-            elif sort_field == "user_name":
-                if sort_direction == "desc":
-                    query = query.order_by(User.name.desc())
-                else:
-                    query = query.order_by(User.name.asc())
-            elif hasattr(Execution, sort_field):
-                query = query.order_by(
-                    getattr(getattr(Execution, sort_field), sort_direction)()
-                )
+                        else_=func.extract("epoch", func.now() - Execution.start_date),
+                    )
+                    if direction == "desc":
+                        query = query.order_by(duration_expr.desc())
+                    else:
+                        query = query.order_by(duration_expr.asc())
+                elif field == "script_name":
+                    if direction == "desc":
+                        query = query.join(
+                            Script, Execution.script_id == Script.id
+                        ).order_by(Script.name.desc())
+                    else:
+                        query = query.join(
+                            Script, Execution.script_id == Script.id
+                        ).order_by(Script.name.asc())
+                elif field == "user_name":
+                    if direction == "desc":
+                        query = query.join(User, Execution.user_id == User.id).order_by(
+                            User.name.desc()
+                        )
+                    else:
+                        query = query.join(User, Execution.user_id == User.id).order_by(
+                            User.name.asc()
+                        )
         else:
             # Default to sorting by end_date for backwards compatibility
             query = query.order_by(Execution.end_date.desc())
 
         if paginate:
-            # Apply pagination only when requested
             total = query.count()
             executions = query.offset((page - 1) * per_page).limit(per_page).all()
         else:
-            # Return all results without pagination
             executions = query.all()
             total = len(executions)
 
