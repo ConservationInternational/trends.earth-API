@@ -252,6 +252,7 @@ GET /api/v1/script?include=user,logs
   - `script_name`: include only the script's name as `script_name`
   - `logs`: include execution logs
 - `exclude` - Comma-separated list of fields to exclude (e.g., `params,results`)
+- `filter` - SQL-style filter expression(s), comma-separated. Supported operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `like`. Example: `progress>50,status=FINISHED`
 - `page` - Page number (only used if pagination is requested, defaults to 1)
 - `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
 
@@ -271,6 +272,15 @@ GET /api/v1/execution?start_date_gte=2025-06-14&sort=script_name&include=script_
 
 # Get running executions with user info (no pagination)
 GET /api/v1/execution?status=RUNNING&include=user,user_name,duration&sort=-start_date
+
+# Get executions with progress > 50 and status FINISHED
+GET /api/v1/execution?filter=progress>50,status=FINISHED
+
+# Get executions where status is not FAILED
+GET /api/v1/execution?filter=status!=FAILED
+
+# Get executions where script_id matches a pattern
+GET /api/v1/execution?filter=script_id like 'abc%'
 ```
 
 **Example Response with `include=user_name,script_name`:**

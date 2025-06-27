@@ -353,6 +353,7 @@ def get_executions():
     include = include.split(",") if include else []
     exclude = request.args.get("exclude")
     exclude = exclude.split(",") if exclude else []
+    filter_param = request.args.get("filter", None)
     # Pagination parameters - only paginate if user requests it
     page_param = request.args.get("page", None)
     per_page_param = request.args.get("per_page", None)
@@ -386,6 +387,7 @@ def get_executions():
             page=page,
             per_page=per_page,
             paginate=paginate,
+            filter_param=filter_param,
         )
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
@@ -396,13 +398,9 @@ def get_executions():
     }
     # Only include pagination metadata if pagination was requested
     if paginate:
-        response_data.update(
-            {
-                "page": page,
-                "per_page": per_page,
-                "total": total,
-            }
-        )
+        response_data["page"] = page
+        response_data["per_page"] = per_page
+        response_data["total"] = total
 
     return jsonify(response_data), 200
 

@@ -56,6 +56,7 @@ class ExecutionService:
         page=1,
         per_page=2000,
         paginate=True,
+        filter_param=None,
     ):
         logger.info("[SERVICE]: Getting executions")
         logger.info("[DB]: QUERY")
@@ -111,6 +112,44 @@ class ExecutionService:
             # For backwards compatibility, if no end_date_lte is provided,
             # filter by updated_at
             query = query.filter(Execution.end_date >= updated_at)
+
+        # Apply SQL-style filter_param if present
+        if filter_param:
+            # Support: field=value, field!=value, field>value, field<value, field>=value, field<=value, field like value
+            import re
+
+            from sqlalchemy import and_
+
+            filter_clauses = []
+            for expr in filter_param.split(","):
+                expr = expr.strip()
+                # Match field op value
+                m = re.match(
+                    r"(\w+)\s*(=|!=|>=|<=|>|<| like )\s*(.+)", expr, re.IGNORECASE
+                )
+                if m:
+                    field, op, value = m.groups()
+                    field = field.strip()
+                    op = op.strip().lower()
+                    value = value.strip().strip("'\"")
+                    col = getattr(Execution, field, None)
+                    if col is not None:
+                        if op == "=":
+                            filter_clauses.append(col == value)
+                        elif op == "!=":
+                            filter_clauses.append(col != value)
+                        elif op == ">":
+                            filter_clauses.append(col > value)
+                        elif op == "<":
+                            filter_clauses.append(col < value)
+                        elif op == ">=":
+                            filter_clauses.append(col >= value)
+                        elif op == "<=":
+                            filter_clauses.append(col <= value)
+                        elif op == "like":
+                            filter_clauses.append(col.like(value))
+            if filter_clauses:
+                query = query.filter(and_(*filter_clauses))
 
         # Apply sorting
         if sort:
