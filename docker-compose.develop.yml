@@ -1,6 +1,7 @@
 services:
   api:
     build: .
+    command: ["develop"]
     environment:
       PORT: 3000
       ENVIRONMENT: dev
@@ -20,6 +21,7 @@ services:
   worker:
     image: trendsearth_api
     build: .
+    command: ["worker"]
     environment:
       ENVIRONMENT: dev
       DEBUG: "True"

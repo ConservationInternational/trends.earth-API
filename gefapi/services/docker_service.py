@@ -21,13 +21,65 @@ from gefapi.s3 import get_script_from_s3, push_params_to_s3
 REGISTRY_URL = SETTINGS.get("REGISTRY_URL")
 DOCKER_HOST = SETTINGS.get("DOCKER_HOST")
 
-docker_client = docker.DockerClient(base_url=DOCKER_HOST)
-
 logger = logging.getLogger()
+
+# Initialize docker client with error handling
+docker_client = None
+try:
+    if DOCKER_HOST:
+        docker_client = docker.DockerClient(base_url=DOCKER_HOST)
+        # Test the connection
+        docker_client.ping()
+    else:
+        logger.warning(
+            "DOCKER_HOST not configured, Docker functionality will be disabled"
+        )
+except Exception as e:
+    logger.warning(
+        f"Failed to connect to Docker: {e}. Docker functionality will be disabled"
+    )
+    docker_client = None
+
+
+def get_docker_client():
+    """Get docker client with lazy initialization and error handling"""
+    global docker_client
+    if docker_client is None:
+        try:
+            if DOCKER_HOST:
+                docker_client = docker.DockerClient(base_url=DOCKER_HOST)
+                docker_client.ping()
+            else:
+                raise Exception("DOCKER_HOST not configured")
+        except Exception as e:
+            logger.error(f"Failed to connect to Docker: {e}")
+            # In development environment, we might not always have Docker available
+            if SETTINGS.get("ENVIRONMENT") == "dev":
+                logger.warning(
+                    "Running in development mode - Docker functionality disabled"
+                )
+                return None
+            raise
+    return docker_client
 
 
 @celery_app.task()
 def docker_build(script_id):
+    """Creates the execution for a script in the database"""
+    logger.info(f"Building Docker image for script with id {script_id}")
+
+    # Check if Docker is available
+    try:
+        client = get_docker_client()
+        if client is None:
+            logger.warning(
+                f"Docker not available, skipping build for script {script_id}"
+            )
+            return
+    except Exception as e:
+        logger.error(f"Docker not available for build: {e}")
+        return
+
     logger.debug(f"Obtaining script with id {script_id}")
     script = Script.query.get(script_id)
     script_file = script.slug + ".tar.gz"
@@ -67,6 +119,19 @@ def docker_build(script_id):
 @celery_app.task()
 def docker_run(execution_id, image, environment, params):
     logger.info(f"[THREAD] Running script with image {image}")
+
+    # Check if Docker is available
+    try:
+        client = get_docker_client()
+        if client is None:
+            logger.warning(
+                f"Docker not available, skipping run for execution {execution_id}"
+            )
+            return
+    except Exception as e:
+        logger.error(f"Docker not available for run: {e}")
+        return
+
     logger.debug(f"Obtaining execution with id {execution_id}")
     execution = Execution.query.get(execution_id)
     execution.status = "READY"
@@ -127,7 +192,8 @@ class DockerService:
         logger.debug(f"Pushing image with tag {tag_image}")
         pushed = False
         try:
-            for line in docker_client.images.push(
+            client = get_docker_client()
+            for line in client.images.push(
                 REGISTRY_URL + "/" + tag_image, stream=True, decode=True
             ):
                 DockerService.save_build_log(script_id=script_id, line=line)
@@ -164,7 +230,8 @@ class DockerService:
             copy(dockerfile, os.path.join(path, "Dockerfile"))
 
             logger.debug(f"[SERVICE]: tag is {REGISTRY_URL + '/' + tag_image}")
-            image, logs = docker_client.images.build(
+            client = get_docker_client()
+            image, logs = client.images.build(
                 path=path,
                 rm=True,
                 tag=REGISTRY_URL + "/" + tag_image,
@@ -216,7 +283,8 @@ class DockerService:
 
                 script = Script.query.get(Execution.query.get(execution_id).script_id)
 
-                docker_client.services.create(
+                client = get_docker_client()
+                client.services.create(
                     image=f"{REGISTRY_URL}/{image}",
                     command="./entrypoint.sh",
                     env=env,
@@ -238,7 +306,8 @@ class DockerService:
                     f"{REGISTRY_URL}/{image}, as execution "
                     f"execution-{str(execution_id)})",
                 )
-                docker_client.containers.run(
+                client = get_docker_client()
+                client.containers.run(
                     image=f"{REGISTRY_URL}/{image}",
                     command="./entrypoint.sh",
                     environment=environment,
