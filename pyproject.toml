@@ -29,6 +29,7 @@ boto3 = "*"
 docker = "*"
 sparkpost = "*"
 slugify = "*"
+gunicorn = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
