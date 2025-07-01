@@ -30,6 +30,7 @@ docker = "*"
 sparkpost = "*"
 slugify = "*"
 gunicorn = "*"
+gevent = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
