@@ -93,6 +93,8 @@ class ExecutionService:
             from sqlalchemy import and_
 
             filter_clauses = []
+            join_scripts = False
+            join_users = False
             for expr in filter_param.split(","):
                 expr = expr.strip()
                 m = re.match(
@@ -119,6 +121,15 @@ class ExecutionService:
                             filter_clauses.append(col <= value)
                         elif op == "like":
                             filter_clauses.append(col.like(value))
+                    if field == "script_name":
+                        join_scripts = True
+                    elif field in ["user_name", "user_email"]:
+                        join_users = True
+            # Join with script and user tables if needed due to filtering on fields not in executions table
+            if join_scripts:
+                query = query.join(Script, Execution.script_id == Script.id)
+            if join_users:
+                query = query.join(User, Execution.user_id == User.id)
             if filter_clauses:
                 query = query.filter(and_(*filter_clauses))
 
