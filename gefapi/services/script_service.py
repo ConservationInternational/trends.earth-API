@@ -15,7 +15,7 @@ from werkzeug.utils import secure_filename
 from gefapi import db
 from gefapi.config import SETTINGS
 from gefapi.errors import InvalidFile, NotAllowed, ScriptDuplicated, ScriptNotFound
-from gefapi.models import Script, ScriptLog
+from gefapi.models import Script, ScriptLog, User
 from gefapi.s3 import push_script_to_s3
 from gefapi.services import docker_build
 
@@ -167,6 +167,7 @@ class ScriptService:
             from sqlalchemy import and_
 
             filter_clauses = []
+            join_users = False
             for expr in filter_param.split(","):
                 expr = expr.strip()
                 m = re.match(
@@ -195,6 +196,13 @@ class ScriptService:
                             filter_clauses.append(col <= value)
                         elif op == "like":
                             filter_clauses.append(col.like(value))
+                    elif field in ["user_name", "user_email"]:
+                        join_users = True
+            if join_users:
+                query = query.join(User, Script.user_id == User.id).add_columns(
+                    User.name.label("user_name"),
+                    User.email.label("user_email"),
+                )
             if filter_clauses:
                 query = query.filter(and_(*filter_clauses))
 

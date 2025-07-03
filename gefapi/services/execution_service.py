@@ -125,11 +125,17 @@ class ExecutionService:
                         join_scripts = True
                     elif field in ["user_name", "user_email"]:
                         join_users = True
-            # Join with script and user tables if needed due to filtering on fields not in executions table
+            # Join with script and user tables if needed due to filtering on
+            # fields not in executions table
             if join_scripts:
-                query = query.join(Script, Execution.script_id == Script.id)
+                query = query.join(
+                    Script, Execution.script_id == Script.id
+                ).add_columns(Script.name.label("script_name"))
             if join_users:
-                query = query.join(User, Execution.user_id == User.id)
+                query = query.join(User, Execution.user_id == User.id).add_columns(
+                    User.name.label("user_name"),
+                    User.email.label("user_email"),
+                )
             if filter_clauses:
                 query = query.filter(and_(*filter_clauses))
 
