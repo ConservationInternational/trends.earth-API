@@ -105,7 +105,22 @@ class ExecutionService:
                     field = field.strip()
                     op = op.strip().lower()
                     value = value.strip().strip("'\"")
-                    col = getattr(Execution, field, None)
+
+                    if field == "script_name":
+                        join_scripts = True
+                        col = Script.name
+                    elif field == "user_name":
+                        if user.role != "ADMIN":
+                            raise Exception("Only admin users can filter by user_name")
+                        join_users = True
+                        col = User.name
+                    elif field == "user_email":
+                        if user.role != "ADMIN":
+                            raise Exception("Only admin users can filter by user_email")
+                        join_users = True
+                        col = User.email
+                    else:
+                        col = getattr(Execution, field, None)
                     if col is not None:
                         if op == "=":
                             filter_clauses.append(col == value)
@@ -121,21 +136,12 @@ class ExecutionService:
                             filter_clauses.append(col <= value)
                         elif op == "like":
                             filter_clauses.append(col.like(value))
-                    if field == "script_name":
-                        join_scripts = True
-                    elif field in ["user_name", "user_email"]:
-                        join_users = True
             # Join with script and user tables if needed due to filtering on
             # fields not in executions table
             if join_scripts:
-                query = query.join(
-                    Script, Execution.script_id == Script.id
-                ).add_columns(Script.name.label("script_name"))
+                query = query.join(Script, Execution.script_id == Script.id)
             if join_users:
-                query = query.join(User, Execution.user_id == User.id).add_columns(
-                    User.name.label("user_name"),
-                    User.email.label("user_email"),
-                )
+                query = query.join(User, Execution.user_id == User.id)
             if filter_clauses:
                 query = query.filter(and_(*filter_clauses))
 
@@ -179,7 +185,20 @@ class ExecutionService:
                         query = query.join(
                             Script, Execution.script_id == Script.id
                         ).order_by(Script.name.asc())
+                elif field == "user_email":
+                    if user.role != "ADMIN":
+                        raise Exception("Only admin users can sort by user_email")
+                    if direction == "desc":
+                        query = query.join(User, Execution.user_id == User.id).order_by(
+                            User.email.desc()
+                        )
+                    else:
+                        query = query.join(User, Execution.user_id == User.id).order_by(
+                            User.email.asc()
+                        )
                 elif field == "user_name":
+                    if user.role != "ADMIN":
+                        raise Exception("Only admin users can sort by user_name")
                     if direction == "desc":
                         query = query.join(User, Execution.user_id == User.id).order_by(
                             User.name.desc()

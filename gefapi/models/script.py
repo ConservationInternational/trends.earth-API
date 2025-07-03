@@ -72,7 +72,7 @@ class Script(db.Model):
     def __repr__(self):
         return f"<Script {self.name!r}>"
 
-    def serialize(self, include=None, exclude=None):
+    def serialize(self, include=None, exclude=None, user=None):
         """Return object data in easily serializeable format"""
         include = include if include else []
         exclude = exclude if exclude else []
@@ -96,7 +96,13 @@ class Script(db.Model):
         if "user" in include:
             script["user"] = self.user.serialize()
         if "user_name" in include:
+            if user and user.role != "ADMIN":
+                raise Exception("Only admin users can include user_name")
             script["user_name"] = getattr(self.user, "name", None)
+        if "user_email" in include:
+            if user and user.role != "ADMIN":
+                raise Exception("Only admin users can include user_email")
+            script["user_email"] = getattr(self.user, "email", None)
         if "executions" in include:
             script["executions"] = self.serialize_executions
         if "environment" in include:

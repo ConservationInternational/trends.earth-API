@@ -103,7 +103,9 @@ def get_scripts():
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
 
-    response_data = {"data": [script.serialize(include, exclude) for script in scripts]}
+    response_data = {
+        "data": [script.serialize(include, exclude, current_user) for script in scripts]
+    }
     if paginate:
         response_data["page"] = page
         response_data["per_page"] = per_page
@@ -129,7 +131,7 @@ def get_script(script):
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=script.serialize(include, exclude)), 200
+    return jsonify(data=script.serialize(include, exclude, current_user)), 200
 
 
 @endpoints.route("/script/<script>/publish", strict_slashes=False, methods=["POST"])
@@ -145,7 +147,7 @@ def publish_script(script):
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=script.serialize()), 200
+    return jsonify(data=script.serialize(user=current_user)), 200
 
 
 @endpoints.route("/script/<script>/unpublish", strict_slashes=False, methods=["POST"])
@@ -161,7 +163,7 @@ def unpublish_script(script):
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=script.serialize()), 200
+    return jsonify(data=script.serialize(user=current_user)), 200
 
 
 @endpoints.route("/script/<script>/download", strict_slashes=False, methods=["GET"])
@@ -235,7 +237,7 @@ def update_script(script):
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=script.serialize()), 200
+    return jsonify(data=script.serialize(user=current_user)), 200
 
 
 @endpoints.route("/script/<script>", strict_slashes=False, methods=["DELETE"])
@@ -254,7 +256,7 @@ def delete_script(script):
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=script.serialize()), 200
+    return jsonify(data=script.serialize(user=current_user)), 200
 
 
 # SCRIPT EXECUTION
@@ -280,7 +282,7 @@ def run_script(script):
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=execution.serialize()), 200
+    return jsonify(data=execution.serialize(user=current_user)), 200
 
 
 @endpoints.route("/execution", strict_slashes=False, methods=["GET"])
@@ -335,7 +337,10 @@ def get_executions():
         return error(status=500, detail="Generic Error")
 
     response_data = {
-        "data": [execution.serialize(include, exclude) for execution in executions]
+        "data": [
+            execution.serialize(include, exclude, current_user)
+            for execution in executions
+        ]
     }
     # Only include pagination metadata if pagination was requested
     if paginate:
@@ -363,7 +368,7 @@ def get_execution(execution):
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=execution.serialize(include, exclude)), 200
+    return jsonify(data=execution.serialize(include, exclude, current_user)), 200
 
 
 @endpoints.route("/execution/<execution>", strict_slashes=False, methods=["PATCH"])
@@ -384,7 +389,7 @@ def update_execution(execution):
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=execution.serialize()), 200
+    return jsonify(data=execution.serialize(user=current_user)), 200
 
 
 @endpoints.route("/execution/<execution>/log", strict_slashes=False, methods=["GET"])

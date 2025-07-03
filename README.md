@@ -128,6 +128,12 @@ The API provides comprehensive filtering, sorting, and pagination capabilities f
 - **Pagination**: Optional pagination (enabled only when `page` or `per_page` parameters are provided)
 - **Field Control**: Use `include` to add extra fields and `exclude` to remove standard fields from responses
 
+**Access Control & Security:**
+- **User Information Restrictions**: For privacy and security, access to user names and email addresses is restricted to admin users only
+- **Restricted Operations**: Non-admin users cannot filter, sort by, or include `user_name` or `user_email` fields
+- **Error Handling**: Attempting to use restricted fields results in HTTP 403 Forbidden with a clear error message
+- **Admin Privileges**: Users with `role: "ADMIN"` have unrestricted access to all user-related data
+
 **Field Control Parameters:**
 - `include` - Adds additional fields to the response (e.g., related objects, computed fields)
 - `exclude` - Removes standard fields from the response to reduce payload size
@@ -152,10 +158,13 @@ The API provides comprehensive filtering, sorting, and pagination capabilities f
 
 **Query Parameters:**
 - `filter` - SQL-style filter expression(s), comma-separated. Supported operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `like`. Example: `status=SUCCESS,public=true,name like 'foo%'`
-- `sort` - SQL-style sorting expression(s), comma-separated. Allows advanced multi-field sorting, e.g. `sort=status desc,name asc`. Supported fields: any column in the scripts table, plus `user_name`. Example: `sort=status desc,name asc` will sort by status descending, then by name ascending.
+  - **Admin-only filters**: `user_name`, `user_email` (non-admin users will receive an error)
+- `sort` - SQL-style sorting expression(s), comma-separated. Allows advanced multi-field sorting, e.g. `sort=status desc,name asc`. Supported fields: any column in the scripts table, plus `user_name`, `user_email`. Example: `sort=status desc,name asc` will sort by status descending, then by name ascending.
+  - **Admin-only sorting**: `user_name`, `user_email` (non-admin users will receive an error)
 - `include` - Comma-separated list of extra fields to include in each script result. Supported values:
   - `user`: include full user object as `user`
-  - `user_name`: include only the user's name as `user_name`
+  - `user_name`: include only the user's name as `user_name` (**Admin only**)
+  - `user_email`: include only the user's email as `user_email` (**Admin only**)
   - `logs`, `executions`, `environment`: see below
 - `exclude` - Comma-separated list of fields to exclude from each script result. Can be used to remove any standard field from the response (e.g., `description,cpu_reservation,memory_limit`). Useful for reducing payload size when certain fields are not needed.
 - `page` - Page number (only used if pagination is requested, defaults to 1)
@@ -185,8 +194,17 @@ GET /api/v1/script?filter=status=PENDING,user_id=550e8400-e29b-41d4-a716-4466554
 # Get scripts sorted by name (no pagination)
 GET /api/v1/script?sort=name
 
-# Get scripts and include user name in each result
+# Get scripts filtered by user name (Admin only)
+GET /api/v1/script?filter=user_name like '%john%'
+
+# Get scripts sorted by user email (Admin only)
+GET /api/v1/script?sort=user_email desc
+
+# Get scripts and include user name in each result (Admin only)
 GET /api/v1/script?include=user_name
+
+# Get scripts and include user email in each result (Admin only)
+GET /api/v1/script?include=user_email
 
 # Get scripts and include full user object and logs
 GET /api/v1/script?include=user,logs
@@ -194,11 +212,28 @@ GET /api/v1/script?include=user,logs
 # Get scripts but exclude large fields to reduce response size
 GET /api/v1/script?exclude=description
 
-# Get scripts with user names but exclude technical fields
+# Get scripts with user names but exclude technical fields (Admin only)
 GET /api/v1/script?include=user_name&exclude=cpu_reservation,cpu_limit,memory_reservation,memory_limit
 ```
 
-**Example Response with `include=user_name`:**
+**Error Examples for Non-Admin Users:**
+```bash
+# These requests will result in HTTP 403 Forbidden for non-admin users:
+
+# Attempting to filter by user_name
+GET /api/v1/script?filter=user_name like '%john%'
+# Response: {"status": 403, "detail": "Access denied: Only admin users can filter by user_name"}
+
+# Attempting to sort by user_email  
+GET /api/v1/script?sort=user_email desc
+# Response: {"status": 403, "detail": "Access denied: Only admin users can sort by user_email"}
+
+# Attempting to include user_name in response
+GET /api/v1/script?include=user_name
+# Response: {"status": 403, "detail": "Access denied: Only admin users can include user_name in API responses"}
+```
+
+**Example Response with `include=user_name` (Admin only):**
 ```json
 {
   "data": [
@@ -248,16 +283,19 @@ GET /api/v1/script?include=user_name&exclude=cpu_reservation,cpu_limit,memory_re
 **Query Parameters:**
 - `status` - Filter by execution status (e.g., `FINISHED`, `RUNNING`)
 - `updated_at` - (Backwards compatibility) Filter executions updated after this date
-- `sort` - SQL-style sorting expression(s), comma-separated. Allows advanced multi-field sorting, e.g. `sort=status desc,progress asc`. Supported fields: any column in the executions table, plus `duration`, `script_name`, and `user_name`. Example: `sort=status desc,progress asc` will sort by status descending, then by progress ascending.
+- `sort` - SQL-style sorting expression(s), comma-separated. Allows advanced multi-field sorting, e.g. `sort=status desc,progress asc`. Supported fields: any column in the executions table, plus `duration`, `script_name`, `user_name`, `user_email`. Example: `sort=status desc,progress asc` will sort by status descending, then by progress ascending.
+  - **Admin-only sorting**: `user_name`, `user_email` (non-admin users will receive an error)
 - `include` - Comma-separated list of extra fields to include in each execution result. Supported values:
   - `duration`: include duration in seconds
   - `user`: include full user object as `user`
-  - `user_name`: include only the user's name as `user_name`
+  - `user_name`: include only the user's name as `user_name` (**Admin only**)
+  - `user_email`: include only the user's email as `user_email` (**Admin only**)
   - `script`: include full script object as `script`
   - `script_name`: include only the script's name as `script_name`
   - `logs`: include execution logs
 - `exclude` - Comma-separated list of fields to exclude from each execution result. Can be used to remove any standard field from the response (e.g., `params,results,start_date`). Useful for reducing payload size when certain fields are not needed.
 - `filter` - SQL-style filter expression(s), comma-separated. Supported operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `like`. Example: `progress>50,status=FINISHED`
+  - **Admin-only filters**: `user_name`, `user_email` (non-admin users will receive an error)
 - `page` - Page number (only used if pagination is requested, defaults to 1)
 - `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
 
@@ -275,7 +313,7 @@ GET /api/v1/execution?page=1&per_page=10
 # Get executions from last week, sorted by script name (no pagination)
 GET /api/v1/execution?start_date_gte=2025-06-14&sort=script_name&include=script_name
 
-# Get running executions with user info (no pagination)
+# Get running executions with user info (Admin only)
 GET /api/v1/execution?status=RUNNING&include=user,user_name,duration&sort=-start_date
 
 # Get executions with progress > 50 and status FINISHED
@@ -287,14 +325,40 @@ GET /api/v1/execution?filter=status!=FAILED
 # Get executions where script_id matches a pattern
 GET /api/v1/execution?filter=script_id like 'abc%'
 
+# Get executions filtered by user name (Admin only)
+GET /api/v1/execution?filter=user_name like '%john%'
+
+# Get executions sorted by user email (Admin only)
+GET /api/v1/execution?sort=user_email desc
+
 # Get executions but exclude large fields to reduce response size
 GET /api/v1/execution?exclude=params,results
 
-# Get finished executions with user names but exclude parameters and results
+# Get finished executions with user names but exclude parameters and results (Admin only)
 GET /api/v1/execution?status=FINISHED&include=user_name&exclude=params,results
+
+# Get executions with user email information (Admin only)
+GET /api/v1/execution?include=user_email&exclude=params,results
 ```
 
-**Example Response with `include=user_name,script_name`:**
+**Error Examples for Non-Admin Users:**
+```bash
+# These requests will result in HTTP 403 Forbidden for non-admin users:
+
+# Attempting to filter by user_name
+GET /api/v1/execution?filter=user_name like '%john%'
+# Response: {"status": 403, "detail": "Access denied: Only admin users can filter by user_name"}
+
+# Attempting to sort by user_email
+GET /api/v1/execution?sort=user_email desc  
+# Response: {"status": 403, "detail": "Access denied: Only admin users can sort by user_email"}
+
+# Attempting to include user_email in response
+GET /api/v1/execution?include=user_email
+# Response: {"status": 403, "detail": "Access denied: Only admin users can include user_email in API responses"}
+```
+
+**Example Response with `include=user_name,script_name` (Admin only for user_name):**
 ```json
 {
   "data": [
@@ -406,6 +470,42 @@ GET /api/v1/user?filter=role=ADMIN&include=scripts&exclude=institution,country
 ### Other Endpoints
 - `POST /email` - Send email
 
+## Security and Access Control
+
+### Admin-Only User Data Access
+
+For security and privacy protection, access to user-related information is restricted to administrators:
+
+**Restricted Operations:**
+- **Filtering by user fields**: `filter=user_name like '%john%'` or `filter=user_email=user@example.com`
+- **Sorting by user fields**: `sort=user_name desc` or `sort=user_email asc`
+- **Including user fields**: `include=user_name` or `include=user_email`
+
+**Affected Endpoints:**
+- `GET /api/v1/script` - Script listing with user data restrictions
+- `GET /api/v1/execution` - Execution listing with user data restrictions
+
+**Error Response:**
+Non-admin users attempting to access restricted user data will receive:
+```json
+{
+  "status": 403,
+  "detail": "Access denied: Only admin users can filter/sort/include user information"
+}
+```
+
+**Admin Access:**
+Users with `role: "ADMIN"` can access all functionality without restrictions and can:
+- Filter scripts and executions by any user field
+- Sort results by user name or email
+- Include user names and emails in API responses
+- Access user management endpoints
+
+**Backward Compatibility:**
+- All existing functionality remains unchanged for non-restricted fields
+- Public fields and standard filtering/sorting continue to work for all users
+- The `user` object can still be included by any user (contains public user information)
+
 ## Data Models
 
 ### Script
@@ -489,7 +589,16 @@ docker compose -f docker-compose.develop.yml up api
 docker compose -f docker-compose.develop.yml logs -f api
 
 # Run tests
-docker compose -f docker-compose.develop.yml run --rm api python -m pytest
+# Run tests (recommended approach - handles service dependencies)
+./run_tests.sh
+
+# Alternative: Start services and run tests manually
+docker compose -f docker-compose.develop.yml up -d database redis
+docker compose -f docker-compose.develop.yml run --rm test
+
+# Run specific test files or patterns
+./run_tests.sh tests/test_smoke.py
+./run_tests.sh -k "test_environment"
 ```
 
 ### Code Structure

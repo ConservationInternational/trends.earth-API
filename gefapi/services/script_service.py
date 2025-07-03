@@ -180,7 +180,19 @@ class ScriptService:
                     field = field.strip()
                     op = op.strip().lower()
                     value = value.strip().strip("'\"")
-                    col = getattr(Script, field, None)
+
+                    if field == "user_name":
+                        if user.role != "ADMIN":
+                            raise Exception("Only admin users can filter by user_name")
+                        join_users = True
+                        col = User.name
+                    elif field == "user_email":
+                        if user.role != "ADMIN":
+                            raise Exception("Only admin users can filter by user_email")
+                        join_users = True
+                        col = User.email
+                    else:
+                        col = getattr(Script, field, None)
                     if col is not None:
                         if op == "=":
                             filter_clauses.append(col == value)
@@ -196,13 +208,8 @@ class ScriptService:
                             filter_clauses.append(col <= value)
                         elif op == "like":
                             filter_clauses.append(col.like(value))
-                    elif field in ["user_name", "user_email"]:
-                        join_users = True
             if join_users:
-                query = query.join(User, Script.user_id == User.id).add_columns(
-                    User.name.label("user_name"),
-                    User.email.label("user_email"),
-                )
+                query = query.join(User, Script.user_id == User.id)
             if filter_clauses:
                 query = query.filter(and_(*filter_clauses))
 
@@ -223,6 +230,28 @@ class ScriptService:
                         query = query.order_by(desc(col))
                     else:
                         query = query.order_by(asc(col))
+                elif field == "user_email":
+                    if user.role != "ADMIN":
+                        raise Exception("Only admin users can sort by user_email")
+                    if direction == "desc":
+                        query = query.join(User, Script.user_id == User.id).order_by(
+                            User.email.desc()
+                        )
+                    else:
+                        query = query.join(User, Script.user_id == User.id).order_by(
+                            User.email.asc()
+                        )
+                elif field == "user_name":
+                    if user.role != "ADMIN":
+                        raise Exception("Only admin users can sort by user_name")
+                    if direction == "desc":
+                        query = query.join(User, Script.user_id == User.id).order_by(
+                            User.name.desc()
+                        )
+                    else:
+                        query = query.join(User, Script.user_id == User.id).order_by(
+                            User.name.asc()
+                        )
         else:
             query = query.order_by(Script.created_at.desc())
 

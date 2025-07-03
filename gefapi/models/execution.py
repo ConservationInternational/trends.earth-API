@@ -43,7 +43,7 @@ class Execution(db.Model):
     def __repr__(self):
         return f"<Execution {self.id!r}>"
 
-    def serialize(self, include=None, exclude=None):
+    def serialize(self, include=None, exclude=None, user=None):
         """Return object data in easily serializeable format"""
         include = include if include else []
         exclude = exclude if exclude else []
@@ -68,9 +68,15 @@ class Execution(db.Model):
         if "user" in include:
             execution["user"] = self.user.serialize()
         if "user_name" in include:
+            if user and user.role != "ADMIN":
+                raise Exception("Only admin users can include user_name")
             execution["user_name"] = getattr(self.user, "name", None)
+        if "user_email" in include:
+            if user and user.role != "ADMIN":
+                raise Exception("Only admin users can include user_email")
+            execution["user_email"] = getattr(self.user, "email", None)
         if "script" in include:
-            execution["script"] = self.script.serialize()
+            execution["script"] = self.script.serialize(user=user)
         if "script_name" in include:
             execution["script_name"] = getattr(self.script, "name", None)
         if "params" in exclude:
