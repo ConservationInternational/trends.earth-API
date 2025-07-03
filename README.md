@@ -126,6 +126,13 @@ The API provides comprehensive filtering, sorting, and pagination capabilities f
 - **Filtering**: Support for date ranges, status filters, and field-specific filters
 - **Sorting**: Sort by any field in ascending (default) or descending order (use `-` prefix)
 - **Pagination**: Optional pagination (enabled only when `page` or `per_page` parameters are provided)
+- **Field Control**: Use `include` to add extra fields and `exclude` to remove standard fields from responses
+
+**Field Control Parameters:**
+- `include` - Adds additional fields to the response (e.g., related objects, computed fields)
+- `exclude` - Removes standard fields from the response to reduce payload size
+- Both parameters can be used together: fields are first included, then excluded
+- Use comma-separated values for multiple fields: `include=user,logs&exclude=description,params`
 
 ### Authentication
 - `POST /auth` - User authentication
@@ -150,7 +157,7 @@ The API provides comprehensive filtering, sorting, and pagination capabilities f
   - `user`: include full user object as `user`
   - `user_name`: include only the user's name as `user_name`
   - `logs`, `executions`, `environment`: see below
-- `exclude` - Comma-separated list of fields to exclude (e.g., `environment`)
+- `exclude` - Comma-separated list of fields to exclude from each script result. Can be used to remove any standard field from the response (e.g., `description,cpu_reservation,memory_limit`). Useful for reducing payload size when certain fields are not needed.
 - `page` - Page number (only used if pagination is requested, defaults to 1)
 - `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
 
@@ -183,6 +190,12 @@ GET /api/v1/script?include=user_name
 
 # Get scripts and include full user object and logs
 GET /api/v1/script?include=user,logs
+
+# Get scripts but exclude large fields to reduce response size
+GET /api/v1/script?exclude=description
+
+# Get scripts with user names but exclude technical fields
+GET /api/v1/script?include=user_name&exclude=cpu_reservation,cpu_limit,memory_reservation,memory_limit
 ```
 
 **Example Response with `include=user_name`:**
@@ -243,7 +256,7 @@ GET /api/v1/script?include=user,logs
   - `script`: include full script object as `script`
   - `script_name`: include only the script's name as `script_name`
   - `logs`: include execution logs
-- `exclude` - Comma-separated list of fields to exclude (e.g., `params,results`)
+- `exclude` - Comma-separated list of fields to exclude from each execution result. Can be used to remove any standard field from the response (e.g., `params,results,start_date`). Useful for reducing payload size when certain fields are not needed.
 - `filter` - SQL-style filter expression(s), comma-separated. Supported operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `like`. Example: `progress>50,status=FINISHED`
 - `page` - Page number (only used if pagination is requested, defaults to 1)
 - `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
@@ -273,6 +286,12 @@ GET /api/v1/execution?filter=status!=FAILED
 
 # Get executions where script_id matches a pattern
 GET /api/v1/execution?filter=script_id like 'abc%'
+
+# Get executions but exclude large fields to reduce response size
+GET /api/v1/execution?exclude=params,results
+
+# Get finished executions with user names but exclude parameters and results
+GET /api/v1/execution?status=FINISHED&include=user_name&exclude=params,results
 ```
 
 **Example Response with `include=user_name,script_name`:**
@@ -332,8 +351,9 @@ GET /api/v1/execution?filter=script_id like 'abc%'
 **Query Parameters:**
 - `filter` - SQL-style filter expression(s), comma-separated. Supported operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `like`. Example: `role=ADMIN,country like 'US%'`
 - `sort` - SQL-style sorting expression(s), comma-separated. Allows advanced multi-field sorting, e.g. `sort=name asc,email desc`. Supported fields: any column in the users table. Example: `sort=name asc,email desc` will sort by name ascending, then by email descending.
-- `include` - Include additional data in response
-- `exclude` - Comma-separated list of fields to exclude (e.g., `institution`)
+- `include` - Comma-separated list of extra fields to include in each user result. Supported values:
+  - `scripts`: include user's scripts
+- `exclude` - Comma-separated list of fields to exclude from each user result. Can be used to remove any standard field from the response (e.g., `institution,country`). Useful for reducing payload size when certain fields are not needed.
 - `page` - Page number (only used if pagination is requested, defaults to 1)
 - `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
 
@@ -359,6 +379,12 @@ GET /api/v1/user?filter=institution like 'University%'
 
 # Get users sorted by creation date (newest first, no pagination)
 GET /api/v1/user?sort=-created_at
+
+# Get users but exclude sensitive fields to reduce response size
+GET /api/v1/user?exclude=institution,country
+
+# Get admin users with scripts but exclude personal information
+GET /api/v1/user?filter=role=ADMIN&include=scripts&exclude=institution,country
 ```
 ### System Status (Admin Only)
 - `GET /api/v1/status` - Get system status logs
@@ -514,6 +540,11 @@ The system automatically collects metrics every 2 minutes:
 Access monitoring data via the `/api/v1/status` endpoint (Admin only).
 
 ## API Documentation
+
+### Recent Improvements
+
+- **Field Exclusion Support**: All serialization methods (`Script`, `User`, `Execution`) now support the `exclude` parameter to remove unwanted fields from API responses, improving performance and reducing payload sizes.
+- **Consistent Parameter Handling**: The `include` and `exclude` parameters are now consistently supported across all GET endpoints for scripts, users, and executions.
 
 ### Automatic Documentation Generation
 

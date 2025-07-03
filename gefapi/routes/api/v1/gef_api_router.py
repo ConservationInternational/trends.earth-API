@@ -119,6 +119,8 @@ def get_script(script):
     logger.info("[ROUTER]: Getting script " + script)
     include = request.args.get("include")
     include = include.split(",") if include else []
+    exclude = request.args.get("exclude")
+    exclude = exclude.split(",") if exclude else []
     try:
         script = ScriptService.get_script(script, current_user)
     except ScriptNotFound as e:
@@ -127,7 +129,7 @@ def get_script(script):
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=script.serialize(include)), 200
+    return jsonify(data=script.serialize(include, exclude)), 200
 
 
 @endpoints.route("/script/<script>/publish", strict_slashes=False, methods=["POST"])
@@ -540,6 +542,8 @@ def get_user(user):
     logger.info("[ROUTER]: Getting user" + user)
     include = request.args.get("include")
     include = include.split(",") if include else []
+    exclude = request.args.get("exclude")
+    exclude = exclude.split(",") if exclude else []
     identity = current_user
     if identity.role != "ADMIN" and identity.email != "gef@gef.com":
         return error(status=403, detail="Forbidden")
@@ -551,7 +555,7 @@ def get_user(user):
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=user.serialize(include)), 200
+    return jsonify(data=user.serialize(include, exclude)), 200
 
 
 @endpoints.route("/user/me", strict_slashes=False, methods=["GET"])

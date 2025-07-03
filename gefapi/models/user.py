@@ -52,9 +52,10 @@ class User(db.Model):
     def __repr__(self):
         return f"<User {self.email!r}>"
 
-    def serialize(self, include=None):
+    def serialize(self, include=None, exclude=None):
         """Return object data in easily serializeable format"""
         include = include if include else []
+        exclude = exclude if exclude else []
         user = {
             "id": self.id,
             "email": self.email,
@@ -67,6 +68,11 @@ class User(db.Model):
         }
         if "scripts" in include:
             user["scripts"] = self.serialize_scripts
+
+        # Remove excluded fields
+        for field in exclude:
+            user.pop(field, None)
+
         return user
 
     @property

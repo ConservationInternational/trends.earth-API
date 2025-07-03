@@ -72,9 +72,10 @@ class Script(db.Model):
     def __repr__(self):
         return f"<Script {self.name!r}>"
 
-    def serialize(self, include=None):
+    def serialize(self, include=None, exclude=None):
         """Return object data in easily serializeable format"""
         include = include if include else []
+        exclude = exclude if exclude else []
         script = {
             "id": self.id,
             "name": self.name,
@@ -101,6 +102,11 @@ class Script(db.Model):
         if "environment" in include:
             script["environment"] = self.environment
             script["environment_version"] = self.environment_version
+
+        # Remove excluded fields
+        for field in exclude:
+            script.pop(field, None)
+
         return script
 
     @property
