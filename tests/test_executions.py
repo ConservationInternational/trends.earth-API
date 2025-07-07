@@ -67,3 +67,29 @@ class TestExecutionFilterSort:
         for status, group in groupby(data, key=lambda e: e["status"]):
             progresses = [e["progress"] for e in group]
             assert progresses == sorted(progresses)
+
+    def test_filter_by_user_name_like(self, client, auth_headers_user):
+        # Regular users cannot filter by user_name, so this should return an error
+        response = client.get(
+            "/api/v1/execution?filter=user_name like '%test%'",
+            headers=auth_headers_user,
+        )
+        # Should return an error since only admin users can filter by user_name
+        assert response.status_code in [400, 403, 500]
+
+    def test_filter_by_user_name_like_admin(self, client, auth_headers_admin):
+        # Admin users can filter by user_name
+        response = client.get(
+            "/api/v1/execution?filter=user_name like '%test%'",
+            headers=auth_headers_admin,
+        )
+        assert response.status_code == 200
+
+    def test_filter_by_script_name_like(self, client, auth_headers_user):
+        response = client.get(
+            "/api/v1/execution?filter=script_name like '%test%'",
+            headers=auth_headers_user,
+        )
+        assert response.status_code == 200
+        # The test should at least not return an error
+        # In a real test environment, we'd check that the results contain the expected script names

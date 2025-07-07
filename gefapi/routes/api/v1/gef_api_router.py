@@ -285,6 +285,69 @@ def run_script(script):
     return jsonify(data=execution.serialize(user=current_user)), 200
 
 
+@endpoints.route("/execution/user", strict_slashes=False, methods=["GET"])
+@jwt_required()
+def get_user_executions():
+    """Get executions for the current user"""
+    logger.info(f"[ROUTER]: Getting executions for user: {current_user.email}")
+    include = request.args.get("include")
+    include = include.split(",") if include else []
+    exclude = request.args.get("exclude")
+    exclude = exclude.split(",") if exclude else []
+    filter_param = request.args.get("filter", None)
+    sort = request.args.get("sort", None)
+
+    # Pagination parameters
+    page_param = request.args.get("page", None)
+    per_page_param = request.args.get("per_page", None)
+
+    if page_param is not None or per_page_param is not None:
+        try:
+            page = int(page_param) if page_param is not None else 1
+            per_page = int(per_page_param) if per_page_param is not None else 20
+            page = max(page, 1)
+            per_page = min(max(per_page, 1), 100)
+            paginate = True
+        except Exception:
+            page, per_page = 1, 20
+            paginate = True
+    else:
+        page, per_page = None, None
+        paginate = False
+
+    try:
+        # Get executions for current user only
+        executions, total = ExecutionService.get_executions(
+            user=current_user,
+            target_user_id=None,  # None means get current user's executions
+            updated_at=None,
+            status=None,
+            page=page,
+            per_page=per_page,
+            paginate=paginate,
+            filter_param=filter_param,
+            sort=sort,
+        )
+    except Exception as e:
+        logger.error("[ROUTER]: " + str(e))
+        return error(status=500, detail="Generic Error")
+
+    response_data = {
+        "data": [
+            execution.serialize(include, exclude, current_user)
+            for execution in executions
+        ]
+    }
+
+    # Only include pagination metadata if pagination was requested
+    if paginate:
+        response_data["page"] = page
+        response_data["per_page"] = per_page
+        response_data["total"] = total
+
+    return jsonify(response_data), 200
+
+
 @endpoints.route("/execution", strict_slashes=False, methods=["GET"])
 @jwt_required()
 def get_executions():
@@ -322,9 +385,9 @@ def get_executions():
         paginate = False
     try:
         executions, total = ExecutionService.get_executions(
-            current_user,
-            user_id,
-            updated_at,
+            user=current_user,
+            target_user_id=user_id,
+            updated_at=updated_at,
             status=status,
             page=page,
             per_page=per_page,

@@ -6,7 +6,7 @@ ENV USER=gef-api
 
 RUN apk update && apk upgrade && \
    apk add --no-cache --update bash git openssl-dev build-base alpine-sdk \
-   libffi-dev postgresql-dev gcc python3-dev musl-dev
+   libffi-dev postgresql-dev postgresql-client gcc python3-dev musl-dev
 
 RUN addgroup $USER && adduser -s /bin/bash -D -G $USER $USER
 
@@ -27,6 +27,7 @@ RUN poetry config virtualenvs.create false && poetry install --no-interaction --
 COPY entrypoint.sh ./entrypoint.sh
 COPY main.py ./main.py
 COPY gunicorn.py ./gunicorn.py
+COPY run_db_migrations.py ./run_db_migrations.py
 COPY ./migrations ./migrations
 COPY ./tests ./tests
 RUN chown $USER:$USER /opt/$NAME

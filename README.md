@@ -16,12 +16,14 @@ This project belongs to the Trends.Earth project and implements the API used by 
 
 ## Technology Stack
 
-- **Python 3.9+** - Main programming language
+- **Python 3.11** - Main programming language (Alpine-based Docker image)
+- **Poetry** - Dependency management and packaging
 - **Flask** - Web framework for API endpoints
 - **SQLAlchemy** - ORM for database operations (PostgreSQL)
 - **Celery** - Background task management (with Redis)
 - **Docker** - Containerization for development and production
 - **Gunicorn** - WSGI server for production deployment
+- **Flask-Migrate** - Database migration management
 
 ## Getting Started
 
@@ -29,6 +31,7 @@ This project belongs to the Trends.Earth project and implements the API used by 
 
 - [Docker](https://www.docker.com/) and Docker Compose
 - Git
+- **Windows users**: WSL2 recommended for optimal Docker performance
 
 ### Quick Start
 
@@ -57,8 +60,9 @@ The application is composed of several Docker services, each with a specific pur
 
 - **`api`** - Main Flask application server
   - Handles HTTP requests and API endpoints
-  - Runs on port 5000
-  - Command: `./entrypoint.sh start` (uses Gunicorn)
+  - Runs on port 3000 (internal), exposed on port 3000 (development)
+  - Command: `./entrypoint.sh start` (uses Gunicorn in production)
+  - Command: `./entrypoint.sh develop` (direct Flask in development)
 
 - **`worker`** - Celery worker for background tasks
   - Processes execution jobs and script builds
@@ -68,39 +72,142 @@ The application is composed of several Docker services, each with a specific pur
   - Manages periodic tasks (system monitoring every 2 minutes)
   - Command: `./entrypoint.sh beat`
 
+- **`migrate`** - Database migration service
+  - Runs database migrations on startup
+  - Command: `./entrypoint.sh migrate`
+  - Uses the new `run_db_migrations.py` script
+
 ### Supporting Services
 
-- **`postgres`** - PostgreSQL database
+- **`postgres`** - PostgreSQL database (version 9.6)
   - Stores all application data
   - Default port: 5432
+  - Container name: `trendsearth-api-database` (development)
 
 - **`redis`** - Redis message broker
   - Handles Celery task queues
   - Default port: 6379
+  - Container name: `trendsearth-api-redis` (development)
+
+- **`registry`** - Docker registry (development)
+  - Local Docker image registry for development
+  - Port: 5000
+  - Container name: `trendsearth-api-registry`
 
 - **`nginx`** (production) - Reverse proxy and load balancer
   - Serves static files and routes requests
   - Handles SSL termination
 
+- **`test`** - Test execution service
+  - Runs automated tests in isolated environment
+  - Command: `./entrypoint.sh test`
+
+## Docker Architecture
+
+### Container Structure
+
+The application uses a multi-container architecture with specialized services:
+
+#### Core Application Containers
+- **API Container**: Flask application server with Gunicorn (production) or direct Flask (development)
+- **Worker Container**: Celery workers for background task processing
+- **Beat Container**: Celery beat scheduler for periodic tasks
+- **Migration Container**: Dedicated service for database schema migrations
+
+#### Infrastructure Containers
+- **PostgreSQL**: Primary database (version 9.6)
+- **Redis**: Message broker and caching layer
+- **Registry**: Local Docker registry for development images
+
+### Environment-Specific Configurations
+
+#### Development (`docker-compose.develop.yml`)
+- Includes test database creation and migration services
+- Volume mounts for live code reloading
+- Exposes database and registry ports for local access
+- Uses environment variables from `develop.env`
+
+#### Staging (`docker-compose.staging.yml`)
+- Production-like environment with external image registry
+- Uses Docker Swarm deployment constraints
+- Environment variables from `staging.env`
+- No local volume mounts
+
+#### Admin (`docker-compose.admin.yml`)
+- Lightweight container for administrative tasks
+- Direct access to production environment
+- Used for manual migrations and database operations
+
+### Entrypoint Commands
+
+The `entrypoint.sh` script provides a unified interface for running different services:
+
+```bash
+develop    # Flask development server with auto-reload
+start      # Gunicorn production server
+worker     # Celery worker process
+beat       # Celery beat scheduler
+migrate    # Database migration execution
+test       # Test suite execution
+```
+
 ## Database Management
 
-### Creating Migrations
+### Automated Migrations
+
+The application now includes automated database migration handling:
+
+1. **Automatic migration on startup:**
+   ```bash
+   # Migration service runs automatically in docker-compose
+   docker compose -f docker-compose.develop.yml up migrate
+   ```
+
+2. **Manual migration execution:**
+   ```bash
+   # Run migration service directly
+   docker compose -f docker-compose.develop.yml run --rm migrate
+   
+   # Or run migration command in any container
+   docker exec -it <container_name> ./entrypoint.sh migrate
+   ```
+
+### Creating New Migrations
 
 When you add new fields or modify existing models:
 
-1. **Generate migration:**
+1. **Generate migration using admin container:**
    ```bash
-   docker exec -it <container_name> flask db migrate -m "Description of changes"
+   # Start admin container
+   docker compose -f docker-compose.admin.yml up -d
+   
+   # Generate migration
+   docker exec -it trendsearth-api-admin-1 flask db migrate -m "Description of changes"
+   
+   # Apply migration (optional, will be applied automatically on next startup)
+   docker exec -it trendsearth-api-admin-1 flask db upgrade
+   
+   # Cleanup
+   docker compose -f docker-compose.admin.yml down
    ```
 
-2. **Apply migration:**
+2. **Alternative: Generate migration in development:**
    ```bash
-   docker exec -it <container_name> flask db upgrade
+   # Using development container
+   docker compose -f docker-compose.develop.yml run --rm api flask db migrate -m "Description of changes"
    ```
+
+### Migration Script
+
+The new `run_db_migrations.py` script handles database migrations programmatically:
+- Located at `/opt/gef-api/run_db_migrations.py` in containers
+- Uses Flask-Migrate's `upgrade()` function
+- Provides better error handling and logging
+- Automatically executed by the `migrate` service
 
 ### Maintenance Container
 
-For database operations, use the admin container:
+For database operations and administrative tasks, use the admin container:
 
 ```bash
 # Start maintenance container
@@ -109,7 +216,7 @@ docker compose -f docker-compose.admin.yml up -d
 # Connect to container
 docker exec -it trendsearth-api-admin-1 /bin/bash
 
-# Run migrations
+# Run migrations manually (if needed)
 flask db migrate -m "Add new field"
 flask db upgrade
 
@@ -117,6 +224,8 @@ flask db upgrade
 exit
 docker compose -f docker-compose.admin.yml down
 ```
+
+**Note:** The admin container automatically runs the `start` command, so it's primarily useful for accessing a shell environment with all dependencies loaded.
 
 ## API Endpoints
 
@@ -574,32 +683,93 @@ Users with `role: "ADMIN"` can access all functionality without restrictions and
 
 ### Local Development
 
+#### Development Environment Setup
+
 ```bash
+# Build and start all development services (includes automatic migration)
+docker compose -f docker-compose.develop.yml up --build
 
-# Build image
-docker compose -f docker-compose.develop.yml build
+# Start specific services
+docker compose -f docker-compose.develop.yml up api worker
 
-# Start all services
-docker compose -f docker-compose.develop.yml up
-
-# Start specific service
+# Start with migration first (recommended for fresh setups)
+docker compose -f docker-compose.develop.yml up migrate database redis
 docker compose -f docker-compose.develop.yml up api
 
 # View logs
 docker compose -f docker-compose.develop.yml logs -f api
 
-# Run tests
-# Run tests (recommended approach - handles service dependencies)
-./run_tests.sh
+# Stop all services
+docker compose -f docker-compose.develop.yml down
+```
 
-# Alternative: Start services and run tests manually
-docker compose -f docker-compose.develop.yml up -d database redis
-docker compose -f docker-compose.develop.yml run --rm test
+#### Container Commands
+
+The `entrypoint.sh` script supports multiple commands:
+
+```bash
+# Development server (direct Flask, auto-reload)
+docker compose -f docker-compose.develop.yml run --rm api develop
+
+# Production server (Gunicorn)
+docker compose -f docker-compose.develop.yml run --rm api start
+
+# Celery worker
+docker compose -f docker-compose.develop.yml run --rm api worker
+
+# Celery beat scheduler
+docker compose -f docker-compose.develop.yml run --rm api beat
+
+# Database migrations
+docker compose -f docker-compose.develop.yml run --rm api migrate
+
+# Run tests
+docker compose -f docker-compose.develop.yml run --rm api test
+```
+
+#### Testing
+
+```bash
+# Recommended: Use the test script (handles service dependencies automatically)
+./run_tests.sh
 
 # Run specific test files or patterns
 ./run_tests.sh tests/test_smoke.py
 ./run_tests.sh -k "test_environment"
+
+# Alternative: Manual test execution
+docker compose -f docker-compose.develop.yml up -d database redis
+docker compose -f docker-compose.develop.yml run --rm test
+
+# Run tests with specific parameters
+docker compose -f docker-compose.develop.yml run --rm test pytest -v tests/
 ```
+
+### Testing Infrastructure
+
+The testing setup includes dedicated services and automated scripts:
+
+#### Test Service Configuration
+- **Isolated Environment**: Tests run in a separate container with `test.env` configuration
+- **Database Setup**: Automatic test database creation (`gef_test`)
+- **Service Dependencies**: Automated startup of required PostgreSQL and Redis services
+
+#### Test Execution Scripts
+- **`run_tests.sh`**: Automated test runner that handles service orchestration
+- **Service Management**: Automatically starts dependencies, runs tests, and cleans up
+- **Flexible Testing**: Supports specific test files, patterns, and pytest arguments
+
+#### Test Environment Features
+- **Environment Isolation**: `TESTING=true` and `ENVIRONMENT=test` flags
+- **Dependency Management**: Tests run with all production dependencies via Poetry
+- **Volume Mounting**: Live code access for debugging and development
+
+#### Development Dependencies
+
+The project uses **Poetry** for dependency management:
+- `pyproject.toml` - Main dependency configuration
+- `poetry.lock` - Locked dependency versions
+- Dependencies are installed during Docker image build
 
 ### Code Structure
 
@@ -616,28 +786,72 @@ gefapi/
 
 ## Deployment
 
+### Environment Variables
+
+Key environment variables to configure (see `.env` files):
+
+#### Database Configuration
+- `DATABASE_URL` - PostgreSQL connection string
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` - Database credentials
+
+#### Redis Configuration  
+- `REDIS_URL` - Redis connection string for Celery
+
+#### Application Configuration
+- `JWT_SECRET_KEY` - Secret key for JWT tokens
+- `ENVIRONMENT` - Application environment (`dev`, `test`, `staging`, `prod`)
+- `DEBUG` - Debug mode flag
+- `TESTING` - Testing mode flag
+- `PORT` - Application port (default: 3000)
+
+#### External Services
+- `SMTP_*` - Email configuration for notifications
+- `AWS_*` - S3 bucket configuration for file storage
+
+#### Container Configuration
+- Docker socket mounting: `/var/run/docker.sock:/tmp/docker.sock`
+- User/group configuration for container security
+
+#### Environment Files
+- `develop.env` - Development environment settings
+- `test.env` - Testing environment settings  
+- `staging.env` - Staging environment settings
+- `prod2.env` - Production environment settings
+
 ### Production Deployment
+
+#### Building and Deploying
 
 1. **Build and push image:**
    ```bash
+   # Build image with Poetry dependencies
    docker build -t registry.example.com/trendsearth-api .
    docker push registry.example.com/trendsearth-api
    ```
 
 2. **Deploy with Docker Swarm:**
    ```bash
+   # Deploy full stack including migration service
    docker stack deploy -c docker-compose.prod.yml api
    ```
 
-### Environment Variables
+#### Docker Image Details
 
-Key environment variables to configure:
+The production Docker image:
+- Based on `python:3.11-alpine` for minimal size and security
+- Uses Poetry for dependency management (virtualenvs disabled in container)
+- Includes all application code and migrations
+- Runs as `gef-api` user for security (currently disabled, runs as root)
+- Supports multiple entry points via `entrypoint.sh`
 
-- `DATABASE_URL` - PostgreSQL connection string
-- `REDIS_URL` - Redis connection string
-- `JWT_SECRET_KEY` - Secret key for JWT tokens
-- `SMTP_*` - Email configuration
-- `AWS_*` - S3 bucket configuration
+#### Service Orchestration
+
+Production deployment includes:
+- **Migrate service**: Runs database migrations before other services start
+- **Manager service**: Main API server (Gunicorn)
+- **Worker service**: Celery background task processor
+- **Beat service**: Celery periodic task scheduler
+- **Redis service**: Message broker and cache
 
 ## Monitoring
 
@@ -703,6 +917,182 @@ The `.github/workflows/generate-api-docs.yml` workflow automatically:
 
 **Note**: API documentation will be automatically updated when your changes are merged to the main branch.
 
-## License
+## Troubleshooting
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+### Docker Authentication Issues
+
+#### Credential Storage Errors (WSL/Linux)
+
+If you encounter credential storage errors like:
+```
+WARNING: error getting credentials - err: exit status 1, out: ``
+failed to store tokens: error storing credentials - err: exit status 1, out: ``
+```
+
+**Solution 1: Use Docker Desktop Integration (Recommended for WSL)**
+```bash
+# If using WSL with Docker Desktop, ensure Docker Desktop is running
+# and WSL integration is enabled in Docker Desktop settings
+```
+
+**Solution 2: Configure Docker to Use Plain Text Storage**
+```bash
+# Create or edit Docker config
+mkdir -p ~/.docker
+echo '{"credsStore":""}' > ~/.docker/config.json
+
+# Then retry login
+docker login
+```
+
+**Solution 3: Remove Credential Helper**
+```bash
+# Edit Docker config to remove credential store
+nano ~/.docker/config.json
+
+# Remove or comment out the "credsStore" line:
+{
+  // "credsStore": "desktop",
+  "credHelpers": {}
+}
+```
+
+**Solution 4: Reset Docker Configuration**
+```bash
+# Backup existing config
+cp ~/.docker/config.json ~/.docker/config.json.backup
+
+# Remove problematic config
+rm ~/.docker/config.json
+
+# Retry authentication
+docker login
+```
+
+#### Container Permission Issues
+
+**Issue**: Permission denied when running containers or accessing mounted volumes.
+
+**Solutions**:
+```bash
+# Option 1: Add user to docker group (Linux)
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Option 2: Run with sudo (temporary fix)
+sudo docker compose up
+
+# Option 3: Fix file permissions for mounted volumes
+sudo chown -R $USER:$USER /path/to/project
+```
+
+### Development Environment Issues
+
+#### Port Already in Use
+```bash
+# Check what's using the port
+sudo netstat -tulpn | grep :3000
+# or
+sudo lsof -i :3000
+
+# Kill the process using the port
+sudo kill -9 <PID>
+
+# Or use different ports in docker-compose
+ports:
+  - "3001:3000"  # Map to different host port
+```
+
+#### Database Connection Issues
+```bash
+# Check if PostgreSQL container is running
+docker compose -f docker-compose.develop.yml ps
+
+# View database logs
+docker compose -f docker-compose.develop.yml logs database
+
+# Reset database
+docker compose -f docker-compose.develop.yml down -v
+docker compose -f docker-compose.develop.yml up database
+```
+
+#### Migration Failures
+```bash
+# Check migration logs
+docker compose -f docker-compose.develop.yml logs migrate
+
+# Manual migration execution
+docker compose -f docker-compose.develop.yml run --rm api flask db upgrade
+
+# Reset migrations (WARNING: destroys data)
+docker compose -f docker-compose.develop.yml down -v
+docker compose -f docker-compose.develop.yml up migrate
+```
+
+### Testing Issues
+
+#### Test Database Connection
+```bash
+# Ensure test services are running
+docker compose -f docker-compose.develop.yml up -d database redis
+
+# Check if test database exists
+docker compose -f docker-compose.develop.yml exec database psql -U root -d postgres -c "\l"
+
+# Create test database manually if needed
+docker compose -f docker-compose.develop.yml exec database psql -U root -d postgres -c "CREATE DATABASE gef_test;"
+```
+
+#### Test Environment Variables
+```bash
+# Verify test.env file exists and is properly configured
+cat test.env
+
+# Check environment variables in test container
+docker compose -f docker-compose.develop.yml run --rm test env | grep -E "(DATABASE|REDIS|TESTING)"
+```
+
+### Performance Issues
+
+#### Container Resource Limits
+```bash
+# Check container resource usage
+docker stats
+
+# Monitor specific container
+docker stats trendsearth-api-api-1
+
+# Increase memory limits in docker-compose.yml if needed
+deploy:
+  resources:
+    limits:
+      memory: 2G
+    reservations:
+      memory: 1G
+```
+
+#### Volume Mount Performance (Windows/WSL)
+```bash
+# For better performance on Windows, clone to WSL filesystem
+cd ~/
+git clone https://github.com/conservationinternational/trends.earth-api
+cd trends.earth-api
+
+# Avoid mounting from /mnt/c/ if possible
+```
+
+### Getting Help
+
+If you continue experiencing issues:
+
+1. **Check Docker Desktop Status**: Ensure Docker Desktop is running and updated
+2. **Review Logs**: Use `docker compose logs <service>` to see detailed error messages
+3. **Environment Variables**: Verify all required `.env` files are present and configured
+4. **Clean Rebuild**: Try `docker compose down -v && docker compose build --no-cache && docker compose up`
+5. **System Resources**: Ensure sufficient disk space and memory for containers
+
+For persistent issues, please create an issue in the repository with:
+- Error messages and logs
+- Operating system and Docker version
+- Docker Compose file being used
+- Steps to reproduce the problem

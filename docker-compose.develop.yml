@@ -1,4 +1,23 @@
 services:
+  migrate:
+    build: .
+    command: ["migrate"]
+    environment:
+      ENVIRONMENT: dev
+      DEBUG: "True"
+      TESTING: "true"
+    env_file:
+      - develop.env
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+    networks:
+      - backend
+      - db
+    depends_on:
+      - database
+      - redis
+
   api:
     build: .
     command: ["develop"]
@@ -6,6 +25,7 @@ services:
       PORT: 3000
       ENVIRONMENT: dev
       DEBUG: "True"
+      TESTING: "true"
     ports:
       - target: 3000
         published: 3000
@@ -17,6 +37,30 @@ services:
     networks:
       - backend
       - db
+    depends_on:
+      - migrate
+      - database
+      - redis
+
+  test:
+    build: .
+    command: ["test"]
+    environment:
+      ENVIRONMENT: test
+      DEBUG: "True"
+      TESTING: "true"
+    env_file:
+      - test.env
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+      - ./tests:/opt/gef-api/tests
+    networks:
+      - backend
+      - db
+    depends_on:
+      - database
+      - redis
 
   worker:
     image: trendsearth_api
@@ -25,6 +69,7 @@ services:
     environment:
       ENVIRONMENT: dev
       DEBUG: "True"
+      TESTING: "true"
     env_file:
       - develop.env
     volumes:
@@ -34,6 +79,31 @@ services:
     networks:
       - backend
       - db
+    depends_on:
+      - migrate
+      - database
+      - redis
+
+  beat:
+    image: trendsearth_api
+    build: .
+    command: ["beat"]
+    environment:
+      ENVIRONMENT: dev
+      DEBUG: "True"
+      TESTING: "true"
+    env_file:
+      - develop.env
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+    networks:
+      - backend
+      - db
+    depends_on:
+      - migrate
+      - database
+      - redis
 
   redis:
     image: redis

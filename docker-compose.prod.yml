@@ -1,4 +1,20 @@
 services:
+  migrate:
+    image: 172.40.1.52:5000/trendsearth-api
+    build: .
+    command: migrate
+    environment:
+      PORT: 3000
+    env_file:
+      - prod.env
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+
   manager:
     image: 172.40.1.52:5000/trendsearth-api
     build: .

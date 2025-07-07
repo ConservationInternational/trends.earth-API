@@ -1,4 +1,19 @@
 services:
+  migrate:
+    image: 172.40.1.52:5000/trendsearth-api-staging
+    command: migrate
+    environment:
+      PORT: 3000
+    env_file:
+      - staging.env
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+
   manager:
     image: 172.40.1.52:5000/trendsearth-api-staging
     command: start
@@ -32,6 +47,20 @@ services:
       placement:
         constraints: [node.role == manager]
 
+  beat:
+    image: 172.40.1.52:5000/trendsearth-api-staging
+    command: beat
+    environment:
+      PORT: 3000
+    env_file:
+      - staging.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
 
   redis:
     image: redis
