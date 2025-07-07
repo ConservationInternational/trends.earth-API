@@ -101,32 +101,28 @@ jobs:
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         poetry run python -c "
         import os
+        from sqlalchemy import text
         os.environ['DATABASE_URL'] = 'postgresql://postgres:postgres@localhost:5432/gefapi_test'
         os.environ['TESTING'] = 'true'
         try:
             from gefapi import app, db
             with app.app_context():
                 # Test database connection
-                result = db.session.execute('SELECT 1').scalar()
+                result = db.session.execute(text('SELECT 1')).scalar()
                 print(f'Database connection test: {result}')
                 
                 # Check for tables
                 tables_result = db.session.execute(
-                    \"\"\"
-                    SELECT table_name 
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'public'
-                    ORDER BY table_name
-                    \"\"\"
-                )
-                tables = [row[0] for row in tables_result]
-                print(f'Available tables: {tables}')
-                
-            print('✅ Database status check completed successfully')
+                    text(
+                        'SELECT table_name FROM information_schema.tables WHERE table_schema = \'public\' ORDER BY table_name'
+                    )
+                ).fetchall()
+                print('Tables found in database:')
+                for table in tables_result:
+                    print(f'- {table[0]}')
+
         except Exception as e:
             print(f'❌ Database status check failed: {e}')
-            import traceback
-            traceback.print_exc()
             exit(1)
         "
 
