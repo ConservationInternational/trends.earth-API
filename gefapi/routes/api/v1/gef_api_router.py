@@ -45,7 +45,7 @@ def create_script():
         sent_file.filename = "script"
     user = current_user
     try:
-        user = ScriptService.create_script(sent_file, user)
+        script = ScriptService.create_script(sent_file, user)
     except InvalidFile as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=400, detail=e.message)
@@ -55,7 +55,7 @@ def create_script():
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=user.serialize()), 200
+    return jsonify(data=script.serialize()), 200
 
 
 @endpoints.route("/script", strict_slashes=False, methods=["GET"])

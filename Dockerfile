@@ -30,6 +30,7 @@ COPY gunicorn.py ./gunicorn.py
 COPY run_db_migrations.py ./run_db_migrations.py
 COPY ./migrations ./migrations
 COPY ./tests ./tests
+COPY pytest.ini .
 RUN chown $USER:$USER /opt/$NAME
 
 USER root

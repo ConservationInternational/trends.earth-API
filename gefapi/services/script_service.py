@@ -80,6 +80,7 @@ class ScriptService:
         if script is None:
             # Creating new entity
             name = script_name
+            logger.info("[SERVICE]: Creating slug for script name: " + name)
             slug = slugify(script_name)
             current_script = Script.query.filter_by(slug=slug).first()
             if current_script:
