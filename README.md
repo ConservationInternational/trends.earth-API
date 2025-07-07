@@ -75,7 +75,7 @@ The application is composed of several Docker services, each with a specific pur
 - **`migrate`** - Database migration service
   - Runs database migrations on startup
   - Command: `./entrypoint.sh migrate`
-  - Uses the new `run_db_migrations.py` script
+  - Uses the `run_db_migrations.py` script
 
 ### Supporting Services
 
