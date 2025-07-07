@@ -40,6 +40,7 @@ def app():
         "REDIS_URL": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
         "result_backend": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
         "broker_url": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
+        "CELERY_ALWAYS_EAGER": True,
     }
 
     app = flask_app
@@ -61,22 +62,12 @@ def app():
 
 @pytest.fixture(scope="function")
 def db_session(app):
-    """
-    Yield a database session for a single test.
-    """
+    """Creates a new database session for a test."""
     with app.app_context():
-        connection = db.engine.connect()
-        transaction = connection.begin()
-        
-        # Use the existing session but with a new transaction
-        session = db.session
-        
-        try:
-            yield session
-        finally:
-            session.close()
-            transaction.rollback()
-            connection.close()
+        # Use the existing db.session but ensure we can rollback
+        db.session.begin()
+        yield db.session
+        db.session.rollback()
 
 
 @pytest.fixture
@@ -166,6 +157,11 @@ def sample_script(app, regular_user):
         # Check if script already exists
         existing_script = Script.query.filter_by(slug="test-script").first()
         if existing_script:
+            # Update existing script to ensure it has the correct status
+            existing_script.status = "SUCCESS"
+            existing_script.public = True
+            db.session.add(existing_script)
+            db.session.commit()
             return existing_script
 
         script = Script(
@@ -271,21 +267,6 @@ def sample_script_data():
 
 
 @pytest.fixture(autouse=True)
-def cleanup_db_connections(app):
-    """Ensure database connections are properly closed after tests"""
-    yield
-    # Force close any remaining database connections and cleanup test data conflicts
-    with app.app_context():
-        try:
-            # Clean up any duplicate test data that might cause conflicts
-            db.session.rollback()
-            db.session.close()
-            db.engine.dispose()
-        except Exception:
-            pass
-
-
-@pytest.fixture(autouse=True)
 def cleanup_xss_test_users(app):
     """Clean up any XSS test users that might interfere with other tests"""
     with app.app_context():
@@ -362,74 +343,6 @@ print("Hello from test script!")
     tar_buffer.seek(0)
     tar_buffer.name = "test_script.tar.gz"
     return tar_buffer
-
-
-@pytest.fixture(autouse=True)
-def cleanup_integration_test_data(app):
-    """Clean up integration test data before and after each test"""
-    with app.app_context():
-        # Clean up before test
-        from gefapi import db
-        from gefapi.models import Execution, Script, User
-
-        try:
-            # Remove any test users that might conflict
-            test_users = User.query.filter(
-                User.email.like("%testuser-%@test.com")
-            ).all()
-            for user in test_users:
-                # Clean up related data first
-                user_executions = Execution.query.filter_by(user_id=user.id).all()
-                for execution in user_executions:
-                    db.session.delete(execution)
-                user_scripts = Script.query.filter_by(user_id=user.id).all()
-                for script in user_scripts:
-                    db.session.delete(script)
-                db.session.delete(user)
-
-            # Remove any test scripts that might conflict
-            test_scripts = Script.query.filter(
-                Script.name.like("%Test Script for Integration%")
-            ).all()
-            for script in test_scripts:
-                # Clean up related executions first
-                script_executions = Execution.query.filter_by(script_id=script.id).all()
-                for execution in script_executions:
-                    db.session.delete(execution)
-                db.session.delete(script)
-
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-
-        yield
-
-        # Clean up after test
-        try:
-            test_users = User.query.filter(
-                User.email.like("%testuser-%@test.com")
-            ).all()
-            for user in test_users:
-                user_executions = Execution.query.filter_by(user_id=user.id).all()
-                for execution in user_executions:
-                    db.session.delete(execution)
-                user_scripts = Script.query.filter_by(user_id=user.id).all()
-                for script in user_scripts:
-                    db.session.delete(script)
-                db.session.delete(user)
-
-            test_scripts = Script.query.filter(
-                Script.name.like("%Test Script for Integration%")
-            ).all()
-            for script in test_scripts:
-                script_executions = Execution.query.filter_by(script_id=script.id).all()
-                for execution in script_executions:
-                    db.session.delete(execution)
-                db.session.delete(script)
-
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
 
 
 # No database cleanup fixture - let tests handle their own state

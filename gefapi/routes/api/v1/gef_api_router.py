@@ -221,23 +221,20 @@ def update_script(script):
     if sent_file.filename == "":
         sent_file.filename = "script"
     user = current_user
-    # if user.role != 'ADMIN' and user.email != 'gef@gef.com':
-    #     return error(status=403, detail='Forbidden')
     try:
-        script = ScriptService.update_script(script, sent_file, user)
-    except InvalidFile as e:
-        logger.error("[ROUTER]: " + e.message)
-        return error(status=400, detail=e.message)
-    except ScriptNotFound as e:
-        logger.error("[ROUTER]: " + e.message)
-        return error(status=404, detail=e.message)
-    except NotAllowed as e:
-        logger.error("[ROUTER]: " + e.message)
-        return error(status=403, detail=e.message)
+        updated_script = ScriptService.update_script(script, sent_file, user)
+        return jsonify(data=updated_script.serialize(user=current_user)), 200
+    except (InvalidFile, ScriptNotFound, NotAllowed) as e:
+        status_code = 400
+        if isinstance(e, ScriptNotFound):
+            status_code = 404
+        elif isinstance(e, NotAllowed):
+            status_code = 403
+        logger.error(f"[ROUTER]: {e.message}")
+        return error(status=status_code, detail=e.message)
     except Exception as e:
-        logger.error("[ROUTER]: " + str(e))
-        return error(status=500, detail="Generic Error")
-    return jsonify(data=script.serialize(user=current_user)), 200
+        logger.error(f"[ROUTER]: {e}")
+        return error(status=500, detail=str(e))
 
 
 @endpoints.route("/script/<script>", strict_slashes=False, methods=["DELETE"])

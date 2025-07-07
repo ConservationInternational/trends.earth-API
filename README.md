@@ -257,6 +257,7 @@ The API provides comprehensive filtering, sorting, and pagination capabilities f
 - `GET /api/v1/script/<script_id>` - Get specific script
 - `POST /api/v1/script` - Create new script
 - `PATCH /api/v1/script/<script_id>` - Update script
+  - **Note**: If a file is included in the update, the system will attempt to build a new Docker image. If the build fails, the API will return a `500 Internal Server Error` and set the script's status to `FAILED`.
 - `DELETE /api/v1/script/<script_id>` - Delete script (Admin only)
 - `POST /api/v1/script/<script_id>/publish` - Publish script
 - `POST /api/v1/script/<script_id>/unpublish` - Unpublish script
@@ -467,7 +468,7 @@ GET /api/v1/execution?include=user_email
 # Response: {"status": 403, "detail": "Access denied: Only admin users can include user_email in API responses"}
 ```
 
-**Example Response with `include=user_name,script_name` (Admin only for user_name):**
+**Example Response with `include=user_name,script_name` (Admin only):**
 ```json
 {
   "data": [

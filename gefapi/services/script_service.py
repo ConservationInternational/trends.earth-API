@@ -80,8 +80,12 @@ class ScriptService:
         if script is None:
             # Creating new entity
             name = script_name
+            if not name:
+                raise InvalidFile(message="Script configuration must include a 'name' field")
             logger.info("[SERVICE]: Creating slug for script name: " + name)
-            slug = slugify(script_name)
+            slug = slugify(name)
+            if not slug:
+                raise InvalidFile(message="Cannot generate valid slug from script name")
             current_script = Script.query.filter_by(slug=slug).first()
             if current_script:
                 raise ScriptDuplicated(
@@ -121,17 +125,31 @@ class ScriptService:
         try:
             logger.info("[DB]: ADD")
             db.session.add(script)
-            try:
-                push_script_to_s3(sent_file_path, script.slug + ".tar.gz")
-            except Exception:
-                rollbar.report_exc_info()
-                logger.error(f"Error pushing {script.slug} to S3")
+            # Commit first to get the script ID
             db.session.commit()
+            
+            try:
+                logger.debug(f"Script slug: {script.slug}")
+                logger.debug(f"Script name: {script.name}")
+                logger.debug(f"Script id: {script.id}")
+                if not script.slug:
+                    raise InvalidFile(message="Script slug is missing")
+                if not script.id:
+                    raise InvalidFile(message="Script id is missing")
+                push_script_to_s3(sent_file_path, script.slug + ".tar.gz")
+                docker_build.delay(script.id)
+            except Exception as e:
+                logger.error("Exception type: %s", type(e).__name__)
+                logger.error("Exception message: %s", str(e))
+                rollbar.report_exc_info()
+                script.status = "FAILED"
+                db.session.commit()
+                raise e
 
-            _ = docker_build.delay(script.id)
         except Exception as error:
             logger.error(error)
             rollbar.report_exc_info()
+            raise error
 
         return script
 

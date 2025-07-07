@@ -47,11 +47,16 @@ class TestAPIIntegration:
         scripts_response = client.get("/api/v1/script", headers=user_headers)
         assert scripts_response.status_code == 200
 
+        # Get the script ID from the API response
+        scripts_data = scripts_response.get_json()
+        assert len(scripts_data["data"]) > 0, "No scripts found"
+        script_id = scripts_data["data"][0]["id"]
+
         # Step 5: User runs a script
         with patch("gefapi.services.docker_service.docker_run") as mock_docker:
             mock_docker.delay.return_value = None
             execution_response = client.post(
-                f"/api/v1/script/{sample_script.id}/run",
+                f"/api/v1/script/{script_id}/run",
                 json={"params": {}},
                 headers=user_headers,
             )
@@ -64,8 +69,8 @@ class TestAPIIntegration:
 
         # Admin creates a script using file upload (with mocked external services only)
         with (
-            patch("gefapi.s3.push_script_to_s3") as mock_s3,
-            patch("gefapi.services.docker_service.docker_build") as mock_docker_build,
+            patch("gefapi.services.script_service.push_script_to_s3") as mock_s3,
+            patch("gefapi.services.script_service.docker_build") as mock_docker_build,
             patch("os.makedirs") as mock_makedirs,
             patch("werkzeug.datastructures.FileStorage.save") as mock_save,
             patch("tarfile.open") as mock_tarfile,

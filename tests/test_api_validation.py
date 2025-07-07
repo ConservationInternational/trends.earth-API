@@ -3,6 +3,7 @@ Tests for API validation, edge cases, and error handling
 """
 
 from io import BytesIO
+import tarfile
 from unittest.mock import MagicMock, patch
 
 from gefapi import db
@@ -202,12 +203,20 @@ class TestErrorRecovery:
         except Exception:
             pass  # Some error responses might not be JSON
 
-    @patch("gefapi.services.docker_service.DockerService.build_image")
+    @patch("gefapi.services.script_service.push_script_to_s3")
+    @patch("gefapi.services.script_service.docker_build.delay")
     def test_docker_service_failure(
-        self, mock_build_image, client, sample_script, db_session, auth_headers_admin
+        self,
+        mock_docker_build_delay,
+        mock_push_to_s3,
+        client,
+        sample_script,
+        db_session,
+        auth_headers_admin,
     ):
         """Test handling of Docker service failures"""
-        mock_build_image.side_effect = Exception("Docker build failed")
+        mock_docker_build_delay.side_effect = Exception("Docker build failed")
+        mock_push_to_s3.return_value = None
 
         # Re-attach the script to the session to avoid DetachedInstanceError
         db_session.add(sample_script)
@@ -215,21 +224,35 @@ class TestErrorRecovery:
 
         script_id = str(sample_script.id)
 
-        with patch("gefapi.services.script_service.docker_build.delay") as mock_delay:
-            mock_delay.side_effect = Exception("Docker build failed")
+        # Create an in-memory tar.gz file with required configuration
+        tar_buffer = BytesIO()
+        with tarfile.open(fileobj=tar_buffer, mode="w:gz") as tar:
+            # Add a dummy main.py file
+            script_content = b"print('hello world')"
+            tarinfo_script = tarfile.TarInfo(name="main.py")
+            tarinfo_script.size = len(script_content)
+            tar.addfile(tarinfo_script, BytesIO(script_content))
 
-            # Simulate a file upload
-            file_data = (BytesIO(b"test content"), "test.tar.gz")
+            # Add the required configuration.json
+            config_content = b'{"name": "Test Script"}'
+            tarinfo_config = tarfile.TarInfo(name="configuration.json")
+            tarinfo_config.size = len(config_content)
+            tar.addfile(tarinfo_config, BytesIO(config_content))
 
-            response = client.post(
-                f"/api/v1/script/{script_id}",
-                data={"file": file_data},
-                headers=auth_headers_admin,
-                content_type="multipart/form-data",
-            )
+        tar_buffer.seek(0)
 
-            assert response.status_code == 500
-            assert "Docker build failed" in response.json["message"]
+        # Simulate a file upload
+        file_data = (tar_buffer, "test.tar.gz")
+
+        response = client.patch(
+            f"/api/v1/script/{script_id}",
+            data={"file": file_data},
+            headers=auth_headers_admin,
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 500
+        assert "Docker build failed" in response.json["detail"]
 
     @patch("redis.Redis")
     def test_redis_connection_failure(self, mock_redis, client, auth_headers_user):
