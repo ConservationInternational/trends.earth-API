@@ -2,6 +2,7 @@
 Tests for API validation, edge cases, and error handling
 """
 
+from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 from gefapi import db
@@ -201,25 +202,34 @@ class TestErrorRecovery:
         except Exception:
             pass  # Some error responses might not be JSON
 
-    @patch("gefapi.services.docker_service.docker_run")
+    @patch("gefapi.services.docker_service.build_image")
     def test_docker_service_failure(
-        self, mock_docker_run, client, auth_headers_user, sample_script
+        self, mock_build_image, client, sample_script, db_session, auth_headers_admin
     ):
         """Test handling of Docker service failures"""
-        # Mock Docker service failure
-        mock_docker_run.delay.side_effect = Exception("Docker daemon not available")
+        mock_build_image.side_effect = Exception("Docker build failed")
 
-        # Get script ID to avoid session issues
-        script_id = str(sample_script.id) if sample_script else "test-script-id"
+        # Re-attach the script to the session to avoid DetachedInstanceError
+        db_session.add(sample_script)
+        db_session.commit()
 
-        response = client.post(
-            f"/api/v1/script/{script_id}/run",
-            json={"params": {}},
-            headers=auth_headers_user,
-        )
+        script_id = str(sample_script.id)
 
-        # Should handle Docker failure gracefully (or return 404 if script not found)
-        assert response.status_code in [200, 404, 500, 503]
+        with patch("gefapi.services.script_service.docker_build.delay") as mock_delay:
+            mock_delay.side_effect = Exception("Docker build failed")
+
+            # Simulate a file upload
+            file_data = (BytesIO(b"test content"), "test.tar.gz")
+
+            response = client.post(
+                f"/api/v1/script/{script_id}",
+                data={"file": file_data},
+                headers=auth_headers_admin,
+                content_type="multipart/form-data",
+            )
+
+            assert response.status_code == 500
+            assert "Docker build failed" in response.json["message"]
 
     @patch("redis.Redis")
     def test_redis_connection_failure(self, mock_redis, client, auth_headers_user):
