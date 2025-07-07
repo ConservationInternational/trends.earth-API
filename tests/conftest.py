@@ -67,14 +67,16 @@ def db_session(app):
     with app.app_context():
         connection = db.engine.connect()
         transaction = connection.begin()
-        session = db.create_scoped_session(options={"bind": connection, "binds": {}})
-        db.session = session
+        
+        # Use the existing session but with a new transaction
+        session = db.session
+        
         try:
             yield session
         finally:
+            session.close()
             transaction.rollback()
             connection.close()
-            session.remove()
 
 
 @pytest.fixture
