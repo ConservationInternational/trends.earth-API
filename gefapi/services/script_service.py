@@ -81,7 +81,7 @@ class ScriptService:
             # Creating new entity
             name = script_name
             if not name:
-                raise InvalidFile(message="Script configuration must include a 'name' field")
+                raise InvalidFile(message="Script configuration must include a 'name'")
             logger.info("[SERVICE]: Creating slug for script name: " + name)
             slug = slugify(name)
             if not slug:
@@ -127,7 +127,7 @@ class ScriptService:
             db.session.add(script)
             # Commit first to get the script ID
             db.session.commit()
-            
+
             try:
                 logger.debug(f"Script slug: {script.slug}")
                 logger.debug(f"Script name: {script.name}")

@@ -169,11 +169,18 @@ class TestAPIIntegration:
     ):
         """Test data consistency across operations"""
 
+        # Get the script ID from the scripts list API
+        scripts_response = client.get("/api/v1/script", headers=auth_headers_user)
+        assert scripts_response.status_code == 200
+        scripts = scripts_response.json["data"]
+        assert len(scripts) > 0, "No scripts found"
+        script_id = scripts[0]["id"]
+
         # User runs execution
         with patch("gefapi.services.docker_service.docker_run") as mock_docker:
             mock_docker.delay.return_value = None
             response = client.post(
-                f"/api/v1/script/{sample_script.id}/run",
+                f"/api/v1/script/{script_id}/run",
                 json={"params": {}},
                 headers=auth_headers_user,
             )
@@ -203,13 +210,20 @@ class TestAPIIntegration:
     ):
         """Test pagination and sorting features"""
 
+        # Get the script ID from the scripts list
+        scripts_response = client.get("/api/v1/script", headers=auth_headers_admin)
+        assert scripts_response.status_code == 200
+        scripts = scripts_response.json["data"]
+        assert len(scripts) > 0, "No scripts available for testing"
+        script_id = scripts[0]["id"]
+
         # Create multiple executions
         execution_ids = []
         with patch("gefapi.services.docker_service.docker_run") as mock_docker:
             mock_docker.delay.return_value = None
             for i in range(5):
                 response = client.post(
-                    f"/api/v1/script/{sample_script.id}/run",
+                    f"/api/v1/script/{script_id}/run",
                     json={"params": {"iteration": i}},
                     headers=auth_headers_admin,
                 )
