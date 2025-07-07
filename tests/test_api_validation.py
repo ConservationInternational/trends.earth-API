@@ -202,7 +202,7 @@ class TestErrorRecovery:
         except Exception:
             pass  # Some error responses might not be JSON
 
-    @patch("gefapi.services.docker_service.build_image")
+    @patch("gefapi.services.docker_service.DockerService.build_image")
     def test_docker_service_failure(
         self, mock_build_image, client, sample_script, db_session, auth_headers_admin
     ):
