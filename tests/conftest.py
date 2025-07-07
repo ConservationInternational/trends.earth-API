@@ -59,6 +59,24 @@ def app():
         os.unlink(db_path)
 
 
+@pytest.fixture(scope="function")
+def db_session(app):
+    """
+    Yield a database session for a single test.
+    """
+    with app.app_context():
+        connection = db.engine.connect()
+        transaction = connection.begin()
+        session = db.create_scoped_session(options={"bind": connection, "binds": {}})
+        db.session = session
+        try:
+            yield session
+        finally:
+            transaction.rollback()
+            connection.close()
+            session.remove()
+
+
 @pytest.fixture
 def client(app):
     """Create test client"""
