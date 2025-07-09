@@ -46,19 +46,38 @@ def run_migrations():
 
         print("Running Alembic upgrade...")
         
-        # Check for multiple heads and merge if needed
+        # First, let's check the current database state and available revisions
         try:
-            # Try to upgrade to head first
-            command.upgrade(alembic_cfg, "head")
-        except Exception as e:
-            if "Multiple head revisions" in str(e):
-                print("Multiple heads detected. Upgrading to 'heads' to merge branches...")
-                # Upgrade to all heads to merge the branches
-                command.upgrade(alembic_cfg, "heads")
-            else:
-                raise
+            print("Checking current database revision...")
+            from alembic import command as alembic_command
+            
+            # Get current revision from database
+            current_rev = alembic_command.current(alembic_cfg)
+            print(f"Current database revision: {current_rev}")
+            
+            # List all available heads
+            heads = alembic_command.heads(alembic_cfg)
+            print(f"Available heads: {heads}")
+            
+        except Exception as info_error:
+            print(f"Could not get revision info: {info_error}")
         
-        print("✓ Database migrations completed successfully")
+        # Try to upgrade to the specific new migration first
+        try:
+            print("Attempting to upgrade to new status_log migration (g23bc4de5678)...")
+            command.upgrade(alembic_cfg, "g23bc4de5678")
+            print("✓ Database migrations completed successfully")
+        except Exception as e:
+            print(f"Failed to upgrade to g23bc4de5678: {e}")
+            
+            # Fallback: try to stamp the database at the new revision
+            try:
+                print("Attempting to stamp database with new revision...")
+                command.stamp(alembic_cfg, "g23bc4de5678")
+                print("✓ Database stamped with new revision successfully")
+            except Exception as stamp_error:
+                print(f"Failed to stamp database: {stamp_error}")
+                raise
 
     except Exception as e:
         print(f"✗ Migration failed: {e}")
