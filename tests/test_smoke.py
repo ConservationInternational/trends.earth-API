@@ -6,6 +6,31 @@ These tests are designed to run quickly and verify basic functionality
 import pytest
 
 
+class TestHealthCheck:
+    """Test health check endpoint"""
+
+    def test_health_check_endpoint(self, client):
+        """Test that health check endpoint is accessible"""
+        response = client.get("/health")
+
+        assert response.status_code == 200
+
+        data = response.json
+        assert "status" in data
+        assert "timestamp" in data
+        assert "database" in data
+        assert "version" in data
+        assert data["status"] == "ok"
+        assert data["version"] == "1.0"
+        assert data["database"] in ["healthy", "unhealthy"]
+
+    def test_health_check_no_auth_required(self, client):
+        """Test that health check doesn't require authentication"""
+        response = client.get("/health")
+        # Should be accessible without any headers
+        assert response.status_code == 200
+
+
 class TestSmoke:
     """Basic smoke tests that should always pass"""
 

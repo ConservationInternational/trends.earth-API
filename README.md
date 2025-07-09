@@ -249,6 +249,12 @@ The API provides comprehensive filtering, sorting, and pagination capabilities f
 - Both parameters can be used together: fields are first included, then excluded
 - Use comma-separated values for multiple fields: `include=user,logs&exclude=description,params`
 
+### Health Check
+- `GET /health` - API health check and database connectivity status
+  - No authentication required
+  - Returns server status, timestamp, database connectivity, and API version
+  - Used by load balancers and monitoring systems
+
 ### Authentication
 - `POST /auth` - User authentication
 

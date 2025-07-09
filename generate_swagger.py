@@ -78,11 +78,11 @@ class ExecutionSchema(Schema):
 
 
 class StatusLogSchema(Schema):
-    id = fields.Int(
+    id = fields.UUID(
         required=True, metadata={"description": "Unique identifier for the status log"}
     )
     timestamp = fields.DateTime(
-        required=True, metadata={"description": "Status measurement timestamp"}
+        required=True, metadata={"description": "When the status was recorded"}
     )
     executions_active = fields.Int(
         metadata={"description": "Number of active executions"}
@@ -102,6 +102,19 @@ class StatusLogSchema(Schema):
         metadata={"description": "Available memory percentage"}
     )
     cpu_usage_percent = fields.Float(metadata={"description": "CPU usage percentage"})
+
+
+class HealthCheckSchema(Schema):
+    status = fields.Str(
+        required=True, metadata={"description": "Overall health status"}
+    )
+    timestamp = fields.DateTime(
+        required=True, metadata={"description": "Health check timestamp"}
+    )
+    database = fields.Str(
+        required=True, metadata={"description": "Database connectivity status"}
+    )
+    version = fields.Str(required=True, metadata={"description": "API version"})
 
 
 class ExecutionLogSchema(Schema):
@@ -158,7 +171,9 @@ def create_api_spec():
     spec.components.schema("Execution", schema=ExecutionSchema)
     spec.components.schema("StatusLog", schema=StatusLogSchema)
     spec.components.schema("ExecutionLog", schema=ExecutionLogSchema)
+    spec.components.schema("HealthCheck", schema=HealthCheckSchema)
     spec.components.schema("Error", schema=ErrorSchema)
+    spec.components.schema("HealthCheck", schema=HealthCheckSchema)
 
     # Add common responses
     spec.components.response(
@@ -192,6 +207,7 @@ def create_api_spec():
     )
 
     # Add paths
+    add_health_paths(spec)
     add_auth_paths(spec)
     add_user_paths(spec)
     add_script_paths(spec)
@@ -199,6 +215,30 @@ def create_api_spec():
     add_status_paths(spec)
 
     return spec
+
+
+def add_health_paths(spec):
+    """Add health check endpoint"""
+    spec.path(
+        path="/health",
+        operations={
+            "get": {
+                "summary": "Health check",
+                "description": "Check API health status and database connectivity",
+                "tags": ["Health"],
+                "responses": {
+                    "200": {
+                        "description": "Health check status",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/HealthCheck"}
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    )
 
 
 def add_auth_paths(spec):

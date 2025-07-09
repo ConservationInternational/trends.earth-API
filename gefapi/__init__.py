@@ -1,5 +1,6 @@
 """The GEF API MODULE"""
 
+from datetime import datetime
 import logging
 import os
 import sys
@@ -59,6 +60,26 @@ from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
 
 # Blueprint Flask Routing
 app.register_blueprint(endpoints, url_prefix="/api/v1")
+
+
+@app.route("/health", methods=["GET"])
+def health_check():
+    """Simple health check endpoint"""
+    try:
+        # Test database connectivity
+        db.session.execute("SELECT 1")
+        db_status = "healthy"
+    except Exception:
+        db_status = "unhealthy"
+
+    return jsonify(
+        {
+            "status": "ok",
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": db_status,
+            "version": "1.0",
+        }
+    ), 200
 
 
 # Handle authentication via JWT
