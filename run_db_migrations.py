@@ -3,24 +3,29 @@
 Database migration script
 """
 
-import sys
-import logging
 import atexit
+import logging
+import sys
 
 # Add the project root to Python path
 sys.path.insert(0, "/opt/gef-api")
 
 # Set up logging with more verbose output
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
+
 
 def cleanup():
     logger.info("Script is exiting...")
     sys.stdout.flush()
     sys.stderr.flush()
 
+
 # Register cleanup function
 atexit.register(cleanup)
+
 
 def run_migrations():
     """Run database migrations"""
@@ -30,29 +35,34 @@ def run_migrations():
     try:
         logger.info("Importing Flask-Migrate...")
         from flask_migrate import upgrade
+
         logger.info("Importing gefapi app...")
         from gefapi import app
+
         logger.info("Imports completed successfully")
 
         print("Creating Flask app context...")
         logger.info("Creating Flask app context...")
-        
+
         with app.app_context():
             print("App context created, starting migration upgrade...")
             logger.info("App context created successfully")
-            
+
             # Check current migration state before running
             logger.info("Checking current migration state...")
             from sqlalchemy import text
+
             from gefapi import db
-            
+
             try:
-                result = db.session.execute(text("SELECT version_num FROM alembic_version")).fetchone()
+                result = db.session.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).fetchone()
                 current_version = result[0] if result else "None"
                 logger.info(f"Current database version: {current_version}")
             except Exception as e:
                 logger.warning(f"Could not check current version: {e}")
-            
+
             # Test database connectivity first
             logger.info("Testing database connectivity...")
             try:
@@ -61,36 +71,47 @@ def run_migrations():
             except Exception as db_error:
                 logger.error(f"Database connectivity test failed: {db_error}")
                 raise RuntimeError(f"Cannot connect to database: {db_error}")
-            
+
             logger.info("Starting Flask-Migrate upgrade...")
             print("About to call upgrade()...")
-            
+
             # First check what columns exist to determine the right target
-            branch2_columns = ['cpu_reservation', 'cpu_limit', 'memory_reservation', 'memory_limit']
-            result = db.session.execute(text("""
+            branch2_columns = [
+                "cpu_reservation",
+                "cpu_limit",
+                "memory_reservation",
+                "memory_limit",
+            ]
+            result = db.session.execute(
+                text("""
                 SELECT column_name 
                 FROM information_schema.columns 
                 WHERE table_name = 'script' 
-                AND column_name = ANY(%(columns)s)
-            """), {"columns": branch2_columns}).fetchall()
+                AND column_name IN ('cpu_reservation', 'cpu_limit', 'memory_reservation', 'memory_limit')
+            """)
+            ).fetchall()
             existing_branch2 = [row[0] for row in result]
-            
-            status_log_result = db.session.execute(text("""
+
+            status_log_result = db.session.execute(
+                text("""
                 SELECT column_name 
                 FROM information_schema.columns 
                 WHERE table_name = 'status_log' 
                 AND column_name IN ('executions_failed', 'executions_count')
-            """)).fetchall()
+            """)
+            ).fetchall()
             existing_status_log = [row[0] for row in status_log_result]
-            
+
             logger.info(f"Branch 2 columns in script table: {existing_branch2}")
             logger.info(f"Status log columns: {existing_status_log}")
-            
+
             if len(existing_branch2) >= 4:
                 # Branch 2 is already applied, just need to add status_log columns
                 if len(existing_status_log) == 0:
-                    logger.info("Branch 2 already applied, targeting g23bc4de5678 for status_log columns")
-                    upgrade(revision='g23bc4de5678')
+                    logger.info(
+                        "Branch 2 already applied, targeting g23bc4de5678 for status_log columns"
+                    )
+                    upgrade(revision="g23bc4de5678")
                 else:
                     logger.info("Both branches already applied")
                     print("✓ Database migrations already completed")
@@ -98,14 +119,16 @@ def run_migrations():
             else:
                 # Need to apply merge migration
                 logger.info("Applying merge migration h34de5fg6789")
-                upgrade(revision='h34de5fg6789')
-            
+                upgrade(revision="h34de5fg6789")
+
             logger.info("Flask-Migrate upgrade completed successfully")
             print("✓ Database migrations completed successfully")
-            
+
             # Check final migration state
             try:
-                result = db.session.execute(text("SELECT version_num FROM alembic_version")).fetchone()
+                result = db.session.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).fetchone()
                 final_version = result[0] if result else "None"
                 logger.info(f"Final database version: {final_version}")
             except Exception as e:
@@ -115,10 +138,11 @@ def run_migrations():
         print(f"✗ Migration failed: {e}")
         logger.error(f"Migration failed: {e}")
         import traceback
+
         traceback.print_exc()
         logger.error("Full traceback printed above")
         sys.exit(1)
-    
+
     logger.info("Migration script completed successfully")
 
 
