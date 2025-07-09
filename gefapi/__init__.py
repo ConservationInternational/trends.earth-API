@@ -62,7 +62,7 @@ from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
 app.register_blueprint(endpoints, url_prefix="/api/v1")
 
 
-@app.route("/health", methods=["GET"])
+@app.route("/api-health", methods=["GET"])
 def health_check():
     """Simple health check endpoint"""
     try:

@@ -226,7 +226,7 @@ def create_api_spec():
 def add_health_paths(spec):
     """Add health check endpoint"""
     spec.path(
-        path="/health",
+        path="/api-health",
         operations={
             "get": {
                 "summary": "Health check",

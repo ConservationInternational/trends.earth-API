@@ -11,7 +11,7 @@ class TestHealthCheck:
 
     def test_health_check_endpoint(self, client):
         """Test that health check endpoint is accessible"""
-        response = client.get("/health")
+        response = client.get("/api-health")
 
         assert response.status_code == 200
 
@@ -26,7 +26,7 @@ class TestHealthCheck:
 
     def test_health_check_no_auth_required(self, client):
         """Test that health check doesn't require authentication"""
-        response = client.get("/health")
+        response = client.get("/api-health")
         # Should be accessible without any headers
         assert response.status_code == 200
 
