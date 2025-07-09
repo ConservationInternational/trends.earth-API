@@ -70,33 +70,32 @@ def run_migrations():
                 logger.info(f"Database connectivity test successful: {test_result[0]}")
             except Exception as db_error:
                 logger.error(f"Database connectivity test failed: {db_error}")
-                raise RuntimeError(f"Cannot connect to database: {db_error}")
+                raise RuntimeError(
+                    f"Cannot connect to database: {db_error}"
+                ) from db_error
 
             logger.info("Starting Flask-Migrate upgrade...")
             print("About to call upgrade()...")
 
             # First check what columns exist to determine the right target
-            branch2_columns = [
-                "cpu_reservation",
-                "cpu_limit",
-                "memory_reservation",
-                "memory_limit",
-            ]
             result = db.session.execute(
                 text("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'script' 
-                AND column_name IN ('cpu_reservation', 'cpu_limit', 'memory_reservation', 'memory_limit')
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'script'
+                AND column_name IN (
+                    'cpu_reservation', 'cpu_limit',
+                    'memory_reservation', 'memory_limit'
+                )
             """)
             ).fetchall()
             existing_branch2 = [row[0] for row in result]
 
             status_log_result = db.session.execute(
                 text("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'status_log' 
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'status_log'
                 AND column_name IN ('executions_failed', 'executions_count')
             """)
             ).fetchall()
@@ -109,7 +108,8 @@ def run_migrations():
                 # Branch 2 is already applied, just need to add status_log columns
                 if len(existing_status_log) == 0:
                     logger.info(
-                        "Branch 2 already applied, targeting g23bc4de5678 for status_log columns"
+                        "Branch 2 already applied, targeting g23bc4de5678 "
+                        "for status_log columns"
                     )
                     upgrade(revision="g23bc4de5678")
                 else:
