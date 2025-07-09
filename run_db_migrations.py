@@ -65,8 +65,9 @@ def run_migrations():
             logger.info("Starting Flask-Migrate upgrade...")
             print("About to call upgrade()...")
             
-            # Run the migrations with detailed logging
-            upgrade()
+            # Run the migrations to the merge head that combines both branches
+            # This will apply both the status_log changes AND the script enhancements
+            upgrade(revision='h34de5fg6789')
             
             logger.info("Flask-Migrate upgrade completed successfully")
             print("✓ Database migrations completed successfully")
