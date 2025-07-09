@@ -19,17 +19,10 @@ logger = logging.getLogger("alembic.env")
 # target_metadata = mymodel.Base.metadata
 from flask import current_app  # noqa: E402
 
-# Try to get Flask app context first, fallback to direct database URL
-try:
-    config.set_main_option(
-        "sqlalchemy.url", current_app.config.get("SQLALCHEMY_DATABASE_URI")
-    )
-    target_metadata = current_app.extensions["migrate"].db.metadata
-except RuntimeError:
-    # No Flask app context - running with direct Alembic
-    # Database URL should already be set by calling script
-    # Set target_metadata to None to use migration files directly
-    target_metadata = None
+config.set_main_option(
+    "sqlalchemy.url", current_app.config.get("SQLALCHEMY_DATABASE_URI")
+)
+target_metadata = current_app.extensions["migrate"].db.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -82,12 +75,7 @@ def run_migrations_online():
 
     connection = engine.connect()
 
-    # Handle configure_args - use empty dict if no Flask app context
-    try:
-        configure_args = current_app.extensions["migrate"].configure_args
-    except RuntimeError:
-        # No Flask app context - use default empty args
-        configure_args = {}
+    configure_args = current_app.extensions["migrate"].configure_args
 
     context.configure(
         connection=connection,
@@ -98,7 +86,9 @@ def run_migrations_online():
 
     try:
         with context.begin_transaction():
+            logger.info("Starting migration execution...")
             context.run_migrations()
+            logger.info("Migration execution completed")
     finally:
         connection.close()
 
