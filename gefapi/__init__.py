@@ -66,10 +66,12 @@ app.register_blueprint(endpoints, url_prefix="/api/v1")
 def health_check():
     """Simple health check endpoint"""
     try:
-        # Test database connectivity
-        db.session.execute("SELECT 1")
-        db_status = "healthy"
-    except Exception:
+        # Test database connectivity by attempting a simple query
+        # This approach checks the connection without relying on specific models
+        result = db.session.execute("SELECT 1 as health_check").fetchone()
+        db_status = "healthy" if result else "unhealthy"
+    except Exception as e:
+        logger.warning(f"Database health check failed: {str(e)}")
         db_status = "unhealthy"
 
     return jsonify(
