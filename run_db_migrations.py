@@ -18,7 +18,9 @@ def run_migrations():
 
         from gefapi import app
 
+        print("Creating Flask app context...")
         with app.app_context():
+            print("App context created, starting migration upgrade...")
             # Run the migrations
             upgrade()
             print("✓ Database migrations completed successfully")

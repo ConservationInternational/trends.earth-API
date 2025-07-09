@@ -81,14 +81,14 @@ def run_migrations_online():
     )
 
     connection = engine.connect()
-    
+
     # Handle configure_args - use empty dict if no Flask app context
     try:
         configure_args = current_app.extensions["migrate"].configure_args
     except RuntimeError:
         # No Flask app context - use default empty args
         configure_args = {}
-    
+
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
