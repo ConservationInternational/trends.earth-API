@@ -50,12 +50,64 @@ def collect_system_status(self):
             ) + execution_status_map.get("PENDING", 0)
             executions_ready = execution_status_map.get("READY", 0)
             executions_running = execution_status_map.get("RUNNING", 0)
-            executions_finished = execution_status_map.get("FINISHED", 0)
+
+            # Count executions finished and failed since the last status log
+            logger.info(
+                "[TASK]: Querying executions finished and failed since last status log"
+            )
+            last_status_log = (
+                db.session.query(StatusLog).order_by(StatusLog.timestamp.desc()).first()
+            )
+
+            if last_status_log:
+                # Count executions that finished after the last status log timestamp
+                executions_finished = (
+                    db.session.query(func.count(Execution.id))
+                    .filter(
+                        Execution.status == "FINISHED",
+                        Execution.end_date > last_status_log.timestamp,
+                    )
+                    .scalar()
+                    or 0
+                )
+
+                # Count executions that failed after the last status log timestamp
+                executions_failed = (
+                    db.session.query(func.count(Execution.id))
+                    .filter(
+                        Execution.status == "FAILED",
+                        Execution.end_date > last_status_log.timestamp,
+                    )
+                    .scalar()
+                    or 0
+                )
+
+                logger.info(
+                    f"[TASK]: Found {executions_finished} executions finished and "
+                    f"{executions_failed} executions failed since last status log at "
+                    f"{last_status_log.timestamp}"
+                )
+            else:
+                # If no previous status log exists, count all finished and failed
+                # executions
+                executions_finished = execution_status_map.get("FINISHED", 0)
+                executions_failed = execution_status_map.get("FAILED", 0)
+                logger.info(
+                    "[TASK]: No previous status log found, counting all finished "
+                    "and failed executions"
+                )
 
             logger.info(
                 f"[TASK]: Execution counts - Active: {executions_active}, "
-                f"Running: {executions_running}, Finished: {executions_finished}"
+                f"Running: {executions_running}, Finished: {executions_finished}, "
+                f"Failed: {executions_failed}"
             )
+
+            # Count total executions
+            logger.info("[TASK]: Querying total execution count")
+            executions_count = db.session.query(func.count(Execution.id)).scalar() or 0
+
+            logger.info(f"[TASK]: Total executions count: {executions_count}")
 
             # Count users and scripts
             logger.info("[TASK]: Querying user and script counts")
@@ -84,6 +136,8 @@ def collect_system_status(self):
                 executions_ready=executions_ready,
                 executions_running=executions_running,
                 executions_finished=executions_finished,
+                executions_failed=executions_failed,
+                executions_count=executions_count,
                 users_count=users_count,
                 scripts_count=scripts_count,
                 memory_available_percent=memory_available_percent,

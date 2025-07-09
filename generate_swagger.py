@@ -96,6 +96,12 @@ class StatusLogSchema(Schema):
     executions_finished = fields.Int(
         metadata={"description": "Number of finished executions"}
     )
+    executions_failed = fields.Int(
+        metadata={"description": "Number of failed executions"}
+    )
+    executions_count = fields.Int(
+        metadata={"description": "Total number of executions"}
+    )
     users_count = fields.Int(metadata={"description": "Total number of users"})
     scripts_count = fields.Int(metadata={"description": "Total number of scripts"})
     memory_available_percent = fields.Float(

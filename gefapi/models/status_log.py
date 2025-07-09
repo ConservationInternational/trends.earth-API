@@ -20,6 +20,8 @@ class StatusLog(db.Model):
     executions_ready = db.Column(db.Integer(), default=0)
     executions_running = db.Column(db.Integer(), default=0)
     executions_finished = db.Column(db.Integer(), default=0)
+    executions_failed = db.Column(db.Integer(), default=0)
+    executions_count = db.Column(db.Integer(), default=0)
 
     # Other counts
     users_count = db.Column(db.Integer(), default=0)
@@ -33,6 +35,8 @@ class StatusLog(db.Model):
         executions_ready=0,
         executions_running=0,
         executions_finished=0,
+        executions_failed=0,
+        executions_count=0,
         users_count=0,
         scripts_count=0,
         memory_available_percent=0.0,
@@ -42,6 +46,8 @@ class StatusLog(db.Model):
         self.executions_ready = executions_ready
         self.executions_running = executions_running
         self.executions_finished = executions_finished
+        self.executions_failed = executions_failed
+        self.executions_count = executions_count
         self.users_count = users_count
         self.scripts_count = scripts_count
         self.memory_available_percent = memory_available_percent
@@ -59,6 +65,8 @@ class StatusLog(db.Model):
             "executions_ready": self.executions_ready,
             "executions_running": self.executions_running,
             "executions_finished": self.executions_finished,
+            "executions_failed": self.executions_failed,
+            "executions_count": self.executions_count,
             "users_count": self.users_count,
             "scripts_count": self.scripts_count,
             "memory_available_percent": self.memory_available_percent,

@@ -207,6 +207,8 @@ def sample_status_log(app):
             executions_ready=2,
             executions_running=3,
             executions_finished=100,
+            executions_failed=5,
+            executions_count=500,
             users_count=10,
             scripts_count=25,
             memory_available_percent=75.5,
