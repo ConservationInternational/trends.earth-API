@@ -68,7 +68,9 @@ def health_check():
     try:
         # Test database connectivity by attempting a simple query
         # This approach checks the connection without relying on specific models
-        result = db.session.execute("SELECT 1 as health_check").fetchone()
+        from sqlalchemy import text
+
+        result = db.session.execute(text("SELECT 1 as health_check")).fetchone()
         db_status = "healthy" if result else "unhealthy"
     except Exception as e:
         logger.warning(f"Database health check failed: {str(e)}")
