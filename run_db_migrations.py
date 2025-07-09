@@ -30,7 +30,17 @@ def run_migrations():
 
         # Initialize database and migration objects
         db = SQLAlchemy(app)
-        migrate = Migrate(app, db)
+
+        # Import models INDIVIDUALLY to avoid importing services through __init__.py
+        print("Importing models...")
+        from gefapi.models.execution import Execution  # noqa: F401
+        from gefapi.models.execution_log import ExecutionLog  # noqa: F401
+        from gefapi.models.script import Script  # noqa: F401
+        from gefapi.models.script_log import ScriptLog  # noqa: F401
+        from gefapi.models.status_log import StatusLog  # noqa: F401
+        from gefapi.models.user import User  # noqa: F401
+
+        migrate = Migrate(app, db)  # noqa: F841
 
         print("App created, running migrations...")
         with app.app_context():
