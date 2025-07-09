@@ -65,9 +65,40 @@ def run_migrations():
             logger.info("Starting Flask-Migrate upgrade...")
             print("About to call upgrade()...")
             
-            # Run the migrations to the merge head that combines both branches
-            # This will apply both the status_log changes AND the script enhancements
-            upgrade(revision='h34de5fg6789')
+            # First check what columns exist to determine the right target
+            branch2_columns = ['cpu_reservation', 'cpu_limit', 'memory_reservation', 'memory_limit']
+            result = db.session.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'script' 
+                AND column_name = ANY(%(columns)s)
+            """), {"columns": branch2_columns}).fetchall()
+            existing_branch2 = [row[0] for row in result]
+            
+            status_log_result = db.session.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'status_log' 
+                AND column_name IN ('executions_failed', 'executions_count')
+            """)).fetchall()
+            existing_status_log = [row[0] for row in status_log_result]
+            
+            logger.info(f"Branch 2 columns in script table: {existing_branch2}")
+            logger.info(f"Status log columns: {existing_status_log}")
+            
+            if len(existing_branch2) >= 4:
+                # Branch 2 is already applied, just need to add status_log columns
+                if len(existing_status_log) == 0:
+                    logger.info("Branch 2 already applied, targeting g23bc4de5678 for status_log columns")
+                    upgrade(revision='g23bc4de5678')
+                else:
+                    logger.info("Both branches already applied")
+                    print("✓ Database migrations already completed")
+                    return
+            else:
+                # Need to apply merge migration
+                logger.info("Applying merge migration h34de5fg6789")
+                upgrade(revision='h34de5fg6789')
             
             logger.info("Flask-Migrate upgrade completed successfully")
             print("✓ Database migrations completed successfully")
