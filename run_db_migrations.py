@@ -45,7 +45,19 @@ def run_migrations():
         alembic_cfg.set_main_option("script_location", "/opt/gef-api/migrations")
 
         print("Running Alembic upgrade...")
-        command.upgrade(alembic_cfg, "head")
+        
+        # Check for multiple heads and merge if needed
+        try:
+            # Try to upgrade to head first
+            command.upgrade(alembic_cfg, "head")
+        except Exception as e:
+            if "Multiple head revisions" in str(e):
+                print("Multiple heads detected. Upgrading to 'heads' to merge branches...")
+                # Upgrade to all heads to merge the branches
+                command.upgrade(alembic_cfg, "heads")
+            else:
+                raise
+        
         print("✓ Database migrations completed successfully")
 
     except Exception as e:
