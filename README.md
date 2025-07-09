@@ -576,12 +576,19 @@ GET /api/v1/user?filter=role=ADMIN&include=scripts&exclude=institution,country
 - `page` - Page number
 - `per_page` - Items per page (max: 1000)
 
-**Status Metrics:**
-- Execution counts by status (active, ready, running, finished)
-- Total users and scripts count
-- System memory availability percentage
-- CPU usage percentage
-- Timestamp of measurement
+**Response Fields:**
+- `id` - Unique identifier for the status log entry
+- `timestamp` - Date and time when the status was recorded
+- `executions_active` - Number of active executions
+- `executions_ready` - Number of executions ready to run
+- `executions_running` - Number of currently running executions
+- `executions_finished` - Number of finished executions
+- `executions_failed` - Number of failed executions
+- `executions_count` - Total number of executions in the system
+- `users_count` - Total number of users in the system
+- `scripts_count` - Total number of scripts in the system
+- `memory_available_percent` - System memory availability as a percentage
+- `cpu_usage_percent` - System CPU usage as a percentage
 
 ### Other Endpoints
 - `POST /email` - Send email
@@ -679,6 +686,8 @@ Users with `role: "ADMIN"` can access all functionality without restrictions and
     "executions_ready": "integer", 
     "executions_running": "integer",
     "executions_finished": "integer",
+    "executions_failed": "integer",
+    "executions_count": "integer",
     "users_count": "integer",
     "scripts_count": "integer",
     "memory_available_percent": "float",
