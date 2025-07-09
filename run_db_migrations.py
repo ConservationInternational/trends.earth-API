@@ -42,6 +42,7 @@ def run_migrations():
         # Set up Alembic configuration
         alembic_cfg = Config("/opt/gef-api/migrations/alembic.ini")
         alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+        alembic_cfg.set_main_option("script_location", "/opt/gef-api/migrations")
 
         print("Running Alembic upgrade...")
         command.upgrade(alembic_cfg, "head")
