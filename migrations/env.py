@@ -88,9 +88,14 @@ def run_migrations_online():
         with context.begin_transaction():
             logger.info("Starting migration execution...")
             context.run_migrations()
-            logger.info("Migration execution completed")
+            logger.info("Migration execution completed successfully")
+    except Exception as e:
+        logger.error(f"Migration execution failed: {e}")
+        raise
     finally:
+        logger.info("Closing database connection...")
         connection.close()
+        logger.info("Database connection closed")
 
 
 if context.is_offline_mode():
