@@ -7,7 +7,7 @@ services:
     ports:
       - target: 3000
     env_file:
-      - prod2.env
+      - prod.env
     command: start
     volumes:
       - ./gefapi:/opt/gef-api/gefapi
