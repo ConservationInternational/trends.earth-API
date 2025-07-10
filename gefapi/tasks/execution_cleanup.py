@@ -67,7 +67,8 @@ def cleanup_stale_executions(self):
                 try:
                     # Log execution details
                     logger.info(
-                        "[TASK]: Processing stale execution %s (status: %s, started: %s)",
+                        "[TASK]: Processing stale execution %s "
+                        "(status: %s, started: %s)",
                         execution.id,
                         execution.status,
                         execution.start_date,
@@ -93,7 +94,8 @@ def cleanup_stale_executions(self):
                                 )
                                 for service in services:
                                     logger.info(
-                                        "[TASK]: Removing Docker service %s for execution %s",
+                                        "[TASK]: Removing Docker service %s for "
+                                        "execution %s",
                                         service.name,
                                         execution.id,
                                     )
@@ -114,7 +116,8 @@ def cleanup_stale_executions(self):
                                 )
                                 for container in containers:
                                     logger.info(
-                                        "[TASK]: Removing Docker container %s for execution %s",
+                                        "[TASK]: Removing Docker container %s for "
+                                        "execution %s",
                                         container.name,
                                         execution.id,
                                     )
@@ -128,7 +131,8 @@ def cleanup_stale_executions(self):
                                 )
                         else:
                             logger.warning(
-                                "[TASK]: Docker client not available, skipping Docker cleanup"
+                                "[TASK]: Docker client not available, "
+                                "skipping Docker cleanup"
                             )
                     except Exception as docker_error:
                         logger.error(
@@ -258,7 +262,8 @@ def cleanup_finished_executions(self):
                                 )
                                 for service in services:
                                     logger.info(
-                                        "[TASK]: Removing Docker service %s for finished execution %s",
+                                        "[TASK]: Removing Docker service %s for "
+                                        "finished execution %s",
                                         service.name,
                                         execution.id,
                                     )
@@ -279,7 +284,8 @@ def cleanup_finished_executions(self):
                                 )
                                 for container in containers:
                                     logger.info(
-                                        "[TASK]: Removing Docker container %s for finished execution %s",
+                                        "[TASK]: Removing Docker container %s for "
+                                        "finished execution %s",
                                         container.name,
                                         execution.id,
                                     )
@@ -293,18 +299,18 @@ def cleanup_finished_executions(self):
                                 )
                         else:
                             logger.warning(
-                                "[TASK]: Docker client not available, skipping Docker cleanup"
+                                "[TASK]: Docker client not available, "
+                                "skipping Docker cleanup"
                             )
                     except Exception as docker_error:
                         logger.error(
-                            "[TASK]: Error accessing Docker for finished execution %s: %s",
+                            "[TASK]: Error accessing Docker for finished "
+                            "execution %s: %s",
                             execution.id,
                             docker_error,
                         )
 
-                    logger.debug(
-                        f"[TASK]: Processed finished execution {execution.id}"
-                    )
+                    logger.debug(f"[TASK]: Processed finished execution {execution.id}")
 
                 except Exception as execution_error:
                     logger.error(
@@ -406,7 +412,8 @@ def cleanup_old_failed_executions(self):
                                 )
                                 for service in services:
                                     logger.info(
-                                        "[TASK]: Removing Docker service %s for old failed execution %s",
+                                        "[TASK]: Removing Docker service %s for "
+                                        "old failed execution %s",
                                         service.name,
                                         execution.id,
                                     )
@@ -427,7 +434,8 @@ def cleanup_old_failed_executions(self):
                                 )
                                 for container in containers:
                                     logger.info(
-                                        "[TASK]: Removing Docker container %s for old failed execution %s",
+                                        "[TASK]: Removing Docker container %s for "
+                                        "old failed execution %s",
                                         container.name,
                                         execution.id,
                                     )
@@ -441,11 +449,13 @@ def cleanup_old_failed_executions(self):
                                 )
                         else:
                             logger.warning(
-                                "[TASK]: Docker client not available, skipping Docker cleanup"
+                                "[TASK]: Docker client not available, "
+                                "skipping Docker cleanup"
                             )
                     except Exception as docker_error:
                         logger.error(
-                            "[TASK]: Error accessing Docker for old failed execution %s: %s",
+                            "[TASK]: Error accessing Docker for old failed "
+                            "execution %s: %s",
                             execution.id,
                             docker_error,
                         )
