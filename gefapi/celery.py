@@ -29,6 +29,18 @@ def make_celery(app):
             "task": "gefapi.tasks.status_monitoring.collect_system_status",
             "schedule": 120.0,  # Every 2 minutes (120 seconds)
         },
+        "cleanup-stale-executions": {
+            "task": "gefapi.tasks.execution_cleanup.cleanup_stale_executions",
+            "schedule": 3600.0,  # Every hour (3600 seconds)
+        },
+        "cleanup-finished-executions": {
+            "task": "gefapi.tasks.execution_cleanup.cleanup_finished_executions",
+            "schedule": 86400.0,  # Every day (86400 seconds)
+        },
+        "cleanup-old-failed-executions": {
+            "task": "gefapi.tasks.execution_cleanup.cleanup_old_failed_executions",
+            "schedule": 86400.0,  # Every day (86400 seconds)
+        },
     }
     celery.conf.timezone = "UTC"
 

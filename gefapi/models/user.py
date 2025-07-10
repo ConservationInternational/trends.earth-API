@@ -3,6 +3,7 @@
 import datetime
 import uuid
 
+from flask_jwt_extended import create_access_token
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from gefapi import db
@@ -85,3 +86,7 @@ class User(db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password, password)
+
+    def get_token(self):
+        """Generate JWT token"""
+        return create_access_token(identity=self.id)

@@ -20,7 +20,7 @@ This project belongs to the Trends.Earth project and implements the API used by 
 - **Poetry** - Dependency management and packaging
 - **Flask** - Web framework for API endpoints
 - **SQLAlchemy** - ORM for database operations (PostgreSQL)
-- **Celery** - Background task management (with Redis)
+- **Celery** - Background task management with periodic tasks (system monitoring, stale execution cleanup, finished execution cleanup, old failed execution cleanup)
 - **Docker** - Containerization for development and production
 - **Gunicorn** - WSGI server for production deployment
 - **Flask-Migrate** - Database migration management
@@ -69,7 +69,7 @@ The application is composed of several Docker services, each with a specific pur
   - Command: `./entrypoint.sh worker`
 
 - **`beat`** - Celery beat scheduler
-  - Manages periodic tasks (system monitoring every 2 minutes)
+  - Manages periodic tasks (system monitoring every 2 minutes, execution cleanup every hour, finished execution cleanup daily, old failed execution cleanup daily)
   - Command: `./entrypoint.sh beat`
 
 - **`migrate`** - Database migration service
@@ -111,7 +111,7 @@ The application uses a multi-container architecture with specialized services:
 #### Core Application Containers
 - **API Container**: Flask application server with Gunicorn (production) or direct Flask (development)
 - **Worker Container**: Celery workers for background task processing
-- **Beat Container**: Celery beat scheduler for periodic tasks
+- **Beat Container**: Celery beat scheduler for periodic tasks (monitoring, cleanup, maintenance)
 - **Migration Container**: Dedicated service for database schema migrations
 
 #### Infrastructure Containers
@@ -794,7 +794,7 @@ gefapi/
 ├── models/          # SQLAlchemy models
 ├── routes/          # Flask routes and endpoints
 ├── services/        # Business logic layer
-├── tasks/           # Celery background tasks
+├── tasks/           # Celery background tasks (monitoring, stale cleanup, finished cleanup)
 ├── config/          # Configuration files
 ├── validators/      # Request validation
 └── errors.py        # Custom exceptions
@@ -877,6 +877,127 @@ The system automatically collects metrics every 2 minutes:
 - System resource usage (CPU, memory)
 
 Access monitoring data via the `/api/v1/status` endpoint (Admin only).
+
+## Background Tasks (Celery)
+
+The application uses Celery for background task processing and periodic maintenance tasks. All tasks are automatically managed by the Celery beat scheduler.
+
+### Periodic Tasks
+
+#### System Status Monitoring
+- **Task**: `collect_system_status`
+- **Schedule**: Every 2 minutes (120 seconds)
+- **Purpose**: Collects and stores system metrics including:
+  - Execution counts by status (active, ready, running, finished, failed)
+  - Total user and script counts
+  - System resource usage (CPU, memory)
+- **Location**: `gefapi/tasks/status_monitoring.py`
+- **Database**: Results stored in `status_log` table
+- **Access**: Data accessible via `/api/v1/status` endpoint (Admin only)
+
+#### Stale Execution Cleanup
+- **Task**: `cleanup_stale_executions`
+- **Schedule**: Every hour (3600 seconds)
+- **Purpose**: Maintains system hygiene by:
+  - Finding executions older than 3 days that are still running or pending
+  - Setting their status to "FAILED"
+  - Cleaning up associated Docker services and containers
+- **Location**: `gefapi/tasks/execution_cleanup.py`
+- **Criteria**: Executions with `start_date` older than 3 days and status not "FINISHED" or "FAILED"
+- **Docker Cleanup**: Removes both Docker services and containers named `execution-{execution_id}`
+
+#### Finished Execution Cleanup
+- **Task**: `cleanup_finished_executions`
+- **Schedule**: Every day (86400 seconds)
+- **Purpose**: Maintains resource efficiency by:
+  - Finding executions that finished within the past day
+  - Cleaning up associated Docker services and containers that may still be running
+  - Preventing resource leaks from completed tasks
+- **Location**: `gefapi/tasks/execution_cleanup.py`
+- **Criteria**: Executions with status "FINISHED" and `end_date` within the past 24 hours
+- **Docker Cleanup**: Removes both Docker services and containers named `execution-{execution_id}`
+
+#### Old Failed Execution Cleanup
+- **Task**: `cleanup_old_failed_executions`
+- **Schedule**: Every day (86400 seconds)
+- **Purpose**: Maintains long-term system cleanliness by:
+  - Finding failed executions older than 14 days
+  - Cleaning up any remaining Docker services and containers from old failed executions
+  - Preventing accumulation of Docker resources from historical failures
+- **Location**: `gefapi/tasks/execution_cleanup.py`
+- **Criteria**: Executions with status "FAILED" and `end_date` older than 14 days
+- **Docker Cleanup**: Removes both Docker services and containers named `execution-{execution_id}`
+
+### Manual Task Execution
+
+For development and debugging purposes, tasks can be executed manually:
+
+```bash
+# Execute system status collection
+docker exec -it <container_name> celery -A gefapi.celery call gefapi.tasks.status_monitoring.collect_system_status
+
+# Execute stale execution cleanup
+docker exec -it <container_name> celery -A gefapi.celery call gefapi.tasks.execution_cleanup.cleanup_stale_executions
+
+# Execute finished execution cleanup
+docker exec -it <container_name> celery -A gefapi.celery call gefapi.tasks.execution_cleanup.cleanup_finished_executions
+
+# Execute old failed execution cleanup
+docker exec -it <container_name> celery -A gefapi.celery call gefapi.tasks.execution_cleanup.cleanup_old_failed_executions
+
+# Monitor task execution
+docker exec -it <container_name> celery -A gefapi.celery flower
+```
+
+### Task Configuration
+
+The Celery beat schedule is configured in `gefapi/celery.py`:
+
+```python
+celery.conf.beat_schedule = {
+    "collect-system-status": {
+        "task": "gefapi.tasks.status_monitoring.collect_system_status",
+        "schedule": 120.0,  # Every 2 minutes
+    },
+    "cleanup-stale-executions": {
+        "task": "gefapi.tasks.execution_cleanup.cleanup_stale_executions", 
+        "schedule": 3600.0,  # Every hour
+    },
+    "cleanup-finished-executions": {
+        "task": "gefapi.tasks.execution_cleanup.cleanup_finished_executions",
+        "schedule": 86400.0,  # Every day
+    },
+    "cleanup-old-failed-executions": {
+        "task": "gefapi.tasks.execution_cleanup.cleanup_old_failed_executions",
+        "schedule": 86400.0,  # Every day
+    },
+}
+```
+
+### Task Monitoring
+
+- **Logs**: All task execution is logged with detailed information
+- **Error Handling**: Failed tasks are reported to Rollbar (if configured)
+- **Health Checks**: Task failures are tracked and can be monitored via system logs
+- **Database Transactions**: All database operations use proper transaction handling
+
+### Docker Service Management
+
+The cleanup task manages Docker resources created during script execution:
+
+- **Service Names**: Docker services are named `execution-{execution_id}`
+- **Container Names**: Docker containers are named `execution-{execution_id}`
+- **Cleanup Strategy**: 
+  - Services are removed using `client.services.get(name).remove()`
+  - Containers are removed using `client.containers.get(name).remove(force=True)`
+  - Both operations include error handling for missing resources
+
+### Development Notes
+
+- **Environment**: Tasks respect the `ENVIRONMENT` setting and may behave differently in development vs production
+- **Docker Availability**: Tasks gracefully handle cases where Docker is not available
+- **Database Context**: All tasks run within Flask application context for proper database access
+- **Testing**: Tasks can be tested using Celery's eager mode (`CELERY_ALWAYS_EAGER=True`)
 
 ## API Documentation
 

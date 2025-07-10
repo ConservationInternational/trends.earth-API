@@ -10,6 +10,7 @@ from unittest.mock import patch
 # Add the project root to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from flask_jwt_extended import create_access_token
 import pytest
 
 from gefapi import app as flask_app
@@ -127,33 +128,12 @@ def regular_user(app):
 
 
 @pytest.fixture
-def admin_token(client, admin_user):
-    """Get JWT token for admin user"""
-    response = client.post(
-        "/auth", json={"email": "admin@test.com", "password": "admin123"}
-    )
-    assert response.status_code == 200, f"Authentication failed: {response.get_json()}"
-    data = response.get_json()
-    assert "access_token" in data, f"No access_token in response: {data}"
-    return data["access_token"]
-
-
-@pytest.fixture
-def user_token(client, regular_user):
-    """Get JWT token for regular user"""
-    response = client.post(
-        "/auth", json={"email": "user@test.com", "password": "user123"}
-    )
-    assert response.status_code == 200, f"Authentication failed: {response.get_json()}"
-    data = response.get_json()
-    assert "access_token" in data, f"No access_token in response: {data}"
-    return data["access_token"]
-
-
-@pytest.fixture
 def sample_script(app, regular_user):
-    """Create sample script for testing"""
+    """Create a sample script for testing"""
     with app.app_context():
+        # Merge user to avoid DetachedInstanceError
+        regular_user = db.session.merge(regular_user)
+
         # Check if script already exists
         existing_script = Script.query.filter_by(slug="test-script").first()
         if existing_script:
@@ -180,16 +160,32 @@ def sample_script(app, regular_user):
 def sample_execution(app, regular_user, sample_script):
     """Create sample execution for testing"""
     with app.app_context():
+        # Merge objects to avoid DetachedInstanceError
+        regular_user = db.session.merge(regular_user)
+        sample_script = db.session.merge(sample_script)
+
+        # Refresh the script object to ensure it's attached to the current session
+        script = Script.query.filter_by(slug="test-script").first()
+        if not script:
+            script = sample_script
+
+        # Refresh the user object to ensure it's attached to the current session
+        user = User.query.filter_by(email=regular_user.email).first()
+        if not user:
+            user = regular_user
+
         # Check if execution already exists for this script
         existing_execution = Execution.query.filter_by(
-            script_id=sample_script.id, user_id=regular_user.id
+            script_id=script.id, user_id=user.id
         ).first()
         if existing_execution:
+            db.session.expunge(existing_execution)
+            existing_execution = db.session.merge(existing_execution)
             return existing_execution
 
         execution = Execution(
-            script_id=sample_script.id,
-            user_id=regular_user.id,
+            script_id=script.id,
+            user_id=user.id,
             params={"test_param": "test_value"},
         )
         execution.status = "FINISHED"
@@ -220,18 +216,28 @@ def sample_status_log(app):
 
 
 @pytest.fixture
+def admin_token(app, admin_user):
+    """Generate token for admin user"""
+    with app.app_context():
+        return create_access_token(identity=admin_user.id)
+
+
+@pytest.fixture
+def user_token(app, regular_user):
+    """Generate token for regular user"""
+    with app.app_context():
+        return create_access_token(identity=regular_user.id)
+
+
+@pytest.fixture
 def auth_headers_admin(admin_token):
-    """Authorization headers for admin user"""
-    if admin_token is None:
-        pytest.fail("Admin token is None - authentication failed")
+    """Get authorization headers for admin"""
     return {"Authorization": f"Bearer {admin_token}"}
 
 
 @pytest.fixture
 def auth_headers_user(user_token):
-    """Authorization headers for regular user"""
-    if user_token is None:
-        pytest.fail("User token is None - authentication failed")
+    """Get authorization headers for regular user"""
     return {"Authorization": f"Bearer {user_token}"}
 
 
