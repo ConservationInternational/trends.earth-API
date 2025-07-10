@@ -1,16 +1,24 @@
 name: Generate API Documentation
 
+# This workflow generates API documentation when changes are made to files that affect the public API
+
 on:
   workflow_dispatch:
   push:
     branches: [ master, develop ]
     paths:
       - 'gefapi/routes/**'
+      - 'gefapi/__init__.py'
+      - 'gefapi/models/**'
+      - 'generate_swagger.py'
       - '.github/workflows/generate-api-docs.yml'
   pull_request:
     branches: [ master ]
     paths:
       - 'gefapi/routes/**'
+      - 'gefapi/__init__.py'
+      - 'gefapi/models/**'
+      - 'generate_swagger.py'
       - '.github/workflows/generate-api-docs.yml'
 
 jobs:
@@ -100,11 +108,24 @@ jobs:
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         poetry run python generate_swagger.py
 
+    - name: Check if API specification changed
+      id: check_changes
+      run: |
+        if git diff --quiet HEAD -- swagger.json; then
+          echo "No changes to API specification"
+          echo "spec_changed=false" >> $GITHUB_OUTPUT
+        else
+          echo "API specification has changed"
+          echo "spec_changed=true" >> $GITHUB_OUTPUT
+        fi
+
     - name: Install Swagger Codegen CLI
+      if: steps.check_changes.outputs.spec_changed == 'true'
       run: |
         wget https://repo1.maven.org/maven2/io/swagger/codegen/v3/swagger-codegen-cli/3.0.46/swagger-codegen-cli-3.0.46.jar -O swagger-codegen-cli.jar
 
     - name: Generate HTML documentation
+      if: steps.check_changes.outputs.spec_changed == 'true'
       run: |
         java -jar swagger-codegen-cli.jar generate \
           -i swagger.json \
@@ -113,11 +134,13 @@ jobs:
           --additional-properties appName="Trends.Earth API",appDescription="API for managing Scripts, Users, and Executions in Trends.Earth"
 
     - name: Setup Node.js for Swagger UI
+      if: steps.check_changes.outputs.spec_changed == 'true'
       uses: actions/setup-node@v4
       with:
         node-version: '18'
 
     - name: Generate Swagger UI
+      if: steps.check_changes.outputs.spec_changed == 'true'
       run: |
         # Create swagger-ui directory
         mkdir -p docs/swagger-ui
@@ -133,22 +156,33 @@ jobs:
         sed -i 's|<title>Swagger UI</title>|<title>Trends.Earth API Documentation</title>|g' docs/swagger-ui/index.html
         
     - name: Commit and push documentation
-      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master' && steps.check_changes.outputs.spec_changed == 'true'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add docs/
-        git add swagger.json
-        if git diff --staged --quiet; then
-          echo "No changes to commit"
-        else
+        
+        # Check if there are changes to commit
+        if [ -n "$(git status --porcelain docs/ swagger.json)" ]; then
+          git add docs/ swagger.json
           git commit -m "Auto-update API documentation [skip ci]"
           git push
+          echo "Documentation updated and pushed"
+        else
+          echo "No changes to API documentation"
         fi
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Summary
+      run: |
+        if [ "${{ steps.check_changes.outputs.spec_changed }}" == "true" ]; then
+          echo "✅ API specification has changed - documentation was generated and updated"
+        else
+          echo "ℹ️  No changes to API specification - documentation generation was skipped"
+        fi
+
     - name: Upload API documentation as artifact
+      if: steps.check_changes.outputs.spec_changed == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: api-documentation
