@@ -24,7 +24,7 @@ class UserSchema(Schema):
     name = fields.Str(metadata={"description": "User's full name"})
     country = fields.Str(metadata={"description": "User's country"})
     institution = fields.Str(metadata={"description": "User's institution"})
-    role = fields.Str(metadata={"description": "User role (USER, ADMIN)"})
+    role = fields.Str(metadata={"description": "User role (USER, ADMIN, SUPERADMIN)"})
     created_at = fields.DateTime(metadata={"description": "Account creation timestamp"})
 
 

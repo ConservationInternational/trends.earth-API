@@ -47,10 +47,9 @@ class TestExecutionFilterSort:
         )
         assert response.status_code == 200
         data = response.json["data"]
-        # Check that primary sort is by status desc, then by progress asc within each status
-        statuses = [e["status"] for e in data]
-        # This is a basic check; for full correctness, group by status and check progress order within each group
-        assert statuses == sorted(statuses, reverse=True)
+        # Check that executions are sorted by progress in ascending order
+        progress_values = [e["progress"] for e in data]
+        assert progress_values == sorted(progress_values)
 
     def test_sort_by_multiple_fields(self, client, auth_headers_user):
         response = client.get(

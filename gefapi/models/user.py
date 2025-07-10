@@ -44,8 +44,8 @@ class User(db.Model):
 
     def __init__(self, email, password, name, country, institution, role="USER"):
         self.email = email
-        self.password = self.set_password(password=password)
-        self.role = role
+        self.password = self.set_password(password)
+        self.role = role if role in ["USER", "ADMIN", "SUPERADMIN"] else "USER"
         self.name = name
         self.country = country
         self.institution = institution

@@ -160,18 +160,22 @@ class UserService:
 
     @staticmethod
     def get_user(user_id):
-        logger.info("[SERVICE]: Getting user " + user_id)
+        logger.info(f"[SERVICE]: Getting user {user_id}")
         logger.info("[DB]: QUERY")
         try:
-            UUID(user_id, version=4)
-            user = User.query.get(user_id)
+            # If user_id is already a UUID object, use it directly
+            if isinstance(user_id, UUID):
+                user = User.query.get(user_id)
+            else:
+                UUID(user_id, version=4)
+                user = User.query.get(user_id)
         except ValueError:
             user = User.query.filter_by(email=user_id).first()
         except Exception as error:
             rollbar.report_exc_info()
             raise error
         if not user:
-            raise UserNotFound(message="User with id " + user_id + " does not exist")
+            raise UserNotFound(message=f"User with id {user_id} does not exist")
         return user
 
     @staticmethod
@@ -282,10 +286,12 @@ class UserService:
 
     @staticmethod
     def delete_user(user_id):
-        logger.info("[SERVICE]: Deleting user" + user_id)
+        logger.info("[SERVICE]: Deleting user " + str(user_id))
         user = UserService.get_user(user_id=user_id)
         if not user:
-            raise UserNotFound(message="User with email " + user_id + " does not exist")
+            raise UserNotFound(
+                message="User with ID " + str(user_id) + " does not exist"
+            )
         try:
             logger.info("[DB]: DELETE")
             db.session.delete(user)

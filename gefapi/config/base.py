@@ -17,7 +17,7 @@ SETTINGS = {
         "PARAMS_S3_PREFIX": os.getenv("PARAMS_S3_PREFIX"),
         "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
     },
-    "ROLES": ["ADMIN", "USER"],
+    "ROLES": ["SUPERADMIN", "ADMIN", "USER"],
     "SQLALCHEMY_DATABASE_URI": os.getenv("DATABASE_URL")
     or (
         "postgresql://"

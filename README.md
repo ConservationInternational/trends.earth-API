@@ -241,7 +241,8 @@ The API provides comprehensive filtering, sorting, and pagination capabilities f
 - **User Information Restrictions**: For privacy and security, access to user names and email addresses is restricted to admin users only
 - **Restricted Operations**: Non-admin users cannot filter, sort by, or include `user_name` or `user_email` fields
 - **Error Handling**: Attempting to use restricted fields results in HTTP 403 Forbidden with a clear error message
-- **Admin Privileges**: Users with `role: "ADMIN"` have unrestricted access to all user-related data
+- **Admin Privileges**: Users with `role: "ADMIN"` or `role: "SUPERADMIN"` have unrestricted access to all user-related data
+- **SuperAdmin Privileges**: Users with `role: "SUPERADMIN"` have exclusive access to user management operations (role changes, user deletion, password changes, profile updates)
 
 **Field Control Parameters:**
 - `include` - Adds additional fields to the response (e.g., related objects, computed fields)
@@ -553,6 +554,9 @@ GET /api/v1/user?filter=country=USA&sort=name
 # Get first page of admin users
 GET /api/v1/user?filter=role=ADMIN&page=1&per_page=10
 
+# Get superadmin users
+GET /api/v1/user?filter=role=SUPERADMIN&page=1&per_page=10
+
 # Get users created in the last month
 GET /api/v1/user?filter=created_at>2025-05-26T00:00:00Z
 
@@ -686,11 +690,21 @@ Non-admin users attempting to access restricted user data will receive:
 ```
 
 **Admin Access:**
-Users with `role: "ADMIN"` can access all functionality without restrictions and can:
+Users with `role: "ADMIN"` or `role: "SUPERADMIN"` can access all functionality without restrictions and can:
 - Filter scripts and executions by any user field
 - Sort results by user name or email
 - Include user names and emails in API responses
 - Access user management endpoints
+
+**SuperAdmin Exclusive Access:**
+Users with `role: "SUPERADMIN"` have exclusive access to critical user management operations:
+- Change user roles (including creating other admins/superadmins)
+- Delete other users
+- Change other users' passwords
+- Update other users' profile information
+
+**Admin Access:**
+Users with `role: "ADMIN"` can access most functionality but cannot perform user management operations restricted to superadmins.
 
 **Backward Compatibility:**
 - All existing functionality remains unchanged for non-restricted fields

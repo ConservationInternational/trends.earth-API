@@ -18,6 +18,7 @@ from gefapi.errors import InvalidFile, NotAllowed, ScriptDuplicated, ScriptNotFo
 from gefapi.models import Script, ScriptLog, User
 from gefapi.s3 import push_script_to_s3
 from gefapi.services import docker_build
+from gefapi.utils.permissions import is_admin_or_higher
 
 ROLES = SETTINGS.get("ROLES")
 
@@ -174,7 +175,7 @@ class ScriptService:
         query = db.session.query(Script)
 
         # User access control
-        if user.role == "ADMIN":
+        if is_admin_or_higher(user):
             pass
         else:
             query = query.filter(or_(Script.user_id == user.id, Script.public))
@@ -201,12 +202,12 @@ class ScriptService:
                     value = value.strip().strip("'\"")
 
                     if field == "user_name":
-                        if user.role != "ADMIN":
+                        if not is_admin_or_higher(user):
                             raise Exception("Only admin users can filter by user_name")
                         join_users = True
                         col = User.name
                     elif field == "user_email":
-                        if user.role != "ADMIN":
+                        if not is_admin_or_higher(user):
                             raise Exception("Only admin users can filter by user_email")
                         join_users = True
                         col = User.email
@@ -250,7 +251,7 @@ class ScriptService:
                     else:
                         query = query.order_by(asc(col))
                 elif field == "user_email":
-                    if user.role != "ADMIN":
+                    if not is_admin_or_higher(user):
                         raise Exception("Only admin users can sort by user_email")
                     if direction == "desc":
                         query = query.join(User, Script.user_id == User.id).order_by(
@@ -261,7 +262,7 @@ class ScriptService:
                             User.email.asc()
                         )
                 elif field == "user_name":
-                    if user.role != "ADMIN":
+                    if not is_admin_or_higher(user):
                         raise Exception("Only admin users can sort by user_name")
                     if direction == "desc":
                         query = query.join(User, Script.user_id == User.id).order_by(
@@ -285,15 +286,19 @@ class ScriptService:
 
     @staticmethod
     def get_script(script_id, user="fromservice"):
-        logger.info("[SERVICE]: Getting script: " + script_id)
+        logger.info(f"[SERVICE]: Getting script: {script_id}")
         logger.info("[DB]: QUERY")
-        if user == "fromservice" or user.role == "ADMIN":
+        if user == "fromservice" or is_admin_or_higher(user):
             logger.info(
                 f"[SERVICE]: trying to get script {script_id} for service or admin"
             )
             try:
-                UUID(script_id, version=4)
-                script = Script.query.filter_by(id=script_id).first()
+                # If script_id is already a UUID object, use it directly
+                if isinstance(script_id, UUID):
+                    script = Script.query.filter_by(id=script_id).first()
+                else:
+                    UUID(script_id, version=4)
+                    script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 logger.info("[SERVICE]: valueerror")
                 script = Script.query.filter_by(slug=script_id).first()
@@ -303,13 +308,22 @@ class ScriptService:
         else:
             try:
                 logger.info(f"[SERVICE]: trying to get script {script_id}")
-                UUID(script_id, version=4)
-                script = (
-                    db.session.query(Script)
-                    .filter(Script.id == script_id)
-                    .filter(or_(Script.user_id == user.id, Script.public))
-                    .first()
-                )
+                # If script_id is already a UUID object, use it directly
+                if isinstance(script_id, UUID):
+                    script = (
+                        db.session.query(Script)
+                        .filter(Script.id == script_id)
+                        .filter(or_(Script.user_id == user.id, Script.public))
+                        .first()
+                    )
+                else:
+                    UUID(script_id, version=4)
+                    script = (
+                        db.session.query(Script)
+                        .filter(Script.id == script_id)
+                        .filter(or_(Script.user_id == user.id, Script.public))
+                        .first()
+                    )
             except ValueError:
                 logger.info("[SERVICE]: valueerror")
                 script = (
@@ -332,17 +346,19 @@ class ScriptService:
         logger.info(f"[SERVICE]: Getting script logs of script {script_id}: ")
         logger.info("[DB]: QUERY")
         try:
-            UUID(script_id, version=4)
-            script = Script.query.filter_by(id=script_id).first()
+            # If script_id is already a UUID object, use it directly
+            if isinstance(script_id, UUID):
+                script = Script.query.filter_by(id=script_id).first()
+            else:
+                UUID(script_id, version=4)
+                script = Script.query.filter_by(id=script_id).first()
         except ValueError:
             script = Script.query.filter_by(slug=script_id).first()
         except Exception as error:
             rollbar.report_exc_info()
             raise error
         if not script:
-            raise ScriptNotFound(
-                message="Script with id " + script_id + " does not exist"
-            )
+            raise ScriptNotFound(message=f"Script with id {script_id} does not exist")
 
         if start_date:
             logger.debug(start_date)
@@ -372,17 +388,13 @@ class ScriptService:
             raise ScriptNotFound(
                 message="Script with id " + script_id + " does not exist"
             )
-        if (
-            user.role == "ADMIN"
-            or user.email == "gef@gef.com"
-            or user.id == script.user_id
-        ):
+        if is_admin_or_higher(user) or user.id == script.user_id:
             return ScriptService.create_script(sent_file, user, script)
         raise NotAllowed(message="Operation not allowed to this user")
 
     @staticmethod
     def delete_script(script_id, user):
-        logger.info("[SERVICE]: Deleting script" + script_id)
+        logger.info(f"[SERVICE]: Deleting script {script_id}")
         try:
             script = ScriptService.get_script(script_id, user)
         except Exception as error:
@@ -404,11 +416,15 @@ class ScriptService:
 
     @staticmethod
     def publish_script(script_id, user):
-        logger.info("[SERVICE]: Publishing script: " + script_id)
-        if user.role == "ADMIN":
+        logger.info(f"[SERVICE]: Publishing script: {script_id}")
+        if is_admin_or_higher(user):
             try:
-                UUID(script_id, version=4)
-                script = Script.query.filter_by(id=script_id).first()
+                # If script_id is already a UUID object, use it directly
+                if isinstance(script_id, UUID):
+                    script = Script.query.filter_by(id=script_id).first()
+                else:
+                    UUID(script_id, version=4)
+                    script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
             except Exception as error:
@@ -448,11 +464,15 @@ class ScriptService:
 
     @staticmethod
     def unpublish_script(script_id, user):
-        logger.info("[SERVICE]: Unpublishing script: " + script_id)
-        if user.role == "ADMIN":
+        logger.info(f"[SERVICE]: Unpublishing script: {script_id}")
+        if is_admin_or_higher(user):
             try:
-                UUID(script_id, version=4)
-                script = Script.query.filter_by(id=script_id).first()
+                # If script_id is already a UUID object, use it directly
+                if isinstance(script_id, UUID):
+                    script = Script.query.filter_by(id=script_id).first()
+                else:
+                    UUID(script_id, version=4)
+                    script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
             except Exception as error:

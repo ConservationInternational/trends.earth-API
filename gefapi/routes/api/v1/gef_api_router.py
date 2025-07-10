@@ -21,6 +21,14 @@ from gefapi.errors import (
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.s3 import get_script_from_s3
 from gefapi.services import ExecutionService, ScriptService, StatusService, UserService
+from gefapi.utils.permissions import (
+    can_access_admin_features,
+    can_change_user_password,
+    can_change_user_role,
+    can_delete_user,
+    can_update_user_profile,
+    is_admin_or_higher,
+)
 from gefapi.validators import (
     validate_execution_log_creation,
     validate_execution_update,
@@ -244,7 +252,7 @@ def delete_script(script):
     """Delete a script"""
     logger.info("[ROUTER]: Deleting script: " + script)
     identity = current_user
-    if identity.role != "ADMIN" and identity.email != "gef@gef.com":
+    if not can_access_admin_features(identity):
         return error(status=403, detail="Forbidden")
     try:
         script = ScriptService.delete_script(script, identity)
@@ -440,7 +448,7 @@ def update_execution(execution):
     logger.info("[ROUTER]: Updating execution " + execution)
     body = request.get_json()
     user = current_user
-    if user.role != "ADMIN" and user.email != "gef@gef.com":
+    if not can_access_admin_features(user):
         return error(status=403, detail="Forbidden")
     try:
         execution = ExecutionService.update_execution(body, execution)
@@ -499,7 +507,7 @@ def create_execution_log(execution):
     logger.info("[ROUTER]: Creating execution log for " + execution)
     body = request.get_json()
     user = current_user
-    if user.role != "ADMIN" and user.email != "gef@gef.com":
+    if not can_access_admin_features(user):
         return error(status=403, detail="Forbidden")
     try:
         log = ExecutionService.create_execution_log(body, execution)
@@ -520,18 +528,17 @@ def create_user():
     logger.info("[ROUTER]: Creating user")
     body = request.get_json()
     if request.headers.get("Authorization", None) is not None:
-        logger.debug("[ROUTER]: Authorization header found")
 
         @jwt_required()
         def identity():
             pass
 
         identity()
-    logger.debug("[ROUTER]: Getting identity")
     identity = current_user
     if identity:
         user_role = body.get("role", "USER")
-        if identity.role == "USER" and user_role == "ADMIN":
+        # Only superadmin can create admin or superadmin users
+        if user_role in ["ADMIN", "SUPERADMIN"] and not can_change_user_role(identity):
             return error(status=403, detail="Forbidden")
     else:
         body["role"] = "USER"
@@ -553,7 +560,7 @@ def get_users():
     logger.info("[ROUTER]: Getting all users")
 
     identity = current_user
-    if identity.role != "ADMIN" and identity.email != "gef@gef.com":
+    if not is_admin_or_higher(identity):
         return error(status=403, detail="Forbidden")
 
     include = request.args.get("include")
@@ -611,7 +618,7 @@ def get_user(user):
     exclude = request.args.get("exclude")
     exclude = exclude.split(",") if exclude else []
     identity = current_user
-    if identity.role != "ADMIN" and identity.email != "gef@gef.com":
+    if not is_admin_or_higher(identity):
         return error(status=403, detail="Forbidden")
     try:
         user = UserService.get_user(user)
@@ -737,7 +744,13 @@ def update_user(user):
     logger.info("[ROUTER]: Updating user" + user)
     body = request.get_json()
     identity = current_user
-    if identity.role != "ADMIN" and identity.email != "gef@gef.com":
+
+    # Check if user is trying to update role - only superadmin can do this
+    if "role" in body and not can_change_user_role(identity):
+        return error(status=403, detail="Forbidden")
+
+    # Check if user can update other user's profile
+    if not can_update_user_profile(identity):
         return error(status=403, detail="Forbidden")
     try:
         user = UserService.update_user(body, user)
@@ -758,7 +771,7 @@ def delete_user(user):
     identity = current_user
     if user == "gef@gef.com":
         return error(status=403, detail="Forbidden")
-    if identity.role != "ADMIN" and identity.email != "gef@gef.com":
+    if not can_delete_user(identity):
         return error(status=403, detail="Forbidden")
     try:
         user = UserService.delete_user(user)
@@ -781,8 +794,8 @@ def admin_change_password(user):
     body = request.get_json()
     identity = current_user
 
-    # Check if user is admin
-    if identity.role != "ADMIN" and identity.email != "gef@gef.com":
+    # Check if user can change other user's password
+    if not can_change_user_password(identity):
         return error(status=403, detail="Forbidden")
 
     new_password = body.get("new_password")
@@ -807,9 +820,9 @@ def get_status_logs():
     """Get system status logs (Admin only)"""
     logger.info("[ROUTER]: Getting status logs")
 
-    # Check if user is admin
+    # Check if user is admin or higher
     identity = current_user
-    if identity.role != "ADMIN" and identity.email != "gef@gef.com":
+    if not can_access_admin_features(identity):
         return error(status=403, detail="Forbidden")
 
     # Parse date filters

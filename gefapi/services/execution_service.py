@@ -12,6 +12,7 @@ from gefapi.config import SETTINGS
 from gefapi.errors import ExecutionNotFound, ScriptNotFound, ScriptStateNotValid
 from gefapi.models import Execution, ExecutionLog, Script, User
 from gefapi.services import EmailService, ScriptService, UserService, docker_run
+from gefapi.utils.permissions import is_admin_or_higher
 
 logger = logging.getLogger()
 
@@ -67,14 +68,18 @@ class ExecutionService:
         query = db.session.query(Execution)
 
         # Apply user filters
-        if user.role == "ADMIN":
+        if is_admin_or_higher(user):
             if target_user_id:
                 try:
-                    UUID(target_user_id, version=4)
+                    # If target_user_id is already a UUID object, use it directly
+                    if isinstance(target_user_id, UUID):
+                        validated_user_id = target_user_id
+                    else:
+                        validated_user_id = UUID(target_user_id, version=4)
                 except Exception as error:
                     rollbar.report_exc_info()
                     raise error
-                query = query.filter(Execution.user_id == target_user_id)
+                query = query.filter(Execution.user_id == validated_user_id)
             # For admin, no additional user filter needed
         else:
             # For non-admin users, only show their own executions
@@ -110,12 +115,12 @@ class ExecutionService:
                         join_scripts = True
                         col = Script.name
                     elif field == "user_name":
-                        if user.role != "ADMIN":
+                        if not is_admin_or_higher(user):
                             raise Exception("Only admin users can filter by user_name")
                         join_users = True
                         col = User.name
                     elif field == "user_email":
-                        if user.role != "ADMIN":
+                        if not is_admin_or_higher(user):
                             raise Exception("Only admin users can filter by user_email")
                         join_users = True
                         col = User.email
@@ -186,7 +191,7 @@ class ExecutionService:
                             Script, Execution.script_id == Script.id
                         ).order_by(Script.name.asc())
                 elif field == "user_email":
-                    if user.role != "ADMIN":
+                    if not is_admin_or_higher(user):
                         raise Exception("Only admin users can sort by user_email")
                     if direction == "desc":
                         query = query.join(User, Execution.user_id == User.id).order_by(
@@ -197,7 +202,7 @@ class ExecutionService:
                             User.email.asc()
                         )
                 elif field == "user_name":
-                    if user.role != "ADMIN":
+                    if not is_admin_or_higher(user):
                         raise Exception("Only admin users can sort by user_name")
                     if direction == "desc":
                         query = query.join(User, Execution.user_id == User.id).order_by(
@@ -252,25 +257,38 @@ class ExecutionService:
 
     @staticmethod
     def get_execution(execution_id, user="fromservice"):
-        logger.info("[SERVICE]: Getting execution " + execution_id)
+        logger.info(f"[SERVICE]: Getting execution {execution_id}")
         logger.info("[DB]: QUERY")
         # user = 'from service' just in case the requests comes from the service
-        if user == "fromservice" or user.role == "ADMIN":
+        if user == "fromservice" or is_admin_or_higher(user):
             try:
-                UUID(execution_id, version=4)
-                execution = Execution.query.filter_by(id=execution_id).first()
+                # If execution_id is already a UUID object, use it directly
+                if isinstance(execution_id, UUID):
+                    execution = Execution.query.filter_by(id=execution_id).first()
+                else:
+                    UUID(execution_id, version=4)
+                    execution = Execution.query.filter_by(id=execution_id).first()
             except Exception as error:
                 rollbar.report_exc_info()
                 raise error
         else:
             try:
-                UUID(execution_id, version=4)
-                execution = (
-                    db.session.query(Execution)
-                    .filter(Execution.id == execution_id)
-                    .filter(Execution.user_id == user.id)
-                    .first()
-                )
+                # If execution_id is already a UUID object, use it directly
+                if isinstance(execution_id, UUID):
+                    execution = (
+                        db.session.query(Execution)
+                        .filter(Execution.id == execution_id)
+                        .filter(Execution.user_id == user.id)
+                        .first()
+                    )
+                else:
+                    UUID(execution_id, version=4)
+                    execution = (
+                        db.session.query(Execution)
+                        .filter(Execution.id == execution_id)
+                        .filter(Execution.user_id == user.id)
+                        .first()
+                    )
             except Exception as error:
                 rollbar.report_exc_info()
                 raise error

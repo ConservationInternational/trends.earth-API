@@ -65,10 +65,20 @@ def app():
 def db_session(app):
     """Creates a new database session for a test."""
     with app.app_context():
-        # Use the existing db.session but ensure we can rollback
-        db.session.begin()
-        yield db.session
-        db.session.rollback()
+        # Start a transaction that can be rolled back
+        connection = db.engine.connect()
+        transaction = connection.begin()
+
+        # Configure session to use this connection
+        db.session.configure(bind=connection)
+
+        try:
+            yield db.session
+        finally:
+            # Always rollback the transaction
+            transaction.rollback()
+            connection.close()
+            db.session.remove()
 
 
 @pytest.fixture
@@ -102,6 +112,7 @@ def admin_user(app):
         )
         db.session.add(user)
         db.session.commit()
+        db.session.refresh(user)  # Ensure user is attached to session
         return user
 
 
@@ -112,6 +123,11 @@ def regular_user(app):
         # Check if user already exists
         existing_user = User.query.filter_by(email="user@test.com").first()
         if existing_user:
+            # Ensure the existing user has the correct role
+            existing_user.role = "USER"
+            db.session.add(existing_user)
+            db.session.commit()
+            db.session.refresh(existing_user)
             return existing_user
 
         user = User(
@@ -124,6 +140,53 @@ def regular_user(app):
         )
         db.session.add(user)
         db.session.commit()
+        db.session.refresh(user)  # Ensure user is attached to session
+        return user
+
+
+@pytest.fixture
+def superadmin_user(app):
+    """Create superadmin user for testing"""
+    with app.app_context():
+        # Check if user already exists
+        existing_user = User.query.filter_by(email="superadmin@test.com").first()
+        if existing_user:
+            return existing_user
+
+        user = User(
+            email="superadmin@test.com",
+            password="superadmin123",
+            name="Super Admin User",
+            role="SUPERADMIN",
+            country="Test Country",
+            institution="Test Institution",
+        )
+        db.session.add(user)
+        db.session.commit()
+        db.session.refresh(user)  # Ensure user is attached to session
+        return user
+
+
+@pytest.fixture
+def gef_user(app):
+    """Create special GEF user for testing"""
+    with app.app_context():
+        # Check if user already exists
+        existing_user = User.query.filter_by(email="gef@gef.com").first()
+        if existing_user:
+            return existing_user
+
+        user = User(
+            email="gef@gef.com",
+            password="gef123",
+            name="GEF Special User",
+            role="USER",  # Note: role is USER but should have superadmin privileges
+            country="Test Country",
+            institution="Test Institution",
+        )
+        db.session.add(user)
+        db.session.commit()
+        db.session.refresh(user)  # Ensure user is attached to session
         return user
 
 
@@ -220,7 +283,10 @@ def admin_token(app, admin_user):
     """Generate token for admin user"""
     with app.app_context():
         # Re-query the user to ensure it's attached to the current session
-        user = User.query.filter_by(email=admin_user.email).first()
+        user = User.query.filter_by(email="admin@test.com").first()
+        if not user:
+            # If user doesn't exist, merge the fixture user to current session
+            user = db.session.merge(admin_user)
         return create_access_token(identity=user.id)
 
 
@@ -229,7 +295,34 @@ def user_token(app, regular_user):
     """Generate token for regular user"""
     with app.app_context():
         # Re-query the user to ensure it's attached to the current session
-        user = User.query.filter_by(email=regular_user.email).first()
+        user = User.query.filter_by(email="user@test.com").first()
+        if not user:
+            # If user doesn't exist, merge the fixture user to current session
+            user = db.session.merge(regular_user)
+        return create_access_token(identity=user.id)
+
+
+@pytest.fixture
+def superadmin_token(app, superadmin_user):
+    """Generate token for superadmin user"""
+    with app.app_context():
+        # Re-query the user to ensure it's attached to the current session
+        user = User.query.filter_by(email="superadmin@test.com").first()
+        if not user:
+            # If user doesn't exist, merge the fixture user to current session
+            user = db.session.merge(superadmin_user)
+        return create_access_token(identity=user.id)
+
+
+@pytest.fixture
+def gef_token(app, gef_user):
+    """Generate token for GEF user"""
+    with app.app_context():
+        # Re-query the user to ensure it's attached to the current session
+        user = User.query.filter_by(email="gef@gef.com").first()
+        if not user:
+            # If user doesn't exist, merge the fixture user to current session
+            user = db.session.merge(gef_user)
         return create_access_token(identity=user.id)
 
 
@@ -243,6 +336,18 @@ def auth_headers_admin(admin_token):
 def auth_headers_user(user_token):
     """Get authorization headers for regular user"""
     return {"Authorization": f"Bearer {user_token}"}
+
+
+@pytest.fixture
+def auth_headers_superadmin(superadmin_token):
+    """Get authorization headers for superadmin user"""
+    return {"Authorization": f"Bearer {superadmin_token}"}
+
+
+@pytest.fixture
+def auth_headers_gef(gef_token):
+    """Get authorization headers for GEF user"""
+    return {"Authorization": f"Bearer {gef_token}"}
 
 
 @pytest.fixture

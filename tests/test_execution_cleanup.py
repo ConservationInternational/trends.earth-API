@@ -283,6 +283,14 @@ class TestExecutionCleanup:
     ):
         """Test cleanup of recently finished executions with Docker service"""
         with app.app_context():
+            # Clean up any existing finished executions to ensure test isolation
+            existing_finished_executions = (
+                db_session.query(Execution).filter_by(status="FINISHED").all()
+            )
+            for exec in existing_finished_executions:
+                db_session.delete(exec)
+            db_session.commit()
+
             # Make the execution finished recently (2 hours ago)
             two_hours_ago = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
             sample_execution.start_date = two_hours_ago - datetime.timedelta(hours=1)
@@ -319,16 +327,31 @@ class TestExecutionCleanup:
                 mock_service.remove.assert_called_once()
 
     def test_cleanup_finished_executions_ignores_old_finished_executions(
-        self, app, db_session, sample_execution
+        self, app, db_session, regular_user, sample_script
     ):
         """Test that finished executions older than 1 day are ignored"""
         with app.app_context():
-            # Make the execution finished 2 days ago
+            # Clean up any existing finished executions to avoid interference
+            db_session.query(Execution).filter_by(status="FINISHED").delete()
+            db_session.commit()
+
+            # Create a new execution for this test to avoid interference
             two_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=2)
-            sample_execution.start_date = two_days_ago - datetime.timedelta(hours=1)
-            sample_execution.end_date = two_days_ago
-            sample_execution.status = "FINISHED"
-            db_session.add(sample_execution)
+
+            # Merge the objects to ensure they're attached to the current session
+            script = db_session.merge(sample_script)
+            user = db_session.merge(regular_user)
+
+            # Create a unique execution for this test
+            execution = Execution(
+                script_id=script.id,
+                user_id=user.id,
+                params={"test_param": "old_execution"},
+            )
+            execution.start_date = two_days_ago - datetime.timedelta(hours=1)
+            execution.end_date = two_days_ago
+            execution.status = "FINISHED"
+            db_session.add(execution)
             db_session.commit()
 
             with patch(
