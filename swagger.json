@@ -138,6 +138,34 @@
         ],
         "type": "object"
       },
+      "HealthCheck": {
+        "properties": {
+          "database": {
+            "description": "Database connectivity status",
+            "type": "string"
+          },
+          "status": {
+            "description": "Overall health status",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "Health check timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "description": "API version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database",
+          "status",
+          "timestamp",
+          "version"
+        ],
+        "type": "object"
+      },
       "Script": {
         "properties": {
           "cpu_limit": {
@@ -205,6 +233,14 @@
             "description": "Number of active executions",
             "type": "integer"
           },
+          "executions_count": {
+            "description": "Total number of executions",
+            "type": "integer"
+          },
+          "executions_failed": {
+            "description": "Number of failed executions",
+            "type": "integer"
+          },
           "executions_finished": {
             "description": "Number of finished executions",
             "type": "integer"
@@ -219,7 +255,8 @@
           },
           "id": {
             "description": "Unique identifier for the status log",
-            "type": "integer"
+            "format": "uuid",
+            "type": "string"
           },
           "memory_available_percent": {
             "description": "Available memory percentage",
@@ -230,7 +267,7 @@
             "type": "integer"
           },
           "timestamp": {
-            "description": "Status measurement timestamp",
+            "description": "When the status was recorded",
             "format": "date-time",
             "type": "string"
           },
@@ -275,7 +312,7 @@
             "type": "string"
           },
           "role": {
-            "description": "User role (USER, ADMIN)",
+            "description": "User role (USER, ADMIN, SUPERADMIN)",
             "type": "string"
           }
         },
@@ -306,10 +343,31 @@
     },
     "title": "Trends.Earth API",
     "version": "1.0.0",
-    "x-generated-at": "2025-07-07T21:21:10.614644"
+    "x-generated-at": "2025-07-10T21:40:59.961815"
   },
   "openapi": "3.0.2",
   "paths": {
+    "/api-health": {
+      "get": {
+        "description": "Check API health status and database connectivity",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheck"
+                }
+              }
+            },
+            "description": "Health check status"
+          }
+        },
+        "summary": "Health check",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
     "/api/v1/execution": {
       "get": {
         "description": "Get list of executions with filtering and sorting",
