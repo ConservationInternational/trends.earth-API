@@ -179,7 +179,6 @@ def create_api_spec():
     spec.components.schema("ExecutionLog", schema=ExecutionLogSchema)
     spec.components.schema("HealthCheck", schema=HealthCheckSchema)
     spec.components.schema("Error", schema=ErrorSchema)
-    spec.components.schema("HealthCheck", schema=HealthCheckSchema)
 
     # Add common responses
     spec.components.response(
