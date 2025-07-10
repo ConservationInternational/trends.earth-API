@@ -522,6 +522,8 @@ GET /api/v1/execution?include=user_email
 - `POST /api/v1/user` - Create new user
 - `PATCH /api/v1/user/<user_id>` - Update user (Admin only)
 - `PATCH /api/v1/user/me` - Update own profile
+- `PATCH /api/v1/user/me/change-password` - Change own password
+- `PATCH /api/v1/user/<user_id>/change-password` - Change user password (Admin only)
 - `DELETE /api/v1/user/<user_id>` - Delete user (Admin only)
 - `DELETE /api/v1/user/me` - Delete own account
 - `POST /api/v1/user/<user_id>/recover-password` - Password recovery
@@ -565,6 +567,72 @@ GET /api/v1/user?exclude=institution,country
 
 # Get admin users with scripts but exclude personal information
 GET /api/v1/user?filter=role=ADMIN&include=scripts&exclude=institution,country
+```
+
+#### Password Management
+
+**Change Own Password:**
+```bash
+# Users can change their own password
+PATCH /api/v1/user/me/change-password
+Content-Type: application/json
+
+{
+  "old_password": "current_password",
+  "new_password": "new_password"
+}
+```
+
+**Admin Change User Password:**
+```bash
+# Admin users can change any user's password (no old password required)
+PATCH /api/v1/user/<user_id>/change-password
+Content-Type: application/json
+
+{
+  "new_password": "new_password"
+}
+```
+
+**Request/Response Examples:**
+```bash
+# Change own password
+curl -X PATCH "https://api.example.com/api/v1/user/me/change-password" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "old_password": "myOldPassword123",
+    "new_password": "myNewPassword456"
+  }'
+
+# Admin change user password
+curl -X PATCH "https://api.example.com/api/v1/user/550e8400-e29b-41d4-a716-446655440000/change-password" \
+  -H "Authorization: Bearer <admin_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "new_password": "temporaryPassword123"
+  }'
+```
+
+**Error Responses:**
+```json
+// Invalid old password (for user self-change)
+{
+  "status": 401,
+  "detail": "Invalid current password"
+}
+
+// Missing required fields
+{
+  "status": 400,
+  "detail": "old_password and new_password are required"
+}
+
+// Non-admin trying to change other user's password
+{
+  "status": 403,
+  "detail": "Forbidden"
+}
 ```
 ### System Status (Admin Only)
 - `GET /api/v1/status` - Get system status logs

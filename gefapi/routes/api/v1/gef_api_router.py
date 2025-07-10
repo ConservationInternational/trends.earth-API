@@ -7,6 +7,7 @@ from flask import Response, json, jsonify, request, send_from_directory
 from flask_jwt_extended import current_user, jwt_required
 
 from gefapi.errors import (
+    AuthError,
     EmailError,
     ExecutionNotFound,
     InvalidFile,
@@ -667,6 +668,30 @@ def update_profile():
     return jsonify(data=user.serialize()), 200
 
 
+@endpoints.route("/user/me/change-password", strict_slashes=False, methods=["PATCH"])
+@jwt_required()
+def change_password():
+    """Change user password"""
+    logger.info("[ROUTER]: Changing password")
+    body = request.get_json()
+    identity = current_user
+    old_password = body.get("old_password")
+    new_password = body.get("new_password")
+
+    if not old_password or not new_password:
+        return error(status=400, detail="old_password and new_password are required")
+
+    try:
+        user = UserService.change_password(identity, old_password, new_password)
+    except AuthError as e:
+        logger.error("[ROUTER]: " + e.message)
+        return error(status=401, detail=e.message)
+    except Exception as e:
+        logger.error("[ROUTER]: " + str(e))
+        return error(status=500, detail="Generic Error")
+    return jsonify(data=user.serialize()), 200
+
+
 @endpoints.route("/user/me", strict_slashes=False, methods=["DELETE"])
 @jwt_required()
 def delete_profile():
@@ -737,6 +762,36 @@ def delete_user(user):
         return error(status=403, detail="Forbidden")
     try:
         user = UserService.delete_user(user)
+    except UserNotFound as e:
+        logger.error("[ROUTER]: " + e.message)
+        return error(status=404, detail=e.message)
+    except Exception as e:
+        logger.error("[ROUTER]: " + str(e))
+        return error(status=500, detail="Generic Error")
+    return jsonify(data=user.serialize()), 200
+
+
+@endpoints.route(
+    "/user/<user>/change-password", strict_slashes=False, methods=["PATCH"]
+)
+@jwt_required()
+def admin_change_password(user):
+    """Admin change user password"""
+    logger.info("[ROUTER]: Admin changing password for user " + user)
+    body = request.get_json()
+    identity = current_user
+
+    # Check if user is admin
+    if identity.role != "ADMIN" and identity.email != "gef@gef.com":
+        return error(status=403, detail="Forbidden")
+
+    new_password = body.get("new_password")
+    if not new_password:
+        return error(status=400, detail="new_password is required")
+
+    try:
+        target_user = UserService.get_user(user)
+        user = UserService.admin_change_password(target_user, new_password)
     except UserNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)

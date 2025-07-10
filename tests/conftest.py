@@ -219,14 +219,18 @@ def sample_status_log(app):
 def admin_token(app, admin_user):
     """Generate token for admin user"""
     with app.app_context():
-        return create_access_token(identity=admin_user.id)
+        # Re-query the user to ensure it's attached to the current session
+        user = User.query.filter_by(email=admin_user.email).first()
+        return create_access_token(identity=user.id)
 
 
 @pytest.fixture
 def user_token(app, regular_user):
     """Generate token for regular user"""
     with app.app_context():
-        return create_access_token(identity=regular_user.id)
+        # Re-query the user to ensure it's attached to the current session
+        user = User.query.filter_by(email=regular_user.email).first()
+        return create_access_token(identity=user.id)
 
 
 @pytest.fixture

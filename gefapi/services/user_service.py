@@ -175,6 +175,45 @@ class UserService:
         return user
 
     @staticmethod
+    def change_password(user, old_password, new_password):
+        """Change user password"""
+        logger.info(f"[SERVICE]: Changing password for user {user.email}")
+        if not user.check_password(old_password):
+            raise AuthError("Invalid current password")
+        user.password = user.set_password(new_password)
+        try:
+            db.session.add(user)
+            db.session.commit()
+            logger.info(
+                f"[SERVICE]: Password for user {user.email} changed successfully"
+            )
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"[SERVICE]: Error changing password for {user.email}: {e}")
+            rollbar.report_exc_info()
+            raise
+        return user
+
+    @staticmethod
+    def admin_change_password(user, new_password):
+        """Admin change user password (no old password verification required)"""
+        logger.info(f"[SERVICE]: Admin changing password for user {user.email}")
+        user.password = user.set_password(new_password)
+        try:
+            db.session.add(user)
+            db.session.commit()
+            logger.info(
+                f"[SERVICE]: Password for user {user.email} changed successfully "
+                f"by admin"
+            )
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"[SERVICE]: Error changing password for {user.email}: {e}")
+            rollbar.report_exc_info()
+            raise
+        return user
+
+    @staticmethod
     def recover_password(user_id):
         logger.info("[SERVICE]: Recovering password" + user_id)
         logger.info("[DB]: QUERY")

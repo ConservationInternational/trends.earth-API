@@ -69,7 +69,7 @@ class TestExecutionCleanup:
                 )
 
     def test_cleanup_stale_executions_with_running_execution_and_docker_service(
-        self, app, db_session, sample_execution
+        self, app, sample_execution
     ):
         """Test cleanup of a stale RUNNING execution with Docker service"""
         with app.app_context():
@@ -78,8 +78,8 @@ class TestExecutionCleanup:
             sample_execution.start_date = five_days_ago
             sample_execution.status = "RUNNING"
             sample_execution.end_date = None
-            db_session.add(sample_execution)
-            db_session.commit()
+            db.session.add(sample_execution)
+            db.session.commit()
 
             execution_id = sample_execution.id
 
@@ -102,9 +102,14 @@ class TestExecutionCleanup:
                 assert result["docker_services_removed"] == 1
 
                 # Verify execution was marked as FAILED
-                updated_execution = Execution.query.get(execution_id)
-                assert updated_execution.status == "FAILED"
-                assert updated_execution.end_date is not None
+                # Force a new database session to see committed changes
+                db.session.close()
+                with app.app_context():
+                    updated_execution = (
+                        db.session.query(Execution).filter_by(id=execution_id).first()
+                    )
+                    assert updated_execution.status == "FAILED"
+                    assert updated_execution.end_date is not None
 
                 # Verify Docker service was removed
                 mock_service.remove.assert_called_once()
@@ -204,7 +209,7 @@ class TestExecutionCleanup:
                 assert updated_execution.status == original_status
 
     def test_cleanup_stale_executions_with_docker_unavailable(
-        self, app, db_session, sample_execution
+        self, app, sample_execution
     ):
         """Test cleanup when Docker is not available"""
         with app.app_context():
@@ -213,8 +218,8 @@ class TestExecutionCleanup:
             sample_execution.start_date = four_days_ago
             sample_execution.status = "PENDING"
             sample_execution.end_date = None
-            db_session.add(sample_execution)
-            db_session.commit()
+            db.session.add(sample_execution)
+            db.session.commit()
 
             execution_id = sample_execution.id
 
@@ -229,13 +234,15 @@ class TestExecutionCleanup:
                 assert result["cleaned_up"] == 1
                 assert result["docker_services_removed"] == 0
 
-                # Verify execution was still marked as FAILED
-                updated_execution = Execution.query.get(execution_id)
-                assert updated_execution.status == "FAILED"
+                # Force a new database session to see committed changes
+                db.session.close()
+                with app.app_context():
+                    updated_execution = (
+                        db.session.query(Execution).filter_by(id=execution_id).first()
+                    )
+                    assert updated_execution.status == "FAILED"
 
-    def test_cleanup_stale_executions_with_docker_error(
-        self, app, db_session, sample_execution
-    ):
+    def test_cleanup_stale_executions_with_docker_error(self, app, sample_execution):
         """Test cleanup continues when Docker operations fail"""
         with app.app_context():
             # Make the execution stale
@@ -243,8 +250,8 @@ class TestExecutionCleanup:
             sample_execution.start_date = four_days_ago
             sample_execution.status = "RUNNING"
             sample_execution.end_date = None
-            db_session.add(sample_execution)
-            db_session.commit()
+            db.session.add(sample_execution)
+            db.session.commit()
 
             execution_id = sample_execution.id
 
@@ -263,8 +270,13 @@ class TestExecutionCleanup:
                 assert result["docker_services_removed"] == 0
 
                 # Verify execution was still marked as FAILED
-                updated_execution = Execution.query.get(execution_id)
-                assert updated_execution.status == "FAILED"
+                # Force a new database session to see committed changes
+                db.session.close()
+                with app.app_context():
+                    updated_execution = (
+                        db.session.query(Execution).filter_by(id=execution_id).first()
+                    )
+                    assert updated_execution.status == "FAILED"
 
     def test_cleanup_finished_executions_with_recent_finished_execution(
         self, app, db_session, sample_execution
