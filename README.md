@@ -947,7 +947,8 @@ Key environment variables to configure (see `.env` files):
 - `REDIS_URL` - Redis connection string for Celery
 
 #### Application Configuration
-- `JWT_SECRET_KEY` - Secret key for JWT tokens
+- `JWT_SECRET_KEY` - Secret key for JWT tokens (falls back to `SECRET_KEY` if not set)
+- `SECRET_KEY` - General secret key for the application
 - `ENVIRONMENT` - Application environment (`dev`, `test`, `staging`, `prod`)
 - `DEBUG` - Debug mode flag
 - `TESTING` - Testing mode flag
@@ -1370,6 +1371,23 @@ If you continue experiencing issues:
 3. **Environment Variables**: Verify all required `.env` files are present and configured
 4. **Clean Rebuild**: Try `docker compose down -v && docker compose build --no-cache && docker compose up`
 5. **System Resources**: Ensure sufficient disk space and memory for containers
+
+#### JWT Secret Key Issues
+
+If you see JWT-related errors like `RuntimeError: JWT_SECRET_KEY or flask SECRET_KEY must be set when using symmetric algorithm "HS256"`:
+
+```bash
+# Check if JWT_SECRET_KEY or SECRET_KEY is set in your environment file
+grep -E "(JWT_SECRET_KEY|SECRET_KEY)" prod.env
+
+# Ensure your environment file is being loaded by the container
+docker compose logs <service_name> | grep -i "secret"
+
+# Verify environment variables are available in the container
+docker exec -it <container_name> env | grep -E "(JWT_SECRET_KEY|SECRET_KEY)"
+```
+
+**Solution**: Add `JWT_SECRET_KEY=your_secure_random_key` to your production environment file (`prod.env`, `staging.env`, etc.).
 
 For persistent issues, please create an issue in the repository with:
 - Error messages and logs

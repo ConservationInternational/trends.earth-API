@@ -33,6 +33,7 @@ SETTINGS = {
         + (os.getenv("DATABASE_ENV_POSTGRES_DB") or "postgres")
     ),
     "SECRET_KEY": os.getenv("SECRET_KEY"),
+    "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY"),
     "DOCKER_HOST": os.getenv("DOCKER_HOST"),
     "REGISTRY_URL": os.getenv("REGISTRY_URL"),
     "SCRIPTS_S3_PREFIX": os.getenv("SCRIPTS_S3_PREFIX"),
