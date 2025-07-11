@@ -361,7 +361,7 @@ class TestRoleValidation:
             content_type="application/json",
         )
         assert response.status_code == 400
-        assert "role not valid" in response.json["detail"]
+        assert "Invalid role" in response.json["detail"]
 
     def test_default_role_is_user(
         self, client, auth_headers_superadmin, sample_user_data
@@ -408,7 +408,7 @@ class TestRoleValidation:
                 content_type="application/json",
             )
             assert response.status_code == 400
-            assert "role not valid" in response.json["detail"]
+            assert "Invalid role" in response.json["detail"]
 
 
 @pytest.mark.usefixtures("client", "superadmin_user", "admin_user", "regular_user")

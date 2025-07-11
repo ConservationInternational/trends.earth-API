@@ -53,6 +53,9 @@ app.config["JWT_TOKEN_LOCATION"] = SETTINGS.get("JWT_TOKEN_LOCATION")
 app.config["broker_url"] = SETTINGS.get("CELERY_BROKER_URL")
 app.config["result_backend"] = SETTINGS.get("CELERY_RESULT_BACKEND")
 
+# Configure request size limits for security
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max request size
+
 # Database
 db = SQLAlchemy(app)
 
@@ -140,6 +143,11 @@ def method_not_allowed(e):
 @app.errorhandler(410)
 def gone(e):
     return error(status=410, detail="Gone")
+
+
+@app.errorhandler(413)
+def request_entity_too_large(e):
+    return error(status=413, detail="Request too large")
 
 
 @app.errorhandler(500)

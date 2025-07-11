@@ -24,13 +24,13 @@ case "$1" in
         if [ $# -eq 0 ]; then
             # No additional arguments, run all tests
             echo "Starting pytest..."
-            python -m pytest --no-cov -x
+            python -m pytest --no-cov
             echo "Pytest finished with exit code: $?"
             exit 0
         else
             # Additional arguments provided, pass them to pytest
             echo "Starting pytest with args: $@"
-            python -m pytest --no-cov -x "$@"
+            python -m pytest --no-cov "$@"
             echo "Pytest finished with exit code: $?"
             exit 0
         fi
