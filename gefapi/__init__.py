@@ -20,7 +20,14 @@ from gefapi.config import SETTINGS
 
 # Flask App
 app = Flask(__name__)
-CORS(app)
+
+# Configure CORS with specific origins for security
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8080").split(",")
+CORS(app, 
+     origins=cors_origins,
+     allow_headers=["Content-Type", "Authorization"],
+     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+
 Compress(app)
 
 logger = logging.getLogger()
@@ -138,3 +145,31 @@ def gone(e):
 @app.errorhandler(500)
 def internal_server_error(e):
     return error(status=500, detail="Internal Server Error")
+
+
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses"""
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    
+    # Prevent clickjacking by denying iframe embedding
+    response.headers['X-Frame-Options'] = 'DENY'
+    
+    # Enable XSS protection in browsers
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    
+    # Content Security Policy for any HTML content
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    
+    # Force HTTPS if the request is secure
+    if request.is_secure:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    # Prevent referrer information leakage
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    
+    # Control browser features and APIs
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    
+    return response

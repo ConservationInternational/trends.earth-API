@@ -2,7 +2,7 @@ from datetime import timedelta
 import os
 
 SETTINGS = {
-    "logging": {"level": "DEBUG"},
+    "logging": {"level": os.getenv("LOG_LEVEL", "INFO")},
     "service": {"port": 3000},
     "environment": {
         "ROLLBAR_SCRIPT_TOKEN": os.getenv("ROLLBAR_SCRIPT_TOKEN"),
@@ -16,6 +16,7 @@ SETTINGS = {
         "API_PASSWORD": os.getenv("API_PASSWORD"),
         "PARAMS_S3_PREFIX": os.getenv("PARAMS_S3_PREFIX"),
         "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
+        "CORS_ORIGINS": os.getenv("CORS_ORIGINS"),
     },
     "ROLES": ["SUPERADMIN", "ADMIN", "USER"],
     "SQLALCHEMY_DATABASE_URI": os.getenv("DATABASE_URL")
@@ -31,7 +32,7 @@ SETTINGS = {
         + "/"
         + (os.getenv("DATABASE_ENV_POSTGRES_DB") or "postgres")
     ),
-    "SECRET_KEY": "mysecret",
+    "SECRET_KEY": os.getenv("SECRET_KEY", "change-this-in-production"),
     "DOCKER_HOST": os.getenv("DOCKER_HOST"),
     "REGISTRY_URL": os.getenv("REGISTRY_URL"),
     "SCRIPTS_S3_PREFIX": os.getenv("SCRIPTS_S3_PREFIX"),
@@ -40,9 +41,8 @@ SETTINGS = {
     "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
     "UPLOAD_FOLDER": "/tmp/scripts",
     "ALLOWED_EXTENSIONS": {"tar.gz"},
-    "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 24),
-    "JWT_QUERY_STRING_NAME": "token",
-    "JWT_TOKEN_LOCATION": ["headers", "query_string"],
+    "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 2),
+    "JWT_TOKEN_LOCATION": ["headers"],
     "CELERY_BROKER_URL": os.getenv("REDIS_URL")
     or (
         "redis://"
