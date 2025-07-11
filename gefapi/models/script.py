@@ -5,6 +5,7 @@ import uuid
 
 from gefapi import db
 from gefapi.models import GUID
+from gefapi.utils.permissions import is_admin_or_higher
 
 db.GUID = GUID
 
@@ -96,12 +97,12 @@ class Script(db.Model):
         if "user" in include:
             script["user"] = self.user.serialize()
         if "user_name" in include:
-            if user and user.role != "ADMIN":
-                raise Exception("Only admin users can include user_name")
+            if user and not is_admin_or_higher(user):
+                raise Exception("Only admin or superadmin users can include user_name")
             script["user_name"] = getattr(self.user, "name", None)
         if "user_email" in include:
-            if user and user.role != "ADMIN":
-                raise Exception("Only admin users can include user_email")
+            if user and not is_admin_or_higher(user):
+                raise Exception("Only admin or superadmin users can include user_email")
             script["user_email"] = getattr(self.user, "email", None)
         if "executions" in include:
             script["executions"] = self.serialize_executions

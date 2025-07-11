@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from gefapi import db
 from gefapi.models import GUID
+from gefapi.utils.permissions import is_admin_or_higher
 
 db.GUID = GUID
 
@@ -68,12 +69,12 @@ class Execution(db.Model):
         if "user" in include:
             execution["user"] = self.user.serialize()
         if "user_name" in include:
-            if user and user.role != "ADMIN":
-                raise Exception("Only admin users can include user_name")
+            if user and not is_admin_or_higher(user):
+                raise Exception("Only admin or superadmin users can include user_name")
             execution["user_name"] = getattr(self.user, "name", None)
         if "user_email" in include:
-            if user and user.role != "ADMIN":
-                raise Exception("Only admin users can include user_email")
+            if user and not is_admin_or_higher(user):
+                raise Exception("Only admin or superadmin users can include user_email")
             execution["user_email"] = getattr(self.user, "email", None)
         if "script" in include:
             execution["script"] = self.script.serialize(user=user)

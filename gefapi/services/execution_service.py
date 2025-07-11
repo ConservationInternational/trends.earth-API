@@ -116,12 +116,17 @@ class ExecutionService:
                         col = Script.name
                     elif field == "user_name":
                         if not is_admin_or_higher(user):
-                            raise Exception("Only admin users can filter by user_name")
+                            raise Exception(
+                                "Only admin or superadmin users can filter by user_name"
+                            )
                         join_users = True
                         col = User.name
                     elif field == "user_email":
                         if not is_admin_or_higher(user):
-                            raise Exception("Only admin users can filter by user_email")
+                            raise Exception(
+                                "Only admin or superadmin users can "
+                                "filter by user_email"
+                            )
                         join_users = True
                         col = User.email
                     else:
@@ -192,7 +197,9 @@ class ExecutionService:
                         ).order_by(Script.name.asc())
                 elif field == "user_email":
                     if not is_admin_or_higher(user):
-                        raise Exception("Only admin users can sort by user_email")
+                        raise Exception(
+                            "Only admin or superadmin users can sort by user_email"
+                        )
                     if direction == "desc":
                         query = query.join(User, Execution.user_id == User.id).order_by(
                             User.email.desc()
@@ -203,7 +210,9 @@ class ExecutionService:
                         )
                 elif field == "user_name":
                     if not is_admin_or_higher(user):
-                        raise Exception("Only admin users can sort by user_name")
+                        raise Exception(
+                            "Only admin or superadmin users can sort by user_name"
+                        )
                     if direction == "desc":
                         query = query.join(User, Execution.user_id == User.id).order_by(
                             User.name.desc()
