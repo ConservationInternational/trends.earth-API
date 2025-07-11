@@ -9,6 +9,7 @@ from flask import Flask, got_request_exception, jsonify, request
 from flask_compress import Compress
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token
+from flask_limiter import Limiter
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 import rollbar
@@ -17,16 +18,27 @@ import rollbar.contrib.flask
 # from rollbar.logger import RollbarHandler
 from gefapi.celery import make_celery
 from gefapi.config import SETTINGS
+from gefapi.utils.rate_limiting import (
+    RateLimitConfig,
+    get_rate_limit_key_for_auth,
+    get_user_id_or_ip,
+    is_rate_limiting_disabled,
+    rate_limit_error_handler,
+)
 
 # Flask App
 app = Flask(__name__)
 
 # Configure CORS with specific origins for security
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8080").split(",")
-CORS(app, 
-     origins=cors_origins,
-     allow_headers=["Content-Type", "Authorization"],
-     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+cors_origins = os.getenv(
+    "CORS_ORIGINS", "http://localhost:3000,http://localhost:8080"
+).split(",")
+CORS(
+    app,
+    origins=cors_origins,
+    allow_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
 
 Compress(app)
 
@@ -54,7 +66,19 @@ app.config["broker_url"] = SETTINGS.get("CELERY_BROKER_URL")
 app.config["result_backend"] = SETTINGS.get("CELERY_RESULT_BACKEND")
 
 # Configure request size limits for security
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max request size
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB max request size
+
+# Configure rate limiting
+# Initialize rate limiter with Redis backend (reuses existing Redis connection)
+limiter = Limiter(
+    app=app,
+    key_func=get_user_id_or_ip,  # Default key function that exempts admin users
+    storage_uri=RateLimitConfig.get_storage_uri(),
+    default_limits=RateLimitConfig.get_default_limits(),
+    headers_enabled=True,  # Include rate limit info in response headers
+    enabled=True,  # Always enabled, but we'll check dynamically via exempt_when
+    on_breach=rate_limit_error_handler,
+)
 
 # Database
 db = SQLAlchemy(app)
@@ -105,6 +129,11 @@ from gefapi.services import UserService  # noqa:E402
 
 
 @app.route("/auth", methods=["POST"])
+@limiter.limit(
+    lambda: ";".join(RateLimitConfig.get_auth_limits()),
+    key_func=get_rate_limit_key_for_auth,
+    exempt_when=is_rate_limiting_disabled,
+)
 def create_token():
     logger.info("[JWT]: Attempting auth...")
     email = request.json.get("email", None)
@@ -159,25 +188,30 @@ def internal_server_error(e):
 def add_security_headers(response):
     """Add security headers to all responses"""
     # Prevent MIME type sniffing
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
     # Prevent clickjacking by denying iframe embedding
-    response.headers['X-Frame-Options'] = 'DENY'
-    
+    response.headers["X-Frame-Options"] = "DENY"
+
     # Enable XSS protection in browsers
-    response.headers['X-XSS-Protection'] = '1; mode=block'
-    
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+
     # Content Security Policy for any HTML content
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
-    
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'"
+    )
+
     # Force HTTPS if the request is secure
     if request.is_secure:
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+
     # Prevent referrer information leakage
-    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
     # Control browser features and APIs
-    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
-    
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
     return response

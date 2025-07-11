@@ -159,9 +159,11 @@ class TestSuperAdminUserTests:
             assert "Forbidden" in response.json["detail"]
 
     def test_regular_user_cannot_create_privileged_users(
-        self, client, auth_headers_user
+        self, client, auth_headers_user, reset_rate_limits
     ):
         """Test that regular USER cannot create ADMIN or SUPERADMIN users"""
+        # Reset rate limits to ensure clean state
+        reset_rate_limits()
         import uuid
 
         privileged_roles = ["ADMIN", "SUPERADMIN"]

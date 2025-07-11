@@ -288,9 +288,16 @@ class TestSuperAdminIntegration:
             client.delete(f"/api/v1/user/{test_user_id}", headers=auth_headers_gef)
 
     def test_role_creation_restrictions(
-        self, client, auth_headers_superadmin, auth_headers_admin, auth_headers_user
+        self,
+        client,
+        auth_headers_superadmin,
+        auth_headers_admin,
+        auth_headers_user,
+        reset_rate_limits,
     ):
         """Test role creation restrictions across different user types"""
+        # Reset rate limits to ensure clean state
+        reset_rate_limits()
 
         test_cases = [
             (
@@ -323,6 +330,9 @@ class TestSuperAdminIntegration:
                 allowed_roles,
             ) in test_cases:
                 for target_role, expected_status in allowed_roles:
+                    # Reset rate limits before each user creation to avoid accumulation
+                    reset_rate_limits()
+
                     user_data = {
                         "email": f"role-test-{creator_name}-creates-{target_role.lower()}@example.com",
                         "password": "password123",

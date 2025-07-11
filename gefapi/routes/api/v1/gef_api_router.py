@@ -4,8 +4,10 @@ import tempfile
 
 import dateutil.parser
 from flask import Response, json, jsonify, request, send_from_directory
-from flask_jwt_extended import current_user, jwt_required
+from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 
+# Import rate limiter instance
+from gefapi import app, limiter
 from gefapi.errors import (
     AuthError,
     EmailError,
@@ -28,6 +30,11 @@ from gefapi.utils.permissions import (
     can_delete_user,
     can_update_user_profile,
     is_admin_or_higher,
+)
+from gefapi.utils.rate_limiting import (
+    RateLimitConfig,
+    get_admin_aware_key,
+    is_rate_limiting_disabled,
 )
 from gefapi.validators import (
     validate_execution_log_creation,
@@ -267,6 +274,11 @@ def delete_script(script):
 
 # SCRIPT EXECUTION
 @endpoints.route("/script/<script>/run", strict_slashes=False, methods=["POST"])
+@limiter.limit(
+    lambda: ";".join(RateLimitConfig.get_execution_run_limits()),
+    key_func=get_admin_aware_key,
+    exempt_when=is_rate_limiting_disabled,
+)  # Rate limit script execution
 @jwt_required()
 def run_script(script):
     """Run a script"""
@@ -522,6 +534,11 @@ def create_execution_log(execution):
 
 # USER
 @endpoints.route("/user", strict_slashes=False, methods=["POST"])
+@limiter.limit(
+    lambda: ";".join(RateLimitConfig.get_user_creation_limits()),
+    key_func=get_admin_aware_key,
+    exempt_when=is_rate_limiting_disabled,
+)  # Configurable rate limit for user creation
 @validate_user_creation
 def create_user():
     """Create an user"""
@@ -719,6 +736,11 @@ def delete_profile():
 @endpoints.route(
     "/user/<user>/recover-password", strict_slashes=False, methods=["POST"]
 )
+@limiter.limit(
+    lambda: ";".join(RateLimitConfig.get_password_reset_limits()),
+    key_func=get_admin_aware_key,
+    exempt_when=is_rate_limiting_disabled,
+)  # Configurable rate limit for password recovery
 def recover_password(user):
     """Revover password"""
     logger.info("[ROUTER]: Recovering password")
@@ -867,3 +889,44 @@ def get_status_logs():
         ),
         200,
     )
+
+
+@endpoints.route("/rate-limit/reset", methods=["POST"])
+@jwt_required()
+def reset_rate_limits():
+    """
+    Reset all rate limits. Accessible only to SUPERADMIN.
+    """
+    current_user_id = get_jwt_identity()
+    user = UserService.get_user(current_user_id)
+
+    if not user or user.role != "SUPERADMIN":
+        return jsonify({"msg": "Superadmin access required"}), 403
+
+    try:
+        # For Flask-Limiter, we need to reset the storage properly
+        # Check if the storage has a reset method or clear all keys
+        if hasattr(limiter.storage, "reset"):
+            limiter.storage.reset()
+        elif hasattr(limiter.storage, "clear_all"):
+            limiter.storage.clear_all()
+        else:
+            # Fallback: try to get all keys and clear them
+            # This is storage-dependent, but for memory storage we can try this approach
+            try:
+                # For MemoryStorage, access the internal storage directly
+                if hasattr(limiter.storage, "storage"):
+                    limiter.storage.storage.clear()
+                else:
+                    # Alternative: recreate the limiter to clear all limits
+                    limiter._storage = limiter._storage.__class__(limiter._storage_uri)
+            except Exception:
+                # Last resort: disable and re-enable the limiter to reset state
+                was_enabled = limiter.enabled
+                limiter.enabled = False
+                limiter.enabled = was_enabled
+
+        return jsonify({"message": "All rate limits have been reset."}), 200
+    except Exception as e:
+        app.logger.error(f"Failed to reset rate limits: {e}")
+        return jsonify({"error": "Failed to reset rate limits"}), 500

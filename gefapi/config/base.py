@@ -72,6 +72,27 @@ SETTINGS = {
         + ":"
         + (os.getenv("REDIS_PORT_6379_TCP_PORT") or "6379")
     ),
+    # Rate limiting configuration
+    # Note: ADMIN and SUPERADMIN users are automatically exempt from all rate limits
+    "RATE_LIMITING": {
+        "ENABLED": os.getenv("RATE_LIMITING_ENABLED", "true").lower() == "true",
+        "STORAGE_URI": os.getenv("RATE_LIMIT_STORAGE_URI") or os.getenv("REDIS_URL"),
+        # DEFAULT_LIMITS: Applied automatically to ALL endpoints (global fallback)
+        "DEFAULT_LIMITS": ["1000 per hour", "100 per minute"],
+        # API_LIMITS: For specific endpoints needing moderate rate limiting
+        # (manual application)
+        "API_LIMITS": ["100 per hour", "20 per minute"],  # API endpoints
+        "AUTH_LIMITS": ["10 per minute", "100 per hour"],  # Stricter for auth
+        "PASSWORD_RESET_LIMITS": [
+            "10 per hour",
+            "3 per minute",
+        ],  # Very strict for password reset
+        "USER_CREATION_LIMITS": ["100 per hour"],  # User registration limits
+        "EXECUTION_RUN_LIMITS": [
+            "10 per minute",
+            "40 per hour",
+        ],  # Script execution limits
+    },
 }
 
 

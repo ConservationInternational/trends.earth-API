@@ -227,6 +227,31 @@ docker compose -f docker-compose.admin.yml down
 
 **Note:** The admin container automatically runs the `start` command, so it's primarily useful for accessing a shell environment with all dependencies loaded.
 
+## Configuration
+
+### Rate Limiting Configuration
+
+The API includes configurable rate limiting to protect against abuse and ensure fair usage. Rate limiting settings are configured via environment variables and can be customized per deployment environment.
+
+**Configuration Variables:**
+- `RATE_LIMITING_ENABLED` - Enable/disable rate limiting (default: `true`)
+- `RATE_LIMIT_STORAGE_URI` - Storage backend URI (Redis URL or `memory://` for in-memory storage)
+
+**Rate Limit Types:**
+- **Authentication**: Limits login attempts to prevent brute force attacks
+- **User Creation**: Limits account registration to prevent spam accounts
+- **Script Execution**: Limits script runs to manage computational resources
+- **Password Recovery**: Strict limits on password reset requests
+- **API Endpoints**: General limits for API access
+
+**Admin Exemptions:**
+- Users with `ADMIN` or `SUPERADMIN` roles are automatically exempt from all rate limits
+- Rate limits are applied per user (for authenticated requests) or per IP address (for unauthenticated requests)
+
+**Testing Configuration:**
+- Test environments use lower limits for faster testing
+- In-memory storage (`memory://`) is used instead of Redis for test isolation
+
 ## API Endpoints
 
 The API provides comprehensive filtering, sorting, and pagination capabilities for listing endpoints. All query parameters are optional, ensuring backward compatibility with existing implementations.
@@ -243,6 +268,12 @@ The API provides comprehensive filtering, sorting, and pagination capabilities f
 - **Error Handling**: Attempting to use restricted fields results in HTTP 403 Forbidden with a clear error message
 - **Admin Privileges**: Users with `role: "ADMIN"` or `role: "SUPERADMIN"` have unrestricted access to all user-related data
 - **SuperAdmin Privileges**: Users with `role: "SUPERADMIN"` have exclusive access to user management operations (role changes, user deletion, password changes, profile updates)
+- **Rate Limiting**: API endpoints are protected with configurable rate limits to prevent abuse
+  - Different limits for different endpoint types (authentication, user creation, script execution, password recovery)
+  - Admin and SuperAdmin users are automatically exempt from all rate limits
+  - Rate limits are applied per user (authenticated) or per IP address (unauthenticated)
+  - Rate limit storage can be configured to use Redis or in-memory storage
+  - SuperAdmin users can reset all rate limits via the `/api/v1/rate-limit/reset` endpoint
 
 **Field Control Parameters:**
 - `include` - Adds additional fields to the response (e.g., related objects, computed fields)
@@ -528,6 +559,20 @@ GET /api/v1/execution?include=user_email
 - `DELETE /api/v1/user/<user_id>` - Delete user (Admin only)
 - `DELETE /api/v1/user/me` - Delete own account
 - `POST /api/v1/user/<user_id>/recover-password` - Password recovery
+
+### Rate Limiting Management
+- `POST /api/v1/rate-limit/reset` - Reset all rate limits (SuperAdmin only)
+  - **Access**: Restricted to users with `role: "SUPERADMIN"`
+  - **Purpose**: Clears all current rate limit counters across the system
+  - **Use Cases**: 
+    - Emergency situations where legitimate users are being rate limited
+    - Testing and development environments
+    - After configuration changes to rate limiting policies
+  - **Response**: Returns success message when rate limits are successfully cleared
+  - **Error Responses**: 
+    - `403 Forbidden` - User does not have SuperAdmin privileges
+    - `401 Unauthorized` - Valid JWT token required
+    - `500 Internal Server Error` - Failed to reset rate limits
 
 #### User Filtering & Sorting (Admin Only)
 

@@ -306,9 +306,11 @@ class UserService:
         logger.info("[SERVICE]: Authenticate user " + email)
         user = User.query.filter_by(email=email).first()
         if not user:
-            raise UserNotFound(message="User with email " + email + " does not exist")
+            logger.debug(f"[SERVICE]: User with email {email} not found")
+            return None
         if not user.check_password(password):
-            raise AuthError(message="User or password not valid")
+            logger.debug(f"[SERVICE]: Invalid password for user {email}")
+            return None
         #  to serialize id with jwt
         user.id = user.id.hex
         return user

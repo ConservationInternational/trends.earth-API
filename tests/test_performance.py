@@ -15,17 +15,22 @@ class TestPerformance:
 
     @pytest.mark.slow
     def test_endpoint_response_times(
-        self, client, auth_headers_user, auth_headers_admin, regular_user, app
+        self,
+        client_no_rate_limiting,
+        auth_headers_user_no_rate_limiting,
+        auth_headers_admin_no_rate_limiting,
+        regular_user,
+        app_no_rate_limiting,
     ):
         """Test that endpoints respond within reasonable time limits"""
 
         # Skip the auth endpoint test since it's causing issues with password verification
         # The other endpoints use working auth headers from fixtures
         endpoints_to_test = [
-            ("/api/v1/user/me", "GET", None, auth_headers_user, 1.0),
-            ("/api/v1/script", "GET", None, auth_headers_user, 2.0),
-            ("/api/v1/execution", "GET", None, auth_headers_user, 3.0),
-            ("/api/v1/status", "GET", None, auth_headers_admin, 2.0),
+            ("/api/v1/user/me", "GET", None, auth_headers_user_no_rate_limiting, 1.0),
+            ("/api/v1/script", "GET", None, auth_headers_user_no_rate_limiting, 2.0),
+            ("/api/v1/execution", "GET", None, auth_headers_user_no_rate_limiting, 3.0),
+            ("/api/v1/status", "GET", None, auth_headers_admin_no_rate_limiting, 2.0),
         ]
 
         slow_endpoints = []
@@ -34,9 +39,11 @@ class TestPerformance:
             start_time = time.time()
 
             if method == "GET":
-                response = client.get(endpoint, headers=headers)
+                response = client_no_rate_limiting.get(endpoint, headers=headers)
             elif method == "POST":
-                response = client.post(endpoint, json=payload, headers=headers)
+                response = client_no_rate_limiting.post(
+                    endpoint, json=payload, headers=headers
+                )
 
             elapsed_time = time.time() - start_time
 
@@ -61,7 +68,9 @@ class TestPerformance:
             pytest.skip(f"Slow endpoints detected (performance issue):\n{slow_info}")
 
     @pytest.mark.slow
-    def test_concurrent_user_requests(self, client, auth_headers_user):
+    def test_concurrent_user_requests(
+        self, client_no_rate_limiting, auth_headers_user_no_rate_limiting
+    ):
         """Test API performance under concurrent user requests"""
 
         results = defaultdict(list)
@@ -70,7 +79,9 @@ class TestPerformance:
         def make_request(request_id):
             start_time = time.time()
             try:
-                response = client.get("/api/v1/user/me", headers=auth_headers_user)
+                response = client_no_rate_limiting.get(
+                    "/api/v1/user/me", headers=auth_headers_user_no_rate_limiting
+                )
                 elapsed = time.time() - start_time
 
                 with results_lock:
@@ -106,7 +117,9 @@ class TestPerformance:
             )
 
     @pytest.mark.slow
-    def test_database_query_performance(self, client, auth_headers_admin):
+    def test_database_query_performance(
+        self, client_no_rate_limiting, auth_headers_admin_no_rate_limiting
+    ):
         """Test database query performance with filtering and sorting"""
 
         # Test execution endpoint with various filters and sorts
@@ -123,7 +136,9 @@ class TestPerformance:
 
         for query in test_queries:
             start_time = time.time()
-            response = client.get(query, headers=auth_headers_admin)
+            response = client_no_rate_limiting.get(
+                query, headers=auth_headers_admin_no_rate_limiting
+            )
             elapsed = time.time() - start_time
 
             # Should respond within reasonable time
@@ -140,7 +155,9 @@ class TestPerformance:
             pytest.skip(f"Slow database queries detected:\n{slow_info}")
 
     @pytest.mark.slow
-    def test_memory_usage_stability(self, client, auth_headers_user):
+    def test_memory_usage_stability(
+        self, client_no_rate_limiting, auth_headers_user_no_rate_limiting
+    ):
         """Test that repeated requests don't cause memory leaks"""
         import os
 
@@ -151,7 +168,9 @@ class TestPerformance:
 
         # Make 100 requests
         for i in range(100):
-            response = client.get("/api/v1/user/me", headers=auth_headers_user)
+            response = client_no_rate_limiting.get(
+                "/api/v1/user/me", headers=auth_headers_user_no_rate_limiting
+            )
             assert response.status_code in [200, 401]
 
             # Check memory every 20 requests
@@ -179,14 +198,18 @@ class TestLoadTesting:
     """Load testing for API endpoints"""
 
     @pytest.mark.slow
-    def test_authentication_load(self, client, auth_headers_user):
+    def test_authentication_load(
+        self, client_no_rate_limiting, auth_headers_user_no_rate_limiting
+    ):
         """Test authenticated endpoint load instead of auth endpoint"""
 
         results = {"success": 0, "failures": 0, "errors": []}
 
         def make_authenticated_request():
             try:
-                response = client.get("/api/v1/user/me", headers=auth_headers_user)
+                response = client_no_rate_limiting.get(
+                    "/api/v1/user/me", headers=auth_headers_user_no_rate_limiting
+                )
                 if response.status_code == 200:
                     results["success"] += 1
                 else:
@@ -211,7 +234,9 @@ class TestLoadTesting:
         )
 
     @pytest.mark.slow
-    def test_api_throughput(self, client, auth_headers_user):
+    def test_api_throughput(
+        self, client_no_rate_limiting, auth_headers_user_no_rate_limiting
+    ):
         """Test API throughput with multiple endpoints"""
 
         endpoints = [
@@ -231,7 +256,9 @@ class TestLoadTesting:
             for endpoint in endpoints:
                 request_start = time.time()
                 try:
-                    response = client.get(endpoint, headers=auth_headers_user)
+                    response = client_no_rate_limiting.get(
+                        endpoint, headers=auth_headers_user_no_rate_limiting
+                    )
                     request_time = time.time() - request_start
 
                     total_requests += 1

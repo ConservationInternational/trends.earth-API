@@ -18,7 +18,81 @@ from gefapi import db
 from gefapi.models import Execution, Script, StatusLog, User
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
+def app_no_rate_limiting():
+    """Create application for testing without rate limiting"""
+    # Use environment DATABASE_URL if available (for CI), otherwise use SQLite
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        # Create temporary database file for local testing
+        db_fd, db_path = tempfile.mkstemp()
+        database_url = f"sqlite:///{db_path}"
+    else:
+        db_fd = None
+        db_path = None
+
+    # Test configuration without rate limiting
+    test_config = {
+        "TESTING": True,
+        "SQLALCHEMY_DATABASE_URI": database_url,
+        "SQLALCHEMY_TRACK_MODIFICATIONS": False,
+        "JWT_SECRET_KEY": "test-secret-key",
+        "WTF_CSRF_ENABLED": False,
+        "REDIS_URL": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
+        "result_backend": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
+        "broker_url": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
+        "CELERY_ALWAYS_EAGER": True,
+        # Disable rate limiting for performance tests
+        "RATE_LIMITING": {
+            "ENABLED": False,
+        },
+    }
+
+    app = flask_app
+
+    with app.app_context():
+        # Temporarily store original config
+        original_config = {}
+        for key, value in test_config.items():
+            if key in app.config:
+                original_config[key] = app.config[key]
+
+        # Apply test config
+        app.config.update(test_config)
+
+        # Disable Flask-Limiter for performance tests
+        from gefapi import limiter
+
+        original_limiter_enabled = limiter.enabled
+        limiter.enabled = False
+
+        try:
+            db.create_all()
+            yield app
+        finally:
+            # Close any remaining connections
+            try:
+                db.session.close()
+                db.engine.dispose()
+            except Exception:
+                pass
+
+            # Restore original limiter state
+            limiter.enabled = original_limiter_enabled
+
+            # Restore original state
+            for key in test_config:
+                if key in original_config:
+                    app.config[key] = original_config[key]
+                elif key in app.config:
+                    del app.config[key]
+
+    if db_fd is not None and db_path is not None:
+        os.close(db_fd)
+        os.unlink(db_path)
+
+
+@pytest.fixture(scope="function")
 def app():
     """Create application for testing"""
     # Use environment DATABASE_URL if available (for CI), otherwise use SQLite
@@ -42,20 +116,62 @@ def app():
         "result_backend": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
         "broker_url": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
         "CELERY_ALWAYS_EAGER": True,
+        # Rate limiting configuration for testing
+        "RATE_LIMITING": {
+            "ENABLED": True,
+            # Use in-memory storage for testing instead of Redis
+            "STORAGE_URI": "memory://",
+            "DEFAULT_LIMITS": ["100 per hour", "10 per minute"],
+            "AUTH_LIMITS": [
+                "2 per minute",
+                "5 per hour",
+            ],  # Very low limits for testing
+            "PASSWORD_RESET_LIMITS": ["1 per minute"],  # Very low limit for testing
+            "API_LIMITS": ["50 per hour", "5 per minute"],
+            "USER_CREATION_LIMITS": ["2 per minute"],  # Very low limit for testing
+            "EXECUTION_RUN_LIMITS": ["3 per minute", "10 per hour"],
+        },
     }
 
     app = flask_app
-    app.config.update(test_config)
 
     with app.app_context():
-        db.create_all()
-        yield app
-        # Close any remaining connections instead of dropping all tables
+        # Temporarily store original config
+        original_config = {}
+        for key, value in test_config.items():
+            if key in app.config:
+                original_config[key] = app.config[key]
+
+        # Apply test config
+        app.config.update(test_config)
+
+        # Ensure Flask-Limiter is enabled for rate limiting tests
+        from gefapi import limiter
+
+        original_limiter_enabled = limiter.enabled
+        limiter.enabled = True
+
         try:
-            db.session.close()
-            db.engine.dispose()
-        except Exception:
-            pass
+            db.create_all()
+            yield app
+        finally:
+            # Close any remaining connections
+            try:
+                db.session.close()
+                db.engine.dispose()
+            except Exception:
+                pass
+
+            # Restore original limiter state
+            limiter.enabled = original_limiter_enabled
+
+            # Restore original state
+            for key in test_config:
+                if key in original_config:
+                    app.config[key] = original_config[key]
+                elif key in app.config:
+                    del app.config[key]
+
     if db_fd is not None and db_path is not None:
         os.close(db_fd)
         os.unlink(db_path)
@@ -348,6 +464,105 @@ def auth_headers_superadmin(superadmin_token):
 def auth_headers_gef(gef_token):
     """Get authorization headers for GEF user"""
     return {"Authorization": f"Bearer {gef_token}"}
+
+
+@pytest.fixture
+def regular_user_no_rate_limiting(app_no_rate_limiting):
+    """Create regular user for testing without rate limiting"""
+    with app_no_rate_limiting.app_context():
+        # Check if user already exists
+        existing_user = User.query.filter_by(email="user@test.com").first()
+        if existing_user:
+            # Ensure the existing user has the correct role
+            existing_user.role = "USER"
+            db.session.add(existing_user)
+            db.session.commit()
+            db.session.refresh(existing_user)
+            return existing_user
+
+        user = User(
+            email="user@test.com",
+            password="user123",
+            name="Regular User",
+            role="USER",
+            country="Test Country",
+            institution="Test Institution",
+        )
+        db.session.add(user)
+        db.session.commit()
+        db.session.refresh(user)  # Ensure user is attached to session
+        return user
+
+
+@pytest.fixture
+def admin_user_no_rate_limiting(app_no_rate_limiting):
+    """Create admin user for testing without rate limiting"""
+    with app_no_rate_limiting.app_context():
+        # Check if user already exists
+        existing_user = User.query.filter_by(email="admin@test.com").first()
+        if existing_user:
+            return existing_user
+
+        user = User(
+            email="admin@test.com",
+            password="admin123",
+            name="Admin User",
+            role="ADMIN",
+            country="Test Country",
+            institution="Test Institution",
+        )
+        db.session.add(user)
+        db.session.commit()
+        db.session.refresh(user)  # Ensure user is attached to session
+        return user
+
+
+@pytest.fixture
+def client_no_rate_limiting(app_no_rate_limiting):
+    """Create test client without rate limiting"""
+    return app_no_rate_limiting.test_client()
+
+
+@pytest.fixture
+def auth_headers_user_no_rate_limiting(
+    app_no_rate_limiting, regular_user_no_rate_limiting
+):
+    """Get authorization headers for regular user without rate limiting"""
+    with app_no_rate_limiting.app_context():
+        # Re-query the user to ensure it's attached to the current session
+        user = User.query.filter_by(email="user@test.com").first()
+        if not user:
+            # If user doesn't exist, merge the fixture user to current session
+            user = db.session.merge(regular_user_no_rate_limiting)
+        token = create_access_token(identity=user.id)
+        return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def auth_headers_admin_no_rate_limiting(
+    app_no_rate_limiting, admin_user_no_rate_limiting
+):
+    """Get authorization headers for admin user without rate limiting"""
+    with app_no_rate_limiting.app_context():
+        # Re-query the user to ensure it's attached to the current session
+        user = User.query.filter_by(email="admin@test.com").first()
+        if not user:
+            # If user doesn't exist, merge the fixture user to current session
+            user = db.session.merge(admin_user_no_rate_limiting)
+        token = create_access_token(identity=user.id)
+        return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def reset_rate_limits(client, superadmin_token):
+    """Reset rate limits by calling the reset endpoint."""
+
+    def _reset():
+        headers = {"Authorization": f"Bearer {superadmin_token}"}
+        response = client.post("/api/v1/rate-limit/reset", headers=headers)
+        assert response.status_code == 200
+
+    return _reset
 
 
 @pytest.fixture
