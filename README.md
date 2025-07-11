@@ -41,13 +41,19 @@ This project belongs to the Trends.Earth project and implements the API used by 
    cd trends.earth-api
    ```
 
-2. **Build and start services:**
+2. **Configure Docker security (Linux/WSL):**
+   ```bash
+   # Set up secure Docker access for non-root containers
+   ./scripts/setup-docker-security.sh
+   ```
+
+3. **Build and start services:**
    ```bash
    docker compose -f docker-compose.staging.yml build
    docker compose -f docker-compose.staging.yml up
    ```
 
-3. **Stop services:**
+4. **Stop services:**
    ```bash
    docker compose -f docker-compose.staging.yml down
    ```
@@ -984,8 +990,18 @@ The production Docker image:
 - Based on `python:3.11-alpine` for minimal size and security
 - Uses Poetry for dependency management (virtualenvs disabled in container)
 - Includes all application code and migrations
-- Runs as `gef-api` user for security (currently disabled, runs as root)
+- **Runs as `gef-api` user for security** (non-root user with Docker socket access)
 - Supports multiple entry points via `entrypoint.sh`
+
+#### Security Configuration
+
+**Docker Socket Access**: The application requires Docker socket access for script execution. Security is maintained by:
+- Running containers as non-root `gef-api` user
+- Adding user to `docker` group for socket access only
+- Using `group_add` in docker-compose for proper permissions
+- No root privileges for the main application process
+
+**Setup**: Run `./scripts/setup-docker-security.sh` to automatically configure Docker group permissions.
 
 #### Service Orchestration
 

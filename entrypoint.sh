@@ -1,9 +1,25 @@
 #!/bin/bash
 set -e
 
-# Only chown if the file exists (prevents errors if not mounted)
+# Handle Docker socket permissions for non-root user
+# This approach is more secure than running the entire container as root
 if [ -e /tmp/docker.sock ]; then
-    chown $USER:$USER /tmp/docker.sock
+    # Get the group ID of the Docker socket
+    DOCKER_SOCK_GID=$(stat -c %g /tmp/docker.sock 2>/dev/null || echo "999")
+    
+    # Check if we need to adjust group permissions
+    if ! groups | grep -q docker; then
+        echo "Warning: User not in docker group, Docker operations may fail"
+        echo "Docker socket GID: $DOCKER_SOCK_GID"
+        echo "Current user groups: $(groups)"
+    fi
+    
+    # Ensure the socket is readable by the docker group
+    if [ -w /tmp/docker.sock ] || [ "$(stat -c %G /tmp/docker.sock 2>/dev/null)" = "docker" ]; then
+        echo "Docker socket accessible to user"
+    else
+        echo "Warning: Docker socket may not be accessible - check host docker group setup"
+    fi
 fi
 
 case "$1" in

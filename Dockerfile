@@ -10,6 +10,9 @@ RUN apk update && apk upgrade && \
 
 RUN addgroup $USER && adduser -s /bin/bash -D -G $USER $USER
 
+# Add user to docker group for Docker socket access
+RUN addgroup docker && adduser $USER docker
+
 # Install Poetry
 RUN pip install --upgrade pip && pip install poetry
 
@@ -31,9 +34,9 @@ COPY run_db_migrations.py ./run_db_migrations.py
 COPY ./migrations ./migrations
 COPY ./tests ./tests
 COPY pytest.ini .
-RUN chown $USER:$USER /opt/$NAME
+RUN chown -R $USER:$USER /opt/$NAME
 
-USER root
-#USER $USER
+# Switch to non-root user for security
+USER $USER
 
 ENTRYPOINT ["./entrypoint.sh"]

@@ -76,6 +76,9 @@ services:
       - ./gefapi:/opt/gef-api/gefapi
       - ./migrations:/opt/gef-api/migrations
       - /var/run/docker.sock:/tmp/docker.sock
+    # Add user to host docker group for socket access
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
       - db
