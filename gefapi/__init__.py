@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 
+from dotenv import load_dotenv
 from flask import Flask, got_request_exception, jsonify, request
 from flask_compress import Compress
 from flask_cors import CORS
@@ -25,6 +26,9 @@ from gefapi.utils.rate_limiting import (
     is_rate_limiting_disabled,
     rate_limit_error_handler,
 )
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Flask App
 app = Flask(__name__)
@@ -61,22 +65,38 @@ app.config["SQLALCHEMY_DATABASE_URI"] = SETTINGS.get("SQLALCHEMY_DATABASE_URI")
 app.config["UPLOAD_FOLDER"] = SETTINGS.get("UPLOAD_FOLDER")
 
 # Ensure JWT_SECRET_KEY is set with proper fallback
-jwt_secret = SETTINGS.get("JWT_SECRET_KEY") or SETTINGS.get("SECRET_KEY") or os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY")
+jwt_secret = (
+    SETTINGS.get("JWT_SECRET_KEY")
+    or SETTINGS.get("SECRET_KEY")
+    or os.getenv("JWT_SECRET_KEY")
+    or os.getenv("SECRET_KEY")
+)
 
 # Also check for empty/whitespace-only values
 if jwt_secret:
     jwt_secret = jwt_secret.strip()
-    
+
 if not jwt_secret:
     # Log what we found for debugging
     print(f"DEBUG: SETTINGS JWT_SECRET_KEY: '{SETTINGS.get('JWT_SECRET_KEY')}'")
     print(f"DEBUG: SETTINGS SECRET_KEY: '{SETTINGS.get('SECRET_KEY')}'")
     print(f"DEBUG: ENV JWT_SECRET_KEY: '{os.getenv('JWT_SECRET_KEY')}'")
     print(f"DEBUG: ENV SECRET_KEY: '{os.getenv('SECRET_KEY')}'")
-    raise RuntimeError("JWT_SECRET_KEY or SECRET_KEY must be set to a non-empty value in environment variables")
+    print("DEBUG: All environment variables starting with SECRET:")
+    for key, value in os.environ.items():
+        if "SECRET" in key.upper():
+            display_value = f"{value[:20]}..." if len(str(value)) > 20 else value
+            print(f"  {key}={display_value}")
+    raise RuntimeError(
+        "JWT_SECRET_KEY or SECRET_KEY must be set to a non-empty value "
+        "in environment variables"
+    )
 
 app.config["JWT_SECRET_KEY"] = jwt_secret
-print(f"JWT_SECRET_KEY configured successfully: {jwt_secret[:10]}..." if jwt_secret else "None")
+if jwt_secret:
+    print(f"JWT_SECRET_KEY configured successfully: {jwt_secret[:10]}...")
+else:
+    print("JWT_SECRET_KEY configured successfully: None")
 
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = SETTINGS.get("JWT_ACCESS_TOKEN_EXPIRES")
 app.config["JWT_TOKEN_LOCATION"] = SETTINGS.get("JWT_TOKEN_LOCATION")
@@ -140,7 +160,10 @@ def health_check():
 
 # Handle authentication via JWT
 # Verify JWT config is still set before initializing JWTManager
-print(f"JWT_SECRET_KEY before JWTManager init: {app.config.get('JWT_SECRET_KEY', 'NOT SET')[:10] if app.config.get('JWT_SECRET_KEY') else 'NOT SET'}...")
+key_to_print = app.config.get("JWT_SECRET_KEY", "NOT SET")
+if key_to_print and key_to_print != "NOT SET":
+    key_to_print = f"{key_to_print[:10]}..."
+print(f"JWT_SECRET_KEY before JWTManager init: {key_to_print}")
 jwt = JWTManager(app)
 
 
