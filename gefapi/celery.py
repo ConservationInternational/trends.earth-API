@@ -41,6 +41,10 @@ def make_celery(app):
             "task": "gefapi.tasks.execution_cleanup.cleanup_old_failed_executions",
             "schedule": 86400.0,  # Every day (86400 seconds)
         },
+        "cleanup-expired-refresh-tokens": {
+            "task": "gefapi.tasks.refresh_token_cleanup.cleanup_expired_refresh_tokens",
+            "schedule": 86400.0,  # Every day (86400 seconds)
+        },
     }
     celery.conf.timezone = "UTC"
 

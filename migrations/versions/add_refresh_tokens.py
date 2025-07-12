@@ -1,7 +1,7 @@
 """Add refresh tokens table
 
 Revision ID: add_refresh_tokens
-Revises: [previous_revision]
+Revises: g23bc4de5678
 Create Date: 2024-01-01 00:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers
 revision = 'add_refresh_tokens'
-down_revision = None  # Replace with actual previous revision
+down_revision = 'g23bc4de5678'
 branch_labels = None
 depends_on = None
 
