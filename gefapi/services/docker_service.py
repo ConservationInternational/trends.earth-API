@@ -1,132 +1,187 @@
 """DOCKER SERVICE"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import gzip
+import json
 import logging
 import os
+from pathlib import Path
+from shutil import copy
 import tarfile
 import tempfile
-from shutil import copy
 
 import docker
-from gefapi import celery
-from gefapi.models.model import db
+import rollbar
+
+from gefapi import celery as celery_app  # Rename to avoid mypy confusion
+from gefapi import db
 from gefapi.config import SETTINGS
-from gefapi.models import Execution
-from gefapi.models import Script
-from gefapi.models import ScriptLog
-from gefapi.s3 import get_script_from_s3
+from gefapi.models import Execution, Script, ScriptLog
+from gefapi.s3 import get_script_from_s3, push_params_to_s3
 
-from celery import task
+REGISTRY_URL = SETTINGS.get("REGISTRY_URL")
+DOCKER_HOST = SETTINGS.get("DOCKER_HOST")
 
-REGISTRY_URL = SETTINGS.get('REGISTRY_URL')
-DOCKER_URL = SETTINGS.get('DOCKER_URL')
+logger = logging.getLogger()
 
-api_client = docker.APIClient(base_url=DOCKER_URL)
-docker_client = docker.DockerClient(base_url=DOCKER_URL)
+# Initialize docker client with error handling
+docker_client = None
+try:
+    if DOCKER_HOST:
+        docker_client = docker.DockerClient(base_url=DOCKER_HOST)
+        # Test the connection
+        docker_client.ping()
+    else:
+        logger.warning(
+            "DOCKER_HOST not configured, Docker functionality will be disabled"
+        )
+except Exception as e:
+    logger.warning(
+        f"Failed to connect to Docker: {e}. Docker functionality will be disabled"
+    )
+    docker_client = None
 
 
-@task()
+def get_docker_client():
+    """Get docker client with lazy initialization and error handling"""
+    global docker_client
+    if docker_client is None:
+        try:
+            if DOCKER_HOST:
+                docker_client = docker.DockerClient(base_url=DOCKER_HOST)
+                docker_client.ping()
+            else:
+                raise Exception("DOCKER_HOST not configured")
+        except Exception as e:
+            logger.error(f"Failed to connect to Docker: {e}")
+            # In development environment, we might not always have Docker available
+            if SETTINGS.get("ENVIRONMENT") == "dev":
+                logger.warning(
+                    "Running in development mode - Docker functionality disabled"
+                )
+                return None
+            raise
+    return docker_client
+
+
+@celery_app.task()
 def docker_build(script_id):
-    logging.debug('Obtaining script with id %s' % (script_id))
+    """Creates the execution for a script in the database"""
+    logger.info(f"Building Docker image for script with id {script_id}")
+
+    # Check if Docker is available
+    try:
+        client = get_docker_client()
+        if client is None:
+            logger.warning(
+                f"Docker not available, skipping build for script {script_id}"
+            )
+            return
+    except Exception as e:
+        logger.error(f"Docker not available for build: {e}")
+        return
+
+    logger.debug(f"Obtaining script with id {script_id}")
     script = Script.query.get(script_id)
-    script_file = script.slug + '.tar.gz'
+    script_file = script.slug + ".tar.gz"
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        logging.info('[THREAD] Getting %s from S3', script_file)
-        temp_file_path = os.path.join(temp_dir, script.slug + '.tar.gz')
+        logger.info("[THREAD] Getting %s from S3", script_file)
+        temp_file_path = os.path.join(temp_dir, script.slug + ".tar.gz")
         get_script_from_s3(script_file, temp_file_path)
-        extract_path = temp_dir + '/' + script.slug
-        with tarfile.open(name=temp_file_path, mode='r:gz') as tar:
-            def is_within_directory(directory, target):
-                
-                abs_directory = os.path.abspath(directory)
-                abs_target = os.path.abspath(target)
-            
-                prefix = os.path.commonprefix([abs_directory, abs_target])
-                
-                return prefix == abs_directory
-            
-            def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
-            
-                for member in tar.getmembers():
-                    member_path = os.path.join(path, member.name)
-                    if not is_within_directory(path, member_path):
-                        raise Exception("Attempted Path Traversal in Tar File")
-            
-                tar.extractall(path, members, numeric_owner=numeric_owner) 
-                
-            
-            safe_extract(tar, path=extract_path)
+        extract_path = temp_dir + "/" + script.slug
+        with tarfile.open(name=temp_file_path, mode="r:gz") as tar:
+            tar.extractall(path=extract_path)
 
-        logging.info('[THREAD] Running build')
-        script.status = 'BUILDING'
+        logger.info("[THREAD] Running build")
+        script.status = "BUILDING"
         db.session.add(script)
         db.session.commit()
-        logging.debug('Building...')
-        correct, log = DockerService.build(script_id=script_id,
-                                           path=extract_path,
-                                           tag_image=script.slug)
-        try:
-            docker_client.remove(image=script.slug)
-        except Exception:
-            logging.info('Error removing the image')
-        logging.debug('Changing status')
+        logger.debug("Building...")
+        correct, log = DockerService.build(
+            script_id=script_id,
+            path=extract_path,
+            tag_image=script.slug,
+            environment=script.environment,
+            environment_version=script.environment_version,
+        )
+        logger.debug("Changing status")
         script = Script.query.get(script_id)
-
         if correct:
-            logging.debug('Correct build')
-            script.status = 'SUCCESS'
+            logger.debug("Build successful")
+            script.status = "SUCCESS"
         else:
-            logging.debug('Fail build')
-            script.status = 'FAIL'
+            logger.debug("Build failed")
+            script.status = "FAIL"
         db.session.add(script)
         db.session.commit()
 
 
-@task()
-def docker_run(execution_id, image, environment):
-    logging.info('[THREAD] Running script')
-    logging.debug('Obtaining execution with id %s' % (execution_id))
+@celery_app.task()
+def docker_run(execution_id, image, environment, params):
+    logger.info(f"[THREAD] Running script with image {image}")
+
+    # Check if Docker is available
+    try:
+        client = get_docker_client()
+        if client is None:
+            logger.warning(
+                f"Docker not available, skipping run for execution {execution_id}"
+            )
+            return
+    except Exception as e:
+        logger.error(f"Docker not available for run: {e}")
+        return
+
+    logger.debug(f"Obtaining execution with id {execution_id}")
     execution = Execution.query.get(execution_id)
-    execution.status = 'READY'
+    execution.status = "READY"
     db.session.add(execution)
     db.session.commit()
-    logging.debug('Running...')
-    correct, log = DockerService.run(execution_id=execution_id,
-                                     image=image,
-                                     environment=environment)
-    logging.debug('Execution done')
-    logging.debug('Changing status')
+
+    logger.debug("Dumping parameters to json file...")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        params_gz_file = Path(temp_dir) / (str(execution_id) + ".json.gz")
+        json_str = json.dumps(params)
+        json_bytes = json_str.encode("utf-8")
+        with gzip.open(params_gz_file, "w") as fout:
+            fout.write(json_bytes)
+        push_params_to_s3(params_gz_file, params_gz_file.name)
+
+    logger.debug("Running...")
+    correct, error = DockerService.run(
+        execution_id=execution_id, image=image, environment=environment
+    )
+    logger.debug("Execution run - changing status")
     execution = Execution.query.get(execution_id)
 
     if not correct:
-        logging.debug('Failed')
-        execution.status = 'FAILED'
+        logger.debug("Execution failed")
+        execution.status = "FAILED"
+    else:
+        logger.debug("Execution ongoing")
     db.session.add(execution)
     db.session.commit()
 
 
-class DockerService(object):
+class DockerService:
     """Docker Service"""
+
     @staticmethod
     def save_build_log(script_id, line):
         """Save docker logs"""
         text = None
 
-        if 'stream' in line:
-            text = 'Build: ' + line['stream']
-        elif 'status' in line:
-            text = line['status']
+        if "stream" in line:
+            text = "Build: " + line["stream"]
+        elif "status" in line:
+            text = line["status"]
 
-            if 'id' in line:
-                text += ' ' + line['id']
+            if "id" in line:
+                text += " " + line["id"]
 
-        logging.debug(text)
+        logger.debug(text)
 
-        if text != None:
+        if text is not None:
             script_log = ScriptLog(text=text, script_id=script_id)
             db.session.add(script_log)
             db.session.commit()
@@ -134,97 +189,139 @@ class DockerService(object):
     @staticmethod
     def push(script_id, tag_image):
         """Push image to private docker registry"""
-        logging.debug('Pushing image with tag %s' % (tag_image))
+        logger.debug(f"Pushing image with tag {tag_image}")
         pushed = False
         try:
-            for line in api_client.push(REGISTRY_URL + '/' + tag_image,
-                                        stream=True,
-                                        decode=True):
+            client = get_docker_client()
+            for line in client.images.push(
+                REGISTRY_URL + "/" + tag_image, stream=True, decode=True
+            ):
                 DockerService.save_build_log(script_id=script_id, line=line)
-
-                if 'aux' in line and pushed:
-                    return True, line['aux']
-                elif 'status' in line and line['status'] == 'Pushed':
+                if "aux" in line and pushed:
+                    return True, line["aux"]
+                if "status" in line and line["status"] == "Pushed":
                     pushed = True
-        except Exception as error:
-            logging.error(error)
 
+            # If we get here, the build failed
+            raise Exception
+
+        except Exception as error:
+            logger.error(error)
+            rollbar.report_exc_info()
             return False, error
 
     @staticmethod
-    def build(script_id, path, tag_image):
+    def build(
+        script_id,
+        path,
+        tag_image,
+        environment,
+        environment_version,
+    ):
         """Build image and push to private docker registry"""
 
-        logging.info('Building new image in path %s with tag %s' %
-                     (path, tag_image))
+        logger.info(f"Building new image in path {path} with tag {tag_image}")
         try:
-            logging.debug('[SERVICE]: Copying dockerfile')
+            logger.debug("[SERVICE]: Copying dockerfile")
             dockerfile = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                'run/Dockerfile')
-            copy(dockerfile, os.path.join(path, 'Dockerfile'))
+                "run/Dockerfile",
+            )
+            copy(dockerfile, os.path.join(path, "Dockerfile"))
 
-            for line in api_client.build(path=path,
-                                         rm=True,
-                                         decode=True,
-                                         tag=REGISTRY_URL + '/' + tag_image,
-                                         forcerm=True,
-                                         pull=False,
-                                         nocache=True):
-                if 'errorDetail' in line:
-                    return False, line['errorDetail']
-                else:
-                    DockerService.save_build_log(script_id=script_id,
-                                                 line=line)
+            logger.debug(f"[SERVICE]: tag is {REGISTRY_URL + '/' + tag_image}")
+            client = get_docker_client()
+            image, logs = client.images.build(
+                path=path,
+                rm=True,
+                tag=REGISTRY_URL + "/" + tag_image,
+                forcerm=True,
+                pull=True,
+                nocache=True,
+                buildargs={
+                    "ENVIRONMENT": environment,
+                    "ENVIRONMENT_VERSION": environment_version,
+                },
+            )
+
+            for line in logs:
+                if "errorDetail" in line:
+                    return False, line["errorDetail"]
+                DockerService.save_build_log(script_id=script_id, line=line)
 
             return DockerService.push(script_id=script_id, tag_image=tag_image)
+
         except docker.errors.APIError as error:
-            logging.error(error)
+            logger.error(error)
 
             return False, error
-        except Exception as error:
-            logging.error(error)
 
+        except Exception as error:
+            logger.error(error)
+            rollbar.report_exc_info()
             return False, error
 
     @staticmethod
     def run(execution_id, image, environment):
         """Run image with environment"""
-        logging.info('Running %s image' % (image))
-        container = None
+        logger.info(f"Running {image} image")
         try:
-            environment['ENV'] = 'prod'
-            command = './entrypoint.sh'
+            environment["ENV"] = "prod"
 
-            if os.getenv('ENVIRONMENT') != 'dev':
-                env = [k + '=' + v for k, v in environment.items()]
-                logging.info(env)
-                container = docker_client.services.create(
-                    image=REGISTRY_URL + '/' + image,
-                    command=command,
+            if os.getenv("ENVIRONMENT") not in ["dev"]:
+                logger.info(
+                    "Creating service (running in "
+                    f"{os.getenv('ENVIRONMENT')} environment, with image "
+                    f"{REGISTRY_URL}/{image}, as execution "
+                    f"execution-{str(execution_id)})",
+                )
+
+                # env = [k + "=" + v for str(k), str(v) in environment.items()]
+                env = []
+                for item in environment.items():
+                    env.append(f"{item[0]}={item[1]}")
+
+                script = Script.query.get(Execution.query.get(execution_id).script_id)
+
+                client = get_docker_client()
+                client.services.create(
+                    image=f"{REGISTRY_URL}/{image}",
+                    command="./entrypoint.sh",
                     env=env,
-                    name='execution-' + str(execution_id),
-                    resources=docker.types.Resources(cpu_reservation=int(1e8), cpu_limit=int(
-                        5e8), mem_reservation=int(1e8), mem_limit=int(2e9)),  # 1e8 is equivalent to 10% of a CPU
+                    name="execution-" + str(execution_id),
+                    resources=docker.types.Resources(
+                        cpu_reservation=script.cpu_reservation,
+                        cpu_limit=script.cpu_limit,
+                        mem_reservation=script.memory_reservation,
+                        mem_limit=script.memory_limit,
+                    ),
                     restart_policy=docker.types.RestartPolicy(
-                        condition='on-failure',
-                        delay=10,
-                        max_attempts=2,
-                        window=0))
+                        condition="on-failure", delay=10, max_attempts=2, window=0
+                    ),
+                )
             else:
-                container = docker_client.containers.run(
-                    image=REGISTRY_URL + '/' + image,
-                    command=command,
+                logger.info(
+                    "Creating container (running in "
+                    f"{os.getenv('ENVIRONMENT')} environment, with image "
+                    f"{REGISTRY_URL}/{image}, as execution "
+                    f"execution-{str(execution_id)})",
+                )
+                client = get_docker_client()
+                client.containers.run(
+                    image=f"{REGISTRY_URL}/{image}",
+                    command="./entrypoint.sh",
                     environment=environment,
                     detach=True,
-                    name='execution-' + str(execution_id))
+                    name="execution-" + str(execution_id),
+                    remove=True,
+                )
         except docker.errors.ImageNotFound as error:
-            logging.error('Image not found', error)
+            logger.error("Image not found", error)
 
             return False, error
         except Exception as error:
-            logging.error(error)
-
+            logger.error(error)
+            rollbar.report_exc_info()
             return False, error
 
         return True, None

@@ -1,0 +1,80 @@
+services:
+  migrate:
+    image: 172.40.1.52:5000/trendsearth-api-staging
+    command: migrate
+    environment:
+      PORT: 3000
+    env_file:
+      - staging.env
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+
+  manager:
+    image: 172.40.1.52:5000/trendsearth-api-staging
+    command: start
+    environment:
+      PORT: 3000
+    ports:
+      - target: 3000
+        published: 3002
+    env_file:
+      - staging.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+  worker:
+    image: 172.40.1.52:5000/trendsearth-api-staging
+    command: worker
+    environment:
+      PORT: 3000
+    env_file:
+      - prod2.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+  beat:
+    image: 172.40.1.52:5000/trendsearth-api-staging
+    command: beat
+    environment:
+      PORT: 3000
+    env_file:
+      - staging.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+  redis:
+    image: redis
+    ports:
+      - target: 6379
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+networks:
+  backend:
+    driver: overlay
+    ipam:
+      config:
+        - subnet: 10.1.0.0/16

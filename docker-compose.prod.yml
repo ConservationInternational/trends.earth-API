@@ -1,0 +1,114 @@
+services:
+  migrate:
+    image: 172.40.1.52:5000/trendsearth-api
+    build: .
+    command: migrate
+    environment:
+      PORT: 3000
+    env_file:
+      - prod.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    # Add user to host docker group for socket access
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+
+  manager:
+    image: 172.40.1.52:5000/trendsearth-api
+    build: .
+    command: start
+    environment:
+      PORT: 3000
+    ports:
+      - target: 3000
+        published: 3001
+    env_file:
+      - prod.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    # Add user to host docker group for socket access
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
+
+  worker:
+    image: 172.40.1.52:5000/trendsearth-api
+    build: .
+    command: worker
+    environment:
+      PORT: 3000
+    env_file:
+      - prod.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    # Add user to host docker group for socket access
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
+
+  beat:
+    image: 172.40.1.52:5000/trendsearth-api
+    build: .
+    command: beat
+    environment:
+      PORT: 3000
+    env_file:
+      - prod.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    # Add user to host docker group for socket access
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
+
+  redis:
+    image: redis
+    ports:
+      - target: 6379
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 100M
+
+networks:
+  backend:
+    driver: overlay
+    ipam:
+      config:
+        - subnet: 10.10.0.0/16

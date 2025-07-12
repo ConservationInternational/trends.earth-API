@@ -1,0 +1,243 @@
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "trends-earth-api"
+version = "1.0.0"
+description = "API for managing Scripts, Users, and Executions in Trends.Earth"
+authors = ["Alex Zvoleff <azvoleff@conservation.org>"]
+readme = "README.md"
+packages = [{ include = "gefapi" }]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.12"
+flask = "*"
+flask-cors = "*"
+flask-compress = "*"
+flask-jwt-extended = "*"
+flask-limiter = "*"
+flask-migrate = "*"
+flask-sqlalchemy = "*"
+psycopg2-binary = "*"
+celery = "*"
+redis = "*"
+rollbar = "*"
+sqlalchemy = "*"
+werkzeug = "*"
+psutil = "*"
+boto3 = "*"
+docker = "*"
+sparkpost = "*"
+bleach = "*"
+python-slugify = "*"
+gunicorn = "*"
+gevent = "*"
+python-dotenv = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+pytest-cov = "*"
+pytest-timeout = "*"
+pytest-html = "*"
+ruff = "*"
+mypy = "*"
+types-redis = "*"
+flask-restx = "*"
+apispec = { version = "*", extras = ["flask"] }
+marshmallow = "*"
+
+[tool.setuptools]
+packages = ["gefapi"]
+
+[tool.ruff]
+# Same as Black's default line length
+line-length = 88
+indent-width = 4
+
+# Assume Python 3.9+ (matching your test matrix)
+target-version = "py39"
+
+# Exclude files/directories from linting
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "migrations/versions/*.py",  # Skip auto-generated migration files
+]
+
+[tool.ruff.lint]
+# Enable additional rules beyond the default
+extend-select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # Pyflakes
+    "UP", # pyupgrade
+    "B",  # flake8-bugbear
+    "SIM", # flake8-simplify
+    "I",  # isort
+    "N",  # pep8-naming
+    "S",  # flake8-bandit (security)
+    "C4", # flake8-comprehensions
+    "PIE", # flake8-pie
+    "T20", # flake8-print (discourage print statements)
+    "RET", # flake8-return
+    "TCH", # flake8-type-checking
+]
+
+# Disable specific rules that might conflict with Flask/API patterns
+ignore = [
+    "S101",  # Use of assert (common in tests)
+    "S104",  # Binding to all interfaces (0.0.0.0 in main.py)
+    "S105",  # Possible hardcoded password (often false positives)
+    "S106",  # Possible hardcoded password (often false positives)
+    "S107",  # Possible hardcoded password (often false positives)
+    "S602",  # subprocess call with shell=True (used in utility scripts)
+    "T201",  # print found (allow for debugging)
+    "B008",  # Do not perform function calls in argument defaults (Flask patterns)
+    "N818",  # Exception name should be named with an Error suffix
+    "RET504", # Unnecessary variable assignment before `return` statement
+    "SIM108", # Use ternary operator instead of if-else block (readability preference)
+]
+
+[tool.ruff.format]
+# Use double quotes for strings (consistent with Black)
+quote-style = "double"
+
+# Indent with spaces
+indent-style = "space"
+
+# Respect magic trailing commas
+skip-magic-trailing-comma = false
+
+# Automatically detect line endings
+line-ending = "auto"
+
+[tool.ruff.lint.isort]
+# Import sorting configuration (replacing isort)
+known-first-party = ["gefapi"]
+force-sort-within-sections = true
+split-on-trailing-comma = true
+
+# Group imports
+section-order = [
+    "future",
+    "standard-library", 
+    "third-party",
+    "first-party",
+    "local-folder"
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Allow specific ignores for test files
+"tests/*.py" = [
+    "S101",  # Use of assert (expected in tests)
+    "S105",  # Hardcoded password (test fixtures)
+    "S106",  # Hardcoded password (test fixtures) 
+    "S107",  # Hardcoded password (test fixtures)
+    "S110",  # try-except-pass (acceptable in tests)
+    "T201",  # print statements (debugging in tests)
+    "B017",  # assertRaises(Exception) (acceptable in tests)
+    "B007",  # Loop variable not used (acceptable in tests)
+]
+
+# Allow print statements and specific patterns in debug scripts
+"debug_*.py" = [
+    "T201",  # print statements
+    "S101",  # assert statements
+    "E402",  # Module import not at top (setup scripts)
+    "E501",  # Line too long (utility script output)
+    "SIM118", # Use key in dict (readability in debug)
+]
+
+# Utility scripts can have relaxed rules
+"*_code.py" = [
+    "E501",  # Line too long
+    "T201",  # print statements
+]
+
+# Test utility scripts
+"test_*.py" = [
+    "T201",  # print statements
+    "S101",  # assert statements
+    "E402",  # Module import not at top (setup scripts)
+    "E501",  # Line too long (utility script output)
+    "SIM118", # Use key in dict (readability in debug)
+    "PIE790", # Unnecessary pass statement
+    "RET505", # Unnecessary else after return
+    "F541",   # f-string without placeholders
+]
+
+# Script files
+"generate_*.py" = [
+    "E501",  # Line too long (generated content)
+    "T201",  # print statements
+]
+
+# Allow specific patterns in migration files
+"migrations/versions/*.py" = [
+    "E501",  # Line too long (auto-generated content)
+    "F401",  # Unused imports (auto-generated)
+]
+
+# Config files can have different patterns
+"gefapi/config/*.py" = [
+    "S105",  # Hardcoded password (config values)
+    "S106",  # Hardcoded password (config values)
+    "S108",  # Hardcoded temporary file (config values)
+]
+
+# Services can have specific patterns
+"gefapi/services/*.py" = [
+    "S311",  # Standard pseudo-random (acceptable for non-crypto use)
+    "S202",  # tarfile.extractall (controlled usage)
+]
+
+# Allow specific patterns in services/__init__.py for circular dependency handling
+"gefapi/services/__init__.py" = [
+    "E402",  # Module import not at top (intentional for setup)
+]
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+
+[tool.ruff.lint.mccabe]
+# Maximum complexity
+max-complexity = 10
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+strict_optional = false
+
+# Exclude specific paths
+exclude = [
+    "migrations/",
+    "build/",
+    "dist/",
+]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true

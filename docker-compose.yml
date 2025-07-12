@@ -1,65 +1,55 @@
-version: '3.8'
-
 services:
   manager:
-    image: 172.40.1.52:5000/trendsearth_api
-    environment:
-      PORT: 3000
-    ports:
-      - target: 3000
-        published: 3000
-        protocol: tcp
-        mode: ingress
-    env_file:
-      - prod.env
+    image: trendsearth-api
+    build: .
     command: start
-    depends_on:
-      - redis
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
     deploy:
       placement:
         constraints: [node.role == manager]
-      restart_policy:
-        condition: any
       resources:
         reservations:
-          cpus: '0.25'
+          cpus: "0.25"
           memory: 400M
 
   worker:
-    image: 172.40.1.52:5000/trendsearth_api
-    env_file:
-      - prod.env
-    environment:
-      PORT: 3000
-      FLASK_APP: main.py
+    image: trendsearth-api
+    build: .
     command: worker
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
-    depends_on:
-      - redis
+    networks:
+      - backend
     deploy:
-      restart_policy:
-        condition: any
       placement:
         constraints: [node.role == manager]
       resources:
         reservations:
-          cpus: '0.25'
+          cpus: "0.25"
+          memory: 400M
+          
+  beat:
+    image: 172.40.1.52:5000/trendsearth-api
+    build: .
+    command: beat
+    environment:
+      PORT: 3000
+    env_file:
+      - prod.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
           memory: 400M
 
-  redis:
-    image: redis
-    ports:
-      - target: 6379
-        published: 6379
-        protocol: tcp
-        mode: ingress
-    deploy:
-      placement:
-        constraints: [node.role == manager]
-      restart_policy:
-        condition: any
-      resources:
-        reservations:
-          cpus: '0.25'
-          memory: 100M
+networks:
+  backend:

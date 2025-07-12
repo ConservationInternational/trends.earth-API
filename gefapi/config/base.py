@@ -1,56 +1,112 @@
-import os
 from datetime import timedelta
+import os
 
 SETTINGS = {
-    'logging': {
-        'level': 'DEBUG'
+    "logging": {"level": os.getenv("LOG_LEVEL", "INFO")},
+    "service": {"port": 3000},
+    "environment": {
+        "ROLLBAR_SCRIPT_TOKEN": os.getenv("ROLLBAR_SCRIPT_TOKEN"),
+        "ROLLBAR_SERVER_TOKEN": os.getenv("ROLLBAR_SERVER_TOKEN"),
+        "GOOGLE_PROJECT_ID": os.getenv("GOOGLE_PROJECT_ID"),
+        "GEE_ENDPOINT": os.getenv("GEE_ENDPOINT"),
+        "EE_SERVICE_ACCOUNT_JSON": os.getenv("EE_SERVICE_ACCOUNT_JSON"),
+        "SPARKPOST_API_KEY": os.getenv("SPARKPOST_API_KEY"),
+        "API_URL": os.getenv("API_URL"),
+        "API_USER": os.getenv("API_USER"),
+        "API_PASSWORD": os.getenv("API_PASSWORD"),
+        "PARAMS_S3_PREFIX": os.getenv("PARAMS_S3_PREFIX"),
+        "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
+        "CORS_ORIGINS": os.getenv("CORS_ORIGINS"),
     },
-    'service': {
-        'port': 3000
+    "ROLES": ["SUPERADMIN", "ADMIN", "USER"],
+    "SQLALCHEMY_DATABASE_URI": os.getenv("DATABASE_URL")
+    or (
+        "postgresql://"
+        + (os.getenv("DATABASE_ENV_POSTGRES_USER") or "postgres")
+        + ":"
+        + (os.getenv("DATABASE_ENV_POSTGRES_PASSWORD") or "postgres")
+        + "@"
+        + (os.getenv("DATABASE_PORT_5432_TCP_ADDR") or "localhost")
+        + ":"
+        + (os.getenv("DATABASE_PORT_5432_TCP_PORT") or "5432")
+        + "/"
+        + (os.getenv("DATABASE_ENV_POSTGRES_DB") or "postgres")
+    ),
+    "SECRET_KEY": os.getenv("SECRET_KEY"),
+    "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY"),
+    "DOCKER_HOST": os.getenv("DOCKER_HOST"),
+    "REGISTRY_URL": os.getenv("REGISTRY_URL"),
+    "SCRIPTS_S3_PREFIX": os.getenv("SCRIPTS_S3_PREFIX"),
+    "SCRIPTS_S3_BUCKET": os.getenv("SCRIPTS_S3_BUCKET"),
+    "PARAMS_S3_PREFIX": os.getenv("PARAMS_S3_PREFIX"),
+    "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
+    "UPLOAD_FOLDER": "/tmp/scripts",
+    "ALLOWED_EXTENSIONS": {"tar.gz"},
+    "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 2),
+    "JWT_TOKEN_LOCATION": ["headers"],
+    "CELERY_BROKER_URL": os.getenv("REDIS_URL")
+    or (
+        "redis://"
+        + (os.getenv("REDIS_PORT_6379_TCP_ADDR") or "localhost")
+        + ":"
+        + (os.getenv("REDIS_PORT_6379_TCP_PORT") or "6379")
+    ),
+    "CELERY_RESULT_BACKEND": os.getenv("REDIS_URL")
+    or (
+        "redis://"
+        + (os.getenv("REDIS_PORT_6379_TCP_ADDR") or "localhost")
+        + ":"
+        + (os.getenv("REDIS_PORT_6379_TCP_PORT") or "6379")
+    ),
+    # Celery also expects lowercase versions
+    "broker_url": os.getenv("REDIS_URL")
+    or (
+        "redis://"
+        + (os.getenv("REDIS_PORT_6379_TCP_ADDR") or "localhost")
+        + ":"
+        + (os.getenv("REDIS_PORT_6379_TCP_PORT") or "6379")
+    ),
+    "result_backend": os.getenv("REDIS_URL")
+    or (
+        "redis://"
+        + (os.getenv("REDIS_PORT_6379_TCP_ADDR") or "localhost")
+        + ":"
+        + (os.getenv("REDIS_PORT_6379_TCP_PORT") or "6379")
+    ),
+    # Rate limiting configuration
+    # Note: ADMIN and SUPERADMIN users are automatically exempt from all rate limits
+    "RATE_LIMITING": {
+        "ENABLED": os.getenv("RATE_LIMITING_ENABLED", "true").lower() == "true",
+        "STORAGE_URI": os.getenv("RATE_LIMIT_STORAGE_URI") or os.getenv("REDIS_URL"),
+        # DEFAULT_LIMITS: Applied automatically to ALL endpoints (global fallback)
+        "DEFAULT_LIMITS": ["1000 per hour", "100 per minute"],
+        # API_LIMITS: For specific endpoints needing moderate rate limiting
+        # (manual application)
+        "API_LIMITS": ["100 per hour", "20 per minute"],  # API endpoints
+        "AUTH_LIMITS": ["10 per minute", "100 per hour"],  # Stricter for auth
+        "PASSWORD_RESET_LIMITS": [
+            "10 per hour",
+            "3 per minute",
+        ],  # Very strict for password reset
+        "USER_CREATION_LIMITS": ["100 per hour"],  # User registration limits
+        "EXECUTION_RUN_LIMITS": [
+            "10 per minute",
+            "40 per hour",
+        ],  # Script execution limits
     },
-    'environment': {
-        'ROLLBAR_SCRIPT_TOKEN': os.getenv('ROLLBAR_SCRIPT_TOKEN'),
-        'ROLLBAR_SERVER_TOKEN': os.getenv('ROLLBAR_SERVER_TOKEN'),
-        'EE_PRIVATE_KEY': os.getenv('EE_PRIVATE_KEY'),
-        'EE_SERVICE_ACCOUNT_JSON': os.getenv('EE_SERVICE_ACCOUNT_JSON'),
-        'SPARKPOST_API_KEY': os.getenv('SPARKPOST_API_KEY'),
-        'API_URL': os.getenv('API_URL'),
-        'API_USER': os.getenv('API_USER'),
-        'API_PASSWORD': os.getenv('API_PASSWORD'),
-        'GEE_ENDPOINT': 'https://earthengine-highvolume.googleapis.com',
-        'GOOGLE_PROJECT': '1080184168142'
-    },
-    'ROLES': ['ADMIN', 'USER', 'SERVER'],
-    'SQLALCHEMY_DATABASE_URI':
-    'postgresql://' + os.getenv('DATABASE_ENV_POSTGRES_USER') + ':' +
-    os.getenv('DATABASE_ENV_POSTGRES_PASSWORD') + '@' +
-    os.getenv('DATABASE_PORT_5432_TCP_ADDR') + ':' +
-    os.getenv('DATABASE_PORT_5432_TCP_PORT') + '/' +
-    os.getenv('DATABASE_ENV_POSTGRES_DB'),
-    'SECRET_KEY':
-    'mysecret',
-    'DOCKER_URL':
-    os.getenv('DOCKER_URL'),
-    'REGISTRY_URL':
-    'localhost:' + os.getenv('REGISTRY_PORT_5000_TCP_PORT', ''),
-    'SCRIPTS_S3_PREFIX':
-    os.getenv('SCRIPTS_S3_PREFIX'),
-    'SCRIPTS_S3_BUCKET':
-    os.getenv('SCRIPTS_S3_BUCKET'),
-    'UPLOAD_FOLDER':
-    '/tmp/scripts',
-    'ALLOWED_EXTENSIONS':
-    set(['tar.gz']),
-    'JWT_AUTH_USERNAME_KEY':
-    'email',
-    'JWT_AUTH_HEADER_PREFIX':
-    'Bearer',
-    'JWT_EXPIRATION_DELTA':
-    timedelta(seconds=60 * 60 * 24),
-    'CELERY_BROKER_URL':
-    'redis://' + os.getenv('REDIS_PORT_6379_TCP_ADDR') + ':' +
-    os.getenv('REDIS_PORT_6379_TCP_PORT'),
-    'CELERY_RESULT_BACKEND':
-    'redis://' + os.getenv('REDIS_PORT_6379_TCP_ADDR') + ':' +
-    os.getenv('REDIS_PORT_6379_TCP_PORT')
 }
+
+
+def _add_aws_env_var(variable):
+    if "environment" not in SETTINGS:
+        SETTINGS["environment"] = {}
+
+    SETTINGS["environment"][variable] = os.getenv(variable)
+
+
+if os.getenv("AWS_ACCESS_KEY_ID"):
+    _add_aws_env_var("AWS_ACCESS_KEY_ID")
+if os.getenv("AWS_SECRET_ACCESS_KEY"):
+    _add_aws_env_var("AWS_SECRET_ACCESS_KEY")
+if os.getenv("AWS_DEFAULT_REGION"):
+    _add_aws_env_var("AWS_DEFAULT_REGION")

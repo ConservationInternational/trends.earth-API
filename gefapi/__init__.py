@@ -1,154 +1,260 @@
 """The GEF API MODULE"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from datetime import datetime
 import logging
 import os
 import sys
 
-import rollbar.contrib.flask
-from flask import current_app
-from flask import Flask
-from flask import got_request_exception
-from flask import request
+from dotenv import load_dotenv
+from flask import Flask, got_request_exception, jsonify, request
+from flask_compress import Compress
 from flask_cors import CORS
-from flask_jwt import JWT
+from flask_jwt_extended import JWTManager, create_access_token
+from flask_limiter import Limiter
 from flask_migrate import Migrate
+from flask_sqlalchemy import SQLAlchemy
+import rollbar
+import rollbar.contrib.flask
+
+# from rollbar.logger import RollbarHandler
 from gefapi.celery import make_celery
 from gefapi.config import SETTINGS
-from gefapi.jwt import authenticate
-from gefapi.jwt import identity
-from gefapi.models.model import db
-from gefapi.routes.api import error
-from gefapi.routes.api.v1 import v1_endpoints
-from gefapi.routes.api.v2 import v2_endpoints
-from rollbar.logger import RollbarHandler
-
-logging.basicConfig(
-    level=SETTINGS.get('logging', {}).get('level'),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y%m%d-%H:%M%p',
+from gefapi.utils.rate_limiting import (
+    RateLimitConfig,
+    get_rate_limit_key_for_auth,
+    get_user_id_or_ip,
+    is_rate_limiting_disabled,
+    rate_limit_error_handler,
 )
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Flask App
 app = Flask(__name__)
-CORS(app)
+
+# Configure CORS with specific origins for security
+cors_origins = os.getenv(
+    "CORS_ORIGINS", "http://localhost:3000,http://localhost:8080"
+).split(",")
+CORS(
+    app,
+    origins=cors_origins,
+    allow_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
+
+Compress(app)
+
+logger = logging.getLogger()
+log_level = SETTINGS.get("logging", {}).get("level", "INFO")
+logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
 # Ensure all unhandled exceptions are logged, and reported to rollbar
-logger = logging.getLogger(__name__)
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler = logging.StreamHandler(stream=sys.stdout)
 handler.setLevel(logging.INFO)
+handler.setFormatter(formatter)
 logger.addHandler(handler)
 
-rollbar.init(os.getenv('ROLLBAR_SERVER_TOKEN'), os.getenv('ENV'))
-rollbar_handler = RollbarHandler()
-rollbar_handler.setLevel(logging.ERROR)
-logger.addHandler(rollbar_handler)
-
-
-def handle_exception(exc_type, exc_value, exc_traceback):
-    if issubclass(exc_type, KeyboardInterrupt):
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
-
-        return
-    logger.critical("Uncaught exception",
-                    exc_info=(exc_type, exc_value, exc_traceback))
-
-
-sys.excepthook = handle_exception
-
-
-@app.before_first_request
-def init_rollbar():
-    """init rollbar module"""
-    rollbar.init(
-        SETTINGS.get('ROLLBAR_SERVER_TOKEN'),
-        # environment name
-        os.getenv('ENVIRONMENT'),
-        # server root directory, makes tracebacks prettier
-        root=os.path.dirname(os.path.realpath(__file__)),
-        # flask already sets up logging
-        allow_logging_basic_config=False)
-
-    # send exceptions from `app` to rollbar, using flask's signal system.
+rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
+with app.app_context():
     got_request_exception.connect(rollbar.contrib.flask.report_exception, app)
 
+app.config["SQLALCHEMY_DATABASE_URI"] = SETTINGS.get("SQLALCHEMY_DATABASE_URI")
+app.config["UPLOAD_FOLDER"] = SETTINGS.get("UPLOAD_FOLDER")
 
-# Config
+# Ensure JWT_SECRET_KEY is set with proper fallback
+jwt_secret = (
+    SETTINGS.get("JWT_SECRET_KEY")
+    or SETTINGS.get("SECRET_KEY")
+    or os.getenv("JWT_SECRET_KEY")
+    or os.getenv("SECRET_KEY")
+)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = SETTINGS.get('SQLALCHEMY_DATABASE_URI')
-app.config['SECRET_KEY'] = SETTINGS.get('SECRET_KEY')
-app.config['UPLOAD_FOLDER'] = SETTINGS.get('UPLOAD_FOLDER')
-app.config['JWT_AUTH_USERNAME_KEY'] = SETTINGS.get('JWT_AUTH_USERNAME_KEY')
-app.config['JWT_AUTH_HEADER_PREFIX'] = SETTINGS.get('JWT_AUTH_HEADER_PREFIX')
-app.config['JWT_EXPIRATION_DELTA'] = SETTINGS.get('JWT_EXPIRATION_DELTA')
-app.config['CELERY_BROKER_URL'] = SETTINGS.get('CELERY_BROKER_URL')
-app.config['CELERY_RESULT_BACKEND'] = SETTINGS.get('CELERY_RESULT_BACKEND')
+# Also check for empty/whitespace-only values
+if jwt_secret:
+    jwt_secret = jwt_secret.strip()
+
+if not jwt_secret:
+    # Log what we found for debugging
+    print(f"DEBUG: SETTINGS JWT_SECRET_KEY: '{SETTINGS.get('JWT_SECRET_KEY')}'")
+    print(f"DEBUG: SETTINGS SECRET_KEY: '{SETTINGS.get('SECRET_KEY')}'")
+    print(f"DEBUG: ENV JWT_SECRET_KEY: '{os.getenv('JWT_SECRET_KEY')}'")
+    print(f"DEBUG: ENV SECRET_KEY: '{os.getenv('SECRET_KEY')}'")
+    print("DEBUG: All environment variables starting with SECRET:")
+    for key, value in os.environ.items():
+        if "SECRET" in key.upper():
+            display_value = f"{value[:20]}..." if len(str(value)) > 20 else value
+            print(f"  {key}={display_value}")
+    raise RuntimeError(
+        "JWT_SECRET_KEY or SECRET_KEY must be set to a non-empty value "
+        "in environment variables"
+    )
+
+app.config["JWT_SECRET_KEY"] = jwt_secret
+if jwt_secret:
+    print(f"JWT_SECRET_KEY configured successfully: {jwt_secret[:10]}...")
+else:
+    print("JWT_SECRET_KEY configured successfully: None")
+
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = SETTINGS.get("JWT_ACCESS_TOKEN_EXPIRES")
+app.config["JWT_TOKEN_LOCATION"] = SETTINGS.get("JWT_TOKEN_LOCATION")
+app.config["broker_url"] = SETTINGS.get("CELERY_BROKER_URL")
+app.config["result_backend"] = SETTINGS.get("CELERY_RESULT_BACKEND")
+
+# Configure request size limits for security
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB max request size
+
+# Configure rate limiting
+# Initialize rate limiter with Redis backend (reuses existing Redis connection)
+limiter = Limiter(
+    app=app,
+    key_func=get_user_id_or_ip,  # Default key function that exempts admin users
+    storage_uri=RateLimitConfig.get_storage_uri(),
+    default_limits=RateLimitConfig.get_default_limits(),
+    headers_enabled=True,  # Include rate limit info in response headers
+    enabled=True,  # Always enabled, but we'll check dynamically via exempt_when
+    on_breach=rate_limit_error_handler,
+)
 
 # Database
-# db = SQLAlchemy(app)
-db.init_app(app)
+db = SQLAlchemy(app)
+
 migrate = Migrate(app, db)
 
 celery = make_celery(app)
 
 # DB has to be ready!
+# Import tasks to register them with Celery
+from gefapi import tasks  # noqa: E402,F401
+from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
+
 # Blueprint Flask Routing
-app.register_blueprint(v1_endpoints, url_prefix='/api/v1')
-app.register_blueprint(v2_endpoints, url_prefix='/api/v2')
-
-# JWT
-jwt = JWT(app, authenticate, identity)
+app.register_blueprint(endpoints, url_prefix="/api/v1")
 
 
-@jwt.request_handler
-def request_handler():
-    auth_header_value = request.headers.get('Authorization', None)
-    auth_header_prefix = current_app.config['JWT_AUTH_HEADER_PREFIX']
+@app.route("/api-health", methods=["GET"])
+def health_check():
+    """Simple health check endpoint"""
+    try:
+        # Test database connectivity by attempting a simple query
+        # This approach checks the connection without relying on specific models
+        from sqlalchemy import text
 
-    if auth_header_value is None and request.args.get('token',
-                                                      None) is not None:
-        logging.info(request.args.get('token', ''))
-        auth_header_value = auth_header_prefix + ' ' + request.args.get(
-            'token', '')
+        result = db.session.execute(text("SELECT 1 as health_check")).fetchone()
+        db_status = "healthy" if result else "unhealthy"
+    except Exception as e:
+        logger.warning(f"Database health check failed: {str(e)}")
+        db_status = "unhealthy"
 
-    if auth_header_value is None:
-        return None
+    return jsonify(
+        {
+            "status": "ok",
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": db_status,
+            "version": "1.0",
+        }
+    ), 200
 
-    parts = auth_header_value.split()
 
-    if parts[0].lower() != auth_header_prefix.lower():
-        raise JWTError('Invalid JWT header', 'Unsupported authorization type')
-    elif len(parts) == 1:
-        raise JWTError('Invalid JWT header', 'Token missing')
-    elif len(parts) > 2:
-        raise JWTError('Invalid JWT header', 'Token contains spaces')
+# Handle authentication via JWT
+# Verify JWT config is still set before initializing JWTManager
+key_to_print = app.config.get("JWT_SECRET_KEY", "NOT SET")
+if key_to_print and key_to_print != "NOT SET":
+    key_to_print = f"{key_to_print[:10]}..."
+print(f"JWT_SECRET_KEY before JWTManager init: {key_to_print}")
+jwt = JWTManager(app)
 
-    return parts[1]
+
+from gefapi.models import User  # noqa:E402
+from gefapi.services import UserService  # noqa:E402
+
+
+@app.route("/auth", methods=["POST"])
+@limiter.limit(
+    lambda: ";".join(RateLimitConfig.get_auth_limits()),
+    key_func=get_rate_limit_key_for_auth,
+    exempt_when=is_rate_limiting_disabled,
+)
+def create_token():
+    logger.info("[JWT]: Attempting auth...")
+    email = request.json.get("email", None)
+    password = request.json.get("password", None)
+
+    user = UserService.authenticate_user(email, password)
+
+    if user is None:
+        return jsonify({"msg": "Bad username or password"}), 401
+
+    access_token = create_access_token(identity=user.id)
+    return jsonify({"access_token": access_token, "user_id": user.id})
+
+
+@jwt.user_lookup_loader
+def user_lookup_callback(_jwt_header, jwt_data):
+    identity = jwt_data["sub"]
+    return User.query.filter_by(id=identity).one_or_none()
 
 
 @app.errorhandler(403)
 def forbidden(e):
-    return error(status=403, detail='Forbidden')
+    return error(status=403, detail="Forbidden")
 
 
 @app.errorhandler(404)
 def page_not_found(e):
-    return error(status=404, detail='Not Found')
+    return error(status=404, detail="Not Found")
 
 
 @app.errorhandler(405)
 def method_not_allowed(e):
-    return error(status=405, detail='Method Not Allowed')
+    return error(status=405, detail="Method Not Allowed")
 
 
 @app.errorhandler(410)
 def gone(e):
-    return error(status=410, detail='Gone')
+    return error(status=410, detail="Gone")
+
+
+@app.errorhandler(413)
+def request_entity_too_large(e):
+    return error(status=413, detail="Request too large")
 
 
 @app.errorhandler(500)
 def internal_server_error(e):
-    return error(status=500, detail='Internal Server Error')
+    return error(status=500, detail="Internal Server Error")
+
+
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses"""
+    # Prevent MIME type sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    # Prevent clickjacking by denying iframe embedding
+    response.headers["X-Frame-Options"] = "DENY"
+
+    # Enable XSS protection in browsers
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+
+    # Content Security Policy for any HTML content
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'"
+    )
+
+    # Force HTTPS if the request is secure
+    if request.is_secure:
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+
+    # Prevent referrer information leakage
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    # Control browser features and APIs
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
+    return response

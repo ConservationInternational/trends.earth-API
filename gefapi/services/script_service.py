@@ -1,270 +1,508 @@
 """SCRIPT SERVICE"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import os
 import datetime
-import logging
-import tarfile
 import json
-import shutil
-import tempfile
+import logging
+import os
+import tarfile
 from uuid import UUID
 
-from werkzeug.utils import secure_filename
+import rollbar
 from slugify import slugify
 from sqlalchemy import or_
+from werkzeug.utils import secure_filename
 
-from gefapi.services import docker_build
-from gefapi.models.model import db
-from gefapi.s3 import push_script_to_s3
-from gefapi.models import Script, ScriptLog
+from gefapi import db
 from gefapi.config import SETTINGS
-from gefapi.errors import InvalidFile, ScriptNotFound, ScriptDuplicated, NotAllowed
+from gefapi.errors import InvalidFile, NotAllowed, ScriptDuplicated, ScriptNotFound
+from gefapi.models import Script, ScriptLog, User
+from gefapi.s3 import push_script_to_s3
+from gefapi.services import docker_build
+from gefapi.utils.permissions import is_admin_or_higher
+
+ROLES = SETTINGS.get("ROLES")
+
+logger = logging.getLogger()
 
 
 def allowed_file(filename):
-    if len(filename.rsplit('.')) > 2:
-        return filename.rsplit('.')[1]+'.'+filename.rsplit('.')[2].lower() in SETTINGS.get('ALLOWED_EXTENSIONS')
-    else:
-        return '.' in filename and \
-               filename.rsplit('.', 1)[1].lower(
-               ) in SETTINGS.get('ALLOWED_EXTENSIONS')
+    if len(filename.rsplit(".")) > 2:
+        return filename.rsplit(".")[1] + "." + filename.rsplit(".")[
+            2
+        ].lower() in SETTINGS.get("ALLOWED_EXTENSIONS")
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in SETTINGS.get(
+        "ALLOWED_EXTENSIONS"
+    )
 
 
-class ScriptService(object):
+class ScriptService:
     """Script Class"""
 
     @staticmethod
     def create_script(sent_file, user, script=None):
-        logging.info('[SERVICE]: Creating script')
+        logger.info("[SERVICE]: Creating script")
         if sent_file and allowed_file(sent_file.filename):
-            logging.info('[SERVICE]: Allowed format')
+            logger.info("[SERVICE]: Allowed format")
             filename = secure_filename(sent_file.filename)
-            sent_file_path = os.path.join(
-                SETTINGS.get('UPLOAD_FOLDER'), filename)
-            logging.info('[SERVICE]: Saving file')
+            sent_file_path = os.path.join(SETTINGS.get("UPLOAD_FOLDER"), filename)
+            logger.info("[SERVICE]: Saving file")
             try:
-                if not os.path.exists(SETTINGS.get('UPLOAD_FOLDER')):
-                    os.makedirs(SETTINGS.get('UPLOAD_FOLDER'))
+                if not os.path.exists(SETTINGS.get("UPLOAD_FOLDER")):
+                    os.makedirs(SETTINGS.get("UPLOAD_FOLDER"))
                 sent_file.save(sent_file_path)
             except Exception as e:
-                logging.error(e)
+                logger.error(e)
+                rollbar.report_exc_info()
                 raise e
-            logging.info('[SERVICE]: File saved')
+            logger.info("[SERVICE]: File saved")
         else:
-            raise InvalidFile(message='Invalid File')
+            raise InvalidFile(message="Invalid File")
 
         try:
-            with tarfile.open(name=sent_file_path, mode='r:gz') as tar:
-                if 'configuration.json' not in tar.getnames():
-                    raise InvalidFile(message='Invalid File')
-                config_file = tar.extractfile(member='configuration.json')
-                logging.info('[SERVICE]: Config file extracted')
+            with tarfile.open(name=sent_file_path, mode="r:gz") as tar:
+                if "configuration.json" not in tar.getnames():
+                    raise InvalidFile(message="Invalid File")
+                config_file = tar.extractfile(member="configuration.json")
+                logger.info("[SERVICE]: Config file extracted")
                 config_content = config_file.read()
-                logging.info('[SERVICE]: Config file opened')
+                logger.info("[SERVICE]: Config file opened")
                 config = json.loads(config_content)
-                script_name = config.get('name', None)
+                script_name = config.get("name", None)
+                cpu_reservation = config.get("cpu_reservation", None)
+                cpu_limit = config.get("cpu_limit", None)
+                memory_limit = config.get("memory_limit", None)
+                memory_reservation = config.get("memory_reservation", None)
+                environment = config.get("environment", None)
+                environment_version = config.get("environment_version", None)
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
 
         if script is None:
             # Creating new entity
             name = script_name
-            slug = slugify(script_name)
-            currentScript = Script.query.filter_by(slug=slug).first()
-            if currentScript:
+            if not name:
+                raise InvalidFile(message="Script configuration must include a 'name'")
+            logger.info("[SERVICE]: Creating slug for script name: " + name)
+            slug = slugify(name)
+            if not slug:
+                raise InvalidFile(message="Cannot generate valid slug from script name")
+            current_script = Script.query.filter_by(slug=slug).first()
+            if current_script:
                 raise ScriptDuplicated(
-                    message='Script with name '+name+' generates an existing script slug')
-            script = Script(name=name, slug=slug, user_id=user.id)
+                    message="Script with name "
+                    + name
+                    + " generates an existing script slug"
+                )
+            script = Script(
+                name=name,
+                slug=slug,
+                user_id=user.id,
+                cpu_reservation=cpu_reservation,
+                cpu_limit=cpu_limit,
+                memory_reservation=memory_reservation,
+                memory_limit=memory_limit,
+                environment=environment,
+                environment_version=environment_version,
+            )
         else:
             # Updating existing entity
-            logging.debug(script_name)
+            logger.debug(script_name)
             script.name = script_name
             script.updated_at = datetime.datetime.utcnow()
+            if cpu_reservation:
+                script.cpu_reservation = cpu_reservation
+            if cpu_limit:
+                script.cpu_limit = cpu_limit
+            if memory_reservation:
+                script.memory_reservation = memory_reservation
+            if memory_limit:
+                script.memory_limit = memory_limit
+            if environment:
+                script.environment = environment
+            if environment_version:
+                script.environment_version = environment_version
         # TO DB
         try:
-            logging.info('[DB]: ADD')
+            logger.info("[DB]: ADD")
             db.session.add(script)
-            push_script_to_s3(sent_file_path, script.slug + '.tar.gz')
+            # Commit first to get the script ID
             db.session.commit()
 
-            _ = docker_build.delay(
-                script.id
-            )
+            try:
+                logger.debug(f"Script slug: {script.slug}")
+                logger.debug(f"Script name: {script.name}")
+                logger.debug(f"Script id: {script.id}")
+                if not script.slug:
+                    raise InvalidFile(message="Script slug is missing")
+                if not script.id:
+                    raise InvalidFile(message="Script id is missing")
+                push_script_to_s3(sent_file_path, script.slug + ".tar.gz")
+                docker_build.delay(script.id)
+            except Exception as e:
+                logger.error("Exception type: %s", type(e).__name__)
+                logger.error("Exception message: %s", str(e))
+                rollbar.report_exc_info()
+                script.status = "FAILED"
+                db.session.commit()
+                raise e
+
         except Exception as error:
-            logging.error(error)
+            logger.error(error)
+            rollbar.report_exc_info()
             raise error
 
         return script
 
     @staticmethod
-    def get_scripts(user):
-        logging.info('[SERVICE]: Getting scripts')
-        logging.info('[DB]: QUERY')
-        if user.role == 'ADMIN':
-            scripts = Script.query.all()
-            return scripts
+    def get_scripts(
+        user,
+        filter_param=None,
+        sort=None,
+        page=1,
+        per_page=2000,
+        paginate=False,
+    ):
+        logger.info("[SERVICE]: Getting scripts")
+        logger.info("[DB]: QUERY")
+
+        if paginate:
+            if page < 1:
+                raise Exception("Page must be greater than 0")
+            if per_page < 1:
+                raise Exception("Per page must be greater than 0")
+
+        query = db.session.query(Script)
+
+        # User access control
+        if is_admin_or_higher(user):
+            pass
         else:
-            scripts = db.session.query(Script) \
-                .filter(or_(Script.user_id == user.id, Script.public == True))
-            return scripts
+            query = query.filter(or_(Script.user_id == user.id, Script.public))
+
+        # SQL-style filter_param
+        if filter_param:
+            import re
+
+            from sqlalchemy import and_
+
+            filter_clauses = []
+            join_users = False
+            for expr in filter_param.split(","):
+                expr = expr.strip()
+                m = re.match(
+                    r"(\w+)\s*(=|!=|>=|<=|>|<| like )\s*(.+)",
+                    expr,
+                    re.IGNORECASE,
+                )
+                if m:
+                    field, op, value = m.groups()
+                    field = field.strip()
+                    op = op.strip().lower()
+                    value = value.strip().strip("'\"")
+
+                    if field == "user_name":
+                        if not is_admin_or_higher(user):
+                            raise Exception("Only admin users can filter by user_name")
+                        join_users = True
+                        col = User.name
+                    elif field == "user_email":
+                        if not is_admin_or_higher(user):
+                            raise Exception("Only admin users can filter by user_email")
+                        join_users = True
+                        col = User.email
+                    else:
+                        col = getattr(Script, field, None)
+                    if col is not None:
+                        if op == "=":
+                            filter_clauses.append(col == value)
+                        elif op == "!=":
+                            filter_clauses.append(col != value)
+                        elif op == ">":
+                            filter_clauses.append(col > value)
+                        elif op == "<":
+                            filter_clauses.append(col < value)
+                        elif op == ">=":
+                            filter_clauses.append(col >= value)
+                        elif op == "<=":
+                            filter_clauses.append(col <= value)
+                        elif op == "like":
+                            filter_clauses.append(col.like(value))
+            if join_users:
+                query = query.join(User, Script.user_id == User.id)
+            if filter_clauses:
+                query = query.filter(and_(*filter_clauses))
+
+        # SQL-style sorting
+        if sort:
+            from sqlalchemy import asc, desc
+
+            for sort_expr in sort.split(","):
+                sort_expr = sort_expr.strip()
+                if not sort_expr:
+                    continue
+                parts = sort_expr.split()
+                field = parts[0]
+                direction = parts[1].lower() if len(parts) > 1 else "asc"
+                col = getattr(Script, field, None)
+                if col is not None:
+                    if direction == "desc":
+                        query = query.order_by(desc(col))
+                    else:
+                        query = query.order_by(asc(col))
+                elif field == "user_email":
+                    if not is_admin_or_higher(user):
+                        raise Exception("Only admin users can sort by user_email")
+                    if direction == "desc":
+                        query = query.join(User, Script.user_id == User.id).order_by(
+                            User.email.desc()
+                        )
+                    else:
+                        query = query.join(User, Script.user_id == User.id).order_by(
+                            User.email.asc()
+                        )
+                elif field == "user_name":
+                    if not is_admin_or_higher(user):
+                        raise Exception("Only admin users can sort by user_name")
+                    if direction == "desc":
+                        query = query.join(User, Script.user_id == User.id).order_by(
+                            User.name.desc()
+                        )
+                    else:
+                        query = query.join(User, Script.user_id == User.id).order_by(
+                            User.name.asc()
+                        )
+        else:
+            query = query.order_by(Script.created_at.desc())
+
+        if paginate:
+            total = query.count()
+            scripts = query.offset((page - 1) * per_page).limit(per_page).all()
+        else:
+            scripts = query.all()
+            total = len(scripts)
+
+        return scripts, total
 
     @staticmethod
-    def get_script(script_id, user='fromservice'):
-        logging.info('[SERVICE]: Getting script: '+script_id)
-        logging.info('[DB]: QUERY')
-        if user == 'fromservice' or user.role == 'ADMIN':
+    def get_script(script_id, user="fromservice"):
+        logger.info(f"[SERVICE]: Getting script: {script_id}")
+        logger.info("[DB]: QUERY")
+        if user == "fromservice" or is_admin_or_higher(user):
+            logger.info(
+                f"[SERVICE]: trying to get script {script_id} for service or admin"
+            )
             try:
-                val = UUID(script_id, version=4)
-                script = Script.query.filter_by(id=script_id).first()
+                # If script_id is already a UUID object, use it directly
+                if isinstance(script_id, UUID):
+                    script = Script.query.filter_by(id=script_id).first()
+                else:
+                    UUID(script_id, version=4)
+                    script = Script.query.filter_by(id=script_id).first()
             except ValueError:
+                logger.info("[SERVICE]: valueerror")
                 script = Script.query.filter_by(slug=script_id).first()
             except Exception as error:
+                rollbar.report_exc_info()
                 raise error
         else:
             try:
-                val = UUID(script_id, version=4)
-                script = db.session.query(Script) \
-                    .filter(Script.id == script_id) \
-                    .filter(or_(Script.user_id == user.id, Script.public == True)) \
-                    .first()
+                logger.info(f"[SERVICE]: trying to get script {script_id}")
+                # If script_id is already a UUID object, use it directly
+                if isinstance(script_id, UUID):
+                    script = (
+                        db.session.query(Script)
+                        .filter(Script.id == script_id)
+                        .filter(or_(Script.user_id == user.id, Script.public))
+                        .first()
+                    )
+                else:
+                    UUID(script_id, version=4)
+                    script = (
+                        db.session.query(Script)
+                        .filter(Script.id == script_id)
+                        .filter(or_(Script.user_id == user.id, Script.public))
+                        .first()
+                    )
             except ValueError:
-                script = db.session.query(Script) \
-                    .filter(Script.slug == script_id) \
-                    .filter(or_(Script.user_id == user.id, Script.public == True)) \
+                logger.info("[SERVICE]: valueerror")
+                script = (
+                    db.session.query(Script)
+                    .filter(Script.slug == script_id)
+                    .filter(or_(Script.user_id == user.id, Script.public))
                     .first()
+                )
             except Exception as error:
+                rollbar.report_exc_info()
                 raise error
         if not script:
-            raise ScriptNotFound(message='Script with id ' +
-                                 script_id+' does not exist')
+            raise ScriptNotFound(
+                message="Script with id " + script_id + " does not exist"
+            )
         return script
 
     @staticmethod
     def get_script_logs(script_id, start_date, last_id):
-        logging.info(
-            '[SERVICE]: Getting script logs of script %s: ' % (script_id))
-        logging.info('[DB]: QUERY')
+        logger.info(f"[SERVICE]: Getting script logs of script {script_id}: ")
+        logger.info("[DB]: QUERY")
         try:
-            val = UUID(script_id, version=4)
-            script = Script.query.filter_by(id=script_id).first()
+            # If script_id is already a UUID object, use it directly
+            if isinstance(script_id, UUID):
+                script = Script.query.filter_by(id=script_id).first()
+            else:
+                UUID(script_id, version=4)
+                script = Script.query.filter_by(id=script_id).first()
         except ValueError:
             script = Script.query.filter_by(slug=script_id).first()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         if not script:
-            raise ScriptNotFound(message='Script with id ' +
-                                 script_id+' does not exist')
+            raise ScriptNotFound(message=f"Script with id {script_id} does not exist")
 
         if start_date:
-            logging.debug(start_date)
-            return ScriptLog.query.filter(ScriptLog.script_id == script.id, ScriptLog.register_date > start_date).order_by(ScriptLog.register_date).all()
-        elif last_id:
-            return ScriptLog.query.filter(ScriptLog.script_id == script.id, ScriptLog.id > last_id).order_by(ScriptLog.register_date).all()
-        else:
-            return script.logs
+            logger.debug(start_date)
+            return (
+                ScriptLog.query.filter(
+                    ScriptLog.script_id == script.id,
+                    ScriptLog.register_date > start_date,
+                )
+                .order_by(ScriptLog.register_date)
+                .all()
+            )
+        if last_id:
+            return (
+                ScriptLog.query.filter(
+                    ScriptLog.script_id == script.id, ScriptLog.id > last_id
+                )
+                .order_by(ScriptLog.register_date)
+                .all()
+            )
+        return script.logs
 
     @staticmethod
     def update_script(script_id, sent_file, user):
-        logging.info('[SERVICE]: Updating script')
+        logger.info("[SERVICE]: Updating script")
         script = ScriptService.get_script(script_id, user)
         if not script:
-            raise ScriptNotFound(message='Script with id ' +
-                                 script_id+' does not exist')
-        if user.role == 'ADMIN' or user.email == 'gef@gef.com' or user.id == script.user_id:
+            raise ScriptNotFound(
+                message="Script with id " + script_id + " does not exist"
+            )
+        if is_admin_or_higher(user) or user.id == script.user_id:
             return ScriptService.create_script(sent_file, user, script)
-        raise NotAllowed(message='Operation not allowed to this user')
+        raise NotAllowed(message="Operation not allowed to this user")
 
     @staticmethod
     def delete_script(script_id, user):
-        logging.info('[SERVICE]: Deleting script'+script_id)
+        logger.info(f"[SERVICE]: Deleting script {script_id}")
         try:
             script = ScriptService.get_script(script_id, user)
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         if not script:
-            raise ScriptNotFound(message='Script with id ' +
-                                 script_id+' does not exist')
+            raise ScriptNotFound(
+                message="Script with id " + script_id + " does not exist"
+            )
 
         try:
-            logging.info('[DB]: DELETE')
+            logger.info("[DB]: DELETE")
             db.session.delete(script)
             db.session.commit()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return script
 
     @staticmethod
     def publish_script(script_id, user):
-        logging.info('[SERVICE]: Publishing script: '+script_id)
-        if user.role == 'ADMIN':
+        logger.info(f"[SERVICE]: Publishing script: {script_id}")
+        if is_admin_or_higher(user):
             try:
-                val = UUID(script_id, version=4)
-                script = Script.query.filter_by(id=script_id).first()
+                # If script_id is already a UUID object, use it directly
+                if isinstance(script_id, UUID):
+                    script = Script.query.filter_by(id=script_id).first()
+                else:
+                    UUID(script_id, version=4)
+                    script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
             except Exception as error:
+                rollbar.report_exc_info()
                 raise error
         else:
             try:
-                val = UUID(script_id, version=4)
-                script = db.session.query(Script) \
-                    .filter(Script.id == script_id) \
-                    .filter(Script.user_id == user.id) \
+                script = (
+                    db.session.query(Script)
+                    .filter(Script.id == script_id)
+                    .filter(Script.user_id == user.id)
                     .first()
+                )
             except ValueError:
-                script = db.session.query(Script) \
-                    .filter(Script.slug == script_id) \
-                    .filter(Script.user_id == user.id) \
+                script = (
+                    db.session.query(Script)
+                    .filter(Script.slug == script_id)
+                    .filter(Script.user_id == user.id)
                     .first()
+                )
             except Exception as error:
+                rollbar.report_exc_info()
                 raise error
         if not script:
-            raise ScriptNotFound(message='Script with id ' +
-                                 script_id+' does not exist')
+            raise ScriptNotFound(
+                message="Script with id " + script_id + " does not exist"
+            )
         script.public = True
         try:
-            logging.info('[DB]: SAVE')
+            logger.info("[DB]: SAVE")
             db.session.add(script)
             db.session.commit()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return script
 
     @staticmethod
     def unpublish_script(script_id, user):
-        logging.info('[SERVICE]: Unpublishing script: '+script_id)
-        if user.role == 'ADMIN':
+        logger.info(f"[SERVICE]: Unpublishing script: {script_id}")
+        if is_admin_or_higher(user):
             try:
-                val = UUID(script_id, version=4)
-                script = Script.query.filter_by(id=script_id).first()
+                # If script_id is already a UUID object, use it directly
+                if isinstance(script_id, UUID):
+                    script = Script.query.filter_by(id=script_id).first()
+                else:
+                    UUID(script_id, version=4)
+                    script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
             except Exception as error:
+                rollbar.report_exc_info()
                 raise error
         else:
             try:
-                val = UUID(script_id, version=4)
-                script = db.session.query(Script) \
-                    .filter(Script.id == script_id) \
-                    .filter(Script.user_id == user.id) \
+                script = (
+                    db.session.query(Script)
+                    .filter(Script.id == script_id)
+                    .filter(Script.user_id == user.id)
                     .first()
+                )
             except ValueError:
-                script = db.session.query(Script) \
-                    .filter(Script.slug == script_id) \
-                    .filter(Script.user_id == user.id) \
+                script = (
+                    db.session.query(Script)
+                    .filter(Script.slug == script_id)
+                    .filter(Script.user_id == user.id)
                     .first()
+                )
         if not script:
-            raise ScriptNotFound(message='Script with id ' +
-                                 script_id+' does not exist')
+            raise ScriptNotFound(
+                message="Script with id " + script_id + " does not exist"
+            )
         script.public = False
         try:
-            logging.info('[DB]: SAVE')
+            logger.info("[DB]: SAVE")
             db.session.add(script)
             db.session.commit()
         except Exception as error:
+            rollbar.report_exc_info()
             raise error
         return script

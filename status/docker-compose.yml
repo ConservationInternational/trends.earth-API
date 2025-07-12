@@ -1,0 +1,14 @@
+services:
+  api-status:
+    image: api-status
+    volumes:
+      - status-public:/public
+    env_file:
+      - prod.env
+    extra_hosts:
+        - "host.docker.internal:host-gateway"
+
+volumes:
+  status-public:
+    name: "status-public"
+    external: true

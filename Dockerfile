@@ -1,41 +1,42 @@
-FROM python:3.6-alpine
-MAINTAINER Alex Zvoleff azvoleff@conservation.org
+FROM python:3.11-alpine
+LABEL maintainer="Trends.Earth Team <info@trends.earth>"
 
-ENV NAME gef-api
-ENV USER gef-api
+ENV NAME=gef-api
+ENV USER=gef-api
 
 RUN apk update && apk upgrade && \
    apk add --no-cache --update bash git openssl-dev build-base alpine-sdk \
-   libffi-dev postgresql-dev gcc python3-dev musl-dev
+   libffi-dev postgresql-dev postgresql-client gcc python3-dev musl-dev
 
 RUN addgroup $USER && adduser -s /bin/bash -D -G $USER $USER
 
-RUN apk add --no-cache --update py3-pip
-RUN pip install --upgrade pip
+# Add user to docker group for Docker socket access
+RUN addgroup docker && adduser $USER docker
 
-RUN pip install virtualenv gunicorn gevent
+# Install Poetry
+RUN pip install --upgrade pip && pip install poetry
 
 RUN mkdir -p /opt/$NAME
-RUN cd /opt/$NAME && virtualenv venv && source venv/bin/activate
-COPY requirements.txt /opt/$NAME/requirements.txt
-RUN cd /opt/$NAME && pip install -r requirements.txt
-
-COPY entrypoint.sh /opt/$NAME/entrypoint.sh
-COPY main.py /opt/$NAME/main.py
-COPY gunicorn.py /opt/$NAME/gunicorn.py
-
-# Copy the application folder inside the container
 WORKDIR /opt/$NAME
 
-COPY ./gefapi /opt/$NAME/gefapi
-COPY ./migrations /opt/$NAME/migrations
-COPY ./tests /opt/$NAME/tests
-RUN chown $USER:$USER /opt/$NAME
+# Copy source code and poetry files first for dependency install
+COPY ./gefapi ./gefapi
+COPY pyproject.toml poetry.lock* ./
+COPY README.md ./README.md
 
-# Tell Docker we are going to use this ports
-EXPOSE 3000
-USER root
-#USER $USER
+RUN poetry config virtualenvs.create false && poetry install --no-interaction --no-ansi
 
-# Launch script
+# Copy the rest of the application
+COPY entrypoint.sh ./entrypoint.sh
+COPY main.py ./main.py
+COPY gunicorn.py ./gunicorn.py
+COPY run_db_migrations.py ./run_db_migrations.py
+COPY ./migrations ./migrations
+COPY ./tests ./tests
+COPY pytest.ini .
+RUN chown -R $USER:$USER /opt/$NAME
+
+# Switch to non-root user for security
+USER $USER
+
 ENTRYPOINT ["./entrypoint.sh"]

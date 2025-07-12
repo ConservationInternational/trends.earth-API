@@ -1,0 +1,162 @@
+services:
+  migrate:
+    build: .
+    command: ["migrate"]
+    environment:
+      ENVIRONMENT: dev
+      DEBUG: "True"
+      TESTING: "true"
+    env_file:
+      - develop.env
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+    networks:
+      - backend
+      - db
+    depends_on:
+      - database
+      - redis
+
+  api:
+    build: .
+    command: ["develop"]
+    environment:
+      PORT: 3000
+      ENVIRONMENT: dev
+      DEBUG: "True"
+      TESTING: "true"
+    ports:
+      - target: 3000
+        published: 3000
+    env_file:
+      - develop.env
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+    networks:
+      - backend
+      - db
+    depends_on:
+      - migrate
+      - database
+      - redis
+
+  test:
+    build: .
+    command: ["test"]
+    environment:
+      ENVIRONMENT: test
+      DEBUG: "True"
+      TESTING: "true"
+    env_file:
+      - test.env
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+      - ./tests:/opt/gef-api/tests
+    networks:
+      - backend
+      - db
+    depends_on:
+      - database
+      - redis
+
+  worker:
+    image: trendsearth_api
+    build: .
+    command: ["worker"]
+    environment:
+      ENVIRONMENT: dev
+      DEBUG: "True"
+      TESTING: "true"
+    env_file:
+      - develop.env
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+      - /var/run/docker.sock:/tmp/docker.sock
+    # Add user to host docker group for socket access
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
+    networks:
+      - backend
+      - db
+    depends_on:
+      - migrate
+      - database
+      - redis
+
+  beat:
+    image: trendsearth_api
+    build: .
+    command: ["beat"]
+    environment:
+      ENVIRONMENT: dev
+      DEBUG: "True"
+      TESTING: "true"
+    env_file:
+      - develop.env
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+    networks:
+      - backend
+      - db
+    depends_on:
+      - migrate
+      - database
+      - redis
+
+  redis:
+    image: redis
+    container_name: trendsearth-api-redis
+    ports:
+      - target: 6379
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 100M
+
+  database:
+    image: postgres:9.6
+    container_name: trendsearth-api-database
+    environment:
+      POSTGRES_PASSWORD: root
+      POSTGRES_USER: root
+      POSTGRES_DB: gef
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - target: 5432
+        published: 5432
+    env_file:
+      - staging.env
+    networks:
+      - db
+
+  registry:
+    image: registry:2.8.1
+    container_name: trendsearth-api-registry
+    volumes:
+      - registry-data:/var/lib/registry
+    env_file:
+      - staging.env
+    ports:
+      - target: 5000
+        published: 5000
+    networks:
+      - backend
+
+volumes:
+  postgres-data:
+  registry-data:
+
+networks:
+  db:
+  backend:
