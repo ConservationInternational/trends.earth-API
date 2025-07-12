@@ -702,6 +702,23 @@
     }
   }
 };
+            defs["auth_logout_body"] = {
+  "type" : "object",
+  "properties" : {
+    "refresh_token" : {
+      "type" : "string"
+    }
+  }
+};
+            defs["auth_refresh_body"] = {
+  "required" : [ "refresh_token" ],
+  "type" : "object",
+  "properties" : {
+    "refresh_token" : {
+      "type" : "string"
+    }
+  }
+};
             defs["Error"] = {
   "required" : [ "error" ],
   "type" : "object",
@@ -900,8 +917,36 @@
     "access_token" : {
       "type" : "string"
     },
-    "user" : {
-      "$ref" : "#/components/schemas/User"
+    "expires_in" : {
+      "type" : "integer"
+    },
+    "refresh_token" : {
+      "type" : "string"
+    },
+    "user_id" : {
+      "type" : "string"
+    }
+  }
+};
+            defs["inline_response_200_6"] = {
+  "type" : "object",
+  "properties" : {
+    "msg" : {
+      "type" : "string"
+    }
+  }
+};
+            defs["inline_response_200_7"] = {
+  "type" : "object",
+  "properties" : {
+    "access_token" : {
+      "type" : "string"
+    },
+    "expires_in" : {
+      "type" : "integer"
+    },
+    "user_id" : {
+      "type" : "string"
     }
   }
 };
@@ -1090,8 +1135,17 @@
             <li class="nav-fixed nav-header active" data-group="_"><a href="#api-_">API Summary</a></li>
 
                   <li class="nav-header" data-group="Authentication"><a href="#api-Authentication">API Methods - Authentication</a></li>
+                    <li data-group="Authentication" data-name="authLogoutAllPost" class="">
+                      <a href="#api-Authentication-authLogoutAllPost">authLogoutAllPost</a>
+                    </li>
+                    <li data-group="Authentication" data-name="authLogoutPost" class="">
+                      <a href="#api-Authentication-authLogoutPost">authLogoutPost</a>
+                    </li>
                     <li data-group="Authentication" data-name="authPost" class="">
                       <a href="#api-Authentication-authPost">authPost</a>
+                    </li>
+                    <li data-group="Authentication" data-name="authRefreshPost" class="">
+                      <a href="#api-Authentication-authRefreshPost">authRefreshPost</a>
                     </li>
                   <li class="nav-header" data-group="Executions"><a href="#api-Executions">API Methods - Executions</a></li>
                     <li data-group="Executions" data-name="apiV1ExecutionGet" class="">
@@ -1137,6 +1191,692 @@
         <div id="sections">
                 <section id="api-Authentication">
                   <h1>Authentication</h1>
+                    <div id="api-Authentication-authLogoutAllPost">
+                      <article id="api-Authentication-authLogoutAllPost-0" data-group="User" data-name="authLogoutAllPost" data-version="0">
+                        <div class="pull-left">
+                          <h1>authLogoutAllPost</h1>
+                          <p>Logout from all devices</p>
+                        </div>
+                        <div class="pull-right"></div>
+                        <div class="clearfix"></div>
+                        <p></p>
+                        <p class="marked">Revoke all refresh tokens for the current user</p>
+                        <p></p>
+                        <br />
+                        <pre class="prettyprint language-html prettyprinted" data-type="post"><code><span class="pln">/auth/logout-all</span></code></pre>
+                        <p>
+                          <h3>Usage and SDK Samples</h3>
+                        </p>
+                        <ul class="nav nav-tabs nav-tabs-examples">
+                          <li class="active"><a href="#examples-Authentication-authLogoutAllPost-0-curl">Curl</a></li>
+                          <li class=""><a href="#examples-Authentication-authLogoutAllPost-0-java">Java</a></li>
+                          <li class=""><a href="#examples-Authentication-authLogoutAllPost-0-android">Android</a></li>
+                          <!--<li class=""><a href="#examples-Authentication-authLogoutAllPost-0-groovy">Groovy</a></li>-->
+                          <li class=""><a href="#examples-Authentication-authLogoutAllPost-0-objc">Obj-C</a></li>
+                          <li class=""><a href="#examples-Authentication-authLogoutAllPost-0-javascript">JavaScript</a></li>
+                          <!--<li class=""><a href="#examples-Authentication-authLogoutAllPost-0-angular">Angular</a></li>-->
+                          <li class=""><a href="#examples-Authentication-authLogoutAllPost-0-csharp">C#</a></li>
+                          <li class=""><a href="#examples-Authentication-authLogoutAllPost-0-php">PHP</a></li>
+                          <li class=""><a href="#examples-Authentication-authLogoutAllPost-0-perl">Perl</a></li>
+                          <li class=""><a href="#examples-Authentication-authLogoutAllPost-0-python">Python</a></li>
+                        </ul>
+
+                        <div class="tab-content">
+                          <div class="tab-pane active" id="examples-Authentication-authLogoutAllPost-0-curl">
+                           <pre class="prettyprint"><code class="language-bsh">curl -X POST\
+ -H "Authorization: Bearer [[accessToken]]"\
+-H "Accept: application/json"\
+"https://api.trends.earth/auth/logout-all"</code></pre>
+                          </div>
+                          <div class="tab-pane" id="examples-Authentication-authLogoutAllPost-0-java">
+                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
+import io.swagger.client.auth.*;
+import io.swagger.client.model.*;
+import io.swagger.client.api.AuthenticationApi;
+
+import java.io.File;
+import java.util.*;
+
+public class AuthenticationApiExample {
+
+    public static void main(String[] args) {
+        ApiClient defaultClient = Configuration.getDefaultApiClient();
+
+
+        AuthenticationApi apiInstance = new AuthenticationApi();
+        try {
+            inline_response_200_6 result = apiInstance.authLogoutAllPost();
+            System.out.println(result);
+        } catch (ApiException e) {
+            System.err.println("Exception when calling AuthenticationApi#authLogoutAllPost");
+            e.printStackTrace();
+        }
+    }
+}</code></pre>
+                          </div>
+
+                          <div class="tab-pane" id="examples-Authentication-authLogoutAllPost-0-android">
+                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.api.AuthenticationApi;
+
+public class AuthenticationApiExample {
+
+    public static void main(String[] args) {
+        AuthenticationApi apiInstance = new AuthenticationApi();
+        try {
+            inline_response_200_6 result = apiInstance.authLogoutAllPost();
+            System.out.println(result);
+        } catch (ApiException e) {
+            System.err.println("Exception when calling AuthenticationApi#authLogoutAllPost");
+            e.printStackTrace();
+        }
+    }
+}</code></pre>
+                          </div>
+  <!--
+  <div class="tab-pane" id="examples-Authentication-authLogoutAllPost-0-groovy">
+  <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
+  </div> -->
+                            <div class="tab-pane" id="examples-Authentication-authLogoutAllPost-0-objc">
+                              <pre class="prettyprint"><code class="language-cpp">Configuration *apiConfig = [Configuration sharedConfig];
+
+AuthenticationApi *apiInstance = [[AuthenticationApi alloc] init];
+
+// Logout from all devices
+[apiInstance authLogoutAllPostWithCompletionHandler: 
+              ^(inline_response_200_6 output, NSError* error) {
+                            if (output) {
+                                NSLog(@"%@", output);
+                            }
+                            if (error) {
+                                NSLog(@"Error: %@", error);
+                            }
+                        }];
+</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-authLogoutAllPost-0-javascript">
+                              <pre class="prettyprint"><code class="language-js">var TrendsearthApi = require('trendsearth_api');
+var defaultClient = TrendsearthApi.ApiClient.instance;
+
+
+var api = new TrendsearthApi.AuthenticationApi()
+var callback = function(error, data, response) {
+  if (error) {
+    console.error(error);
+  } else {
+    console.log('API called successfully. Returned data: ' + data);
+  }
+};
+api.authLogoutAllPost(callback);
+</code></pre>
+                            </div>
+
+                            <!--<div class="tab-pane" id="examples-Authentication-authLogoutAllPost-0-angular">
+              <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
+            </div>-->
+                            <div class="tab-pane" id="examples-Authentication-authLogoutAllPost-0-csharp">
+                              <pre class="prettyprint"><code class="language-cs">using System;
+using System.Diagnostics;
+using IO.Swagger.Api;
+using IO.Swagger.Client;
+using IO.Swagger.Model;
+
+namespace Example
+{
+    public class authLogoutAllPostExample
+    {
+        public void main()
+        {
+
+
+            var apiInstance = new AuthenticationApi();
+
+            try
+            {
+                // Logout from all devices
+                inline_response_200_6 result = apiInstance.authLogoutAllPost();
+                Debug.WriteLine(result);
+            }
+            catch (Exception e)
+            {
+                Debug.Print("Exception when calling AuthenticationApi.authLogoutAllPost: " + e.Message );
+            }
+        }
+    }
+}
+</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-authLogoutAllPost-0-php">
+                              <pre class="prettyprint"><code class="language-php"><&#63;php
+require_once(__DIR__ . '/vendor/autoload.php');
+
+
+$api_instance = new Swagger\Client\ApiAuthenticationApi();
+
+try {
+    $result = $api_instance->authLogoutAllPost();
+    print_r($result);
+} catch (Exception $e) {
+    echo 'Exception when calling AuthenticationApi->authLogoutAllPost: ', $e->getMessage(), PHP_EOL;
+}
+?></code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-authLogoutAllPost-0-perl">
+                              <pre class="prettyprint"><code class="language-perl">use Data::Dumper;
+use WWW::SwaggerClient::Configuration;
+use WWW::SwaggerClient::AuthenticationApi;
+
+
+my $api_instance = WWW::SwaggerClient::AuthenticationApi->new();
+
+eval { 
+    my $result = $api_instance->authLogoutAllPost();
+    print Dumper($result);
+};
+if ($@) {
+    warn "Exception when calling AuthenticationApi->authLogoutAllPost: $@\n";
+}</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-authLogoutAllPost-0-python">
+                              <pre class="prettyprint"><code class="language-python">from __future__ import print_statement
+import time
+import swagger_client
+from swagger_client.rest import ApiException
+from pprint import pprint
+
+
+# create an instance of the API class
+api_instance = swagger_client.AuthenticationApi()
+
+try: 
+    # Logout from all devices
+    api_response = api_instance.auth_logout_all_post()
+    pprint(api_response)
+except ApiException as e:
+    print("Exception when calling AuthenticationApi->authLogoutAllPost: %s\n" % e)</code></pre>
+                            </div>
+                          </div>
+
+                          <h2>Parameters</h2>
+
+
+
+
+
+
+                          <h2>Responses</h2>
+                            <h3> Status: 200 - Successfully logged out from all devices </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-authLogoutAllPost-200-schema">Schema</a>
+                                </li>
+
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                                <div class="tab-pane active" id="responses-authLogoutAllPost-200-schema">
+                                  <div id='responses-authLogoutAllPost-200-schema-200' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
+                                    <script>
+                                      $(document).ready(function() {
+                                        var schemaWrapper = {
+  "description" : "Successfully logged out from all devices",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/inline_response_200_6"
+      }
+    }
+  }
+};
+                                        var schema = schemaWrapper.content["application/json"].schema;
+                                        if (schema.$ref != null) {
+                                          schema = defsParser.$refs.get(schema.$ref);
+                                        } else {
+                                          schemaWrapper.components = {};
+                                          schemaWrapper.components.schemas = Object.assign({}, defs);
+                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                            console.log(err);
+                                          });
+                                        }
+
+                                        //console.log(JSON.stringify(schema));
+                                        var view = new JSONSchemaView(schema, 3);
+                                        $('#responses-authLogoutAllPost-200-schema-data').val(stringify(schema));
+                                        var result = $('#responses-authLogoutAllPost-200-schema-200');
+                                        result.empty();
+                                        result.append(view.render());
+                                      });
+                                    </script>
+                                  </div>
+                                  <input id='responses-authLogoutAllPost-200-schema-data' type='hidden' value=''></input>
+                                </div>
+                            </div>
+
+                            <h3> Status: 401 - Authentication required </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-authLogoutAllPost-401-schema">Schema</a>
+                                </li>
+
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                                <div class="tab-pane active" id="responses-authLogoutAllPost-401-schema">
+                                  <div id='responses-authLogoutAllPost-401-schema-401' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
+                                    <script>
+                                      $(document).ready(function() {
+                                        var schemaWrapper = {
+  "description" : "Authentication required",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/Error"
+      }
+    }
+  }
+};
+                                        var schema = schemaWrapper.content["application/json"].schema;
+                                        if (schema.$ref != null) {
+                                          schema = defsParser.$refs.get(schema.$ref);
+                                        } else {
+                                          schemaWrapper.components = {};
+                                          schemaWrapper.components.schemas = Object.assign({}, defs);
+                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                            console.log(err);
+                                          });
+                                        }
+
+                                        //console.log(JSON.stringify(schema));
+                                        var view = new JSONSchemaView(schema, 3);
+                                        $('#responses-authLogoutAllPost-401-schema-data').val(stringify(schema));
+                                        var result = $('#responses-authLogoutAllPost-401-schema-401');
+                                        result.empty();
+                                        result.append(view.render());
+                                      });
+                                    </script>
+                                  </div>
+                                  <input id='responses-authLogoutAllPost-401-schema-data' type='hidden' value=''></input>
+                                </div>
+                            </div>
+
+                        </article>
+                      </div>
+                      <hr>
+                    <div id="api-Authentication-authLogoutPost">
+                      <article id="api-Authentication-authLogoutPost-0" data-group="User" data-name="authLogoutPost" data-version="0">
+                        <div class="pull-left">
+                          <h1>authLogoutPost</h1>
+                          <p>Logout user</p>
+                        </div>
+                        <div class="pull-right"></div>
+                        <div class="clearfix"></div>
+                        <p></p>
+                        <p class="marked">Revoke a specific refresh token (logout from current device)</p>
+                        <p></p>
+                        <br />
+                        <pre class="prettyprint language-html prettyprinted" data-type="post"><code><span class="pln">/auth/logout</span></code></pre>
+                        <p>
+                          <h3>Usage and SDK Samples</h3>
+                        </p>
+                        <ul class="nav nav-tabs nav-tabs-examples">
+                          <li class="active"><a href="#examples-Authentication-authLogoutPost-0-curl">Curl</a></li>
+                          <li class=""><a href="#examples-Authentication-authLogoutPost-0-java">Java</a></li>
+                          <li class=""><a href="#examples-Authentication-authLogoutPost-0-android">Android</a></li>
+                          <!--<li class=""><a href="#examples-Authentication-authLogoutPost-0-groovy">Groovy</a></li>-->
+                          <li class=""><a href="#examples-Authentication-authLogoutPost-0-objc">Obj-C</a></li>
+                          <li class=""><a href="#examples-Authentication-authLogoutPost-0-javascript">JavaScript</a></li>
+                          <!--<li class=""><a href="#examples-Authentication-authLogoutPost-0-angular">Angular</a></li>-->
+                          <li class=""><a href="#examples-Authentication-authLogoutPost-0-csharp">C#</a></li>
+                          <li class=""><a href="#examples-Authentication-authLogoutPost-0-php">PHP</a></li>
+                          <li class=""><a href="#examples-Authentication-authLogoutPost-0-perl">Perl</a></li>
+                          <li class=""><a href="#examples-Authentication-authLogoutPost-0-python">Python</a></li>
+                        </ul>
+
+                        <div class="tab-content">
+                          <div class="tab-pane active" id="examples-Authentication-authLogoutPost-0-curl">
+                           <pre class="prettyprint"><code class="language-bsh">curl -X POST\
+ -H "Authorization: Bearer [[accessToken]]"\
+-H "Accept: application/json"\
+-H "Content-Type: application/json"\
+"https://api.trends.earth/auth/logout"</code></pre>
+                          </div>
+                          <div class="tab-pane" id="examples-Authentication-authLogoutPost-0-java">
+                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
+import io.swagger.client.auth.*;
+import io.swagger.client.model.*;
+import io.swagger.client.api.AuthenticationApi;
+
+import java.io.File;
+import java.util.*;
+
+public class AuthenticationApiExample {
+
+    public static void main(String[] args) {
+        ApiClient defaultClient = Configuration.getDefaultApiClient();
+
+
+        AuthenticationApi apiInstance = new AuthenticationApi();
+        Auth_logout_body body = ; // Auth_logout_body | 
+        try {
+            inline_response_200_6 result = apiInstance.authLogoutPost(body);
+            System.out.println(result);
+        } catch (ApiException e) {
+            System.err.println("Exception when calling AuthenticationApi#authLogoutPost");
+            e.printStackTrace();
+        }
+    }
+}</code></pre>
+                          </div>
+
+                          <div class="tab-pane" id="examples-Authentication-authLogoutPost-0-android">
+                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.api.AuthenticationApi;
+
+public class AuthenticationApiExample {
+
+    public static void main(String[] args) {
+        AuthenticationApi apiInstance = new AuthenticationApi();
+        Auth_logout_body body = ; // Auth_logout_body | 
+        try {
+            inline_response_200_6 result = apiInstance.authLogoutPost(body);
+            System.out.println(result);
+        } catch (ApiException e) {
+            System.err.println("Exception when calling AuthenticationApi#authLogoutPost");
+            e.printStackTrace();
+        }
+    }
+}</code></pre>
+                          </div>
+  <!--
+  <div class="tab-pane" id="examples-Authentication-authLogoutPost-0-groovy">
+  <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
+  </div> -->
+                            <div class="tab-pane" id="examples-Authentication-authLogoutPost-0-objc">
+                              <pre class="prettyprint"><code class="language-cpp">Configuration *apiConfig = [Configuration sharedConfig];
+Auth_logout_body *body = ; //  (optional)
+
+AuthenticationApi *apiInstance = [[AuthenticationApi alloc] init];
+
+// Logout user
+[apiInstance authLogoutPostWith:body
+              completionHandler: ^(inline_response_200_6 output, NSError* error) {
+                            if (output) {
+                                NSLog(@"%@", output);
+                            }
+                            if (error) {
+                                NSLog(@"Error: %@", error);
+                            }
+                        }];
+</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-authLogoutPost-0-javascript">
+                              <pre class="prettyprint"><code class="language-js">var TrendsearthApi = require('trendsearth_api');
+var defaultClient = TrendsearthApi.ApiClient.instance;
+
+
+var api = new TrendsearthApi.AuthenticationApi()
+var opts = { 
+  'body':  // {{Auth_logout_body}} 
+};
+var callback = function(error, data, response) {
+  if (error) {
+    console.error(error);
+  } else {
+    console.log('API called successfully. Returned data: ' + data);
+  }
+};
+api.authLogoutPost(opts, callback);
+</code></pre>
+                            </div>
+
+                            <!--<div class="tab-pane" id="examples-Authentication-authLogoutPost-0-angular">
+              <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
+            </div>-->
+                            <div class="tab-pane" id="examples-Authentication-authLogoutPost-0-csharp">
+                              <pre class="prettyprint"><code class="language-cs">using System;
+using System.Diagnostics;
+using IO.Swagger.Api;
+using IO.Swagger.Client;
+using IO.Swagger.Model;
+
+namespace Example
+{
+    public class authLogoutPostExample
+    {
+        public void main()
+        {
+
+
+            var apiInstance = new AuthenticationApi();
+            var body = new Auth_logout_body(); // Auth_logout_body |  (optional) 
+
+            try
+            {
+                // Logout user
+                inline_response_200_6 result = apiInstance.authLogoutPost(body);
+                Debug.WriteLine(result);
+            }
+            catch (Exception e)
+            {
+                Debug.Print("Exception when calling AuthenticationApi.authLogoutPost: " + e.Message );
+            }
+        }
+    }
+}
+</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-authLogoutPost-0-php">
+                              <pre class="prettyprint"><code class="language-php"><&#63;php
+require_once(__DIR__ . '/vendor/autoload.php');
+
+
+$api_instance = new Swagger\Client\ApiAuthenticationApi();
+$body = ; // Auth_logout_body | 
+
+try {
+    $result = $api_instance->authLogoutPost($body);
+    print_r($result);
+} catch (Exception $e) {
+    echo 'Exception when calling AuthenticationApi->authLogoutPost: ', $e->getMessage(), PHP_EOL;
+}
+?></code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-authLogoutPost-0-perl">
+                              <pre class="prettyprint"><code class="language-perl">use Data::Dumper;
+use WWW::SwaggerClient::Configuration;
+use WWW::SwaggerClient::AuthenticationApi;
+
+
+my $api_instance = WWW::SwaggerClient::AuthenticationApi->new();
+my $body = WWW::SwaggerClient::Object::Auth_logout_body->new(); # Auth_logout_body | 
+
+eval { 
+    my $result = $api_instance->authLogoutPost(body => $body);
+    print Dumper($result);
+};
+if ($@) {
+    warn "Exception when calling AuthenticationApi->authLogoutPost: $@\n";
+}</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-authLogoutPost-0-python">
+                              <pre class="prettyprint"><code class="language-python">from __future__ import print_statement
+import time
+import swagger_client
+from swagger_client.rest import ApiException
+from pprint import pprint
+
+
+# create an instance of the API class
+api_instance = swagger_client.AuthenticationApi()
+body =  # Auth_logout_body |  (optional)
+
+try: 
+    # Logout user
+    api_response = api_instance.auth_logout_post(body=body)
+    pprint(api_response)
+except ApiException as e:
+    print("Exception when calling AuthenticationApi->authLogoutPost: %s\n" % e)</code></pre>
+                            </div>
+                          </div>
+
+                          <h2>Parameters</h2>
+
+
+
+                            <div class="methodsubtabletitle">Body parameters</div>
+                            <table id="methodsubtable">
+                              <tr>
+                                <th width="150px">Name</th>
+                                <th>Description</th>
+                              </tr>
+                                <tr><td style="width:150px;">body </td>
+                                <td>
+                                
+                                
+                                <script>
+                                $(document).ready(function() {
+                                  var schemaWrapper = {
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/auth_logout_body"
+      }
+    }
+  },
+  "required" : false
+};
+                                  var schema = schemaWrapper.content["application/json"].schema;
+                                  if (schema.$ref != null) {
+                                    schema = defsParser.$refs.get(schema.$ref);
+                                  } else {
+                                    schemaWrapper.components = {};
+                                    schemaWrapper.components.schemas = Object.assign({}, defs);
+                                    $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                      console.log(err);
+                                    });
+                                  }
+                                
+                                  var view = new JSONSchemaView(schema,2,{isBodyParam: true});
+                                  var result = $('#d2e199_authLogoutPost_body');
+                                  result.empty();
+                                  result.append(view.render());
+                                });
+                                </script>
+                                <div id="d2e199_authLogoutPost_body"></div>
+                                </td>
+                                </tr>
+                            </table>
+
+
+
+                          <h2>Responses</h2>
+                            <h3> Status: 200 - Successfully logged out </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-authLogoutPost-200-schema">Schema</a>
+                                </li>
+
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                                <div class="tab-pane active" id="responses-authLogoutPost-200-schema">
+                                  <div id='responses-authLogoutPost-200-schema-200' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
+                                    <script>
+                                      $(document).ready(function() {
+                                        var schemaWrapper = {
+  "description" : "Successfully logged out",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/inline_response_200_6"
+      }
+    }
+  }
+};
+                                        var schema = schemaWrapper.content["application/json"].schema;
+                                        if (schema.$ref != null) {
+                                          schema = defsParser.$refs.get(schema.$ref);
+                                        } else {
+                                          schemaWrapper.components = {};
+                                          schemaWrapper.components.schemas = Object.assign({}, defs);
+                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                            console.log(err);
+                                          });
+                                        }
+
+                                        //console.log(JSON.stringify(schema));
+                                        var view = new JSONSchemaView(schema, 3);
+                                        $('#responses-authLogoutPost-200-schema-data').val(stringify(schema));
+                                        var result = $('#responses-authLogoutPost-200-schema-200');
+                                        result.empty();
+                                        result.append(view.render());
+                                      });
+                                    </script>
+                                  </div>
+                                  <input id='responses-authLogoutPost-200-schema-data' type='hidden' value=''></input>
+                                </div>
+                            </div>
+
+                            <h3> Status: 401 - Authentication required </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-authLogoutPost-401-schema">Schema</a>
+                                </li>
+
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                                <div class="tab-pane active" id="responses-authLogoutPost-401-schema">
+                                  <div id='responses-authLogoutPost-401-schema-401' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
+                                    <script>
+                                      $(document).ready(function() {
+                                        var schemaWrapper = {
+  "description" : "Authentication required",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/Error"
+      }
+    }
+  }
+};
+                                        var schema = schemaWrapper.content["application/json"].schema;
+                                        if (schema.$ref != null) {
+                                          schema = defsParser.$refs.get(schema.$ref);
+                                        } else {
+                                          schemaWrapper.components = {};
+                                          schemaWrapper.components.schemas = Object.assign({}, defs);
+                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                            console.log(err);
+                                          });
+                                        }
+
+                                        //console.log(JSON.stringify(schema));
+                                        var view = new JSONSchemaView(schema, 3);
+                                        $('#responses-authLogoutPost-401-schema-data').val(stringify(schema));
+                                        var result = $('#responses-authLogoutPost-401-schema-401');
+                                        result.empty();
+                                        result.append(view.render());
+                                      });
+                                    </script>
+                                  </div>
+                                  <input id='responses-authLogoutPost-401-schema-data' type='hidden' value=''></input>
+                                </div>
+                            </div>
+
+                        </article>
+                      </div>
+                      <hr>
                     <div id="api-Authentication-authPost">
                       <article id="api-Authentication-authPost-0" data-group="User" data-name="authPost" data-version="0">
                         <div class="pull-left">
@@ -1490,6 +2230,373 @@ except ApiException as e:
                                     </script>
                                   </div>
                                   <input id='responses-authPost-401-schema-data' type='hidden' value=''></input>
+                                </div>
+                            </div>
+
+                        </article>
+                      </div>
+                      <hr>
+                    <div id="api-Authentication-authRefreshPost">
+                      <article id="api-Authentication-authRefreshPost-0" data-group="User" data-name="authRefreshPost" data-version="0">
+                        <div class="pull-left">
+                          <h1>authRefreshPost</h1>
+                          <p>Refresh access token</p>
+                        </div>
+                        <div class="pull-right"></div>
+                        <div class="clearfix"></div>
+                        <p></p>
+                        <p class="marked">Get a new access token using a valid refresh token</p>
+                        <p></p>
+                        <br />
+                        <pre class="prettyprint language-html prettyprinted" data-type="post"><code><span class="pln">/auth/refresh</span></code></pre>
+                        <p>
+                          <h3>Usage and SDK Samples</h3>
+                        </p>
+                        <ul class="nav nav-tabs nav-tabs-examples">
+                          <li class="active"><a href="#examples-Authentication-authRefreshPost-0-curl">Curl</a></li>
+                          <li class=""><a href="#examples-Authentication-authRefreshPost-0-java">Java</a></li>
+                          <li class=""><a href="#examples-Authentication-authRefreshPost-0-android">Android</a></li>
+                          <!--<li class=""><a href="#examples-Authentication-authRefreshPost-0-groovy">Groovy</a></li>-->
+                          <li class=""><a href="#examples-Authentication-authRefreshPost-0-objc">Obj-C</a></li>
+                          <li class=""><a href="#examples-Authentication-authRefreshPost-0-javascript">JavaScript</a></li>
+                          <!--<li class=""><a href="#examples-Authentication-authRefreshPost-0-angular">Angular</a></li>-->
+                          <li class=""><a href="#examples-Authentication-authRefreshPost-0-csharp">C#</a></li>
+                          <li class=""><a href="#examples-Authentication-authRefreshPost-0-php">PHP</a></li>
+                          <li class=""><a href="#examples-Authentication-authRefreshPost-0-perl">Perl</a></li>
+                          <li class=""><a href="#examples-Authentication-authRefreshPost-0-python">Python</a></li>
+                        </ul>
+
+                        <div class="tab-content">
+                          <div class="tab-pane active" id="examples-Authentication-authRefreshPost-0-curl">
+                           <pre class="prettyprint"><code class="language-bsh">curl -X POST\
+-H "Accept: application/json"\
+-H "Content-Type: application/json"\
+"https://api.trends.earth/auth/refresh"</code></pre>
+                          </div>
+                          <div class="tab-pane" id="examples-Authentication-authRefreshPost-0-java">
+                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
+import io.swagger.client.auth.*;
+import io.swagger.client.model.*;
+import io.swagger.client.api.AuthenticationApi;
+
+import java.io.File;
+import java.util.*;
+
+public class AuthenticationApiExample {
+
+    public static void main(String[] args) {
+        
+        AuthenticationApi apiInstance = new AuthenticationApi();
+        Auth_refresh_body body = ; // Auth_refresh_body | 
+        try {
+            inline_response_200_7 result = apiInstance.authRefreshPost(body);
+            System.out.println(result);
+        } catch (ApiException e) {
+            System.err.println("Exception when calling AuthenticationApi#authRefreshPost");
+            e.printStackTrace();
+        }
+    }
+}</code></pre>
+                          </div>
+
+                          <div class="tab-pane" id="examples-Authentication-authRefreshPost-0-android">
+                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.api.AuthenticationApi;
+
+public class AuthenticationApiExample {
+
+    public static void main(String[] args) {
+        AuthenticationApi apiInstance = new AuthenticationApi();
+        Auth_refresh_body body = ; // Auth_refresh_body | 
+        try {
+            inline_response_200_7 result = apiInstance.authRefreshPost(body);
+            System.out.println(result);
+        } catch (ApiException e) {
+            System.err.println("Exception when calling AuthenticationApi#authRefreshPost");
+            e.printStackTrace();
+        }
+    }
+}</code></pre>
+                          </div>
+  <!--
+  <div class="tab-pane" id="examples-Authentication-authRefreshPost-0-groovy">
+  <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
+  </div> -->
+                            <div class="tab-pane" id="examples-Authentication-authRefreshPost-0-objc">
+                              <pre class="prettyprint"><code class="language-cpp">Auth_refresh_body *body = ; // 
+
+AuthenticationApi *apiInstance = [[AuthenticationApi alloc] init];
+
+// Refresh access token
+[apiInstance authRefreshPostWith:body
+              completionHandler: ^(inline_response_200_7 output, NSError* error) {
+                            if (output) {
+                                NSLog(@"%@", output);
+                            }
+                            if (error) {
+                                NSLog(@"Error: %@", error);
+                            }
+                        }];
+</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-authRefreshPost-0-javascript">
+                              <pre class="prettyprint"><code class="language-js">var TrendsearthApi = require('trendsearth_api');
+
+var api = new TrendsearthApi.AuthenticationApi()
+var body = ; // {{Auth_refresh_body}} 
+
+var callback = function(error, data, response) {
+  if (error) {
+    console.error(error);
+  } else {
+    console.log('API called successfully. Returned data: ' + data);
+  }
+};
+api.authRefreshPost(body, callback);
+</code></pre>
+                            </div>
+
+                            <!--<div class="tab-pane" id="examples-Authentication-authRefreshPost-0-angular">
+              <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
+            </div>-->
+                            <div class="tab-pane" id="examples-Authentication-authRefreshPost-0-csharp">
+                              <pre class="prettyprint"><code class="language-cs">using System;
+using System.Diagnostics;
+using IO.Swagger.Api;
+using IO.Swagger.Client;
+using IO.Swagger.Model;
+
+namespace Example
+{
+    public class authRefreshPostExample
+    {
+        public void main()
+        {
+
+            var apiInstance = new AuthenticationApi();
+            var body = new Auth_refresh_body(); // Auth_refresh_body | 
+
+            try
+            {
+                // Refresh access token
+                inline_response_200_7 result = apiInstance.authRefreshPost(body);
+                Debug.WriteLine(result);
+            }
+            catch (Exception e)
+            {
+                Debug.Print("Exception when calling AuthenticationApi.authRefreshPost: " + e.Message );
+            }
+        }
+    }
+}
+</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-authRefreshPost-0-php">
+                              <pre class="prettyprint"><code class="language-php"><&#63;php
+require_once(__DIR__ . '/vendor/autoload.php');
+
+$api_instance = new Swagger\Client\ApiAuthenticationApi();
+$body = ; // Auth_refresh_body | 
+
+try {
+    $result = $api_instance->authRefreshPost($body);
+    print_r($result);
+} catch (Exception $e) {
+    echo 'Exception when calling AuthenticationApi->authRefreshPost: ', $e->getMessage(), PHP_EOL;
+}
+?></code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-authRefreshPost-0-perl">
+                              <pre class="prettyprint"><code class="language-perl">use Data::Dumper;
+use WWW::SwaggerClient::Configuration;
+use WWW::SwaggerClient::AuthenticationApi;
+
+my $api_instance = WWW::SwaggerClient::AuthenticationApi->new();
+my $body = WWW::SwaggerClient::Object::Auth_refresh_body->new(); # Auth_refresh_body | 
+
+eval { 
+    my $result = $api_instance->authRefreshPost(body => $body);
+    print Dumper($result);
+};
+if ($@) {
+    warn "Exception when calling AuthenticationApi->authRefreshPost: $@\n";
+}</code></pre>
+                            </div>
+
+                            <div class="tab-pane" id="examples-Authentication-authRefreshPost-0-python">
+                              <pre class="prettyprint"><code class="language-python">from __future__ import print_statement
+import time
+import swagger_client
+from swagger_client.rest import ApiException
+from pprint import pprint
+
+# create an instance of the API class
+api_instance = swagger_client.AuthenticationApi()
+body =  # Auth_refresh_body | 
+
+try: 
+    # Refresh access token
+    api_response = api_instance.auth_refresh_post(body)
+    pprint(api_response)
+except ApiException as e:
+    print("Exception when calling AuthenticationApi->authRefreshPost: %s\n" % e)</code></pre>
+                            </div>
+                          </div>
+
+                          <h2>Parameters</h2>
+
+
+
+                            <div class="methodsubtabletitle">Body parameters</div>
+                            <table id="methodsubtable">
+                              <tr>
+                                <th width="150px">Name</th>
+                                <th>Description</th>
+                              </tr>
+                                <tr><td style="width:150px;">body <span style="color:red;">*</span></td>
+                                <td>
+                                
+                                
+                                <script>
+                                $(document).ready(function() {
+                                  var schemaWrapper = {
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/auth_refresh_body"
+      }
+    }
+  },
+  "required" : true
+};
+                                  var schema = schemaWrapper.content["application/json"].schema;
+                                  if (schema.$ref != null) {
+                                    schema = defsParser.$refs.get(schema.$ref);
+                                  } else {
+                                    schemaWrapper.components = {};
+                                    schemaWrapper.components.schemas = Object.assign({}, defs);
+                                    $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                      console.log(err);
+                                    });
+                                  }
+                                
+                                  var view = new JSONSchemaView(schema,2,{isBodyParam: true});
+                                  var result = $('#d2e199_authRefreshPost_body');
+                                  result.empty();
+                                  result.append(view.render());
+                                });
+                                </script>
+                                <div id="d2e199_authRefreshPost_body"></div>
+                                </td>
+                                </tr>
+                            </table>
+
+
+
+                          <h2>Responses</h2>
+                            <h3> Status: 200 - New access token generated </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-authRefreshPost-200-schema">Schema</a>
+                                </li>
+
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                                <div class="tab-pane active" id="responses-authRefreshPost-200-schema">
+                                  <div id='responses-authRefreshPost-200-schema-200' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
+                                    <script>
+                                      $(document).ready(function() {
+                                        var schemaWrapper = {
+  "description" : "New access token generated",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/inline_response_200_7"
+      }
+    }
+  }
+};
+                                        var schema = schemaWrapper.content["application/json"].schema;
+                                        if (schema.$ref != null) {
+                                          schema = defsParser.$refs.get(schema.$ref);
+                                        } else {
+                                          schemaWrapper.components = {};
+                                          schemaWrapper.components.schemas = Object.assign({}, defs);
+                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                            console.log(err);
+                                          });
+                                        }
+
+                                        //console.log(JSON.stringify(schema));
+                                        var view = new JSONSchemaView(schema, 3);
+                                        $('#responses-authRefreshPost-200-schema-data').val(stringify(schema));
+                                        var result = $('#responses-authRefreshPost-200-schema-200');
+                                        result.empty();
+                                        result.append(view.render());
+                                      });
+                                    </script>
+                                  </div>
+                                  <input id='responses-authRefreshPost-200-schema-data' type='hidden' value=''></input>
+                                </div>
+                            </div>
+
+                            <h3> Status: 400 -  </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                            </div>
+
+                            <h3> Status: 401 - Authentication required </h3>
+
+                            <ul class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-authRefreshPost-401-schema">Schema</a>
+                                </li>
+
+                            </ul>
+
+                            <div class="tab-content" style='margin-bottom: 10px;'>
+                                <div class="tab-pane active" id="responses-authRefreshPost-401-schema">
+                                  <div id='responses-authRefreshPost-401-schema-401' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
+                                    <script>
+                                      $(document).ready(function() {
+                                        var schemaWrapper = {
+  "description" : "Authentication required",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/Error"
+      }
+    }
+  }
+};
+                                        var schema = schemaWrapper.content["application/json"].schema;
+                                        if (schema.$ref != null) {
+                                          schema = defsParser.$refs.get(schema.$ref);
+                                        } else {
+                                          schemaWrapper.components = {};
+                                          schemaWrapper.components.schemas = Object.assign({}, defs);
+                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                            console.log(err);
+                                          });
+                                        }
+
+                                        //console.log(JSON.stringify(schema));
+                                        var view = new JSONSchemaView(schema, 3);
+                                        $('#responses-authRefreshPost-401-schema-data').val(stringify(schema));
+                                        var result = $('#responses-authRefreshPost-401-schema-401');
+                                        result.empty();
+                                        result.append(view.render());
+                                      });
+                                    </script>
+                                  </div>
+                                  <input id='responses-authRefreshPost-401-schema-data' type='hidden' value=''></input>
                                 </div>
                             </div>
 
