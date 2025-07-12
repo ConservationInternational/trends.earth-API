@@ -82,8 +82,13 @@ docker service scale trends-earth-prod_manager=3
 # Update service
 docker service update --force trends-earth-prod_manager
 
-# Rollback service
+# Rollback services
 docker service rollback trends-earth-prod_manager
+docker service rollback trends-earth-prod_worker
+docker service rollback trends-earth-prod_beat
+
+# Or use the rollback script
+./scripts/deployment/rollback-production.sh
 ```
 
 ### Stack Management

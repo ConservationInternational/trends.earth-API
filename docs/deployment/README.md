@@ -238,10 +238,46 @@ docker service update --force trends-earth-staging_manager
 ```
 
 ### Rollback
+
+#### Automatic Rollback
+The production deployment includes automatic rollback capabilities:
+- **Health Check Failures**: If health checks fail after deployment, services automatically rollback to the previous version
+- **Service Failures**: Docker Swarm monitors services and can automatically rollback on failure (configured with `failure_action: rollback`)
+- **Update Monitoring**: Services are monitored for 60 seconds after updates with automatic rollback on failure
+
+#### Manual Rollback Options
+
+**Quick Manual Rollback:**
 ```bash
-# Rollback to previous version
+# Rollback specific service to previous version
 docker service rollback trends-earth-prod_manager
+
+# Rollback all services
+docker service rollback trends-earth-prod_manager
+docker service rollback trends-earth-prod_worker  
+docker service rollback trends-earth-prod_beat
 ```
+
+**Using the Rollback Script:**
+```bash
+# Interactive rollback with confirmation
+./scripts/deployment/rollback-production.sh
+
+# Force rollback without confirmation
+./scripts/deployment/rollback-production.sh -f
+
+# Rollback specific service only
+./scripts/deployment/rollback-production.sh -s manager
+
+# Dry run to see what would happen
+./scripts/deployment/rollback-production.sh --dry-run
+```
+
+#### Rollback Configuration
+Services are configured with:
+- **Update Config**: `failure_action: rollback` for automatic rollback on deployment failure
+- **Rollback Config**: Controls how rollbacks are performed (parallelism, monitoring)
+- **Restart Policy**: Handles service restart failures with exponential backoff
 
 ## Security Considerations
 

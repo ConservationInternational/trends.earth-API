@@ -112,6 +112,23 @@ jobs:
           
           if [ $attempt -gt $max_attempts ]; then
             echo "❌ Health check failed after $max_attempts attempts"
+            echo "🔄 Initiating automatic rollback..."
+            
+            # Rollback all services
+            docker service rollback trends-earth-prod_manager || echo "Manager rollback failed"
+            docker service rollback trends-earth-prod_worker || echo "Worker rollback failed"  
+            docker service rollback trends-earth-prod_beat || echo "Beat rollback failed"
+            
+            # Wait for rollback to complete
+            sleep 60
+            
+            # Verify rollback health
+            if curl -f http://localhost:3001/api-health > /dev/null 2>&1; then
+              echo "✅ Rollback successful - services restored"
+            else
+              echo "❌ Rollback verification failed - manual intervention required"
+            fi
+            
             exit 1
           fi
           
@@ -130,4 +147,3 @@ jobs:
           Actor: ${{ github.actor }}
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      continue-on-error: true
