@@ -35,7 +35,6 @@ chmod +x scripts/deployment/*.sh
 - `DOCKER_REGISTRY`: `registry.company.com:5000`
 - `DOCKER_USERNAME`: Registry username
 - `DOCKER_PASSWORD`: Registry password
-- `SLACK_WEBHOOK_URL`: (optional)
 
 ### Production Environment
 - `PROD_HOST`: Server IP/hostname

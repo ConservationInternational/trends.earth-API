@@ -164,11 +164,8 @@ setup_docker_secrets() {
 setup_notification_secrets() {
     print_status "Setting up optional notification secrets..."
     
-    read -p "Enter Slack webhook URL (optional, press enter to skip): " SLACK_WEBHOOK_URL
-    if [[ -n "$SLACK_WEBHOOK_URL" ]]; then
-        set_github_secret "SLACK_WEBHOOK_URL" "$SLACK_WEBHOOK_URL"
-        print_success "Slack webhook configured"
-    fi
+    # Slack integration removed - notifications disabled
+    print_info "Note: Slack notifications have been removed from this setup"
 }
 
 # Function to create GitHub environments

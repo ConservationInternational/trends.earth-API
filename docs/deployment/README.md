@@ -158,7 +158,6 @@ The following secrets will be configured automatically:
 - `DOCKER_REGISTRY` - Docker registry URL
 - `DOCKER_USERNAME` - Registry username
 - `DOCKER_PASSWORD` - Registry password
-- `SLACK_WEBHOOK_URL` - Slack notifications (optional)
 
 #### Production Environment Secrets
 - `PROD_HOST` - Production server IP/hostname

@@ -17,7 +17,6 @@ These secrets are available to all workflows and environments:
 | `DOCKER_REGISTRY` | Docker registry URL | `registry.company.com:5000` |
 | `DOCKER_USERNAME` | Registry username | `deploy-user` |
 | `DOCKER_PASSWORD` | Registry password | `secure-password` |
-| `SLACK_WEBHOOK_URL` | Slack notifications (optional) | `https://hooks.slack.com/...` |
 
 ### 2. Production Environment Secrets
 

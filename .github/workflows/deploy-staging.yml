@@ -230,18 +230,3 @@ jobs:
           # Run integration tests script
           chmod +x scripts/deployment/run-integration-tests.sh
           ./scripts/deployment/run-integration-tests.sh
-
-    - name: Notify deployment status
-      if: always()
-      uses: 8398a7/action-slack@v3
-      with:
-        status: ${{ job.status }}
-        channel: '#deployments'
-        text: |
-          Staging deployment ${{ job.status }}
-          Branch: ${{ github.ref_name }}
-          Commit: ${{ github.sha }}
-          Actor: ${{ github.actor }}
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      continue-on-error: true
