@@ -237,8 +237,9 @@ def reconfigure_limiter_for_testing():
                     limiter._storage.storage.clear()
                 elif hasattr(limiter._storage, "reset"):
                     limiter._storage.reset()
-            except Exception:
-                pass  # Best effort cleanup
+            except Exception as e:
+                # Best effort cleanup - log the exception for debugging
+                logger.debug(f"Rate limiter cleanup failed: {e}")
 
         return True
     except Exception as e:

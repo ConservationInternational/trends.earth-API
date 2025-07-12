@@ -1,6 +1,6 @@
 services:
   migrate:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
     command: migrate
     environment:
@@ -18,7 +18,7 @@ services:
         condition: on-failure
 
   manager:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
     command: start
     environment:
@@ -61,7 +61,7 @@ services:
         window: 120s
 
   worker:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
     command: worker
     environment:
@@ -99,7 +99,7 @@ services:
         window: 120s
 
   beat:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
     command: beat
     environment:
@@ -155,4 +155,4 @@ networks:
     driver: overlay
     ipam:
       config:
-        - subnet: 10.10.0.0/16
+        - subnet: ${DOCKER_SUBNET:-10.10.0.0/16}

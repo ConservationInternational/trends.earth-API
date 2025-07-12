@@ -9,12 +9,22 @@ from dotenv import load_dotenv
 from flask import Flask, got_request_exception, jsonify, request
 from flask_compress import Compress
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from flask_limiter import Limiter
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 import rollbar
 import rollbar.contrib.flask
+
+from gefapi.celery import make_celery
+from gefapi.config import SETTINGS
+from gefapi.utils.rate_limiting import (
+    RateLimitConfig,
+    get_rate_limit_key_for_auth,
+    get_user_id_or_ip,
+    is_rate_limiting_disabled,
+    rate_limit_error_handler,
+)
 
 # Load environment variables from the correct .env file
 # This must happen before any local imports that depend on environment variables.
@@ -31,8 +41,6 @@ else:
     print(f"Warning: {dotenv_path} not found. Using default environment variables.")
     # Fallback to default .env if environment-specific one isn't found
     load_dotenv()
-
-from gefapi.config import SETTINGS
 
 # Flask App
 app = Flask(__name__)
@@ -92,18 +100,9 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
 # Celery
-from gefapi.celery import make_celery
-
 celery = make_celery(app)
 
 # Rate Limiting (must be after db and celery)
-from gefapi.utils.rate_limiting import (
-    RateLimitConfig,
-    get_rate_limit_key_for_auth,
-    get_user_id_or_ip,
-    is_rate_limiting_disabled,
-    rate_limit_error_handler,
-)
 
 limiter = Limiter(
     app=app,
@@ -178,8 +177,84 @@ def create_token():
     if user is None:
         return jsonify({"msg": "Bad username or password"}), 401
 
+    # Import here to avoid circular imports
+    from gefapi.services.refresh_token_service import RefreshTokenService
+
+    # Create access token
     access_token = create_access_token(identity=user.id)
-    return jsonify({"access_token": access_token, "user_id": user.id})
+
+    # Create refresh token
+    refresh_token = RefreshTokenService.create_refresh_token(user.id)
+
+    return jsonify(
+        {
+            "access_token": access_token,
+            "refresh_token": refresh_token.token,
+            "user_id": user.id,
+            "expires_in": 3600,  # 1 hour in seconds
+        }
+    )
+
+
+@app.route("/auth/refresh", methods=["POST"])
+@limiter.limit(
+    lambda: ";".join(RateLimitConfig.get_auth_limits()),
+    key_func=get_rate_limit_key_for_auth,
+    exempt_when=is_rate_limiting_disabled,
+)
+def refresh_token():
+    logger.info("[JWT]: Attempting token refresh...")
+    refresh_token_string = request.json.get("refresh_token", None)
+
+    if not refresh_token_string:
+        return jsonify({"msg": "Refresh token is required"}), 400
+
+    # Import here to avoid circular imports
+    from gefapi.services.refresh_token_service import RefreshTokenService
+
+    access_token, user = RefreshTokenService.refresh_access_token(refresh_token_string)
+
+    if not access_token:
+        return jsonify({"msg": "Invalid or expired refresh token"}), 401
+
+    return jsonify(
+        {
+            "access_token": access_token,
+            "user_id": user.id,
+            "expires_in": 3600,  # 1 hour in seconds
+        }
+    )
+
+
+@app.route("/auth/logout", methods=["POST"])
+@jwt_required()
+def logout():
+    logger.info("[JWT]: User logout...")
+    refresh_token_string = request.json.get("refresh_token", None)
+
+    if refresh_token_string:
+        # Import here to avoid circular imports
+        from gefapi.services.refresh_token_service import RefreshTokenService
+
+        RefreshTokenService.revoke_refresh_token(refresh_token_string)
+
+    return jsonify({"msg": "Successfully logged out"}), 200
+
+
+@app.route("/auth/logout-all", methods=["POST"])
+@jwt_required()
+def logout_all():
+    logger.info("[JWT]: User logout from all devices...")
+    from flask_jwt_extended import current_user
+
+    # Import here to avoid circular imports
+    from gefapi.services.refresh_token_service import RefreshTokenService
+
+    revoked_count = RefreshTokenService.revoke_all_user_tokens(current_user.id)
+
+    return jsonify(
+        {"msg": f"Successfully logged out from {revoked_count} devices"}
+    ), 200
 
 
 @jwt.user_lookup_loader

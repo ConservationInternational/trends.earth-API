@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Production to Staging Script Migration
-Copies scripts that were created or updated within the past year from production to staging.
+Copies scripts that were created or updated within the past year from
+production to staging.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -60,7 +61,8 @@ class ScriptMigration:
         try:
             db_label = db_name or config["database"]
             logger.info(
-                f"Connecting to {db_label} database at {config['host']}:{config['port']}"
+                f"Connecting to {db_label} database at "
+                f"{config['host']}:{config['port']}"
             )
             conn = psycopg2.connect(**config)
             return conn
@@ -69,22 +71,27 @@ class ScriptMigration:
             sys.exit(1)
 
     def get_recent_scripts_from_production(self):
-        """Fetch scripts from production that were created or updated in the past year."""
+        """
+        Fetch scripts from production that were created or updated in the
+        past year.
+        """
         conn = self.connect_to_database(self.prod_db_config, "production")
 
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
 
             logger.info(
-                f"Fetching scripts created or updated since {self.one_year_ago.strftime('%Y-%m-%d')}"
+                "Fetching scripts created or updated since "
+                f"{self.one_year_ago.strftime('%Y-%m-%d')}"
             )
 
             cursor.execute(
                 """
-                SELECT id, name, slug, description, created_at, updated_at, user_id, status, 
-                       public, cpu_reservation, cpu_limit, memory_reservation, memory_limit,
-                       environment, environment_version
-                FROM script 
+                SELECT id, name, slug, description, created_at, updated_at,
+                       user_id, status, public, cpu_reservation, cpu_limit,
+                       memory_reservation, memory_limit, environment,
+                       environment_version
+                FROM script
                 WHERE created_at >= %s OR updated_at >= %s
                 ORDER BY updated_at DESC
             """,
@@ -111,7 +118,7 @@ class ScriptMigration:
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT id FROM "user" 
+                SELECT id FROM "user"
                 WHERE role = 'SUPERADMIN' AND email LIKE '%test%'
                 LIMIT 1
             """)
@@ -198,10 +205,12 @@ class ScriptMigration:
                         cursor.execute(
                             """
                             INSERT INTO script (
-                                id, name, slug, description, created_at, updated_at, 
-                                user_id, status, public, cpu_reservation, cpu_limit, 
-                                memory_reservation, memory_limit, environment, environment_version
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                id, name, slug, description, created_at,
+                                updated_at, user_id, status, public,
+                                cpu_reservation, cpu_limit, memory_reservation,
+                                memory_limit, environment, environment_version
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                      %s, %s, %s, %s, %s)
                         """,
                             (
                                 script["id"],
@@ -236,10 +245,12 @@ class ScriptMigration:
                             cursor.execute(
                                 """
                                 INSERT INTO script (
-                                    id, name, slug, description, created_at, updated_at, 
-                                    user_id, status, public, cpu_reservation, cpu_limit, 
-                                    memory_reservation, memory_limit, environment, environment_version
-                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    id, name, slug, description, created_at,
+                                    updated_at, user_id, status, public,
+                                    cpu_reservation, cpu_limit, memory_reservation,
+                                    memory_limit, environment, environment_version
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                          %s, %s, %s, %s, %s)
                             """,
                                 (
                                     script["id"],
@@ -303,7 +314,7 @@ class ScriptMigration:
             # Count recent scripts (last year)
             cursor.execute(
                 """
-                SELECT COUNT(*) FROM script 
+                SELECT COUNT(*) FROM script
                 WHERE created_at >= %s OR updated_at >= %s
             """,
                 (self.one_year_ago, self.one_year_ago),

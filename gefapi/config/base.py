@@ -11,9 +11,6 @@ SETTINGS = {
         "GEE_ENDPOINT": os.getenv("GEE_ENDPOINT"),
         "EE_SERVICE_ACCOUNT_JSON": os.getenv("EE_SERVICE_ACCOUNT_JSON"),
         "SPARKPOST_API_KEY": os.getenv("SPARKPOST_API_KEY"),
-        "API_URL": os.getenv("API_URL"),
-        "API_USER": os.getenv("API_USER"),
-        "API_PASSWORD": os.getenv("API_PASSWORD"),
         "PARAMS_S3_PREFIX": os.getenv("PARAMS_S3_PREFIX"),
         "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
         "CORS_ORIGINS": os.getenv("CORS_ORIGINS"),
@@ -42,7 +39,10 @@ SETTINGS = {
     "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
     "UPLOAD_FOLDER": "/tmp/scripts",
     "ALLOWED_EXTENSIONS": {"tar.gz"},
-    "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 2),
+    "JWT_ACCESS_TOKEN_EXPIRES": timedelta(
+        seconds=60 * 60 * 1
+    ),  # Reduced to 1 hour with refresh tokens
+    "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=30),  # 30 days for refresh tokens
     "JWT_TOKEN_LOCATION": ["headers"],
     "CELERY_BROKER_URL": os.getenv("REDIS_URL")
     or (

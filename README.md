@@ -235,6 +235,35 @@ docker compose -f docker-compose.admin.yml down
 
 ## Configuration
 
+### Docker Registry and Network Configuration
+
+The application supports configurable Docker registry and network settings via environment variables for flexible deployment across different environments.
+
+**Registry Configuration:**
+- `REGISTRY_HOST` - Docker registry host and port (default: `registry.example.com:5000`)
+  - Set this to your private registry: `REGISTRY_HOST=my-registry.example.com:5000`
+  - Used for pulling application images in production and staging deployments
+
+**Network Configuration:**
+- `DOCKER_SUBNET` - Subnet for Docker overlay networks
+  - Production default: `10.10.0.0/16`
+  - Staging default: `10.1.0.0/16`
+  - Customize for your network requirements: `DOCKER_SUBNET=172.20.0.0/16`
+
+**Docker Security:**
+- `DOCKER_GROUP_ID` - Docker group ID for socket access (default: `999`)
+  - Find your group ID: `id -g docker`
+  - Required for containers to access Docker socket securely
+
+**Environment Files:**
+Create environment-specific files (`.env`, `prod.env`, `staging.env`) with these variables:
+```bash
+# Example configuration
+REGISTRY_HOST=my-registry.example.com:5000
+DOCKER_SUBNET=10.10.0.0/16
+DOCKER_GROUP_ID=999
+```
+
 ### Rate Limiting Configuration
 
 The API includes configurable rate limiting to protect against abuse and ensure fair usage. Rate limiting settings are configured via environment variables and can be customized per deployment environment.
@@ -294,7 +323,104 @@ The API provides comprehensive filtering, sorting, and pagination capabilities f
   - Used by load balancers and monitoring systems
 
 ### Authentication
-- `POST /auth` - User authentication
+
+The API uses JWT (JSON Web Tokens) with refresh token support for secure authentication.
+
+#### Authentication Endpoints
+
+**Login (Get Tokens):**
+```bash
+POST /auth
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "user_password"
+}
+
+# Response:
+{
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+  "refresh_token": "dGhpc0lzQVJlZnJlc2hUb2tlbg...",
+  "user_id": "user-uuid-here",
+  "expires_in": 3600
+}
+```
+
+**Refresh Access Token:**
+```bash
+POST /auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "dGhpc0lzQVJlZnJlc2hUb2tlbg..."
+}
+
+# Response:
+{
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+  "user_id": "user-uuid-here",
+  "expires_in": 3600
+}
+```
+
+**Logout (Revoke Refresh Token):**
+```bash
+POST /auth/logout
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "refresh_token": "dGhpc0lzQVJlZnJlc2hUb2tlbg..."
+}
+```
+
+**Logout from All Devices:**
+```bash
+POST /auth/logout-all
+Authorization: Bearer <access_token>
+```
+
+#### Token Details
+
+- **Access Token**: Short-lived (1 hour), used for API requests
+- **Refresh Token**: Long-lived (30 days), used to get new access tokens
+- **Security**: Access tokens automatically expire, refresh tokens can be revoked
+- **Usage**: Include access token in `Authorization: Bearer <token>` header
+
+#### Session Management
+
+**Get Active Sessions:**
+```bash
+GET /api/v1/user/me/sessions
+Authorization: Bearer <access_token>
+
+# Response includes session details:
+{
+  "data": [
+    {
+      "id": "session-uuid",
+      "expires_at": "2025-08-11T12:00:00Z",
+      "created_at": "2025-07-12T12:00:00Z",
+      "last_used_at": "2025-07-12T14:30:00Z",
+      "device_info": "IP: 192.168.1.1 | UA: Mozilla/5.0...",
+      "is_revoked": false
+    }
+  ]
+}
+```
+
+**Revoke Specific Session:**
+```bash
+DELETE /api/v1/user/me/sessions/<session_id>
+Authorization: Bearer <access_token>
+```
+
+**Revoke All Sessions:**
+```bash
+DELETE /api/v1/user/me/sessions
+Authorization: Bearer <access_token>
+```
 
 ### Scripts
 - `GET /api/v1/script` - List all scripts with filtering, sorting, and pagination
@@ -1388,6 +1514,29 @@ docker exec -it <container_name> env | grep -E "(JWT_SECRET_KEY|SECRET_KEY)"
 ```
 
 **Solution**: Add `JWT_SECRET_KEY=your_secure_random_key` to your production environment file (`prod.env`, `staging.env`, etc.).
+
+#### Authentication Token Issues
+
+If you're experiencing authentication issues with the refresh token system:
+
+```bash
+# Check if refresh tokens are being created
+docker compose logs <service_name> | grep -i "refresh"
+
+# Verify refresh token table exists
+docker compose exec database psql -U root -d gefdb -c "\d refresh_tokens"
+
+# Clean up expired tokens manually if needed
+docker compose run --rm api python -c "
+from gefapi.services.refresh_token_service import RefreshTokenService
+print(f'Cleaned up {RefreshTokenService.cleanup_expired_tokens()} expired tokens')
+"
+```
+
+**Common Issues:**
+- **401 Unauthorized**: Access token expired, use refresh token to get a new one
+- **Refresh token invalid**: Refresh token expired or revoked, user needs to login again
+- **Session not found**: Session was revoked or cleaned up, user needs to login again
 
 For persistent issues, please create an issue in the repository with:
 - Error messages and logs

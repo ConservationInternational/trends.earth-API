@@ -23,6 +23,7 @@ from gefapi.errors import (
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.s3 import get_script_from_s3
 from gefapi.services import ExecutionService, ScriptService, StatusService, UserService
+from gefapi.services.refresh_token_service import RefreshTokenService
 from gefapi.utils.permissions import (
     can_access_admin_features,
     can_change_user_password,
@@ -930,3 +931,62 @@ def reset_rate_limits():
     except Exception as e:
         app.logger.error(f"Failed to reset rate limits: {e}")
         return jsonify({"error": "Failed to reset rate limits"}), 500
+
+
+@endpoints.route("/user/me/sessions", strict_slashes=False, methods=["GET"])
+@jwt_required()
+def get_user_sessions():
+    """Get user's active sessions"""
+    logger.info("[ROUTER]: Getting user sessions")
+    identity = current_user
+
+    try:
+        active_sessions = RefreshTokenService.get_user_active_sessions(identity.id)
+        return jsonify(data=[session.serialize() for session in active_sessions]), 200
+    except Exception as e:
+        logger.error("[ROUTER]: " + str(e))
+        return error(status=500, detail="Generic Error")
+
+
+@endpoints.route(
+    "/user/me/sessions/<session_id>", strict_slashes=False, methods=["DELETE"]
+)
+@jwt_required()
+def revoke_user_session(session_id):
+    """Revoke a specific user session"""
+    logger.info(f"[ROUTER]: Revoking user session {session_id}")
+    identity = current_user
+
+    try:
+        # Find the session and verify it belongs to the current user
+        from gefapi.models.refresh_token import RefreshToken
+
+        session = RefreshToken.query.filter_by(
+            id=session_id, user_id=identity.id
+        ).first()
+
+        if not session:
+            return error(status=404, detail="Session not found")
+
+        if RefreshTokenService.revoke_refresh_token(session.token):
+            return jsonify(message="Session revoked successfully"), 200
+        return error(status=500, detail="Failed to revoke session")
+
+    except Exception as e:
+        logger.error("[ROUTER]: " + str(e))
+        return error(status=500, detail="Generic Error")
+
+
+@endpoints.route("/user/me/sessions", strict_slashes=False, methods=["DELETE"])
+@jwt_required()
+def revoke_all_user_sessions():
+    """Revoke all user sessions (logout from all devices)"""
+    logger.info("[ROUTER]: Revoking all user sessions")
+    identity = current_user
+
+    try:
+        revoked_count = RefreshTokenService.revoke_all_user_tokens(identity.id)
+        return jsonify(message=f"Successfully revoked {revoked_count} sessions"), 200
+    except Exception as e:
+        logger.error("[ROUTER]: " + str(e))
+        return error(status=500, detail="Generic Error")

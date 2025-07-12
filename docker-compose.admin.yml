@@ -1,6 +1,6 @@
 services:
   admin:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
     environment:
       PORT: 3000

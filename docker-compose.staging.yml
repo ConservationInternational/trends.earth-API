@@ -1,6 +1,6 @@
 services:
   migrate:
-    image: 172.40.1.52:5000/trendsearth-api-staging
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
     build: .
     command: migrate
     environment:
@@ -18,7 +18,7 @@ services:
         condition: on-failure
 
   manager:
-    image: 172.40.1.52:5000/trendsearth-api-staging
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
     command: start
     environment:
       PORT: 3000
@@ -42,7 +42,7 @@ services:
           memory: 400M
 
   worker:
-    image: 172.40.1.52:5000/trendsearth-api-staging
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
     command: worker
     environment:
       PORT: 3000
@@ -63,7 +63,7 @@ services:
           memory: 400M
 
   beat:
-    image: 172.40.1.52:5000/trendsearth-api-staging
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
     command: beat
     environment:
       PORT: 3000
@@ -84,7 +84,7 @@ services:
           memory: 400M
 
   postgres:
-    image: postgres:13
+    image: postgres:16
     environment:
       POSTGRES_DB: ${STAGING_DB_NAME:-trendsearth_staging}
       POSTGRES_USER: ${STAGING_DB_USER:-trendsearth_staging}
@@ -126,4 +126,4 @@ networks:
     driver: overlay
     ipam:
       config:
-        - subnet: 10.1.0.0/16
+        - subnet: ${DOCKER_SUBNET:-10.1.0.0/16}

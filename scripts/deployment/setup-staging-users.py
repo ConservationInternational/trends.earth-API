@@ -36,7 +36,8 @@ class StagingUserSetup:
                 f"Missing required environment variables: {', '.join(missing_vars)}"
             )
             logger.error(
-                "Please set all required environment variables before running this script."
+                "Please set all required environment variables before "
+                "running this script."
             )
             sys.exit(1)
 
@@ -77,7 +78,8 @@ class StagingUserSetup:
         """Connect to the staging database."""
         try:
             logger.info(
-                f"Connecting to database {self.db_config['database']} at {self.db_config['host']}:{self.db_config['port']}"
+                f"Connecting to database {self.db_config['database']} at "
+                f"{self.db_config['host']}:{self.db_config['port']}"
             )
             conn = psycopg2.connect(**self.db_config)
             return conn
@@ -98,13 +100,15 @@ class StagingUserSetup:
                 hashed_password = generate_password_hash(user_data["password"])
 
                 logger.info(
-                    f"Creating user: {user_data['email']} with role: {user_data['role']}"
+                    f"Creating user: {user_data['email']} with "
+                    f"role: {user_data['role']}"
                 )
 
                 # Insert or update user
                 cursor.execute(
                     """
-                    INSERT INTO "user" (id, email, name, country, institution, password, role, created_at, updated_at) 
+                    INSERT INTO "user" (id, email, name, country, institution,
+                                       password, role, created_at, updated_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (email) DO UPDATE SET
                         name = EXCLUDED.name,
@@ -133,7 +137,8 @@ class StagingUserSetup:
                     superadmin_id = actual_user_id
 
                 logger.info(
-                    f"✓ User {user_data['email']} created/updated with ID: {actual_user_id}"
+                    f"✓ User {user_data['email']} created/updated with "
+                    f"ID: {actual_user_id}"
                 )
 
             conn.commit()
@@ -167,8 +172,8 @@ class StagingUserSetup:
             # Update all scripts to be owned by the test superadmin
             cursor.execute(
                 """
-                UPDATE script 
-                SET user_id = %s, updated_at = %s 
+                UPDATE script
+                SET user_id = %s, updated_at = %s
                 WHERE user_id IS NOT NULL
             """,
                 (superadmin_id, datetime.now(timezone.utc)),
@@ -178,7 +183,8 @@ class StagingUserSetup:
             conn.commit()
 
             logger.info(
-                f"✓ Updated ownership of {updated_count} scripts to test superadmin user"
+                f"✓ Updated ownership of {updated_count} scripts to test "
+                f"superadmin user"
             )
 
         except psycopg2.Error as e:
@@ -208,8 +214,8 @@ class StagingUserSetup:
 
             # Count recent scripts (last year)
             cursor.execute("""
-                SELECT COUNT(*) FROM script 
-                WHERE created_at >= NOW() - INTERVAL '1 year' 
+                SELECT COUNT(*) FROM script
+                WHERE created_at >= NOW() - INTERVAL '1 year'
                    OR updated_at >= NOW() - INTERVAL '1 year'
             """)
             recent_scripts = cursor.fetchone()[0]
@@ -227,7 +233,8 @@ class StagingUserSetup:
             logger.info("\nTest User Credentials:")
             for user_data in self.test_users:
                 logger.info(
-                    f"  {user_data['role']}: {user_data['email']} (password: {user_data['password']})"
+                    f"  {user_data['role']}: {user_data['email']} "
+                    f"(password: {user_data['password']})"
                 )
 
         except psycopg2.Error as e:

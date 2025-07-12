@@ -59,8 +59,10 @@ services:
       - backend
       - db
     depends_on:
-      - database
-      - redis
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   worker:
     image: trendsearth_api
@@ -124,7 +126,7 @@ services:
           memory: 100M
 
   database:
-    image: postgres:9.6
+    image: postgres:16
     container_name: trendsearth-api-database
     environment:
       POSTGRES_PASSWORD: root
@@ -136,9 +138,14 @@ services:
       - target: 5432
         published: 5432
     env_file:
-      - staging.env
+      - develop.env
     networks:
       - db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d gef"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   registry:
     image: registry:2.8.1
@@ -146,7 +153,7 @@ services:
     volumes:
       - registry-data:/var/lib/registry
     env_file:
-      - staging.env
+      - develop.env
     ports:
       - target: 5000
         published: 5000
