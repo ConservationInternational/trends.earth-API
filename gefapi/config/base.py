@@ -95,10 +95,10 @@ SETTINGS = {
         ],  # API endpoints
         "AUTH_LIMITS": [
             s.strip()
-            for s in (os.getenv("AUTH_LIMITS") or "10 per minute,100 per hour").split(
+            for s in (os.getenv("AUTH_LIMITS") or "60 per minute,600 per hour").split(
                 ","
             )
-        ],  # Stricter for auth
+        ],  # Stricter for auth - can reduce once refresh tokens are widely used
         "PASSWORD_RESET_LIMITS": [
             s.strip()
             for s in (
