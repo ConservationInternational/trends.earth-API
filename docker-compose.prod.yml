@@ -7,9 +7,6 @@ services:
       PORT: 3000
     env_file:
       - prod.env
-    volumes:
-      - /var/run/docker.sock:/tmp/docker.sock
-    # Add user to host docker group for socket access
     group_add:
       - ${DOCKER_GROUP_ID:-999}
     networks:
@@ -33,7 +30,6 @@ services:
       - prod.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
-    # Add user to host docker group for socket access
     group_add:
       - ${DOCKER_GROUP_ID:-999}
     networks:
@@ -56,7 +52,6 @@ services:
       - prod.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
-    # Add user to host docker group for socket access
     group_add:
       - ${DOCKER_GROUP_ID:-999}
     networks:
@@ -79,7 +74,6 @@ services:
       - prod.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
-    # Add user to host docker group for socket access
     group_add:
       - ${DOCKER_GROUP_ID:-999}
     networks:

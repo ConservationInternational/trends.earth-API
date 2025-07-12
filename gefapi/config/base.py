@@ -79,20 +79,47 @@ SETTINGS = {
         "ENABLED": os.getenv("RATE_LIMITING_ENABLED", "true").lower() == "true",
         "STORAGE_URI": os.getenv("RATE_LIMIT_STORAGE_URI") or os.getenv("REDIS_URL"),
         # DEFAULT_LIMITS: Applied automatically to ALL endpoints (global fallback)
-        "DEFAULT_LIMITS": ["1000 per hour", "100 per minute"],
+        "DEFAULT_LIMITS": [
+            s.strip()
+            for s in (
+                os.getenv("DEFAULT_LIMITS") or "1000 per hour,100 per minute"
+            ).split(",")
+        ],
         # API_LIMITS: For specific endpoints needing moderate rate limiting
         # (manual application)
-        "API_LIMITS": ["100 per hour", "20 per minute"],  # API endpoints
-        "AUTH_LIMITS": ["10 per minute", "100 per hour"],  # Stricter for auth
+        "API_LIMITS": [
+            s.strip()
+            for s in (os.getenv("API_LIMITS") or "100 per hour,20 per minute").split(
+                ","
+            )
+        ],  # API endpoints
+        "AUTH_LIMITS": [
+            s.strip()
+            for s in (
+                os.getenv("AUTH_LIMITS") or "10 per minute,100 per hour"
+            ).split(",")
+        ],  # Stricter for auth
         "PASSWORD_RESET_LIMITS": [
-            "10 per hour",
-            "3 per minute",
+            s.strip()
+            for s in (
+                os.getenv("PASSWORD_RESET_LIMITS") or "10 per hour,3 per minute"
+            ).split(",")
         ],  # Very strict for password reset
-        "USER_CREATION_LIMITS": ["100 per hour"],  # User registration limits
+        "USER_CREATION_LIMITS": [
+            s.strip()
+            for s in (os.getenv("USER_CREATION_LIMITS") or "100 per hour").split(",")
+        ],  # User registration limits
         "EXECUTION_RUN_LIMITS": [
-            "10 per minute",
-            "40 per hour",
+            s.strip()
+            for s in (
+                os.getenv("EXECUTION_RUN_LIMITS") or "10 per minute,40 per hour"
+            ).split(",")
         ],  # Script execution limits
+    },
+    # Testing configuration for rate limiting
+    "TESTING_RATE_LIMITING": {
+        "BYPASS_FOR_TESTING": os.getenv("BYPASS_RATE_LIMITING_IN_TESTS", "false").lower() == "true",
+        "RESET_BETWEEN_TESTS": os.getenv("RESET_RATE_LIMITS_BETWEEN_TESTS", "true").lower() == "true",
     },
 }
 

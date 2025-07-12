@@ -1,11 +1,14 @@
 services:
   migrate:
     image: 172.40.1.52:5000/trendsearth-api-staging
+    build: .
     command: migrate
     environment:
       PORT: 3000
     env_file:
       - staging.env
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
@@ -26,11 +29,17 @@ services:
       - staging.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
       placement:
         constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
 
   worker:
     image: 172.40.1.52:5000/trendsearth-api-staging
@@ -41,11 +50,17 @@ services:
       - prod2.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
       placement:
         constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
 
   beat:
     image: 172.40.1.52:5000/trendsearth-api-staging
@@ -56,11 +71,17 @@ services:
       - staging.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
       placement:
         constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
 
   redis:
     image: redis
@@ -71,6 +92,10 @@ services:
     deploy:
       placement:
         constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
 
 networks:
   backend:

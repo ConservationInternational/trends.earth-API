@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 def is_rate_limiting_disabled():
     """Helper function for exempt_when parameter to check if rate limiting is
     disabled"""
+    # Check testing mode first - this bypasses rate limiting in tests
+    if bypass_rate_limiting():
+        return True
+        
     enabled = RateLimitConfig.is_enabled()
     # Also check if Flask-Limiter is globally disabled
     from gefapi import limiter
@@ -107,74 +111,63 @@ def create_rate_limit_response(retry_after=None):
 
 
 class RateLimitConfig:
-    """Rate limiting configuration class"""
+    """Helper class to centralize rate limit configuration."""
 
-    @staticmethod
-    def _get_config():
-        """Get configuration from Flask app or fallback to global SETTINGS"""
+    @classmethod
+    def _get_config(cls):
+        """Get rate limiting config from Flask app config or fallback to SETTINGS"""
         try:
-            # Use Flask app config if available (for testing)
-            return current_app.config
+            # Try to get from Flask app config first (for testing)
+            return current_app.config.get("RATE_LIMITING", {})
         except RuntimeError:
-            # Fallback to global SETTINGS if no app context
-            return SETTINGS
+            # Fallback to SETTINGS if no app context
+            return SETTINGS.get("RATE_LIMITING", {})
 
-    @staticmethod
-    def is_enabled():
-        """Check if rate limiting is enabled"""
-        config = RateLimitConfig._get_config()
-        return config.get("RATE_LIMITING", {}).get("ENABLED", True)
+    @classmethod
+    def is_enabled(cls):
+        """Check if rate limiting is globally enabled."""
+        return cls._get_config().get("ENABLED", True)
 
-    @staticmethod
-    def get_storage_uri():
-        """Get the storage URI for rate limiting"""
-        config = RateLimitConfig._get_config()
-        rate_limit_config = config.get("RATE_LIMITING", {})
+    @classmethod
+    def get_storage_uri(cls):
+        """Get the storage URI for the rate limiter."""
+        config = cls._get_config()
+        # Fallback to other redis URLs for convenience
         return (
-            rate_limit_config.get("STORAGE_URI")
-            or config.get("REDIS_URL")
-            or config.get("CELERY_BROKER_URL")
+            config.get("STORAGE_URI")
+            or SETTINGS.get("REDIS_URL")
+            or SETTINGS.get("CELERY_BROKER_URL")
         )
 
-    @staticmethod
-    def get_default_limits():
-        """Get default rate limits"""
-        config = RateLimitConfig._get_config()
-        return config.get("RATE_LIMITING", {}).get("DEFAULT_LIMITS", ["1000 per hour"])
+    @classmethod
+    def get_default_limits(cls):
+        """Get the global default rate limits."""
+        return cls._get_config().get("DEFAULT_LIMITS", ["1000 per hour"])
 
-    @staticmethod
-    def get_auth_limits():
-        """Get authentication rate limits"""
-        config = RateLimitConfig._get_config()
-        return config.get("RATE_LIMITING", {}).get("AUTH_LIMITS", ["5 per minute"])
+    @classmethod
+    def get_auth_limits(cls):
+        """Get rate limits for authentication endpoints."""
+        return cls._get_config().get("AUTH_LIMITS", ["5 per minute"])
 
-    @staticmethod
-    def get_password_reset_limits():
-        """Get password reset rate limits"""
-        config = RateLimitConfig._get_config()
-        return config.get("RATE_LIMITING", {}).get(
-            "PASSWORD_RESET_LIMITS", ["3 per hour"]
-        )
+    @classmethod
+    def get_password_reset_limits(cls):
+        """Get rate limits for password reset endpoints."""
+        return cls._get_config().get("PASSWORD_RESET_LIMITS", ["3 per hour"])
 
-    @staticmethod
-    def get_api_limits():
-        """Get general API rate limits"""
-        config = RateLimitConfig._get_config()
-        return config.get("RATE_LIMITING", {}).get("API_LIMITS", ["500 per hour"])
+    @classmethod
+    def get_api_limits(cls):
+        """Get general API rate limits."""
+        return cls._get_config().get("API_LIMITS", ["500 per hour"])
 
-    @staticmethod
-    def get_user_creation_limits():
-        """Get user creation rate limits"""
-        config = RateLimitConfig._get_config()
-        return config.get("RATE_LIMITING", {}).get(
-            "USER_CREATION_LIMITS", ["10 per hour"]
-        )
+    @classmethod
+    def get_user_creation_limits(cls):
+        """Get user creation rate limits."""
+        return cls._get_config().get("USER_CREATION_LIMITS", ["10 per hour"])
 
-    @staticmethod
-    def get_execution_run_limits():
-        """Get script execution run rate limits"""
-        config = RateLimitConfig._get_config()
-        return config.get("RATE_LIMITING", {}).get(
+    @classmethod
+    def get_execution_run_limits(cls):
+        """Get script execution endpoints."""
+        return cls._get_config().get(
             "EXECUTION_RUN_LIMITS", ["10 per minute", "40 per hour"]
         )
 
@@ -186,20 +179,26 @@ def bypass_rate_limiting():
     """
     try:
         config = current_app.config
+        
+        # Bypass in testing mode
+        if config.get("TESTING", False):
+            # Check if rate limiting is explicitly enabled in test config
+            test_rate_config = config.get("RATE_LIMITING", {})
+            if not test_rate_config.get("ENABLED", True):
+                return True
     except RuntimeError:
         config = SETTINGS
-
-    # Bypass in testing mode
-    if config.get("TESTING", False):
-        return True
 
     # Bypass if disabled in config
     if not RateLimitConfig.is_enabled():
         return True
 
     # Check for admin bypass header (only in development)
-    if config.get("ENV") == "development":
-        return request.headers.get("X-Bypass-Rate-Limit") == "true"
+    try:
+        if current_app.config.get("ENV") == "development":
+            return request.headers.get("X-Bypass-Rate-Limit") == "true"
+    except (RuntimeError, AttributeError):
+        pass
 
     return False
 
@@ -209,3 +208,39 @@ def rate_limit_error_handler(error):
     # Try to get retry_after from the error object, fallback to None
     retry_after = getattr(error, "retry_after", None)
     return create_rate_limit_response(retry_after=retry_after)
+
+
+def reconfigure_limiter_for_testing():
+    """
+    Reconfigure the Flask-Limiter instance for testing.
+    This should be called after test configuration is applied.
+    """
+    try:
+        from gefapi import limiter
+        
+        # Get the current app config
+        test_config = current_app.config.get("RATE_LIMITING", {})
+        
+        # Update default limits
+        new_default_limits = test_config.get("DEFAULT_LIMITS")
+        if new_default_limits:
+            limiter._default_limits = new_default_limits
+            
+        # Ensure limiter is enabled unless explicitly disabled
+        limiter.enabled = test_config.get("ENABLED", True)
+        
+        # For memory storage in tests, clear any existing data
+        storage_uri = test_config.get("STORAGE_URI", "")
+        if "memory://" in storage_uri and hasattr(limiter, '_storage'):
+            try:
+                if hasattr(limiter._storage, 'storage'):
+                    limiter._storage.storage.clear()
+                elif hasattr(limiter._storage, 'reset'):
+                    limiter._storage.reset()
+            except Exception:
+                pass  # Best effort cleanup
+        
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to reconfigure limiter for testing: {e}")
+        return False

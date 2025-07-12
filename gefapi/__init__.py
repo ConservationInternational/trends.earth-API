@@ -16,19 +16,23 @@ from flask_sqlalchemy import SQLAlchemy
 import rollbar
 import rollbar.contrib.flask
 
-# from rollbar.logger import RollbarHandler
-from gefapi.celery import make_celery
-from gefapi.config import SETTINGS
-from gefapi.utils.rate_limiting import (
-    RateLimitConfig,
-    get_rate_limit_key_for_auth,
-    get_user_id_or_ip,
-    is_rate_limiting_disabled,
-    rate_limit_error_handler,
-)
+# Load environment variables from the correct .env file
+# This must happen before any local imports that depend on environment variables.
+env = os.getenv("ENV", "develop")
+# The __init__.py file is in 'gefapi', and the .env files are in the project root.
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+dotenv_path = os.path.join(project_root, f"{env}.env")
 
-# Load environment variables from .env file
-load_dotenv()
+print(f"Attempting to load environment from: {dotenv_path}")
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path, override=True)
+    print(f"Successfully loaded environment from {dotenv_path}")
+else:
+    print(f"Warning: {dotenv_path} not found. Using default environment variables.")
+    # Fallback to default .env if environment-specific one isn't found
+    load_dotenv()
+
+from gefapi.config import SETTINGS
 
 # Flask App
 app = Flask(__name__)
@@ -63,6 +67,8 @@ with app.app_context():
 
 app.config["SQLALCHEMY_DATABASE_URI"] = SETTINGS.get("SQLALCHEMY_DATABASE_URI")
 app.config["UPLOAD_FOLDER"] = SETTINGS.get("UPLOAD_FOLDER")
+# Transfer rate limiting configuration to Flask app config
+app.config["RATE_LIMITING"] = SETTINGS.get("RATE_LIMITING", {})
 
 # Ensure JWT_SECRET_KEY is set with proper fallback
 jwt_secret = (
@@ -72,32 +78,7 @@ jwt_secret = (
     or os.getenv("SECRET_KEY")
 )
 
-# Also check for empty/whitespace-only values
-if jwt_secret:
-    jwt_secret = jwt_secret.strip()
-
-if not jwt_secret:
-    # Log what we found for debugging
-    print(f"DEBUG: SETTINGS JWT_SECRET_KEY: '{SETTINGS.get('JWT_SECRET_KEY')}'")
-    print(f"DEBUG: SETTINGS SECRET_KEY: '{SETTINGS.get('SECRET_KEY')}'")
-    print(f"DEBUG: ENV JWT_SECRET_KEY: '{os.getenv('JWT_SECRET_KEY')}'")
-    print(f"DEBUG: ENV SECRET_KEY: '{os.getenv('SECRET_KEY')}'")
-    print("DEBUG: All environment variables starting with SECRET:")
-    for key, value in os.environ.items():
-        if "SECRET" in key.upper():
-            display_value = f"{value[:20]}..." if len(str(value)) > 20 else value
-            print(f"  {key}={display_value}")
-    raise RuntimeError(
-        "JWT_SECRET_KEY or SECRET_KEY must be set to a non-empty value "
-        "in environment variables"
-    )
-
 app.config["JWT_SECRET_KEY"] = jwt_secret
-if jwt_secret:
-    print(f"JWT_SECRET_KEY configured successfully: {jwt_secret[:10]}...")
-else:
-    print("JWT_SECRET_KEY configured successfully: None")
-
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = SETTINGS.get("JWT_ACCESS_TOKEN_EXPIRES")
 app.config["JWT_TOKEN_LOCATION"] = SETTINGS.get("JWT_TOKEN_LOCATION")
 app.config["broker_url"] = SETTINGS.get("CELERY_BROKER_URL")
@@ -106,8 +87,24 @@ app.config["result_backend"] = SETTINGS.get("CELERY_RESULT_BACKEND")
 # Configure request size limits for security
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB max request size
 
-# Configure rate limiting
-# Initialize rate limiter with Redis backend (reuses existing Redis connection)
+# Database
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+
+# Celery
+from gefapi.celery import make_celery
+
+celery = make_celery(app)
+
+# Rate Limiting (must be after db and celery)
+from gefapi.utils.rate_limiting import (
+    RateLimitConfig,
+    get_rate_limit_key_for_auth,
+    get_user_id_or_ip,
+    is_rate_limiting_disabled,
+    rate_limit_error_handler,
+)
+
 limiter = Limiter(
     app=app,
     key_func=get_user_id_or_ip,  # Default key function that exempts admin users
@@ -118,12 +115,6 @@ limiter = Limiter(
     on_breach=rate_limit_error_handler,
 )
 
-# Database
-db = SQLAlchemy(app)
-
-migrate = Migrate(app, db)
-
-celery = make_celery(app)
 
 # DB has to be ready!
 # Import tasks to register them with Celery
