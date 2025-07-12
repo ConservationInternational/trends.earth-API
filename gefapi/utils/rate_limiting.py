@@ -17,7 +17,7 @@ def is_rate_limiting_disabled():
     # Check testing mode first - this bypasses rate limiting in tests
     if bypass_rate_limiting():
         return True
-        
+
     enabled = RateLimitConfig.is_enabled()
     # Also check if Flask-Limiter is globally disabled
     from gefapi import limiter
@@ -179,7 +179,7 @@ def bypass_rate_limiting():
     """
     try:
         config = current_app.config
-        
+
         # Bypass in testing mode
         if config.get("TESTING", False):
             # Check if rate limiting is explicitly enabled in test config
@@ -217,29 +217,29 @@ def reconfigure_limiter_for_testing():
     """
     try:
         from gefapi import limiter
-        
+
         # Get the current app config
         test_config = current_app.config.get("RATE_LIMITING", {})
-        
+
         # Update default limits
         new_default_limits = test_config.get("DEFAULT_LIMITS")
         if new_default_limits:
             limiter._default_limits = new_default_limits
-            
+
         # Ensure limiter is enabled unless explicitly disabled
         limiter.enabled = test_config.get("ENABLED", True)
-        
+
         # For memory storage in tests, clear any existing data
         storage_uri = test_config.get("STORAGE_URI", "")
-        if "memory://" in storage_uri and hasattr(limiter, '_storage'):
+        if "memory://" in storage_uri and hasattr(limiter, "_storage"):
             try:
-                if hasattr(limiter._storage, 'storage'):
+                if hasattr(limiter._storage, "storage"):
                     limiter._storage.storage.clear()
-                elif hasattr(limiter._storage, 'reset'):
+                elif hasattr(limiter._storage, "reset"):
                     limiter._storage.reset()
             except Exception:
                 pass  # Best effort cleanup
-        
+
         return True
     except Exception as e:
         logger.warning(f"Failed to reconfigure limiter for testing: {e}")

@@ -95,9 +95,9 @@ SETTINGS = {
         ],  # API endpoints
         "AUTH_LIMITS": [
             s.strip()
-            for s in (
-                os.getenv("AUTH_LIMITS") or "10 per minute,100 per hour"
-            ).split(",")
+            for s in (os.getenv("AUTH_LIMITS") or "10 per minute,100 per hour").split(
+                ","
+            )
         ],  # Stricter for auth
         "PASSWORD_RESET_LIMITS": [
             s.strip()
@@ -118,8 +118,14 @@ SETTINGS = {
     },
     # Testing configuration for rate limiting
     "TESTING_RATE_LIMITING": {
-        "BYPASS_FOR_TESTING": os.getenv("BYPASS_RATE_LIMITING_IN_TESTS", "false").lower() == "true",
-        "RESET_BETWEEN_TESTS": os.getenv("RESET_RATE_LIMITS_BETWEEN_TESTS", "true").lower() == "true",
+        "BYPASS_FOR_TESTING": os.getenv(
+            "BYPASS_RATE_LIMITING_IN_TESTS", "false"
+        ).lower()
+        == "true",
+        "RESET_BETWEEN_TESTS": os.getenv(
+            "RESET_RATE_LIMITS_BETWEEN_TESTS", "true"
+        ).lower()
+        == "true",
     },
 }
 

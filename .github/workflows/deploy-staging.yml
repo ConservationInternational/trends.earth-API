@@ -1,0 +1,247 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [staging, develop]
+  pull_request:
+    branches: [staging]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: 'Force deployment even if no changes detected'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
+  IMAGE_NAME: trendsearth-api-staging
+  COMPOSE_FILE: docker-compose.staging.yml
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy to Staging
+    runs-on: ubuntu-latest
+    environment: staging
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=staging,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Setup Staging Database
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        script: |
+          set -e
+          
+          # Navigate to application directory
+          cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
+          
+          # Set database environment variables
+          export STAGING_DB_HOST="${{ secrets.STAGING_DB_HOST }}"
+          export STAGING_DB_PORT="${{ secrets.STAGING_DB_PORT }}"
+          export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
+          export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
+          export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
+          
+          # Use defaults if not provided
+          export STAGING_DB_HOST="${STAGING_DB_HOST:-localhost}"
+          export STAGING_DB_PORT="${STAGING_DB_PORT:-5433}"
+          export STAGING_DB_NAME="${STAGING_DB_NAME:-trendsearth_staging}"
+          export STAGING_DB_USER="${STAGING_DB_USER:-trendsearth_staging}"
+          
+          # Run database setup script
+          chmod +x scripts/deployment/staging-postgres-container.sh
+          ./scripts/deployment/staging-postgres-container.sh
+
+    - name: Deploy to EC2 Staging
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        script: |
+          set -e
+          
+          echo "🚀 Starting staging deployment..."
+          
+          # Navigate to application directory
+          cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
+          
+          # Pull latest changes
+          git fetch origin
+          
+          # Determine which branch to deploy
+          if [ "${{ github.ref_name }}" = "staging" ]; then
+            git reset --hard origin/staging
+          else
+            git reset --hard origin/develop
+          fi
+          
+          # Set Docker group ID for socket access
+          export DOCKER_GROUP_ID=$(getent group docker | cut -d: -f3)
+          
+          # Pull latest images
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
+          
+          # Deploy with Docker Swarm
+          echo "📦 Deploying services..."
+          docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-staging
+          
+          # Wait for services to be ready
+          echo "⏳ Waiting for services to be ready..."
+          sleep 30
+          
+          # Check service status
+          echo "📊 Service status:"
+          docker service ls | grep trends-earth-staging
+          
+          # Health check
+          echo "🏥 Performing health check..."
+          max_attempts=30
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            if curl -f http://localhost:3002/api-health > /dev/null 2>&1; then
+              echo "✅ Health check passed"
+              break
+            else
+              echo "⏳ Health check attempt $attempt/$max_attempts failed, retrying..."
+              sleep 10
+              attempt=$((attempt + 1))
+            fi
+          done
+          
+          if [ $attempt -gt $max_attempts ]; then
+            echo "❌ Health check failed after $max_attempts attempts"
+            exit 1
+          fi
+          
+          echo "🎉 Staging deployment completed successfully!"
+
+    - name: Setup Staging Data
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        script: |
+          set -e
+          
+          # Navigate to application directory
+          cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
+          
+          # Set database environment variables
+          export STAGING_DB_HOST="${{ secrets.STAGING_DB_HOST }}"
+          export STAGING_DB_PORT="${{ secrets.STAGING_DB_PORT }}"
+          export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
+          export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
+          export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
+          
+          # Use defaults if not provided
+          export STAGING_DB_HOST="${STAGING_DB_HOST:-localhost}"
+          export STAGING_DB_PORT="${STAGING_DB_PORT:-5433}"
+          export STAGING_DB_NAME="${STAGING_DB_NAME:-trendsearth_staging}"
+          export STAGING_DB_USER="${STAGING_DB_USER:-trendsearth_staging}"
+          
+          # Production database (optional for script migration)
+          export PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}"
+          export PROD_DB_PORT="${{ secrets.PROD_DB_PORT }}"
+          export PROD_DB_NAME="${{ secrets.PROD_DB_NAME }}"
+          export PROD_DB_USER="${{ secrets.PROD_DB_USER }}"
+          export PROD_DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}"
+          
+          # Use defaults if not provided
+          export PROD_DB_PORT="${PROD_DB_PORT:-5432}"
+          export PROD_DB_NAME="${PROD_DB_NAME:-trendsearth}"
+          
+          # Test user credentials (required)
+          export TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}"
+          export TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}"
+          export TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}"
+          export TEST_SUPERADMIN_PASSWORD="${{ secrets.TEST_SUPERADMIN_PASSWORD }}"
+          export TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}"
+          export TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}"
+          
+          # Run data setup script
+          chmod +x scripts/deployment/staging-data-migration.sh
+          ./scripts/deployment/staging-data-migration.sh
+
+    - name: Run integration tests
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        script: |
+          set -e
+          
+          # Navigate to application directory
+          cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
+          
+          # Set test user credentials for integration tests
+          export TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}"
+          export TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}"
+          export TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}"
+          export TEST_SUPERADMIN_PASSWORD="${{ secrets.TEST_SUPERADMIN_PASSWORD }}"
+          export TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}"
+          export TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}"
+          
+          # Run integration tests script
+          chmod +x scripts/deployment/run-integration-tests.sh
+          ./scripts/deployment/run-integration-tests.sh
+
+    - name: Notify deployment status
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        text: |
+          Staging deployment ${{ job.status }}
+          Branch: ${{ github.ref_name }}
+          Commit: ${{ github.sha }}
+          Actor: ${{ github.actor }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      continue-on-error: true

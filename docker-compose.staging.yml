@@ -83,6 +83,27 @@ services:
           cpus: "0.25"
           memory: 400M
 
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: ${STAGING_DB_NAME:-trendsearth_staging}
+      POSTGRES_USER: ${STAGING_DB_USER:-trendsearth_staging}
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD}
+    ports:
+      - target: 5432
+        published: 5433
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 200M
+
   redis:
     image: redis
     ports:
@@ -96,6 +117,9 @@ services:
         reservations:
           cpus: "0.25"
           memory: 400M
+
+volumes:
+  postgres_staging_data:
 
 networks:
   backend:

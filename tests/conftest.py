@@ -154,7 +154,7 @@ def app():
 
         original_limiter_enabled = limiter.enabled
         limiter.enabled = True
-        
+
         # Reconfigure limiter with test settings
         reconfigure_limiter_for_testing()
 
@@ -691,29 +691,29 @@ def rate_limiting_enabled(app):
         # Clear any existing rate limit state
         from gefapi import limiter
         from gefapi.utils.rate_limiting import reconfigure_limiter_for_testing
-        
+
         # Ensure limiter is properly configured for testing
         limiter.enabled = True
         reconfigure_limiter_for_testing()
-        
+
         # Clear storage to start fresh
         try:
-            if hasattr(limiter, '_storage'):
-                if hasattr(limiter._storage, 'storage'):
+            if hasattr(limiter, "_storage"):
+                if hasattr(limiter._storage, "storage"):
                     limiter._storage.storage.clear()
-                elif hasattr(limiter._storage, 'reset'):
+                elif hasattr(limiter._storage, "reset"):
                     limiter._storage.reset()
         except Exception:
             pass
-        
+
         yield
-        
+
         # Cleanup after test
         try:
-            if hasattr(limiter, '_storage'):
-                if hasattr(limiter._storage, 'storage'):
+            if hasattr(limiter, "_storage"):
+                if hasattr(limiter._storage, "storage"):
                     limiter._storage.storage.clear()
-                elif hasattr(limiter._storage, 'reset'):
+                elif hasattr(limiter._storage, "reset"):
                     limiter._storage.reset()
         except Exception:
             pass
@@ -724,12 +724,12 @@ def rate_limiting_disabled(app):
     """Fixture to temporarily disable rate limiting for performance tests"""
     with app.app_context():
         from gefapi import limiter
-        
+
         original_enabled = limiter.enabled
         limiter.enabled = False
-        
+
         yield
-        
+
         # Restore original state
         limiter.enabled = original_enabled
 
