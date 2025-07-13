@@ -1,5 +1,8 @@
 from datetime import timedelta
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 SETTINGS = {
     "logging": {"level": os.getenv("LOG_LEVEL", "INFO")},
@@ -14,6 +17,10 @@ SETTINGS = {
         "PARAMS_S3_PREFIX": os.getenv("PARAMS_S3_PREFIX"),
         "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
         "CORS_ORIGINS": os.getenv("CORS_ORIGINS"),
+        # API configuration required for trends.earth-Environment integration
+        "API_USER": os.getenv("API_USER"),
+        "API_PASSWORD": os.getenv("API_PASSWORD"),
+        "API_URL": os.getenv("API_URL"),
     },
     "ROLES": ["SUPERADMIN", "ADMIN", "USER"],
     "SQLALCHEMY_DATABASE_URI": os.getenv("DATABASE_URL")
@@ -143,3 +150,7 @@ if os.getenv("AWS_SECRET_ACCESS_KEY"):
     _add_aws_env_var("AWS_SECRET_ACCESS_KEY")
 if os.getenv("AWS_DEFAULT_REGION"):
     _add_aws_env_var("AWS_DEFAULT_REGION")
+
+# Check for email configuration
+if not os.getenv("SPARKPOST_API_KEY"):
+    logger.warning("SPARKPOST_API_KEY is not set. Email functionality will be disabled. Set SPARKPOST_API_KEY environment variable to enable email notifications.")
