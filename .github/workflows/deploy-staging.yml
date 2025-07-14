@@ -66,13 +66,21 @@ jobs:
         cache-to: type=gha,mode=max
         outputs: type=docker,dest=/tmp/image.tar
 
+    - name: Set SSH port variable
+      id: ssh-port
+      run: |
+        # Trim whitespace and newlines from the port
+        PORT="${{ secrets.STAGING_SSH_PORT || 22 }}"
+        PORT=$(echo "$PORT" | tr -d '[:space:]')
+        echo "port=$PORT" >> $GITHUB_OUTPUT
+
     - name: Transfer and push image via SSH tunnel
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USERNAME }}
         key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        port: ${{ steps.ssh-port.outputs.port }}
         script: |
           set -e
           echo "🔧 Preparing for image transfer..."
@@ -92,7 +100,7 @@ jobs:
         # Transfer the image
         scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
           -i /tmp/ssh_key \
-          -P ${{ secrets.STAGING_SSH_PORT || 22 }} \
+          -P ${{ steps.ssh-port.outputs.port }} \
           /tmp/image.tar \
           ${{ secrets.STAGING_USERNAME }}@${{ secrets.STAGING_HOST }}:/tmp/docker-transfer/
         
@@ -105,7 +113,7 @@ jobs:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USERNAME }}
         key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        port: ${{ steps.ssh-port.outputs.port }}
         script: |
           set -e
           
@@ -164,7 +172,7 @@ jobs:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USERNAME }}
         key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        port: ${{ steps.ssh-port.outputs.port }}
         script: |
           set -e
           
@@ -194,7 +202,7 @@ jobs:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USERNAME }}
         key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        port: ${{ steps.ssh-port.outputs.port }}
         script: |
           set -e
           
@@ -257,7 +265,7 @@ jobs:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USERNAME }}
         key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        port: ${{ steps.ssh-port.outputs.port }}
         script: |
           set -e
           
@@ -306,7 +314,7 @@ jobs:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USERNAME }}
         key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        port: ${{ steps.ssh-port.outputs.port }}
         script: |
           set -e
           
