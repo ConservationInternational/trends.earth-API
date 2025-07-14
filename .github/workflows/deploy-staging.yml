@@ -54,8 +54,7 @@ jobs:
           --group-id "${{ secrets.STAGING_SECURITY_GROUP_ID }}" \
           --protocol tcp \
           --port 22 \
-          --cidr "${RUNNER_IP}/32" \
-          --description "GitHub Actions runner SSH access - $(date -u +%Y%m%d-%H%M%S)" || true
+          --cidr "${RUNNER_IP}/32" || true
         
         echo "Security group rule added successfully"
 
