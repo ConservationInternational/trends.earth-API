@@ -45,13 +45,14 @@ jobs:
         echo "runner-ip=$RUNNER_IP" >> $GITHUB_OUTPUT
         
         # Add SSH access rule for the runner IP
+        TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
         echo "Adding SSH access for runner IP $RUNNER_IP to security group ${{ secrets.PROD_SECURITY_GROUP_ID }}"
         aws ec2 authorize-security-group-ingress \
           --group-id ${{ secrets.PROD_SECURITY_GROUP_ID }} \
           --protocol tcp \
           --port 22 \
           --cidr ${RUNNER_IP}/32 \
-          --description "GitHub Actions runner SSH access - $(date -u +%Y%m%d-%H%M%S)" || true
+          --description "GitHub Actions runner SSH access - ${TIMESTAMP}" || true
         
         echo "Security group rule added successfully"
 
