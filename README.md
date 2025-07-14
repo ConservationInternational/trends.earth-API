@@ -1092,7 +1092,7 @@ Key environment variables to configure (see `.env` files):
 - `develop.env` - Development environment settings
 - `test.env` - Testing environment settings  
 - `staging.env` - Staging environment settings
-- `prod2.env` - Production environment settings
+- `prod.env` - Production environment settings
 
 ### Production Deployment
 
