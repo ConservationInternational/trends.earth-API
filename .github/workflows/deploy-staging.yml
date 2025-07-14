@@ -65,28 +65,28 @@ jobs:
         echo "=== SSH Connection Debug ==="
         
         # Check if SSH key secret exists and has content
-        if [ -n "${{ secrets.STAGING_SSH_KEY }}" ]; then
+        if [ -n "$STAGING_SSH_KEY" ]; then
           echo "✓ STAGING_SSH_KEY secret is set"
-          echo "Key length: $(echo '${{ secrets.STAGING_SSH_KEY }}' | wc -c) characters"
+          echo "Key length: $(echo "$STAGING_SSH_KEY" | wc -c) characters"
           
-          # Check key format
+          # Check key format safely
           echo "Key header:"
-          echo '${{ secrets.STAGING_SSH_KEY }}' | head -n1
+          echo "$STAGING_SSH_KEY" | head -n1
           echo "Key footer:"
-          echo '${{ secrets.STAGING_SSH_KEY }}' | tail -n1
+          echo "$STAGING_SSH_KEY" | tail -n1
         else
           echo "✗ STAGING_SSH_KEY secret is missing or empty"
           exit 1
         fi
         
         # Check connection details
-        echo "Host: ${{ secrets.STAGING_HOST }}"
-        echo "Username: ${{ secrets.STAGING_USERNAME }}"
-        echo "Port: ${{ secrets.STAGING_SSH_PORT || 22 }}"
+        echo "Host: $STAGING_HOST"
+        echo "Username: $STAGING_USERNAME"
+        echo "Port: $STAGING_SSH_PORT"
         
         # Test basic connectivity
         echo "Testing basic connectivity to host..."
-        if ping -c 3 ${{ secrets.STAGING_HOST }}; then
+        if ping -c 3 "$STAGING_HOST"; then
           echo "✓ Host is reachable"
         else
           echo "✗ Host is not reachable"
@@ -94,7 +94,7 @@ jobs:
         
         # Test port connectivity
         echo "Testing SSH port connectivity..."
-        if timeout 10 bash -c "</dev/tcp/${{ secrets.STAGING_HOST }}/${{ secrets.STAGING_SSH_PORT || 22 }}"; then
+        if timeout 10 bash -c "</dev/tcp/$STAGING_HOST/$STAGING_SSH_PORT"; then
           echo "✓ SSH port is open"
         else
           echo "✗ SSH port is not accessible"
@@ -103,7 +103,7 @@ jobs:
         # Save SSH key to temporary file for testing
         echo "Setting up temporary key file..."
         mkdir -p ~/.ssh
-        echo '${{ secrets.STAGING_SSH_KEY }}' > ~/.ssh/temp_staging_key
+        echo "$STAGING_SSH_KEY" > ~/.ssh/temp_staging_key
         chmod 600 ~/.ssh/temp_staging_key
         
         # Test SSH key format
@@ -117,22 +117,27 @@ jobs:
         else
           echo "✗ SSH key format is invalid"
           echo "Key content (first 100 chars):"
-          echo '${{ secrets.STAGING_SSH_KEY }}' | head -c 100
+          echo "$STAGING_SSH_KEY" | head -c 100
           exit 1
         fi
         
         # Test SSH connection with maximum verbosity
         echo "Testing SSH connection with verbose output..."
         ssh -vvv -i ~/.ssh/temp_staging_key \
-          -p ${{ secrets.STAGING_SSH_PORT || 22 }} \
+          -p "$STAGING_SSH_PORT" \
           -o StrictHostKeyChecking=no \
           -o ConnectTimeout=30 \
           -o UserKnownHostsFile=/dev/null \
-          ${{ secrets.STAGING_USERNAME }}@${{ secrets.STAGING_HOST }} \
+          "$STAGING_USERNAME@$STAGING_HOST" \
           "echo 'SSH connection successful!'" 2>&1 || echo "SSH connection failed - see verbose output above"
         
         # Cleanup
         rm -f ~/.ssh/temp_staging_key ~/.ssh/temp_staging_key.pub
+      env:
+        STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        STAGING_HOST: ${{ secrets.STAGING_HOST }}
+        STAGING_USERNAME: ${{ secrets.STAGING_USERNAME }}
+        STAGING_SSH_PORT: ${{ secrets.STAGING_SSH_PORT || 22 }}
 
     - name: Build and push image on staging server
       uses: appleboy/ssh-action@v1.0.0
