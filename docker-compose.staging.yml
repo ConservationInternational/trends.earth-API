@@ -43,7 +43,7 @@ services:
     environment:
       PORT: 3000
     env_file:
-      - prod2.env
+      - staging.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
     networks:
