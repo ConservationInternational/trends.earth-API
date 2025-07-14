@@ -10,6 +10,9 @@ from unittest.mock import patch
 # Add the project root to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+# Set environment to 'testing' before importing the app
+os.environ["ENV"] = "testing"
+
 from flask_jwt_extended import create_access_token
 import pytest
 
@@ -147,9 +150,13 @@ def app():
 
         # Ensure Flask-Limiter is enabled for rate limiting tests
         from gefapi import limiter
+        from gefapi.utils.rate_limiting import reconfigure_limiter_for_testing
 
         original_limiter_enabled = limiter.enabled
         limiter.enabled = True
+
+        # Reconfigure limiter with test settings
+        reconfigure_limiter_for_testing()
 
         try:
             db.create_all()
@@ -675,6 +682,56 @@ print("Hello from test script!")
     tar_buffer.seek(0)
     tar_buffer.name = "test_script.tar.gz"
     return tar_buffer
+
+
+@pytest.fixture
+def rate_limiting_enabled(app):
+    """Fixture to ensure rate limiting is enabled and working properly in tests"""
+    with app.app_context():
+        # Clear any existing rate limit state
+        from gefapi import limiter
+        from gefapi.utils.rate_limiting import reconfigure_limiter_for_testing
+
+        # Ensure limiter is properly configured for testing
+        limiter.enabled = True
+        reconfigure_limiter_for_testing()
+
+        # Clear storage to start fresh
+        try:
+            if hasattr(limiter, "_storage"):
+                if hasattr(limiter._storage, "storage"):
+                    limiter._storage.storage.clear()
+                elif hasattr(limiter._storage, "reset"):
+                    limiter._storage.reset()
+        except Exception:
+            pass
+
+        yield
+
+        # Cleanup after test
+        try:
+            if hasattr(limiter, "_storage"):
+                if hasattr(limiter._storage, "storage"):
+                    limiter._storage.storage.clear()
+                elif hasattr(limiter._storage, "reset"):
+                    limiter._storage.reset()
+        except Exception:
+            pass
+
+
+@pytest.fixture
+def rate_limiting_disabled(app):
+    """Fixture to temporarily disable rate limiting for performance tests"""
+    with app.app_context():
+        from gefapi import limiter
+
+        original_enabled = limiter.enabled
+        limiter.enabled = False
+
+        yield
+
+        # Restore original state
+        limiter.enabled = original_enabled
 
 
 # No database cleanup fixture - let tests handle their own state

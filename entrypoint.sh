@@ -31,6 +31,14 @@ case "$1" in
         echo "Running tests"
         export TESTING=true
         
+        # Wait for database to be ready
+        echo "Waiting for database to be ready..."
+        until PGPASSWORD=root psql -h database -U root -d postgres -c '\l' >/dev/null 2>&1; do
+            echo "Database is unavailable - sleeping"
+            sleep 2
+        done
+        echo "Database is ready!"
+        
         # Create test database if it doesn't exist
         echo "Creating test database if needed..."
         PGPASSWORD=root psql -h database -U root -d postgres -c "CREATE DATABASE gef_test;" 2>/dev/null || echo "Test database already exists"

@@ -214,6 +214,7 @@ def create_api_spec():
     # Add paths
     add_health_paths(spec)
     add_auth_paths(spec)
+    add_refresh_auth_paths(spec)
     add_user_paths(spec)
     add_script_paths(spec)
     add_execution_paths(spec)
@@ -279,7 +280,9 @@ def add_auth_paths(spec):
                                     "type": "object",
                                     "properties": {
                                         "access_token": {"type": "string"},
-                                        "user": {"$ref": "#/components/schemas/User"},
+                                        "refresh_token": {"type": "string"},
+                                        "user_id": {"type": "string"},
+                                        "expires_in": {"type": "integer"},
                                     },
                                 }
                             }
@@ -288,6 +291,126 @@ def add_auth_paths(spec):
                     "401": {"$ref": "#/components/responses/UnauthorizedError"},
                 },
             }
+        },
+    )
+
+
+def add_refresh_auth_paths(spec):
+    """Add refresh token authentication endpoints"""
+
+    # Refresh token endpoint
+    spec.path(
+        path="/auth/refresh",
+        operations={
+            "post": {
+                "summary": "Refresh access token",
+                "description": "Get a new access token using a valid refresh token",
+                "tags": ["Authentication"],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "refresh_token": {"type": "string"},
+                                },
+                                "required": ["refresh_token"],
+                            }
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "New access token generated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "access_token": {"type": "string"},
+                                        "user_id": {"type": "string"},
+                                        "expires_in": {"type": "integer"},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/BadRequestError"},
+                    "401": {"$ref": "#/components/responses/UnauthorizedError"},
+                },
+            },
+        },
+    )
+
+    # Logout endpoint
+    spec.path(
+        path="/auth/logout",
+        operations={
+            "post": {
+                "summary": "Logout user",
+                "description": "Revoke a specific refresh token (logout from current device)",
+                "tags": ["Authentication"],
+                "security": [{"bearerAuth": []}],
+                "requestBody": {
+                    "required": False,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "refresh_token": {"type": "string"},
+                                },
+                            }
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successfully logged out",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "msg": {"type": "string"},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/UnauthorizedError"},
+                },
+            },
+        },
+    )
+
+    # Logout from all devices endpoint
+    spec.path(
+        path="/auth/logout-all",
+        operations={
+            "post": {
+                "summary": "Logout from all devices",
+                "description": "Revoke all refresh tokens for the current user",
+                "tags": ["Authentication"],
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "Successfully logged out from all devices",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "msg": {"type": "string"},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/UnauthorizedError"},
+                },
+            },
         },
     )
 

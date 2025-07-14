@@ -1,11 +1,14 @@
 services:
   migrate:
-    image: 172.40.1.52:5000/trendsearth-api-staging
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
+    build: .
     command: migrate
     environment:
       PORT: 3000
     env_file:
       - staging.env
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
@@ -15,7 +18,7 @@ services:
         condition: on-failure
 
   manager:
-    image: 172.40.1.52:5000/trendsearth-api-staging
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
     command: start
     environment:
       PORT: 3000
@@ -26,14 +29,20 @@ services:
       - staging.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
       placement:
         constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
 
   worker:
-    image: 172.40.1.52:5000/trendsearth-api-staging
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
     command: worker
     environment:
       PORT: 3000
@@ -41,14 +50,20 @@ services:
       - prod2.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
       placement:
         constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
 
   beat:
-    image: 172.40.1.52:5000/trendsearth-api-staging
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
     command: beat
     environment:
       PORT: 3000
@@ -56,11 +71,38 @@ services:
       - staging.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
+    group_add:
+      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
       placement:
         constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${STAGING_DB_NAME:-trendsearth_staging}
+      POSTGRES_USER: ${STAGING_DB_USER:-trendsearth_staging}
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD}
+    ports:
+      - target: 5432
+        published: 5433
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 200M
 
   redis:
     image: redis
@@ -71,10 +113,17 @@ services:
     deploy:
       placement:
         constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
+
+volumes:
+  postgres_staging_data:
 
 networks:
   backend:
     driver: overlay
     ipam:
       config:
-        - subnet: 10.1.0.0/16
+        - subnet: ${DOCKER_SUBNET:-10.1.0.0/16}

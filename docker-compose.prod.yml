@@ -1,15 +1,12 @@
 services:
   migrate:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
     command: migrate
     environment:
       PORT: 3000
     env_file:
       - prod.env
-    volumes:
-      - /var/run/docker.sock:/tmp/docker.sock
-    # Add user to host docker group for socket access
     group_add:
       - ${DOCKER_GROUP_ID:-999}
     networks:
@@ -21,7 +18,7 @@ services:
         condition: on-failure
 
   manager:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
     command: start
     environment:
@@ -33,7 +30,6 @@ services:
       - prod.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
-    # Add user to host docker group for socket access
     group_add:
       - ${DOCKER_GROUP_ID:-999}
     networks:
@@ -45,9 +41,27 @@ services:
         reservations:
           cpus: "0.25"
           memory: 400M
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        failure_action: pause
+        monitor: 60s
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
 
   worker:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
     command: worker
     environment:
@@ -56,7 +70,6 @@ services:
       - prod.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
-    # Add user to host docker group for socket access
     group_add:
       - ${DOCKER_GROUP_ID:-999}
     networks:
@@ -68,9 +81,25 @@ services:
         reservations:
           cpus: "0.25"
           memory: 400M
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        failure_action: pause
+        monitor: 60s
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
 
   beat:
-    image: 172.40.1.52:5000/trendsearth-api
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
     command: beat
     environment:
@@ -79,7 +108,6 @@ services:
       - prod.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
-    # Add user to host docker group for socket access
     group_add:
       - ${DOCKER_GROUP_ID:-999}
     networks:
@@ -91,6 +119,22 @@ services:
         reservations:
           cpus: "0.25"
           memory: 400M
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        failure_action: pause
+        monitor: 60s
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
 
   redis:
     image: redis
@@ -111,4 +155,4 @@ networks:
     driver: overlay
     ipam:
       config:
-        - subnet: 10.10.0.0/16
+        - subnet: ${DOCKER_SUBNET:-10.10.0.0/16}

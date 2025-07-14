@@ -101,19 +101,33 @@ def run_migrations():
             ).fetchall()
             existing_status_log = [row[0] for row in status_log_result]
 
+            # Check if refresh tokens table exists
+            refresh_tokens_result = db.session.execute(
+                text("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_name = 'refresh_tokens'
+            """)
+            ).fetchall()
+            refresh_tokens_exists = len(refresh_tokens_result) > 0
+
             logger.info(f"Branch 2 columns in script table: {existing_branch2}")
             logger.info(f"Status log columns: {existing_status_log}")
+            logger.info(f"Refresh tokens table exists: {refresh_tokens_exists}")
 
             if len(existing_branch2) >= 4:
-                # Branch 2 is already applied, just need to add status_log columns
+                # Branch 2 is already applied, check what else needs to be done
                 if len(existing_status_log) == 0:
                     logger.info(
                         "Branch 2 already applied, targeting g23bc4de5678 "
                         "for status_log columns"
                     )
                     upgrade(revision="g23bc4de5678")
+                elif not refresh_tokens_exists:
+                    logger.info("Status log already applied, adding refresh tokens table")
+                    upgrade(revision="add_refresh_tokens")
                 else:
-                    logger.info("Both branches already applied")
+                    logger.info("All migrations already applied")
                     print("✓ Database migrations already completed")
                     return
             else:

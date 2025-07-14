@@ -9,14 +9,13 @@ from dotenv import load_dotenv
 from flask import Flask, got_request_exception, jsonify, request
 from flask_compress import Compress
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from flask_limiter import Limiter
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 import rollbar
 import rollbar.contrib.flask
 
-# from rollbar.logger import RollbarHandler
 from gefapi.celery import make_celery
 from gefapi.config import SETTINGS
 from gefapi.utils.rate_limiting import (
@@ -27,8 +26,21 @@ from gefapi.utils.rate_limiting import (
     rate_limit_error_handler,
 )
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from the correct .env file
+# This must happen before any local imports that depend on environment variables.
+env = os.getenv("ENV", "develop")
+# The __init__.py file is in 'gefapi', and the .env files are in the project root.
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+dotenv_path = os.path.join(project_root, f"{env}.env")
+
+print(f"Attempting to load environment from: {dotenv_path}")
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path, override=True)
+    print(f"Successfully loaded environment from {dotenv_path}")
+else:
+    print(f"Warning: {dotenv_path} not found. Using default environment variables.")
+    # Fallback to default .env if environment-specific one isn't found
+    load_dotenv()
 
 # Flask App
 app = Flask(__name__)
@@ -63,6 +75,8 @@ with app.app_context():
 
 app.config["SQLALCHEMY_DATABASE_URI"] = SETTINGS.get("SQLALCHEMY_DATABASE_URI")
 app.config["UPLOAD_FOLDER"] = SETTINGS.get("UPLOAD_FOLDER")
+# Transfer rate limiting configuration to Flask app config
+app.config["RATE_LIMITING"] = SETTINGS.get("RATE_LIMITING", {})
 
 # Ensure JWT_SECRET_KEY is set with proper fallback
 jwt_secret = (
@@ -72,32 +86,7 @@ jwt_secret = (
     or os.getenv("SECRET_KEY")
 )
 
-# Also check for empty/whitespace-only values
-if jwt_secret:
-    jwt_secret = jwt_secret.strip()
-
-if not jwt_secret:
-    # Log what we found for debugging
-    print(f"DEBUG: SETTINGS JWT_SECRET_KEY: '{SETTINGS.get('JWT_SECRET_KEY')}'")
-    print(f"DEBUG: SETTINGS SECRET_KEY: '{SETTINGS.get('SECRET_KEY')}'")
-    print(f"DEBUG: ENV JWT_SECRET_KEY: '{os.getenv('JWT_SECRET_KEY')}'")
-    print(f"DEBUG: ENV SECRET_KEY: '{os.getenv('SECRET_KEY')}'")
-    print("DEBUG: All environment variables starting with SECRET:")
-    for key, value in os.environ.items():
-        if "SECRET" in key.upper():
-            display_value = f"{value[:20]}..." if len(str(value)) > 20 else value
-            print(f"  {key}={display_value}")
-    raise RuntimeError(
-        "JWT_SECRET_KEY or SECRET_KEY must be set to a non-empty value "
-        "in environment variables"
-    )
-
 app.config["JWT_SECRET_KEY"] = jwt_secret
-if jwt_secret:
-    print(f"JWT_SECRET_KEY configured successfully: {jwt_secret[:10]}...")
-else:
-    print("JWT_SECRET_KEY configured successfully: None")
-
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = SETTINGS.get("JWT_ACCESS_TOKEN_EXPIRES")
 app.config["JWT_TOKEN_LOCATION"] = SETTINGS.get("JWT_TOKEN_LOCATION")
 app.config["broker_url"] = SETTINGS.get("CELERY_BROKER_URL")
@@ -106,8 +95,15 @@ app.config["result_backend"] = SETTINGS.get("CELERY_RESULT_BACKEND")
 # Configure request size limits for security
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB max request size
 
-# Configure rate limiting
-# Initialize rate limiter with Redis backend (reuses existing Redis connection)
+# Database
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+
+# Celery
+celery = make_celery(app)
+
+# Rate Limiting (must be after db and celery)
+
 limiter = Limiter(
     app=app,
     key_func=get_user_id_or_ip,  # Default key function that exempts admin users
@@ -118,12 +114,6 @@ limiter = Limiter(
     on_breach=rate_limit_error_handler,
 )
 
-# Database
-db = SQLAlchemy(app)
-
-migrate = Migrate(app, db)
-
-celery = make_celery(app)
 
 # DB has to be ready!
 # Import tasks to register them with Celery
@@ -187,8 +177,84 @@ def create_token():
     if user is None:
         return jsonify({"msg": "Bad username or password"}), 401
 
+    # Import here to avoid circular imports
+    from gefapi.services.refresh_token_service import RefreshTokenService
+
+    # Create access token
     access_token = create_access_token(identity=user.id)
-    return jsonify({"access_token": access_token, "user_id": user.id})
+
+    # Create refresh token
+    refresh_token = RefreshTokenService.create_refresh_token(user.id)
+
+    return jsonify(
+        {
+            "access_token": access_token,
+            "refresh_token": refresh_token.token,
+            "user_id": user.id,
+            "expires_in": 3600,  # 1 hour in seconds
+        }
+    )
+
+
+@app.route("/auth/refresh", methods=["POST"])
+@limiter.limit(
+    lambda: ";".join(RateLimitConfig.get_auth_limits()),
+    key_func=get_rate_limit_key_for_auth,
+    exempt_when=is_rate_limiting_disabled,
+)
+def refresh_token():
+    logger.info("[JWT]: Attempting token refresh...")
+    refresh_token_string = request.json.get("refresh_token", None)
+
+    if not refresh_token_string:
+        return jsonify({"msg": "Refresh token is required"}), 400
+
+    # Import here to avoid circular imports
+    from gefapi.services.refresh_token_service import RefreshTokenService
+
+    access_token, user = RefreshTokenService.refresh_access_token(refresh_token_string)
+
+    if not access_token:
+        return jsonify({"msg": "Invalid or expired refresh token"}), 401
+
+    return jsonify(
+        {
+            "access_token": access_token,
+            "user_id": user.id,
+            "expires_in": 3600,  # 1 hour in seconds
+        }
+    )
+
+
+@app.route("/auth/logout", methods=["POST"])
+@jwt_required()
+def logout():
+    logger.info("[JWT]: User logout...")
+    refresh_token_string = request.json.get("refresh_token", None)
+
+    if refresh_token_string:
+        # Import here to avoid circular imports
+        from gefapi.services.refresh_token_service import RefreshTokenService
+
+        RefreshTokenService.revoke_refresh_token(refresh_token_string)
+
+    return jsonify({"msg": "Successfully logged out"}), 200
+
+
+@app.route("/auth/logout-all", methods=["POST"])
+@jwt_required()
+def logout_all():
+    logger.info("[JWT]: User logout from all devices...")
+    from flask_jwt_extended import current_user
+
+    # Import here to avoid circular imports
+    from gefapi.services.refresh_token_service import RefreshTokenService
+
+    revoked_count = RefreshTokenService.revoke_all_user_tokens(current_user.id)
+
+    return jsonify(
+        {"msg": f"Successfully logged out from {revoked_count} devices"}
+    ), 200
 
 
 @jwt.user_lookup_loader
