@@ -97,42 +97,14 @@ jobs:
           # Configure Docker client authentication
           mkdir -p $HOME/.docker
           
-          # Validate Docker auth secret
-          if [ -z "${{ secrets.DOCKER_HTTP_SECRET }}" ]; then
-            echo "❌ DOCKER_HTTP_SECRET is empty, skipping Docker auth configuration"
-          else
-            echo "🔐 Configuring Docker registry authentication..."
-            
-            # Create Docker config with proper base64 validation
-            REGISTRY="${{ env.REGISTRY }}"
-            AUTH_SECRET="${{ secrets.DOCKER_HTTP_SECRET }}"
-            
-            # Validate that the auth secret is valid base64
-            if echo "$AUTH_SECRET" | base64 -d >/dev/null 2>&1; then
-              echo "✅ Docker auth secret is valid base64"
-              
-              # Create Docker config JSON with auth
-              cat > $HOME/.docker/config.json <<-DOCKERCONFIG
+          # Create simplified Docker config without auth for staging
+          echo "🔐 Creating Docker config for staging..."
+          cat > $HOME/.docker/config.json <<-DOCKERCONFIG
           {
-            "auths": {
-              "$REGISTRY": {
-                "auth": "$AUTH_SECRET"
-              }
-            },
-            "insecure-registries": ["$REGISTRY"]
+            "insecure-registries": ["${{ env.REGISTRY }}"]
           }
           DOCKERCONFIG
-              echo "✅ Docker config created successfully"
-            else
-              echo "❌ Invalid base64 in DOCKER_HTTP_SECRET, creating config without auth"
-              # Create Docker config JSON without auth
-              cat > $HOME/.docker/config.json <<-DOCKERCONFIG
-          {
-            "insecure-registries": ["$REGISTRY"]
-          }
-          DOCKERCONFIG
-            fi
-          fi
+          echo "✅ Docker config created successfully"
           
           # Build the image with the appropriate tags
           echo "🔨 Building Docker image..."
@@ -192,6 +164,15 @@ jobs:
           
           # Deploy with Docker Swarm
           echo "📦 Deploying services..."
+          
+          # Remove existing stack to ensure clean deployment
+          if docker stack ls --format "{{.Name}}" | grep -q "^trends-earth-staging$"; then
+            echo "🔄 Removing existing stack for clean deployment..."
+            docker stack rm trends-earth-staging
+            sleep 15  # Wait for complete cleanup
+          fi
+          
+          # Deploy fresh stack
           docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-staging
           
           # Wait for services to be ready
