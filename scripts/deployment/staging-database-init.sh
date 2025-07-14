@@ -96,29 +96,15 @@ wait_for_db() {
 
 # Function to create staging database container
 create_staging_database() {
-    print_status "Creating staging PostgreSQL database container..."
+    print_status "PostgreSQL database container managed by Docker Compose..."
     
-    # Check if container already exists
-    if docker ps -a --format '{{.Names}}' | grep -q "trends-earth-staging-postgres"; then
-        print_status "Staging database container already exists, removing it..."
-        docker stop trends-earth-staging-postgres || true
-        docker rm trends-earth-staging-postgres || true
-    fi
-    
-    # Create PostgreSQL container for staging
-    docker run -d \
-        --name trends-earth-staging-postgres \
-        --network trends-earth-staging_backend \
-        -e POSTGRES_DB="$STAGING_DB_NAME" \
-        -e POSTGRES_USER="$STAGING_DB_USER" \
-        -e POSTGRES_PASSWORD="$STAGING_DB_PASSWORD" \
-        -p "$STAGING_DB_PORT:5432" \
-        postgres:13
+    # Skip container creation since it's managed by Docker Compose
+    print_status "Waiting for PostgreSQL service to be ready..."
     
     # Wait for database to be ready
     wait_for_db "$STAGING_DB_HOST" "$STAGING_DB_PORT" "$STAGING_DB_USER" "$STAGING_DB_NAME"
     
-    print_success "Staging database container created and ready"
+    print_success "Staging database is ready"
 }
 
 # Function to copy recent scripts from production

@@ -256,55 +256,6 @@ jobs:
           
           echo "✅ Image build and push completed!"
 
-    - name: Setup Staging Database
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.STAGING_HOST }}
-        username: ${{ secrets.STAGING_USERNAME }}
-        key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ steps.ssh-port.outputs.port }}
-        script: |
-          set -e
-          
-          # Navigate to application directory
-          cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
-          
-          # Set staging database environment variables
-          export STAGING_DB_HOST="${{ secrets.STAGING_DB_HOST }}"
-          export STAGING_DB_PORT="${{ secrets.STAGING_DB_PORT }}"
-          export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
-          export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
-          export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
-          
-          # Use defaults if not provided
-          export STAGING_DB_HOST="${STAGING_DB_HOST:-localhost}"
-          export STAGING_DB_PORT="${STAGING_DB_PORT:-5433}"
-          export STAGING_DB_NAME="${STAGING_DB_NAME:-trendsearth_staging}"
-          export STAGING_DB_USER="${STAGING_DB_USER:-trendsearth_staging}"
-          
-          # Set production database environment variables (for data import)
-          export PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}"
-          export PROD_DB_PORT="${{ secrets.PROD_DB_PORT }}"
-          export PROD_DB_NAME="${{ secrets.PROD_DB_NAME }}"
-          export PROD_DB_USER="${{ secrets.PROD_DB_USER }}"
-          export PROD_DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}"
-          
-          # Use defaults if not provided
-          export PROD_DB_PORT="${PROD_DB_PORT:-5432}"
-          export PROD_DB_NAME="${PROD_DB_NAME:-trendsearth}"
-          
-          # Set test user credentials
-          export TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}"
-          export TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}"
-          export TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}"
-          export TEST_SUPERADMIN_PASSWORD="${{ secrets.TEST_SUPERADMIN_PASSWORD }}"
-          export TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}"
-          export TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}"
-          
-          # Run comprehensive database setup script
-          chmod +x scripts/deployment/staging-database-init.sh
-          ./scripts/deployment/staging-database-init.sh
-
     - name: Deploy to EC2 Staging
       uses: appleboy/ssh-action@v1.0.0
       with:
@@ -357,6 +308,55 @@ jobs:
           fi
           
           echo "🎉 Staging deployment completed successfully!"
+
+    - name: Setup Staging Database
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ steps.ssh-port.outputs.port }}
+        script: |
+          set -e
+          
+          # Navigate to application directory
+          cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
+          
+          # Set staging database environment variables
+          export STAGING_DB_HOST="${{ secrets.STAGING_DB_HOST }}"
+          export STAGING_DB_PORT="${{ secrets.STAGING_DB_PORT }}"
+          export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
+          export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
+          export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
+          
+          # Use defaults if not provided
+          export STAGING_DB_HOST="${STAGING_DB_HOST:-localhost}"
+          export STAGING_DB_PORT="${STAGING_DB_PORT:-5433}"
+          export STAGING_DB_NAME="${STAGING_DB_NAME:-trendsearth_staging}"
+          export STAGING_DB_USER="${STAGING_DB_USER:-trendsearth_staging}"
+          
+          # Set production database environment variables (for data import)
+          export PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}"
+          export PROD_DB_PORT="${{ secrets.PROD_DB_PORT }}"
+          export PROD_DB_NAME="${{ secrets.PROD_DB_NAME }}"
+          export PROD_DB_USER="${{ secrets.PROD_DB_USER }}"
+          export PROD_DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}"
+          
+          # Use defaults if not provided
+          export PROD_DB_PORT="${PROD_DB_PORT:-5432}"
+          export PROD_DB_NAME="${PROD_DB_NAME:-trendsearth}"
+          
+          # Set test user credentials
+          export TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}"
+          export TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}"
+          export TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}"
+          export TEST_SUPERADMIN_PASSWORD="${{ secrets.TEST_SUPERADMIN_PASSWORD }}"
+          export TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}"
+          export TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}"
+          
+          # Run comprehensive database setup script (skip container creation since it's already deployed)
+          chmod +x scripts/deployment/staging-database-init.sh
+          ./scripts/deployment/staging-database-init.sh
 
     - name: Run integration tests
       uses: appleboy/ssh-action@v1.0.0
