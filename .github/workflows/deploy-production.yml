@@ -50,18 +50,6 @@ jobs:
           type=sha,prefix={{branch}}-
           type=raw,value=latest,enable={{is_default_branch}}
 
-    - name: Build Docker image locally
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        platforms: linux/amd64
-        push: false
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        outputs: type=docker,dest=/tmp/image.tar
-
     - name: Set SSH port variable
       id: ssh-port
       run: |
@@ -70,40 +58,7 @@ jobs:
         PORT=$(echo "$PORT" | tr -d '[:space:]')
         echo "port=$PORT" >> $GITHUB_OUTPUT
 
-    - name: Transfer and push image via SSH tunnel
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.PROD_HOST }}
-        username: ${{ secrets.PROD_USERNAME }}
-        key: ${{ secrets.PROD_SSH_KEY }}
-        port: ${{ steps.ssh-port.outputs.port }}
-        script: |
-          set -e
-          echo "🔧 Preparing for image transfer..."
-          
-          # Create temporary directory for image transfer
-          mkdir -p /tmp/docker-transfer
-          rm -f /tmp/docker-transfer/image.tar
-        
-    - name: Copy image to EC2
-      run: |
-        echo "📦 Transferring Docker image to EC2..."
-        
-        # Create SSH key file
-        echo "${{ secrets.PROD_SSH_KEY }}" > /tmp/ssh_key
-        chmod 600 /tmp/ssh_key
-        
-        # Transfer the image
-        scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-          -i /tmp/ssh_key \
-          -P ${{ steps.ssh-port.outputs.port }} \
-          /tmp/image.tar \
-          ${{ secrets.PROD_USERNAME }}@${{ secrets.PROD_HOST }}:/tmp/docker-transfer/
-        
-        # Clean up SSH key
-        rm -f /tmp/ssh_key
-
-    - name: Load and push image on EC2
+    - name: Build and push image on production server
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.PROD_HOST }}
@@ -113,7 +68,14 @@ jobs:
         script: |
           set -e
           
-          echo "🐳 Loading Docker image on EC2..."
+          echo "🚀 Building Docker image on production server..."
+          
+          # Navigate to application directory
+          cd ${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}
+          
+          # Pull latest changes
+          git fetch origin
+          git reset --hard origin/master
           
           # Configure insecure registry on server if needed
           echo "📋 Configuring insecure registry on server..."
@@ -142,14 +104,24 @@ jobs:
           sed -i "s|REGISTRY_PLACEHOLDER|${REGISTRY_ESCAPED}|g" $HOME/.docker/config.json
           sed -i "s|AUTH_PLACEHOLDER|${AUTH_ESCAPED}|g" $HOME/.docker/config.json
           
-          # Load the image from tar file
-          echo "📥 Loading image from tar file..."
-          docker load -i /tmp/docker-transfer/image.tar
-          
-          # Get the image tags that were built
+          # Build the image with the appropriate tags
+          echo "� Building Docker image..."
           BUILT_TAGS="${{ steps.meta.outputs.tags }}"
           
-          # Push each tag to the local registry
+          # Build with the first tag (primary tag)
+          PRIMARY_TAG=$(echo "$BUILT_TAGS" | head -n1)
+          echo "Building with primary tag: $PRIMARY_TAG"
+          docker build -t "$PRIMARY_TAG" .
+          
+          # Tag with additional tags
+          echo "$BUILT_TAGS" | while IFS= read -r tag; do
+            if [ -n "$tag" ] && [ "$tag" != "$PRIMARY_TAG" ]; then
+              echo "Tagging with: $tag"
+              docker tag "$PRIMARY_TAG" "$tag"
+            fi
+          done
+          
+          # Push all tags to the local registry
           echo "🚀 Pushing images to local registry..."
           echo "$BUILT_TAGS" | while IFS= read -r tag; do
             if [ -n "$tag" ]; then
@@ -158,9 +130,7 @@ jobs:
             fi
           done
           
-          # Clean up
-          rm -f /tmp/docker-transfer/image.tar
-          echo "✅ Image transfer and push completed!"
+          echo "✅ Image build and push completed!"
 
     - name: Deploy to EC2 Production
       uses: appleboy/ssh-action@v1.0.0
@@ -176,10 +146,6 @@ jobs:
           
           # Navigate to application directory
           cd ${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}
-          
-          # Pull latest changes
-          git fetch origin
-          git reset --hard origin/master
           
           # Set Docker group ID for socket access
           export DOCKER_GROUP_ID=$(getent group docker | cut -d: -f3)
