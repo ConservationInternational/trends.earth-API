@@ -33,6 +33,32 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+    - name: Get runner IP and update security group
+      id: security-group
+      run: |
+        # Get the public IP of the GitHub Actions runner
+        RUNNER_IP=$(curl -s https://checkip.amazonaws.com)
+        echo "Runner IP: $RUNNER_IP"
+        echo "runner-ip=$RUNNER_IP" >> $GITHUB_OUTPUT
+        
+        # Add SSH access rule for the runner IP
+        echo "Adding SSH access for runner IP $RUNNER_IP to security group ${{ secrets.STAGING_SECURITY_GROUP_ID }}"
+        aws ec2 authorize-security-group-ingress \
+          --group-id ${{ secrets.STAGING_SECURITY_GROUP_ID }} \
+          --protocol tcp \
+          --port 22 \
+          --cidr ${RUNNER_IP}/32 \
+          --description "GitHub Actions runner SSH access - $(date -u +%Y%m%d-%H%M%S)" || true
+        
+        echo "Security group rule added successfully"
+
     - name: Debug registry configuration
       run: |
         echo "Registry URL: '${{ env.REGISTRY }}'"
@@ -155,7 +181,7 @@ jobs:
           # Navigate to application directory
           cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
           
-          # Set database environment variables
+          # Set staging database environment variables
           export STAGING_DB_HOST="${{ secrets.STAGING_DB_HOST }}"
           export STAGING_DB_PORT="${{ secrets.STAGING_DB_PORT }}"
           export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
@@ -168,9 +194,28 @@ jobs:
           export STAGING_DB_NAME="${STAGING_DB_NAME:-trendsearth_staging}"
           export STAGING_DB_USER="${STAGING_DB_USER:-trendsearth_staging}"
           
-          # Run database setup script
-          chmod +x scripts/deployment/staging-postgres-container.sh
-          ./scripts/deployment/staging-postgres-container.sh
+          # Set production database environment variables (for data import)
+          export PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}"
+          export PROD_DB_PORT="${{ secrets.PROD_DB_PORT }}"
+          export PROD_DB_NAME="${{ secrets.PROD_DB_NAME }}"
+          export PROD_DB_USER="${{ secrets.PROD_DB_USER }}"
+          export PROD_DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}"
+          
+          # Use defaults if not provided
+          export PROD_DB_PORT="${PROD_DB_PORT:-5432}"
+          export PROD_DB_NAME="${PROD_DB_NAME:-trendsearth}"
+          
+          # Set test user credentials
+          export TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}"
+          export TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}"
+          export TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}"
+          export TEST_SUPERADMIN_PASSWORD="${{ secrets.TEST_SUPERADMIN_PASSWORD }}"
+          export TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}"
+          export TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}"
+          
+          # Run comprehensive database setup script
+          chmod +x scripts/deployment/staging-database-init.sh
+          ./scripts/deployment/staging-database-init.sh
 
     - name: Deploy to EC2 Staging
       uses: appleboy/ssh-action@v1.0.0
@@ -225,55 +270,6 @@ jobs:
           
           echo "🎉 Staging deployment completed successfully!"
 
-    - name: Setup Staging Data
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.STAGING_HOST }}
-        username: ${{ secrets.STAGING_USERNAME }}
-        key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ steps.ssh-port.outputs.port }}
-        script: |
-          set -e
-          
-          # Navigate to application directory
-          cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
-          
-          # Set database environment variables
-          export STAGING_DB_HOST="${{ secrets.STAGING_DB_HOST }}"
-          export STAGING_DB_PORT="${{ secrets.STAGING_DB_PORT }}"
-          export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
-          export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
-          export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
-          
-          # Use defaults if not provided
-          export STAGING_DB_HOST="${STAGING_DB_HOST:-localhost}"
-          export STAGING_DB_PORT="${STAGING_DB_PORT:-5433}"
-          export STAGING_DB_NAME="${STAGING_DB_NAME:-trendsearth_staging}"
-          export STAGING_DB_USER="${STAGING_DB_USER:-trendsearth_staging}"
-          
-          # Production database (optional for script migration)
-          export PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}"
-          export PROD_DB_PORT="${{ secrets.PROD_DB_PORT }}"
-          export PROD_DB_NAME="${{ secrets.PROD_DB_NAME }}"
-          export PROD_DB_USER="${{ secrets.PROD_DB_USER }}"
-          export PROD_DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}"
-          
-          # Use defaults if not provided
-          export PROD_DB_PORT="${PROD_DB_PORT:-5432}"
-          export PROD_DB_NAME="${PROD_DB_NAME:-trendsearth}"
-          
-          # Test user credentials (required)
-          export TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}"
-          export TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}"
-          export TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}"
-          export TEST_SUPERADMIN_PASSWORD="${{ secrets.TEST_SUPERADMIN_PASSWORD }}"
-          export TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}"
-          export TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}"
-          
-          # Run data setup script
-          chmod +x scripts/deployment/staging-data-migration.sh
-          ./scripts/deployment/staging-data-migration.sh
-
     - name: Run integration tests
       uses: appleboy/ssh-action@v1.0.0
       with:
@@ -298,3 +294,20 @@ jobs:
           # Run integration tests script
           chmod +x scripts/deployment/run-integration-tests.sh
           ./scripts/deployment/run-integration-tests.sh
+
+    - name: Cleanup security group access
+      if: always()
+      run: |
+        # Remove the SSH access rule for the runner IP
+        RUNNER_IP="${{ steps.security-group.outputs.runner-ip }}"
+        if [ -n "$RUNNER_IP" ]; then
+          echo "Removing SSH access for runner IP $RUNNER_IP from security group ${{ secrets.STAGING_SECURITY_GROUP_ID }}"
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ secrets.STAGING_SECURITY_GROUP_ID }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr ${RUNNER_IP}/32 || true
+          echo "Security group rule removed successfully"
+        else
+          echo "No runner IP found to remove from security group"
+        fi

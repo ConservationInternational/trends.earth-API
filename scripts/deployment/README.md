@@ -27,23 +27,20 @@ This directory contains modular deployment scripts that are used by the GitHub A
 
 ### Core Deployment Scripts
 
-| Script | Purpose | Dependencies |
-|--------|---------|-------------|
-| `staging-postgres-container.sh` | Creates and configures PostgreSQL container | Docker, psql |
-| `staging-data-migration.sh` | Runs migrations, creates users, migrates scripts | Python3, psycopg2-binary, werkzeug |
-| `run-integration-tests.sh` | Comprehensive API and authentication testing | curl, jq |
-| `setup-staging-users.py` | Creates test users with proper password hashing | psycopg2-binary, werkzeug |
-| `migrate-production-scripts.py` | Copies recent scripts from production | psycopg2-binary |
-| `validate-environment.sh` | Validates required environment variables | bash |
+| Script | Purpose | Dependencies | Used By |
+|--------|---------|-------------|---------|
+| `staging-database-init.sh` | **Primary**: Comprehensive database setup with production data import | Docker, psql, python3 | **GitHub Actions Workflow** |
+| `run-integration-tests.sh` | Comprehensive API and authentication testing | curl, jq | **GitHub Actions Workflow** |
 
-### Legacy Scripts (maintained for compatibility)
+### Alternative/Manual Scripts
 
-| Script | Purpose | Status |
-|--------|---------|--------|
-| `setup-docker-swarm.sh` | Full Docker Swarm initialization | ✅ Active |
-| `setup-github-secrets.sh` | GitHub secrets configuration helper | ✅ Active |
-| `test-deployment.sh` | Deployment testing and validation | ✅ Active |
-| `staging-database-init.sh` | Legacy database setup (bash-only) | ⚠️ Deprecated |
+| Script | Purpose | Dependencies | Used By |
+|--------|---------|-------------|---------|
+| `staging-postgres-container.sh` | Creates PostgreSQL container only | Docker, psql | Manual/debugging setup |
+| `staging-data-migration.sh` | Runs migrations, creates users, migrates scripts | Python3, psycopg2-binary, werkzeug | Manual/debugging setup |
+| `setup-staging-users.py` | Creates test users with proper password hashing | psycopg2-binary, werkzeug | Called by staging-data-migration.sh |
+| `migrate-production-scripts.py` | Copies recent scripts from production | psycopg2-binary | Called by staging-data-migration.sh |
+| `validate-environment.sh` | Validates required environment variables | bash | Manual validation |
 
 ## 🚀 Usage Patterns
 
@@ -51,34 +48,59 @@ This directory contains modular deployment scripts that are used by the GitHub A
 
 The scripts are automatically called by the staging workflow in this order:
 
-1. **Database Setup**: `staging-postgres-container.sh`
+1. **Comprehensive Database Setup**: `staging-database-init.sh`
    - Creates PostgreSQL container
-   - Waits for database readiness
-   - Installs Python dependencies
+   - Copies recent scripts from production database (past year)
+   - Creates properly configured test users (SUPERADMIN, ADMIN, USER)
+   - Updates script ownership to test users
+   - Provides detailed verification and reporting
 
 2. **Application Deployment**: Standard Docker Swarm deployment
 
-3. **Data Setup**: `staging-data-migration.sh`
-   - Runs database migrations
-   - Creates test users
-   - Migrates production scripts
-
-4. **Integration Testing**: `run-integration-tests.sh`
+3. **Integration Testing**: `run-integration-tests.sh`
    - Tests API health
    - Validates user authentication
    - Verifies permissions and data
 
+## Alternative Modular Setup
+
+For debugging or step-by-step setup, you can use the modular approach instead:
+
+**Modular Components:**
+- `staging-postgres-container.sh` - Container setup only
+- `staging-data-migration.sh` - Data migrations and user setup
+- `setup-staging-users.py` - User creation with proper password hashing
+- `migrate-production-scripts.py` - Production script migration
+
 ### Manual Usage
 
-All scripts can be run manually for debugging or local setup:
+**Primary Method (Comprehensive Setup)**:
 
 ```bash
+# Set all required environment variables first
+export STAGING_DB_PASSWORD="your-secure-password"
+export PROD_DB_PASSWORD="your-prod-password"
+export TEST_SUPERADMIN_EMAIL="admin@example.com"
+export TEST_SUPERADMIN_PASSWORD="your-secure-password"
+export TEST_ADMIN_PASSWORD="your-secure-password"
+export TEST_USER_PASSWORD="your-secure-password"
+# ... (other required test user vars)
+
+# Run comprehensive database setup
+./scripts/deployment/staging-database-init.sh
+
+# Run integration tests
+./scripts/deployment/run-integration-tests.sh
+```
+
+**Alternative Modular Method (Step-by-step)**:
+
 ```bash
-# Setup database (requires environment variables)
+# Setup database container only
 export STAGING_DB_PASSWORD="your-secure-password"
 ./scripts/deployment/staging-postgres-container.sh
 
-# Setup staging data (requires user credentials)
+# Setup staging data separately
 export TEST_SUPERADMIN_EMAIL="admin@example.com"
 export TEST_SUPERADMIN_PASSWORD="your-secure-password"
 export TEST_ADMIN_PASSWORD="your-secure-password"
@@ -128,9 +150,61 @@ PROD_DB_PASSWORD=                  # Optional: Required if PROD_DB_HOST set
 
 ## 📋 Script Details
 
-### staging-postgres-container.sh
+### staging-database-init.sh (Primary)
 
-**Purpose**: Creates and configures the PostgreSQL database container for staging.
+**Purpose**: Comprehensive staging database setup with production data import and test user creation.
+
+**Key Features**:
+- Creates PostgreSQL container with full configuration
+- Imports recent scripts from production database (past year)
+- Creates test users with proper roles and password hashing
+- Updates script ownership to test superadmin user
+- Comprehensive verification and reporting
+- Handles both container creation and data population
+
+**Required Environment Variables**:
+```bash
+# Staging database
+STAGING_DB_HOST=localhost
+STAGING_DB_PORT=5433
+STAGING_DB_NAME=trendsearth_staging
+STAGING_DB_USER=trendsearth_staging
+STAGING_DB_PASSWORD=your-secure-password
+
+# Production database (for data import)
+PROD_DB_HOST=your-prod-host
+PROD_DB_PORT=5432
+PROD_DB_NAME=trendsearth
+PROD_DB_USER=your-prod-user
+PROD_DB_PASSWORD=your-prod-password
+
+# Test user credentials
+TEST_SUPERADMIN_EMAIL=test-superadmin@example.com
+TEST_ADMIN_EMAIL=test-admin@example.com
+TEST_USER_EMAIL=test-user@example.com
+TEST_SUPERADMIN_PASSWORD=your-secure-password
+TEST_ADMIN_PASSWORD=your-secure-password
+TEST_USER_PASSWORD=your-secure-password
+```
+
+**Usage**:
+```bash
+# Set all required environment variables first
+export STAGING_DB_PASSWORD="your-secure-password"
+export PROD_DB_PASSWORD="your-prod-password"
+# ... (set other required variables)
+
+# Run comprehensive setup
+./scripts/deployment/staging-database-init.sh
+```
+
+**vs. Modular Approach**: This script provides a comprehensive single-step setup alternative to running `staging-postgres-container.sh` + `staging-data-migration.sh` separately. Choose based on your needs:
+- Use `staging-database-init.sh` for complete setup with production data import (recommended)
+- Use the modular approach (`staging-postgres-container.sh` + `staging-data-migration.sh`) for more controlled, step-by-step setup
+
+### staging-postgres-container.sh (Alternative)
+
+**Purpose**: Creates and configures the PostgreSQL database container for staging (container setup only).
 
 **Key Features**:
 - Environment variable validation
@@ -138,6 +212,8 @@ PROD_DB_PASSWORD=                  # Optional: Required if PROD_DB_HOST set
 - Container lifecycle management
 - Database readiness checks
 - Colored output for clear status reporting
+
+**Use Case**: Use this for debugging or when you want to set up the database container separately from data population.
 
 **Exit Codes**:
 - `0`: Success
@@ -156,9 +232,9 @@ PROD_DB_PASSWORD=                  # Optional: Required if PROD_DB_HOST set
 [SUCCESS] ✅ Staging database setup completed!
 ```
 
-### staging-data-migration.sh
+### staging-data-migration.sh (Alternative)
 
-**Purpose**: Orchestrates data setup including migrations, user creation, and script migration.
+**Purpose**: Orchestrates data setup including migrations, user creation, and script migration (data setup only).
 
 **Key Features**:
 - Database migration execution
@@ -166,6 +242,8 @@ PROD_DB_PASSWORD=                  # Optional: Required if PROD_DB_HOST set
 - Optional production script migration
 - Comprehensive error handling
 - Summary reporting
+
+**Use Case**: Use this after `staging-postgres-container.sh` for step-by-step setup or debugging data migration issues.
 
 **Dependencies**:
 - `setup-staging-users.py`
