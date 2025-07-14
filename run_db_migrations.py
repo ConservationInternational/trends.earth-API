@@ -124,7 +124,9 @@ def run_migrations():
                     )
                     upgrade(revision="g23bc4de5678")
                 elif not refresh_tokens_exists:
-                    logger.info("Status log already applied, adding refresh tokens table")
+                    logger.info(
+                        "Status log already applied, adding refresh tokens table"
+                    )
                     upgrade(revision="add_refresh_tokens")
                 else:
                     logger.info("All migrations already applied")

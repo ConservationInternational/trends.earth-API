@@ -29,12 +29,20 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Log in to Docker Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+    - name: Configure insecure registry
+      run: |
+        echo "Configuring Docker for insecure registry: ${{ env.REGISTRY }}"
+        mkdir -p $HOME/.docker
+        cat > $HOME/.docker/config.json << EOF
+        {
+          "insecure-registries": ["${{ env.REGISTRY }}"],
+          "auths": {
+            "${{ env.REGISTRY }}": {
+              "auth": "${{ secrets.DOCKER_HTTP_SECRET }}"
+            }
+          }
+        }
+        EOF
 
     - name: Extract metadata
       id: meta
@@ -78,6 +86,28 @@ jobs:
           
           # Set Docker group ID for socket access
           export DOCKER_GROUP_ID=$(getent group docker | cut -d: -f3)
+          
+          # Configure insecure registry on server
+          echo "📋 Configuring insecure registry on server..."
+          sudo mkdir -p /etc/docker
+          if [ ! -f /etc/docker/daemon.json ] || ! grep -q "insecure-registries" /etc/docker/daemon.json; then
+            echo '{"insecure-registries":["${{ env.REGISTRY }}"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+            sudo systemctl restart docker
+            sleep 10
+          fi
+          
+          # Configure Docker client authentication
+          mkdir -p $HOME/.docker
+          cat > $HOME/.docker/config.json << EOF
+          {
+            "auths": {
+              "${{ env.REGISTRY }}": {
+                "auth": "${{ secrets.DOCKER_HTTP_SECRET }}"
+              }
+            },
+            "insecure-registries": ["${{ env.REGISTRY }}"]
+          }
+          EOF
           
           # Pull latest images
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest

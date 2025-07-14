@@ -116,25 +116,64 @@ create_docker_secrets() {
     done < "$env_file"
 }
 
-# Function to setup registry authentication
-setup_registry_auth() {
-    print_status "Setting up Docker registry authentication..."
+# Function to setup registry configuration
+setup_registry_config() {
+    print_status "Setting up Docker registry configuration..."
+    print_status "This setup only supports insecure registries (e.g., AWS ECR with insecure-registries)"
     
     read -p "Enter Docker registry URL (e.g., your-registry.company.com:5000): " REGISTRY_URL
-    read -p "Enter Docker registry username: " REGISTRY_USER
-    read -s -p "Enter Docker registry password: " REGISTRY_PASS
-    echo
+    read -p "Enter Docker registry HTTP secret (required for AWS ECR): " REGISTRY_HTTP_SECRET
     
-    # Login to registry
-    echo "$REGISTRY_PASS" | docker login "$REGISTRY_URL" -u "$REGISTRY_USER" --password-stdin
-    print_success "Successfully logged into Docker registry"
+    print_status "Configuring insecure registry..."
     
-    # Create registry auth secrets
+    # Configure Docker daemon for insecure registry
+    sudo mkdir -p /etc/docker
+    
+    if [[ -f /etc/docker/daemon.json ]]; then
+        # Backup existing daemon.json
+        sudo cp /etc/docker/daemon.json /etc/docker/daemon.json.backup
+        print_status "Backed up existing daemon.json"
+    fi
+    
+    # Create or update daemon.json with insecure registry
+    cat << EOF | sudo tee /etc/docker/daemon.json > /dev/null
+{
+  "insecure-registries": ["$REGISTRY_URL"]
+}
+EOF
+    
+    # Configure Docker client auth
+    mkdir -p "$HOME/.docker"
+    cat << EOF > "$HOME/.docker/config.json"
+{
+  "auths": {
+    "$REGISTRY_URL": {
+      "auth": "$REGISTRY_HTTP_SECRET"
+    }
+  },
+  "insecure-registries": ["$REGISTRY_URL"]
+}
+EOF
+    
+    # Restart Docker daemon
+    print_status "Restarting Docker daemon to apply insecure registry configuration..."
+    sudo systemctl restart docker
+    
+    # Wait for Docker to restart
+    sleep 5
+    
+    # Re-initialize swarm if needed (restart may have reset it)
+    if ! docker info | grep -q "Swarm: active"; then
+        print_warning "Docker Swarm was reset after restart, re-initializing..."
+        init_swarm
+    fi
+    
+    print_success "Insecure registry configured: $REGISTRY_URL"
+    
+    # Create registry secrets
     echo "$REGISTRY_URL" | docker secret create registry_url -
-    echo "$REGISTRY_USER" | docker secret create registry_username -
-    echo "$REGISTRY_PASS" | docker secret create registry_password -
-    
-    print_success "Registry authentication secrets created"
+    echo "$REGISTRY_HTTP_SECRET" | docker secret create registry_http_secret -
+    echo "insecure" | docker secret create registry_type -
 }
 
 # Function to create application directories
@@ -224,10 +263,10 @@ main() {
         create_deployment_service "staging"
     fi
     
-    # Setup registry authentication
-    read -p "Setup Docker registry authentication? (y/n): " setup_registry
+    # Setup registry configuration
+    read -p "Setup Docker registry configuration? (y/n): " setup_registry
     if [[ "$setup_registry" =~ ^[Yy]$ ]]; then
-        setup_registry_auth
+        setup_registry_config
     fi
     
     print_success "Docker Swarm setup completed!"

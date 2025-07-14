@@ -5,7 +5,6 @@ import logging
 import os
 import sys
 
-from dotenv import load_dotenv
 from flask import Flask, got_request_exception, jsonify, request
 from flask_compress import Compress
 from flask_cors import CORS
@@ -25,22 +24,6 @@ from gefapi.utils.rate_limiting import (
     is_rate_limiting_disabled,
     rate_limit_error_handler,
 )
-
-# Load environment variables from the correct .env file
-# This must happen before any local imports that depend on environment variables.
-env = os.getenv("ENV", "develop")
-# The __init__.py file is in 'gefapi', and the .env files are in the project root.
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-dotenv_path = os.path.join(project_root, f"{env}.env")
-
-print(f"Attempting to load environment from: {dotenv_path}")
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path, override=True)
-    print(f"Successfully loaded environment from {dotenv_path}")
-else:
-    print(f"Warning: {dotenv_path} not found. Using default environment variables.")
-    # Fallback to default .env if environment-specific one isn't found
-    load_dotenv()
 
 # Flask App
 app = Flask(__name__)

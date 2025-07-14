@@ -146,16 +146,17 @@ setup_staging_secrets() {
 # Function to setup Docker registry secrets
 setup_docker_secrets() {
     print_status "Setting up Docker registry secrets..."
+    print_status "This setup only supports insecure registries (e.g., AWS ECR with insecure-registries)"
     
     read -p "Enter Docker registry URL (e.g., registry.company.com:5000): " DOCKER_REGISTRY
-    read -p "Enter Docker registry username: " DOCKER_USERNAME
-    read -s -p "Enter Docker registry password: " DOCKER_PASSWORD
-    echo
+    read -p "Enter Docker registry HTTP secret (required for AWS ECR): " DOCKER_HTTP_SECRET
     
-    # Set repository-wide secrets (used by both environments)
+    print_status "Setting up insecure registry configuration..."
+    # Set repository-wide secrets
     set_github_secret "DOCKER_REGISTRY" "$DOCKER_REGISTRY"
-    set_github_secret "DOCKER_USERNAME" "$DOCKER_USERNAME"
-    set_github_secret "DOCKER_PASSWORD" "$DOCKER_PASSWORD"
+    set_github_secret "DOCKER_HTTP_SECRET" "$DOCKER_HTTP_SECRET"
+    set_github_secret "DOCKER_INSECURE_REGISTRY" "true"
+    print_status "Registry configured for insecure access with HTTP secret authentication"
     
     print_success "Docker registry secrets configured"
 }
@@ -165,7 +166,7 @@ setup_notification_secrets() {
     print_status "Setting up optional notification secrets..."
     
     # Slack integration removed - notifications disabled
-    print_info "Note: Slack notifications have been removed from this setup"
+    print_status "Note: Slack notifications have been removed from this setup"
 }
 
 # Function to create GitHub environments
@@ -173,16 +174,14 @@ create_github_environments() {
     print_status "Creating GitHub environments..."
     
     # Create production environment
-    gh api -X PUT "/repos/:owner/:repo/environments/production" \
-        --field wait_timer=0 \
-        --field prevent_self_review=false \
-        --field reviewers='[]' || print_warning "Could not create production environment"
+    echo '{"wait_timer":0,"prevent_self_review":false,"reviewers":[]}' | \
+        gh api -X PUT "/repos/:owner/:repo/environments/production" --input - || \
+        print_warning "Could not create production environment"
     
     # Create staging environment
-    gh api -X PUT "/repos/:owner/:repo/environments/staging" \
-        --field wait_timer=0 \
-        --field prevent_self_review=false \
-        --field reviewers='[]' || print_warning "Could not create staging environment"
+    echo '{"wait_timer":0,"prevent_self_review":false,"reviewers":[]}' | \
+        gh api -X PUT "/repos/:owner/:repo/environments/staging" --input - || \
+        print_warning "Could not create staging environment"
     
     print_success "GitHub environments created"
 }

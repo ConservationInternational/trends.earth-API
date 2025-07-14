@@ -33,7 +33,6 @@ bleach = "*"
 python-slugify = "*"
 gunicorn = "*"
 gevent = "*"
-python-dotenv = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
