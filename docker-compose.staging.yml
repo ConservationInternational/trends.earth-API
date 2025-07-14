@@ -7,8 +7,6 @@ services:
       PORT: 3000
     env_file:
       - staging.env
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
@@ -29,8 +27,6 @@ services:
       - staging.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
@@ -50,8 +46,6 @@ services:
       - prod2.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
@@ -71,8 +65,6 @@ services:
       - staging.env
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:

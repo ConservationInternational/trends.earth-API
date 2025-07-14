@@ -11,7 +11,7 @@ on:
       force_deploy:
         description: 'Force deployment even if no changes detected'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 env:
@@ -202,21 +202,43 @@ jobs:
           
           # Configure Docker client authentication
           mkdir -p $HOME/.docker
-          REGISTRY_ESCAPED=$(echo "${{ env.REGISTRY }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-          AUTH_ESCAPED=$(echo "${{ secrets.DOCKER_HTTP_SECRET }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-          cat > $HOME/.docker/config.json << 'EOF'
+          
+          # Validate Docker auth secret
+          if [ -z "${{ secrets.DOCKER_HTTP_SECRET }}" ]; then
+            echo "❌ DOCKER_HTTP_SECRET is empty, skipping Docker auth configuration"
+          else
+            echo "🔐 Configuring Docker registry authentication..."
+            
+            # Create Docker config with proper base64 validation
+            REGISTRY="${{ env.REGISTRY }}"
+            AUTH_SECRET="${{ secrets.DOCKER_HTTP_SECRET }}"
+            
+            # Validate that the auth secret is valid base64
+            if echo "$AUTH_SECRET" | base64 -d >/dev/null 2>&1; then
+              echo "✅ Docker auth secret is valid base64"
+              
+              # Create Docker config JSON with auth
+              cat > $HOME/.docker/config.json <<-DOCKERCONFIG
           {
             "auths": {
-              "REGISTRY_PLACEHOLDER": {
-                "auth": "AUTH_PLACEHOLDER"
+              "$REGISTRY": {
+                "auth": "$AUTH_SECRET"
               }
             },
-            "insecure-registries": ["REGISTRY_PLACEHOLDER"]
+            "insecure-registries": ["$REGISTRY"]
           }
-          EOF
-          # Replace placeholders with actual values
-          sed -i "s|REGISTRY_PLACEHOLDER|${REGISTRY_ESCAPED}|g" $HOME/.docker/config.json
-          sed -i "s|AUTH_PLACEHOLDER|${AUTH_ESCAPED}|g" $HOME/.docker/config.json
+          DOCKERCONFIG
+              echo "✅ Docker config created successfully"
+            else
+              echo "❌ Invalid base64 in DOCKER_HTTP_SECRET, creating config without auth"
+              # Create Docker config JSON without auth
+              cat > $HOME/.docker/config.json <<-DOCKERCONFIG
+          {
+            "insecure-registries": ["$REGISTRY"]
+          }
+          DOCKERCONFIG
+            fi
+          fi
           
           # Build the image with the appropriate tags
           echo "🔨 Building Docker image..."
