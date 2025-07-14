@@ -27,6 +27,9 @@ jobs:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -75,15 +78,21 @@ jobs:
           # Navigate to application directory
           cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
           
-          # Pull latest changes
+          # Pull latest changes and checkout the correct branch
           git fetch origin
           
-          # Determine which branch to deploy
+          # Determine which branch to deploy and checkout
           if [ "${{ github.ref_name }}" = "staging" ]; then
+            echo "🔄 Checking out staging branch..."
+            git checkout staging
             git reset --hard origin/staging
           else
+            echo "🔄 Checking out develop branch..."
+            git checkout develop
             git reset --hard origin/develop
           fi
+          
+          echo "✅ Currently on branch: $(git branch --show-current)"
           
           # Configure insecure registry on server if needed
           echo "📋 Configuring insecure registry on server..."
@@ -165,14 +174,36 @@ jobs:
           # Deploy with Docker Swarm
           echo "📦 Deploying services..."
           
-          # Remove existing stack to ensure clean deployment
-          if docker stack ls --format "{{.Name}}" | grep -q "^trends-earth-staging$"; then
-            echo "🔄 Removing existing stack for clean deployment..."
-            docker stack rm trends-earth-staging
-            sleep 15  # Wait for complete cleanup
+          # Force remove existing stack and wait for complete cleanup
+          echo "🔄 Ensuring clean deployment environment..."
+          docker stack rm trends-earth-staging || true
+          
+          # Wait for all services to be completely removed
+          echo "⏳ Waiting for stack cleanup to complete..."
+          timeout=60
+          while [ $timeout -gt 0 ]; do
+            if ! docker service ls --format "{{.Name}}" | grep -q "trends-earth-staging"; then
+              echo "✅ Stack cleanup completed"
+              break
+            fi
+            echo "⏳ Waiting for services to stop... ($timeout seconds remaining)"
+            sleep 5
+            timeout=$((timeout - 5))
+          done
+          
+          # Additional cleanup - remove any lingering containers
+          echo "🧹 Cleaning up any remaining containers..."
+          docker ps -a --filter "name=trends-earth-staging" --format "{{.Names}}" | xargs -r docker rm -f || true
+          
+          # Ensure we're using the latest compose file
+          echo "📋 Verifying compose file..."
+          if [ ! -f "${{ env.COMPOSE_FILE }}" ]; then
+            echo "❌ Compose file not found: ${{ env.COMPOSE_FILE }}"
+            exit 1
           fi
           
           # Deploy fresh stack
+          echo "🚀 Deploying fresh stack..."
           docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-staging
           
           # Wait for services to be ready
