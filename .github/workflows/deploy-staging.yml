@@ -64,6 +64,19 @@ jobs:
       run: |
         echo "=== SSH Connection Debug ==="
         
+        # Clean up variables by removing any whitespace/newlines
+        CLEAN_HOST=$(echo "$STAGING_HOST" | tr -d '[:space:]')
+        CLEAN_USERNAME=$(echo "$STAGING_USERNAME" | tr -d '[:space:]')
+        CLEAN_PORT=$(echo "$STAGING_SSH_PORT" | tr -d '[:space:]')
+        
+        # Use default port if empty
+        CLEAN_PORT=${CLEAN_PORT:-22}
+        
+        echo "Cleaned connection details:"
+        echo "Host: '$CLEAN_HOST' (length: ${#CLEAN_HOST})"
+        echo "Username: '$CLEAN_USERNAME' (length: ${#CLEAN_USERNAME})"
+        echo "Port: '$CLEAN_PORT' (length: ${#CLEAN_PORT})"
+        
         # Check if SSH key secret exists and has content
         if [ -n "$STAGING_SSH_KEY" ]; then
           echo "✓ STAGING_SSH_KEY secret is set"
@@ -79,22 +92,30 @@ jobs:
           exit 1
         fi
         
-        # Check connection details
-        echo "Host: $STAGING_HOST"
-        echo "Username: $STAGING_USERNAME"
-        echo "Port: $STAGING_SSH_PORT"
+        # Validate cleaned variables
+        if [ -z "$CLEAN_HOST" ]; then
+          echo "✗ Host is empty after cleaning"
+          exit 1
+        fi
+        
+        if [ -z "$CLEAN_USERNAME" ]; then
+          echo "✗ Username is empty after cleaning"
+          exit 1
+        fi
         
         # Test basic connectivity
         echo "Testing basic connectivity to host..."
-        if ping -c 3 "$STAGING_HOST"; then
+        if ping -c 3 "$CLEAN_HOST"; then
           echo "✓ Host is reachable"
         else
           echo "✗ Host is not reachable"
+          echo "Trying to resolve host..."
+          nslookup "$CLEAN_HOST" || echo "DNS resolution failed"
         fi
         
         # Test port connectivity
         echo "Testing SSH port connectivity..."
-        if timeout 10 bash -c "</dev/tcp/$STAGING_HOST/$STAGING_SSH_PORT"; then
+        if timeout 10 bash -c "exec 3<>/dev/tcp/$CLEAN_HOST/$CLEAN_PORT && echo 'Port is open' >&3"; then
           echo "✓ SSH port is open"
         else
           echo "✗ SSH port is not accessible"
@@ -124,15 +145,21 @@ jobs:
         # Test SSH connection with maximum verbosity
         echo "Testing SSH connection with verbose output..."
         ssh -vvv -i ~/.ssh/temp_staging_key \
-          -p "$STAGING_SSH_PORT" \
+          -p "$CLEAN_PORT" \
           -o StrictHostKeyChecking=no \
           -o ConnectTimeout=30 \
           -o UserKnownHostsFile=/dev/null \
-          "$STAGING_USERNAME@$STAGING_HOST" \
+          "$CLEAN_USERNAME@$CLEAN_HOST" \
           "echo 'SSH connection successful!'" 2>&1 || echo "SSH connection failed - see verbose output above"
         
         # Cleanup
         rm -f ~/.ssh/temp_staging_key ~/.ssh/temp_staging_key.pub
+        
+        echo "=== Debug Summary ==="
+        echo "Host: '$CLEAN_HOST'"
+        echo "Username: '$CLEAN_USERNAME'"
+        echo "Port: '$CLEAN_PORT'"
+        echo "SSH key fingerprint: $(ssh-keygen -lf ~/.ssh/temp_staging_key.pub 2>/dev/null || echo 'Key validation failed')"
       env:
         STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
         STAGING_HOST: ${{ secrets.STAGING_HOST }}

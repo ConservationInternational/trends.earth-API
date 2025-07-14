@@ -1,69 +1,133 @@
 #!/bin/bash
 
 # Setup script for GitHub Actions deployment with dynamic security group management
-# This script creates an IAM user with EC2 security group permissions and sets GitHub secrets
+# This script creates an IAM user with EC2 security group permissions and sets GitHub environment secrets
+#
+# Usage:
+#   ./setup-github-deployment.sh         # Start fresh setup
+#   ./setup-github-deployment.sh --recover # Resume from saved configuration
 
 set -e
 
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Source common utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+source "$SCRIPT_DIR/common.sh"
 
-# Configuration - Update these values for your setup
-GITHUB_OWNER="ConservationInternational"
-GITHUB_REPO="trends.earth-API"
+# Deployment-specific configuration
 IAM_USER_NAME="github-actions-deployment"
 POLICY_NAME="GitHubActionsSecurityGroupPolicy"
-
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
 
 # Function to check if required tools are installed
 check_prerequisites() {
     print_status "Checking prerequisites..."
     
-    # Check AWS CLI
-    if ! command -v aws &> /dev/null; then
-        print_error "AWS CLI is not installed. Please install it first."
-        exit 1
-    fi
-    
-    # Check GitHub CLI
-    if ! command -v gh &> /dev/null; then
-        print_error "GitHub CLI is not installed. Please install it first."
-        exit 1
-    fi
-    
-    # Check if authenticated with AWS
-    if ! aws sts get-caller-identity &> /dev/null; then
-        print_error "Not authenticated with AWS. Please run 'aws configure' first."
-        exit 1
-    fi
-    
-    # Check if authenticated with GitHub
-    if ! gh auth status &> /dev/null; then
-        print_error "Not authenticated with GitHub CLI. Please run 'gh auth login' first."
-        exit 1
-    fi
+    check_aws_cli
+    check_github_cli
     
     print_success "All prerequisites are met"
+}
+
+# Function to create GitHub environments if they don't exist
+create_github_environments() {
+    print_status "Ensuring GitHub environments exist..."
+    
+    # Check and create staging environment
+    if ! gh api "repos/$GITHUB_OWNER/$GITHUB_REPO/environments/staging" &> /dev/null; then
+        print_status "Creating staging environment..."
+        if gh api --method PUT "repos/$GITHUB_OWNER/$GITHUB_REPO/environments/staging" \
+            --field wait_timer=0 \
+            --field prevent_self_review=false \
+            --field reviewers='[]' \
+            --field deployment_branch_policy='{"protected_branches":false,"custom_branch_policies":true}' &> /dev/null; then
+            print_success "Staging environment created successfully"
+        else
+            print_warning "Could not create staging environment via API"
+            print_warning "Please create it manually:"
+            echo "  1. Go to: https://github.com/$GITHUB_OWNER/$GITHUB_REPO/settings/environments"
+            echo "  2. Click 'New environment'"
+            echo "  3. Name it 'staging'"
+            echo "  4. Click 'Configure environment'"
+            echo "  5. Disable protection rules for now and save"
+            echo
+            read -p "Press Enter after creating the staging environment manually..."
+        fi
+    else
+        print_success "Staging environment already exists"
+    fi
+    
+    # Check and create production environment
+    if ! gh api "repos/$GITHUB_OWNER/$GITHUB_REPO/environments/production" &> /dev/null; then
+        print_status "Creating production environment..."
+        if gh api --method PUT "repos/$GITHUB_OWNER/$GITHUB_REPO/environments/production" \
+            --field wait_timer=0 \
+            --field prevent_self_review=false \
+            --field reviewers='[]' \
+            --field deployment_branch_policy='{"protected_branches":false,"custom_branch_policies":true}' &> /dev/null; then
+            print_success "Production environment created successfully"
+        else
+            print_warning "Could not create production environment via API"
+            print_warning "Please create it manually:"
+            echo "  1. Go to: https://github.com/$GITHUB_OWNER/$GITHUB_REPO/settings/environments"
+            echo "  2. Click 'New environment'"
+            echo "  3. Name it 'production'"
+            echo "  4. Click 'Configure environment'"
+            echo "  5. You may want to add protection rules for production"
+            echo
+            read -p "Press Enter after creating the production environment manually..."
+        fi
+    else
+        print_success "Production environment already exists"
+    fi
+}
+
+# Function to save configuration to file for recovery
+save_config() {
+    local config_file="/tmp/github-deployment-config.env"
+    cat > "$config_file" << EOF
+# GitHub Deployment Configuration
+# Generated: $(date)
+AWS_REGION="$AWS_REGION"
+STAGING_SG_ID="$STAGING_SG_ID"
+PROD_SG_ID="$PROD_SG_ID"
+DOCKER_REGISTRY="$DOCKER_REGISTRY"
+DOCKER_HTTP_SECRET="$DOCKER_HTTP_SECRET"
+STAGING_HOST="$STAGING_HOST"
+PROD_HOST="$PROD_HOST"
+SSH_USERNAME="$SSH_USERNAME"
+SSH_PORT="$SSH_PORT"
+STAGING_APP_PATH="$STAGING_APP_PATH"
+PROD_APP_PATH="$PROD_APP_PATH"
+STAGING_DB_HOST="$STAGING_DB_HOST"
+STAGING_DB_PORT="$STAGING_DB_PORT"
+STAGING_DB_NAME="$STAGING_DB_NAME"
+STAGING_DB_USER="$STAGING_DB_USER"
+STAGING_DB_PASSWORD="$STAGING_DB_PASSWORD"
+PROD_DB_HOST="$PROD_DB_HOST"
+PROD_DB_PORT="$PROD_DB_PORT"
+PROD_DB_NAME="$PROD_DB_NAME"
+PROD_DB_USER="$PROD_DB_USER"
+PROD_DB_PASSWORD="$PROD_DB_PASSWORD"
+TEST_SUPERADMIN_EMAIL="$TEST_SUPERADMIN_EMAIL"
+TEST_ADMIN_EMAIL="$TEST_ADMIN_EMAIL"
+TEST_USER_EMAIL="$TEST_USER_EMAIL"
+TEST_SUPERADMIN_PASSWORD="$TEST_SUPERADMIN_PASSWORD"
+TEST_ADMIN_PASSWORD="$TEST_ADMIN_PASSWORD"
+TEST_USER_PASSWORD="$TEST_USER_PASSWORD"
+EOF
+    print_success "Configuration saved to: $config_file"
+}
+
+# Function to load configuration from file
+load_config() {
+    local config_file="/tmp/github-deployment-config.env"
+    if [[ -f "$config_file" ]]; then
+        print_status "Loading previous configuration from: $config_file"
+        source "$config_file"
+        print_success "Configuration loaded successfully"
+        return 0
+    else
+        return 1
+    fi
 }
 
 # Function to get user input for required values
@@ -138,6 +202,77 @@ get_user_input() {
     echo -n "Enter production application path (default: /opt/trends-earth-api): "
     read -r PROD_APP_PATH
     PROD_APP_PATH=${PROD_APP_PATH:-/opt/trends-earth-api}
+    
+    # Database configuration
+    echo
+    print_status "Database configuration..."
+    echo -n "Enter staging database host (default: localhost): "
+    read -r STAGING_DB_HOST
+    STAGING_DB_HOST=${STAGING_DB_HOST:-localhost}
+    
+    echo -n "Enter staging database port (default: 5433): "
+    read -r STAGING_DB_PORT
+    STAGING_DB_PORT=${STAGING_DB_PORT:-5433}
+    
+    echo -n "Enter staging database name (default: trendsearth_staging): "
+    read -r STAGING_DB_NAME
+    STAGING_DB_NAME=${STAGING_DB_NAME:-trendsearth_staging}
+    
+    echo -n "Enter staging database username (default: trendsearth_staging): "
+    read -r STAGING_DB_USER
+    STAGING_DB_USER=${STAGING_DB_USER:-trendsearth_staging}
+    
+    echo -n "Enter staging database password: "
+    read -s STAGING_DB_PASSWORD
+    echo
+    
+    echo -n "Enter production database host: "
+    read -r PROD_DB_HOST
+    
+    echo -n "Enter production database port (default: 5432): "
+    read -r PROD_DB_PORT
+    PROD_DB_PORT=${PROD_DB_PORT:-5432}
+    
+    echo -n "Enter production database name (default: trendsearth): "
+    read -r PROD_DB_NAME
+    PROD_DB_NAME=${PROD_DB_NAME:-trendsearth}
+    
+    echo -n "Enter production database username: "
+    read -r PROD_DB_USER
+    
+    echo -n "Enter production database password: "
+    read -s PROD_DB_PASSWORD
+    echo
+    
+    # Test user configuration (for staging testing)
+    echo
+    print_status "Test user configuration (for staging environment testing)..."
+    echo -n "Enter test superadmin email (default: superadmin@test.example.com): "
+    read -r TEST_SUPERADMIN_EMAIL
+    TEST_SUPERADMIN_EMAIL=${TEST_SUPERADMIN_EMAIL:-superadmin@test.example.com}
+    
+    echo -n "Enter test admin email (default: admin@test.example.com): "
+    read -r TEST_ADMIN_EMAIL
+    TEST_ADMIN_EMAIL=${TEST_ADMIN_EMAIL:-admin@test.example.com}
+    
+    echo -n "Enter test user email (default: user@test.example.com): "
+    read -r TEST_USER_EMAIL
+    TEST_USER_EMAIL=${TEST_USER_EMAIL:-user@test.example.com}
+    
+    echo -n "Enter test superadmin password (default: TestPass123!): "
+    read -s TEST_SUPERADMIN_PASSWORD
+    TEST_SUPERADMIN_PASSWORD=${TEST_SUPERADMIN_PASSWORD:-TestPass123!}
+    echo
+    
+    echo -n "Enter test admin password (default: TestPass123!): "
+    read -s TEST_ADMIN_PASSWORD
+    TEST_ADMIN_PASSWORD=${TEST_ADMIN_PASSWORD:-TestPass123!}
+    echo
+    
+    echo -n "Enter test user password (default: TestPass123!): "
+    read -s TEST_USER_PASSWORD
+    TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-TestPass123!}
+    echo
 }
 
 # Function to create IAM policy
@@ -240,34 +375,87 @@ create_access_keys() {
 
 # Function to set GitHub secrets
 set_github_secrets() {
-    print_status "Setting GitHub repository secrets..."
+    print_status "Setting GitHub environment secrets..."
     
-    # Set AWS credentials
-    gh secret set AWS_ACCESS_KEY_ID --body "$AWS_ACCESS_KEY_ID" --repo "$GITHUB_OWNER/$GITHUB_REPO"
-    gh secret set AWS_SECRET_ACCESS_KEY --body "$AWS_SECRET_ACCESS_KEY" --repo "$GITHUB_OWNER/$GITHUB_REPO"
-    gh secret set AWS_REGION --body "$AWS_REGION" --repo "$GITHUB_OWNER/$GITHUB_REPO"
+    # Helper function to set a secret with error handling
+    set_secret_safe() {
+        local secret_name="$1"
+        local secret_value="$2"
+        local environment="$3"
+        
+        if [[ -n "$environment" ]]; then
+            if ! gh secret set "$secret_name" --body "$secret_value" --repo "$GITHUB_OWNER/$GITHUB_REPO" --env "$environment" 2>/dev/null; then
+                print_error "Failed to set $secret_name in $environment environment"
+                print_warning "Run: ./setup-github-deployment.sh --recover"
+                print_warning "Or create the $environment environment manually in GitHub and retry"
+                return 1
+            fi
+        else
+            if ! gh secret set "$secret_name" --body "$secret_value" --repo "$GITHUB_OWNER/$GITHUB_REPO" 2>/dev/null; then
+                print_error "Failed to set repository secret $secret_name"
+                return 1
+            fi
+        fi
+    }
     
-    # Set security group IDs
-    gh secret set STAGING_SECURITY_GROUP_ID --body "$STAGING_SG_ID" --repo "$GITHUB_OWNER/$GITHUB_REPO"
-    gh secret set PROD_SECURITY_GROUP_ID --body "$PROD_SG_ID" --repo "$GITHUB_OWNER/$GITHUB_REPO"
+    # Set shared AWS credentials (repository level - used by both environments)
+    print_status "Setting repository-level secrets..."
+    set_secret_safe "AWS_ACCESS_KEY_ID" "$AWS_ACCESS_KEY_ID" || return 1
+    set_secret_safe "AWS_SECRET_ACCESS_KEY" "$AWS_SECRET_ACCESS_KEY" || return 1
+    set_secret_safe "AWS_REGION" "$AWS_REGION" || return 1
     
-    # Set Docker registry configuration
-    gh secret set DOCKER_REGISTRY --body "$DOCKER_REGISTRY" --repo "$GITHUB_OWNER/$GITHUB_REPO"
-    gh secret set DOCKER_HTTP_SECRET --body "$DOCKER_HTTP_SECRET" --repo "$GITHUB_OWNER/$GITHUB_REPO"
+    # Set shared Docker registry configuration (repository level)
+    set_secret_safe "DOCKER_REGISTRY" "$DOCKER_REGISTRY" || return 1
+    set_secret_safe "DOCKER_HTTP_SECRET" "$DOCKER_HTTP_SECRET" || return 1
     
-    # Set SSH configuration
-    gh secret set STAGING_HOST --body "$STAGING_HOST" --repo "$GITHUB_OWNER/$GITHUB_REPO"
-    gh secret set PROD_HOST --body "$PROD_HOST" --repo "$GITHUB_OWNER/$GITHUB_REPO"
-    gh secret set STAGING_USERNAME --body "$SSH_USERNAME" --repo "$GITHUB_OWNER/$GITHUB_REPO"
-    gh secret set PROD_USERNAME --body "$SSH_USERNAME" --repo "$GITHUB_OWNER/$GITHUB_REPO"
-    gh secret set STAGING_SSH_PORT --body "$SSH_PORT" --repo "$GITHUB_OWNER/$GITHUB_REPO"
-    gh secret set PROD_SSH_PORT --body "$SSH_PORT" --repo "$GITHUB_OWNER/$GITHUB_REPO"
+    # Set staging environment secrets
+    print_status "Setting staging environment secrets..."
+    set_secret_safe "STAGING_SECURITY_GROUP_ID" "$STAGING_SG_ID" "staging" || return 1
+    set_secret_safe "STAGING_HOST" "$STAGING_HOST" "staging" || return 1
+    set_secret_safe "STAGING_USERNAME" "$SSH_USERNAME" "staging" || return 1
+    set_secret_safe "STAGING_SSH_PORT" "$SSH_PORT" "staging" || return 1
+    set_secret_safe "STAGING_APP_PATH" "$STAGING_APP_PATH" "staging" || return 1
     
-    # Set application paths
-    gh secret set STAGING_APP_PATH --body "$STAGING_APP_PATH" --repo "$GITHUB_OWNER/$GITHUB_REPO"
-    gh secret set PROD_APP_PATH --body "$PROD_APP_PATH" --repo "$GITHUB_OWNER/$GITHUB_REPO"
+    # Set staging database secrets
+    set_secret_safe "STAGING_DB_HOST" "$STAGING_DB_HOST" "staging" || return 1
+    set_secret_safe "STAGING_DB_PORT" "$STAGING_DB_PORT" "staging" || return 1
+    set_secret_safe "STAGING_DB_NAME" "$STAGING_DB_NAME" "staging" || return 1
+    set_secret_safe "STAGING_DB_USER" "$STAGING_DB_USER" "staging" || return 1
+    set_secret_safe "STAGING_DB_PASSWORD" "$STAGING_DB_PASSWORD" "staging" || return 1
     
-    print_success "All GitHub secrets have been set"
+    # Set test user secrets (staging environment only)
+    set_secret_safe "TEST_SUPERADMIN_EMAIL" "$TEST_SUPERADMIN_EMAIL" "staging" || return 1
+    set_secret_safe "TEST_ADMIN_EMAIL" "$TEST_ADMIN_EMAIL" "staging" || return 1
+    set_secret_safe "TEST_USER_EMAIL" "$TEST_USER_EMAIL" "staging" || return 1
+    set_secret_safe "TEST_SUPERADMIN_PASSWORD" "$TEST_SUPERADMIN_PASSWORD" "staging" || return 1
+    set_secret_safe "TEST_ADMIN_PASSWORD" "$TEST_ADMIN_PASSWORD" "staging" || return 1
+    set_secret_safe "TEST_USER_PASSWORD" "$TEST_USER_PASSWORD" "staging" || return 1
+    
+    # Set production environment secrets
+    print_status "Setting production environment secrets..."
+    set_secret_safe "PROD_SECURITY_GROUP_ID" "$PROD_SG_ID" "production" || return 1
+    set_secret_safe "PROD_HOST" "$PROD_HOST" "production" || return 1
+    set_secret_safe "PROD_USERNAME" "$SSH_USERNAME" "production" || return 1
+    set_secret_safe "PROD_SSH_PORT" "$SSH_PORT" "production" || return 1
+    set_secret_safe "PROD_APP_PATH" "$PROD_APP_PATH" "production" || return 1
+    
+    # Set production database secrets
+    set_secret_safe "PROD_DB_HOST" "$PROD_DB_HOST" "production" || return 1
+    set_secret_safe "PROD_DB_PORT" "$PROD_DB_PORT" "production" || return 1
+    set_secret_safe "PROD_DB_NAME" "$PROD_DB_NAME" "production" || return 1
+    set_secret_safe "PROD_DB_USER" "$PROD_DB_USER" "production" || return 1
+    set_secret_safe "PROD_DB_PASSWORD" "$PROD_DB_PASSWORD" "production" || return 1
+    
+    # IMPORTANT: Also set production DB secrets in staging environment
+    # This is needed because staging workflow imports data from production
+    print_status "Setting production database access for staging environment..."
+    set_secret_safe "PROD_DB_HOST" "$PROD_DB_HOST" "staging" || return 1
+    set_secret_safe "PROD_DB_PORT" "$PROD_DB_PORT" "staging" || return 1
+    set_secret_safe "PROD_DB_NAME" "$PROD_DB_NAME" "staging" || return 1
+    set_secret_safe "PROD_DB_USER" "$PROD_DB_USER" "staging" || return 1
+    set_secret_safe "PROD_DB_PASSWORD" "$PROD_DB_PASSWORD" "staging" || return 1
+    
+    print_success "All GitHub environment secrets have been set"
 }
 
 # Function to display summary
@@ -283,14 +471,15 @@ display_summary() {
     echo "GitHub Repository: $GITHUB_OWNER/$GITHUB_REPO"
     echo
     echo -e "${YELLOW}=== NEXT STEPS ===${NC}"
-    echo "1. Ensure your SSH private keys are set as GitHub secrets:"
-    echo "   - STAGING_SSH_KEY"
-    echo "   - PROD_SSH_KEY"
+    echo "1. Set SSH private keys using environment secrets:"
+    echo "   Staging: STAGING_SSH_KEY (in staging environment)"
+    echo "   Production: PROD_SSH_KEY (in production environment)"
+    echo "   Run: ./scripts/setup-ssh-keys.sh or ./scripts/fix-ssh-auth.sh"
     echo
-    echo "2. Set up database and test user secrets if needed:"
-    echo "   - STAGING_DB_* secrets"
-    echo "   - PROD_DB_* secrets"
-    echo "   - TEST_*_EMAIL and TEST_*_PASSWORD secrets"
+    echo "2. All database and test user secrets have been configured:"
+    echo "   ✅ Staging environment: STAGING_DB_* secrets, TEST_* secrets"
+    echo "   ✅ Production environment: PROD_DB_* secrets"
+    echo "   ✅ Cross-environment: PROD_DB_* also set in staging (for data import)"
     echo
     echo "3. Your GitHub Actions workflows are now ready to use dynamic security group management!"
     echo
@@ -310,27 +499,87 @@ trap cleanup EXIT
 # Main execution
 main() {
     echo -e "${BLUE}=== GitHub Actions Deployment Setup ===${NC}"
-    echo "This script will:"
-    echo "1. Create an IAM user with security group management permissions"
-    echo "2. Generate access keys for the IAM user"
-    echo "3. Set all necessary GitHub repository secrets"
-    echo
     
-    read -p "Do you want to continue? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_warning "Setup cancelled"
-        exit 0
+    # Check for recovery mode
+    if [[ "$1" == "--recover" ]]; then
+        print_status "Recovery mode: attempting to continue from previous setup..."
+        if load_config; then
+            print_status "Previous configuration loaded successfully"
+        else
+            print_error "No saved configuration found for recovery"
+            echo "Run without --recover to start fresh setup"
+            exit 1
+        fi
+    else
+        echo "This script will:"
+        echo "1. Create an IAM user with security group management permissions"
+        echo "2. Generate access keys for the IAM user"
+        echo "3. Set all necessary GitHub repository and environment secrets including:"
+        echo "   - AWS credentials and Docker registry (repository level)"
+        echo "   - SSH connection details (environment level)"
+        echo "   - Database configurations (environment level)"
+        echo "   - Test user credentials (staging environment)"
+        echo
+        
+        read -p "Do you want to continue? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_warning "Setup cancelled"
+            exit 0
+        fi
+        
+        check_prerequisites
+        get_user_input
+        save_config
     fi
     
-    check_prerequisites
-    get_user_input
+    # Ensure GitHub environments exist before setting secrets
+    create_github_environments
+    
     create_iam_policy
     create_iam_user
     create_access_keys
-    set_github_secrets
+    
+    # Try to set GitHub secrets with error handling
+    if ! set_github_secrets; then
+        print_error "Failed to set some GitHub secrets"
+        print_warning "Your configuration has been saved for recovery"
+        print_warning "To retry: ./setup-github-deployment.sh --recover"
+        exit 1
+    fi
+    
     display_summary
+    
+    # Clean up config file after successful completion
+    if [[ "$1" != "--recover" ]]; then
+        rm -f "/tmp/github-deployment-config.env" || true
+        print_success "Temporary configuration file cleaned up"
+    fi
 }
 
 # Run main function
-main "$@"
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    echo "GitHub Actions Deployment Setup"
+    echo
+    echo "This script creates AWS IAM resources and sets GitHub secrets for automated deployment."
+    echo
+    echo "Usage:"
+    echo "  $0              Start fresh setup (interactive)"
+    echo "  $0 --recover    Resume from saved configuration after error"
+    echo "  $0 --help       Show this help message"
+    echo
+    echo "Requirements:"
+    echo "  - AWS CLI configured with appropriate permissions"
+    echo "  - GitHub CLI (gh) authenticated"
+    echo "  - Repository write access"
+    echo
+    echo "The script will:"
+    echo "  1. Create IAM user with security group management permissions"
+    echo "  2. Generate AWS access keys"
+    echo "  3. Create GitHub environments (staging, production)"
+    echo "  4. Set all required repository and environment secrets"
+    echo
+    exit 0
+else
+    main "$@"
+fi
