@@ -29,20 +29,37 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    - name: Debug registry configuration
+      run: |
+        echo "Registry URL: '${{ env.REGISTRY }}'"
+        echo "Registry URL length: ${#REGISTRY}"
+        if [ -z "${{ env.REGISTRY }}" ]; then
+          echo "ERROR: DOCKER_REGISTRY secret is empty or not set!"
+          exit 1
+        fi
+      env:
+        REGISTRY: ${{ env.REGISTRY }}
+
     - name: Configure insecure registry
       run: |
         echo "Configuring Docker for insecure registry: ${{ env.REGISTRY }}"
         mkdir -p $HOME/.docker
-        cat > $HOME/.docker/config.json << EOF
+        # Escape any special characters in the registry URL and auth secret
+        REGISTRY_ESCAPED=$(echo "${{ env.REGISTRY }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
+        AUTH_ESCAPED=$(echo "${{ secrets.DOCKER_HTTP_SECRET }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
+        cat > $HOME/.docker/config.json << 'EOF'
         {
-          "insecure-registries": ["${{ env.REGISTRY }}"],
+          "insecure-registries": ["REGISTRY_PLACEHOLDER"],
           "auths": {
-            "${{ env.REGISTRY }}": {
-              "auth": "${{ secrets.DOCKER_HTTP_SECRET }}"
+            "REGISTRY_PLACEHOLDER": {
+              "auth": "AUTH_PLACEHOLDER"
             }
           }
         }
         EOF
+        # Replace placeholders with actual values
+        sed -i "s|REGISTRY_PLACEHOLDER|${REGISTRY_ESCAPED}|g" $HOME/.docker/config.json
+        sed -i "s|AUTH_PLACEHOLDER|${AUTH_ESCAPED}|g" $HOME/.docker/config.json
 
     - name: Extract metadata
       id: meta
@@ -98,16 +115,22 @@ jobs:
           
           # Configure Docker client authentication
           mkdir -p $HOME/.docker
-          cat > $HOME/.docker/config.json << EOF
+          # Escape any special characters in the registry URL and auth secret
+          REGISTRY_ESCAPED=$(echo "${{ env.REGISTRY }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
+          AUTH_ESCAPED=$(echo "${{ secrets.DOCKER_HTTP_SECRET }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
+          cat > $HOME/.docker/config.json << 'EOF'
           {
             "auths": {
-              "${{ env.REGISTRY }}": {
-                "auth": "${{ secrets.DOCKER_HTTP_SECRET }}"
+              "REGISTRY_PLACEHOLDER": {
+                "auth": "AUTH_PLACEHOLDER"
               }
             },
-            "insecure-registries": ["${{ env.REGISTRY }}"]
+            "insecure-registries": ["REGISTRY_PLACEHOLDER"]
           }
           EOF
+          # Replace placeholders with actual values
+          sed -i "s|REGISTRY_PLACEHOLDER|${REGISTRY_ESCAPED}|g" $HOME/.docker/config.json
+          sed -i "s|AUTH_PLACEHOLDER|${AUTH_ESCAPED}|g" $HOME/.docker/config.json
           
           # Pull latest images
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
