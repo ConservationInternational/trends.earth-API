@@ -44,27 +44,6 @@ jobs:
       env:
         REGISTRY: ${{ env.REGISTRY }}
 
-    - name: Configure insecure registry
-      run: |
-        echo "Configuring Docker for insecure registry: ${{ env.REGISTRY }}"
-        mkdir -p $HOME/.docker
-        # Escape any special characters in the registry URL and auth secret
-        REGISTRY_ESCAPED=$(echo "${{ env.REGISTRY }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-        AUTH_ESCAPED=$(echo "${{ secrets.DOCKER_HTTP_SECRET }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-        cat > $HOME/.docker/config.json << 'EOF'
-        {
-          "insecure-registries": ["REGISTRY_PLACEHOLDER"],
-          "auths": {
-            "REGISTRY_PLACEHOLDER": {
-              "auth": "AUTH_PLACEHOLDER"
-            }
-          }
-        }
-        EOF
-        # Replace placeholders with actual values
-        sed -i "s|REGISTRY_PLACEHOLDER|${REGISTRY_ESCAPED}|g" $HOME/.docker/config.json
-        sed -i "s|AUTH_PLACEHOLDER|${AUTH_ESCAPED}|g" $HOME/.docker/config.json
-
     - name: Extract metadata
       id: meta
       uses: docker/metadata-action@v5
@@ -75,16 +54,109 @@ jobs:
           type=sha,prefix={{branch}}-
           type=raw,value=staging,enable={{is_default_branch}}
 
-    - name: Build and push Docker image
+    - name: Build Docker image locally
       uses: docker/build-push-action@v5
       with:
         context: .
         platforms: linux/amd64
-        push: true
+        push: false
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        outputs: type=docker,dest=/tmp/image.tar
+
+    - name: Transfer and push image via SSH tunnel
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        script: |
+          set -e
+          echo "🔧 Preparing for image transfer..."
+          
+          # Create temporary directory for image transfer
+          mkdir -p /tmp/docker-transfer
+          rm -f /tmp/docker-transfer/image.tar
+        
+    - name: Copy image to EC2
+      run: |
+        echo "📦 Transferring Docker image to EC2..."
+        
+        # Create SSH key file
+        echo "${{ secrets.STAGING_SSH_KEY }}" > /tmp/ssh_key
+        chmod 600 /tmp/ssh_key
+        
+        # Transfer the image
+        scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+          -i /tmp/ssh_key \
+          -P ${{ secrets.STAGING_SSH_PORT || 22 }} \
+          /tmp/image.tar \
+          ${{ secrets.STAGING_USERNAME }}@${{ secrets.STAGING_HOST }}:/tmp/docker-transfer/
+        
+        # Clean up SSH key
+        rm -f /tmp/ssh_key
+
+    - name: Load and push image on EC2
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        script: |
+          set -e
+          
+          echo "🐳 Loading Docker image on EC2..."
+          
+          # Configure insecure registry on server if needed
+          echo "📋 Configuring insecure registry on server..."
+          sudo mkdir -p /etc/docker
+          if [ ! -f /etc/docker/daemon.json ] || ! grep -q "insecure-registries" /etc/docker/daemon.json; then
+            echo '{"insecure-registries":["${{ env.REGISTRY }}"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+            sudo systemctl restart docker
+            sleep 10
+          fi
+          
+          # Configure Docker client authentication
+          mkdir -p $HOME/.docker
+          REGISTRY_ESCAPED=$(echo "${{ env.REGISTRY }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
+          AUTH_ESCAPED=$(echo "${{ secrets.DOCKER_HTTP_SECRET }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
+          cat > $HOME/.docker/config.json << 'EOF'
+          {
+            "auths": {
+              "REGISTRY_PLACEHOLDER": {
+                "auth": "AUTH_PLACEHOLDER"
+              }
+            },
+            "insecure-registries": ["REGISTRY_PLACEHOLDER"]
+          }
+          EOF
+          # Replace placeholders with actual values
+          sed -i "s|REGISTRY_PLACEHOLDER|${REGISTRY_ESCAPED}|g" $HOME/.docker/config.json
+          sed -i "s|AUTH_PLACEHOLDER|${AUTH_ESCAPED}|g" $HOME/.docker/config.json
+          
+          # Load the image from tar file
+          echo "📥 Loading image from tar file..."
+          docker load -i /tmp/docker-transfer/image.tar
+          
+          # Get the image tags that were built
+          BUILT_TAGS="${{ steps.meta.outputs.tags }}"
+          
+          # Push each tag to the local registry
+          echo "🚀 Pushing images to local registry..."
+          echo "$BUILT_TAGS" | while IFS= read -r tag; do
+            if [ -n "$tag" ]; then
+              echo "Pushing: $tag"
+              docker push "$tag"
+            fi
+          done
+          
+          # Clean up
+          rm -f /tmp/docker-transfer/image.tar
+          echo "✅ Image transfer and push completed!"
 
     - name: Setup Staging Database
       uses: appleboy/ssh-action@v1.0.0
@@ -143,36 +215,6 @@ jobs:
           
           # Set Docker group ID for socket access
           export DOCKER_GROUP_ID=$(getent group docker | cut -d: -f3)
-          
-          # Configure insecure registry on server
-          echo "📋 Configuring insecure registry on server..."
-          sudo mkdir -p /etc/docker
-          if [ ! -f /etc/docker/daemon.json ] || ! grep -q "insecure-registries" /etc/docker/daemon.json; then
-            echo '{"insecure-registries":["${{ env.REGISTRY }}"]}' | sudo tee /etc/docker/daemon.json > /dev/null
-            sudo systemctl restart docker
-            sleep 10
-          fi
-          
-          # Configure Docker client authentication
-          mkdir -p $HOME/.docker
-          REGISTRY_ESCAPED=$(echo "${{ env.REGISTRY }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-          AUTH_ESCAPED=$(echo "${{ secrets.DOCKER_HTTP_SECRET }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-          cat > $HOME/.docker/config.json << 'EOF'
-          {
-            "auths": {
-              "REGISTRY_PLACEHOLDER": {
-                "auth": "AUTH_PLACEHOLDER"
-              }
-            },
-            "insecure-registries": ["REGISTRY_PLACEHOLDER"]
-          }
-          EOF
-          # Replace placeholders with actual values
-          sed -i "s|REGISTRY_PLACEHOLDER|${REGISTRY_ESCAPED}|g" $HOME/.docker/config.json
-          sed -i "s|AUTH_PLACEHOLDER|${AUTH_ESCAPED}|g" $HOME/.docker/config.json
-          
-          # Pull latest images
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
           
           # Deploy with Docker Swarm
           echo "📦 Deploying services..."
