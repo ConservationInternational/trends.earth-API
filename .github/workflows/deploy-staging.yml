@@ -195,21 +195,14 @@ jobs:
           echo "🧹 Cleaning up any remaining containers..."
           docker ps -a --filter "name=trends-earth-staging" --format "{{.Names}}" | xargs -r docker rm -f || true
           
-          # Remove any existing networks
+          # Remove any existing networks to ensure clean state
           echo "🌐 Cleaning up overlay networks..."
           if docker network ls --format "{{.Name}}" | grep -q "trends-earth-staging_backend"; then
             echo "Removing existing network trends-earth-staging_backend..."
-            docker network rm trends-earth-staging_backend || true
-            sleep 2
-          fi
-          
-          # Create the overlay network
-          echo "🌐 Creating overlay network..."
-          if ! docker network ls --format "{{.Name}}" | grep -q "trends-earth-staging_backend"; then
-            docker network create --driver overlay --subnet ${DOCKER_SUBNET:-10.1.0.0/16} trends-earth-staging_backend
-            echo "✅ Network created successfully"
-          else
-            echo "ℹ️ Network already exists, continuing..."
+            # Force remove network even if it has active endpoints
+            docker network rm trends-earth-staging_backend --force || true
+            echo "✅ Network cleanup completed"
+            sleep 3
           fi
           
           # Ensure we're using the latest compose file
