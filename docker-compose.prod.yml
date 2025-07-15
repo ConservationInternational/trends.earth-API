@@ -1,7 +1,6 @@
 services:
   migrate:
     image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
-    build: .
     command: migrate
     environment:
       PORT: 3000
@@ -19,7 +18,6 @@ services:
 
   manager:
     image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
-    build: .
     command: start
     environment:
       PORT: 3000
@@ -62,7 +60,6 @@ services:
 
   worker:
     image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
-    build: .
     command: worker
     environment:
       PORT: 3000
@@ -100,7 +97,6 @@ services:
 
   beat:
     image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
-    build: .
     command: beat
     environment:
       PORT: 3000
