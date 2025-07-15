@@ -195,6 +195,14 @@ jobs:
           echo "🧹 Cleaning up any remaining containers..."
           docker ps -a --filter "name=trends-earth-staging" --format "{{.Names}}" | xargs -r docker rm -f || true
           
+          # Remove any existing networks
+          echo "🌐 Cleaning up overlay networks..."
+          docker network rm trends-earth-staging_backend || true
+          
+          # Create the overlay network
+          echo "🌐 Creating overlay network..."
+          docker network create --driver overlay --subnet ${DOCKER_SUBNET:-10.1.0.0/16} trends-earth-staging_backend
+          
           # Ensure we're using the latest compose file
           echo "📋 Verifying compose file..."
           if [ ! -f "${{ env.COMPOSE_FILE }}" ]; then
