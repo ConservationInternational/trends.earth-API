@@ -1,7 +1,6 @@
 services:
   migrate:
     image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
-    build: .
     command: migrate
     environment:
       PORT: 3000

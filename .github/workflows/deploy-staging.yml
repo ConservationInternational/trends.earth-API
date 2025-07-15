@@ -197,11 +197,20 @@ jobs:
           
           # Remove any existing networks
           echo "🌐 Cleaning up overlay networks..."
-          docker network rm trends-earth-staging_backend || true
+          if docker network ls --format "{{.Name}}" | grep -q "trends-earth-staging_backend"; then
+            echo "Removing existing network trends-earth-staging_backend..."
+            docker network rm trends-earth-staging_backend || true
+            sleep 2
+          fi
           
           # Create the overlay network
           echo "🌐 Creating overlay network..."
-          docker network create --driver overlay --subnet ${DOCKER_SUBNET:-10.1.0.0/16} trends-earth-staging_backend
+          if ! docker network ls --format "{{.Name}}" | grep -q "trends-earth-staging_backend"; then
+            docker network create --driver overlay --subnet ${DOCKER_SUBNET:-10.1.0.0/16} trends-earth-staging_backend
+            echo "✅ Network created successfully"
+          else
+            echo "ℹ️ Network already exists, continuing..."
+          fi
           
           # Ensure we're using the latest compose file
           echo "📋 Verifying compose file..."

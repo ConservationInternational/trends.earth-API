@@ -70,7 +70,7 @@ Run this on your local machine:
 # Ensure you're in the repository directory
 cd trends.earth-API
 
-# Setup GitHub secrets
+# Set up GitHub secrets
 ./scripts/deployment/setup-github-secrets.sh
 ```
 
