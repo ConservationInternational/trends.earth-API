@@ -170,6 +170,12 @@ jobs:
           
           # Set Docker group ID for socket access
           export DOCKER_GROUP_ID=$(getent group docker | cut -d: -f3)
+          export DOCKER_REGISTRY="${{ secrets.DOCKER_HOST}}"
+
+          # Set staging database environment variables
+          export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
+          export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
+          export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
           
           # Deploy with Docker Swarm
           echo "📦 Deploying services..."
@@ -266,12 +272,6 @@ jobs:
           export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
           export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
           export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
-          
-          # Use defaults if not provided
-          export STAGING_DB_HOST="${STAGING_DB_HOST:-localhost}"
-          export STAGING_DB_PORT="${STAGING_DB_PORT:-5433}"
-          export STAGING_DB_NAME="${STAGING_DB_NAME:-trendsearth_staging}"
-          export STAGING_DB_USER="${STAGING_DB_USER:-trendsearth_staging}"
           
           # Set production database environment variables (for data import)
           export PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}"
