@@ -41,6 +41,12 @@ def run_migrations():
 
         logger.info("Imports completed successfully")
 
+        # Import database related modules
+        from sqlalchemy import text
+        from sqlalchemy.exc import ProgrammingError
+
+        from gefapi import db
+
         print("Creating Flask app context...")
         logger.info("Creating Flask app context...")
 
@@ -48,68 +54,91 @@ def run_migrations():
             print("App context created, starting migration upgrade...")
             logger.info("App context created successfully")
 
-            # Check current migration state before running
-            logger.info("Checking current migration state...")
-            from sqlalchemy import text
-
-            from gefapi import db
-
-            try:
-                result = db.session.execute(
-                    text("SELECT version_num FROM alembic_version")
-                ).fetchone()
-                current_version = result[0] if result else "None"
-                logger.info(f"Current database version: {current_version}")
-            except Exception as e:
-                logger.warning(f"Could not check current version: {e}")
-
-            # Test database connectivity first
+            # Test database connectivity first with a fresh connection
             logger.info("Testing database connectivity...")
             try:
-                test_result = db.session.execute(text("SELECT 1")).fetchone()
-                logger.info(f"Database connectivity test successful: {test_result[0]}")
+                with db.engine.connect() as conn:
+                    test_result = conn.execute(text("SELECT 1")).fetchone()
+                    logger.info(f"Database connectivity test successful: {test_result[0]}")
             except Exception as db_error:
                 logger.error(f"Database connectivity test failed: {db_error}")
                 raise RuntimeError(
                     f"Cannot connect to database: {db_error}"
                 ) from db_error
 
+            # Check current migration state with proper error handling
+            logger.info("Checking current migration state...")
+
+            current_version = None
+            try:
+                with db.engine.connect() as conn:
+                    result = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
+                    current_version = result[0] if result else "None"
+                    logger.info(f"Current database version: {current_version}")
+            except ProgrammingError as e:
+                if "relation \"alembic_version\" does not exist" in str(e):
+                    logger.info("Database appears to be fresh (no alembic_version table)")
+                    current_version = None
+                else:
+                    logger.warning(f"Could not check current version: {e}")
+                    current_version = None
+            except Exception as e:
+                logger.warning(f"Could not check current version: {e}")
+                current_version = None
+
             logger.info("Starting Flask-Migrate upgrade...")
             print("About to call upgrade()...")
 
             # First check what columns exist to determine the right target
-            result = db.session.execute(
-                text("""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name = 'script'
-                AND column_name IN (
-                    'cpu_reservation', 'cpu_limit',
-                    'memory_reservation', 'memory_limit'
-                )
-            """)
-            ).fetchall()
-            existing_branch2 = [row[0] for row in result]
+            # Use a fresh connection for each query to avoid transaction issues
+            existing_branch2 = []
+            existing_status_log = []
+            refresh_tokens_exists = False
 
-            status_log_result = db.session.execute(
-                text("""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name = 'status_log'
-                AND column_name IN ('executions_failed', 'executions_count')
-            """)
-            ).fetchall()
-            existing_status_log = [row[0] for row in status_log_result]
+            try:
+                with db.engine.connect() as conn:
+                    result = conn.execute(
+                        text("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_name = 'script'
+                        AND column_name IN (
+                            'cpu_reservation', 'cpu_limit',
+                            'memory_reservation', 'memory_limit'
+                        )
+                    """)
+                    ).fetchall()
+                    existing_branch2 = [row[0] for row in result]
+            except Exception as e:
+                logger.warning(f"Could not check script table columns: {e}")
+
+            try:
+                with db.engine.connect() as conn:
+                    status_log_result = conn.execute(
+                        text("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_name = 'status_log'
+                        AND column_name IN ('executions_failed', 'executions_count')
+                    """)
+                    ).fetchall()
+                    existing_status_log = [row[0] for row in status_log_result]
+            except Exception as e:
+                logger.warning(f"Could not check status_log table columns: {e}")
 
             # Check if refresh tokens table exists
-            refresh_tokens_result = db.session.execute(
-                text("""
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_name = 'refresh_tokens'
-            """)
-            ).fetchall()
-            refresh_tokens_exists = len(refresh_tokens_result) > 0
+            try:
+                with db.engine.connect() as conn:
+                    refresh_tokens_result = conn.execute(
+                        text("""
+                        SELECT table_name
+                        FROM information_schema.tables
+                        WHERE table_name = 'refresh_tokens'
+                    """)
+                    ).fetchall()
+                    refresh_tokens_exists = len(refresh_tokens_result) > 0
+            except Exception as e:
+                logger.warning(f"Could not check refresh_tokens table existence: {e}")
 
             logger.info(f"Branch 2 columns in script table: {existing_branch2}")
             logger.info(f"Status log columns: {existing_status_log}")
@@ -142,11 +171,12 @@ def run_migrations():
 
             # Check final migration state
             try:
-                result = db.session.execute(
-                    text("SELECT version_num FROM alembic_version")
-                ).fetchone()
-                final_version = result[0] if result else "None"
-                logger.info(f"Final database version: {final_version}")
+                with db.engine.connect() as conn:
+                    result = conn.execute(
+                        text("SELECT version_num FROM alembic_version")
+                    ).fetchone()
+                    final_version = result[0] if result else "None"
+                    logger.info(f"Final database version: {final_version}")
             except Exception as e:
                 logger.warning(f"Could not check final version: {e}")
 
