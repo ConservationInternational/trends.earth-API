@@ -1,6 +1,6 @@
 services:
   migrate:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: migrate
     environment:
       PORT: 3000
@@ -15,7 +15,7 @@ services:
         condition: on-failure
 
   manager:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: start
     environment:
       PORT: 3000
@@ -25,7 +25,7 @@ services:
     env_file:
       - staging.env
     volumes:
-      - /var/run/docker.sock:/tmp/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -37,14 +37,14 @@ services:
           memory: 400M
 
   worker:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: worker
     environment:
       PORT: 3000
     env_file:
       - staging.env
     volumes:
-      - /var/run/docker.sock:/tmp/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -56,14 +56,12 @@ services:
           memory: 400M
 
   beat:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: beat
     environment:
       PORT: 3000
     env_file:
       - staging.env
-    volumes:
-      - /var/run/docker.sock:/tmp/docker.sock
     networks:
       - backend
     deploy:
@@ -79,7 +77,7 @@ services:
     environment:
       POSTGRES_DB: ${STAGING_DB_NAME:-trendsearth_staging}
       POSTGRES_USER: ${STAGING_DB_USER:-trendsearth_staging}
-      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD}
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD:-postgres}
     ports:
       - target: 5432
         published: 5433
