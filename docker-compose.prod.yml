@@ -1,6 +1,6 @@
 services:
   migrate:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
     command: migrate
     environment:
       PORT: 3000
@@ -17,7 +17,7 @@ services:
         condition: on-failure
 
   manager:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
     command: start
     environment:
       PORT: 3000
@@ -59,7 +59,7 @@ services:
         window: 120s
 
   worker:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
     command: worker
     environment:
       PORT: 3000
@@ -96,7 +96,7 @@ services:
         window: 120s
 
   beat:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
     command: beat
     environment:
       PORT: 3000
