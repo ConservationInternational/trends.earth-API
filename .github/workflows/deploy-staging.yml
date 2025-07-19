@@ -269,7 +269,7 @@ jobs:
               echo "✅ Port 3002 is listening"
             fi
             
-            # Try the health check using 127.0.0.1 instead of localhost
+            # Perform health check request
             health_response=$(curl -f -s -w "HTTP_CODE:%{http_code}" http://127.0.0.1:3002/api-health 2>&1)
             curl_exit_code=$?
             
@@ -313,35 +313,68 @@ jobs:
           # Navigate to application directory
           cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
           
-          # Set staging database environment variables
-          export STAGING_DB_HOST="${{ secrets.STAGING_DB_HOST }}"
-          export STAGING_DB_PORT="${{ secrets.STAGING_DB_PORT }}"
-          export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
-          export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
-          export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
+          # Wait for PostgreSQL service to be fully ready
+          echo "🗄️ Waiting for PostgreSQL service to be ready..."
+          max_db_wait=60
+          db_wait_time=0
           
-          # Set production database environment variables (for data import)
-          export PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}"
-          export PROD_DB_PORT="${{ secrets.PROD_DB_PORT }}"
-          export PROD_DB_NAME="${{ secrets.PROD_DB_NAME }}"
-          export PROD_DB_USER="${{ secrets.PROD_DB_USER }}"
-          export PROD_DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}"
+          while [ $db_wait_time -lt $max_db_wait ]; do
+            # Check if postgres service is running and has 1/1 replicas
+            postgres_status=$(docker service ls --filter "name=trends-earth-staging_postgres" --format "{{.Replicas}}" | head -1)
+            if [ "$postgres_status" = "1/1" ]; then
+              echo "✅ PostgreSQL service is running (1/1 replicas)"
+              break
+            fi
+            echo "⏳ Waiting for PostgreSQL service to be ready... ($db_wait_time/$max_db_wait seconds) - Status: $postgres_status"
+            sleep 5
+            db_wait_time=$((db_wait_time + 5))
+          done
           
-          # Use defaults if not provided
-          export PROD_DB_PORT="${PROD_DB_PORT:-5432}"
-          export PROD_DB_NAME="${PROD_DB_NAME:-trendsearth}"
+          if [ $db_wait_time -ge $max_db_wait ]; then
+            echo "❌ PostgreSQL service not ready after $max_db_wait seconds"
+            echo "🔍 Docker service status:"
+            docker service ls --filter "name=trends-earth-staging_postgres"
+            echo "🔍 PostgreSQL service logs:"
+            docker service logs --tail 20 trends-earth-staging_postgres || echo "No logs available"
+            exit 1
+          fi
           
-          # Set test user credentials
-          export TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}"
-          export TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}"
-          export TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}"
-          export TEST_SUPERADMIN_PASSWORD="${{ secrets.TEST_SUPERADMIN_PASSWORD }}"
-          export TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}"
-          export TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}"
+          # Additional wait for database initialization
+          echo "⏳ Waiting for database initialization..."
+          sleep 15
           
-          # Run comprehensive database setup script (skip container creation since it's already deployed)
-          chmod +x scripts/deployment/staging-database-init.sh
-          ./scripts/deployment/staging-database-init.sh
+          # Run database setup using Docker network (same as migrate container)
+          echo "🗄️ Running database setup within Docker network..."
+          docker run --rm \
+            --network trends-earth-staging_backend \
+            -v "$(pwd):/workspace" \
+            -w /workspace \
+            -e STAGING_DB_HOST="postgres" \
+            -e STAGING_DB_PORT="5432" \
+            -e STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}" \
+            -e STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}" \
+            -e STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}" \
+            -e PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}" \
+            -e PROD_DB_PORT="${{ secrets.PROD_DB_PORT }}" \
+            -e PROD_DB_NAME="${{ secrets.PROD_DB_NAME }}" \
+            -e PROD_DB_USER="${{ secrets.PROD_DB_USER }}" \
+            -e PROD_DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}" \
+            -e TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}" \
+            -e TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}" \
+            -e TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}" \
+            -e TEST_SUPERADMIN_PASSWORD="${{ secrets.TEST_SUPERADMIN_PASSWORD }}" \
+            -e TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}" \
+            -e TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}" \
+            postgres:16 \
+            bash -c "
+              # Install required tools
+              apt-get update && apt-get install -y postgresql-client curl
+              
+              # Make script executable and run it
+              chmod +x /workspace/scripts/deployment/staging-database-init.sh
+              cd /workspace
+              ./scripts/deployment/staging-database-init.sh
+            "
 
     - name: Run integration tests
       uses: appleboy/ssh-action@v1.0.0
