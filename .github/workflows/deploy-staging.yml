@@ -339,65 +339,59 @@ jobs:
             exit 1
           fi
           
+          # Wait for port to be listening
+          echo "🗄️ Waiting for PostgreSQL port to be ready..."
+          max_port_wait=60
+          port_wait_time=0
+          
+          while [ $port_wait_time -lt $max_port_wait ]; do
+            if nc -z 127.0.0.1 5433 2>/dev/null; then
+              echo "✅ PostgreSQL port 5433 is listening"
+              break
+            fi
+            echo "⏳ Waiting for PostgreSQL port... ($port_wait_time/$max_port_wait seconds)"
+            sleep 5
+            port_wait_time=$((port_wait_time + 5))
+          done
+          
+          if [ $port_wait_time -ge $max_port_wait ]; then
+            echo "❌ PostgreSQL port not ready after $max_port_wait seconds"
+            exit 1
+          fi
+          
           # Additional wait for database initialization
           echo "⏳ Waiting for database initialization..."
           sleep 15
           
-          # Run database setup using Docker network (same as migrate container)
-          echo "🗄️ Running database setup within Docker network..."
+          # Set staging database environment variables (using containerized database)
+          export STAGING_DB_HOST="${{ secrets.STAGING_DB_HOST }}"
+          export STAGING_DB_PORT="${{ secrets.STAGING_DB_PORT }}"
+          export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
+          export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
+          export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
           
-          # Wait for network to be available
-          echo "🌐 Waiting for Docker network to be ready..."
-          max_network_wait=30
-          network_wait_time=0
+          # Set production database environment variables (for data import)
+          export PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}"
+          export PROD_DB_PORT="${{ secrets.PROD_DB_PORT }}"
+          export PROD_DB_NAME="${{ secrets.PROD_DB_NAME }}"
+          export PROD_DB_USER="${{ secrets.PROD_DB_USER }}"
+          export PROD_DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}"
           
-          while [ $network_wait_time -lt $max_network_wait ]; do
-            if docker network ls --format "{{.Name}}" | grep -q "trends-earth-staging_backend"; then
-              echo "✅ Docker network trends-earth-staging_backend is available"
-              break
-            fi
-            echo "⏳ Waiting for network to be created... ($network_wait_time/$max_network_wait seconds)"
-            sleep 2
-            network_wait_time=$((network_wait_time + 2))
-          done
+          # Use defaults if not provided
+          export PROD_DB_PORT="${PROD_DB_PORT:-5432}"
+          export PROD_DB_NAME="${PROD_DB_NAME:-trendsearth}"
           
-          if [ $network_wait_time -ge $max_network_wait ]; then
-            echo "❌ Docker network not available after $max_network_wait seconds"
-            echo "🔍 Available networks:"
-            docker network ls
-            exit 1
-          fi
+          # Set test user credentials
+          export TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}"
+          export TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}"
+          export TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}"
+          export TEST_SUPERADMIN_PASSWORD="${{ secrets.TEST_SUPERADMIN_PASSWORD }}"
+          export TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}"
+          export TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}"
           
-          docker run --rm \
-            --network trends-earth-staging_backend \
-            -v "$(pwd):/workspace" \
-            -w /workspace \
-            -e STAGING_DB_HOST="postgres" \
-            -e STAGING_DB_PORT="5432" \
-            -e STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}" \
-            -e STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}" \
-            -e STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}" \
-            -e PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}" \
-            -e PROD_DB_PORT="${{ secrets.PROD_DB_PORT }}" \
-            -e PROD_DB_NAME="${{ secrets.PROD_DB_NAME }}" \
-            -e PROD_DB_USER="${{ secrets.PROD_DB_USER }}" \
-            -e PROD_DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}" \
-            -e TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}" \
-            -e TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}" \
-            -e TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}" \
-            -e TEST_SUPERADMIN_PASSWORD="${{ secrets.TEST_SUPERADMIN_PASSWORD }}" \
-            -e TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}" \
-            -e TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}" \
-            postgres:16 \
-            bash -c "
-              # Install required tools
-              apt-get update && apt-get install -y postgresql-client curl
-              
-              # Make script executable and run it
-              chmod +x /workspace/scripts/deployment/staging-database-init.sh
-              cd /workspace
-              ./scripts/deployment/staging-database-init.sh
-            "
+          # Run comprehensive database setup script
+          chmod +x scripts/deployment/staging-database-init.sh
+          ./scripts/deployment/staging-database-init.sh
 
     - name: Run integration tests
       uses: appleboy/ssh-action@v1.0.0
