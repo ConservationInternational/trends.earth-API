@@ -6,8 +6,6 @@ services:
       PORT: 3000
     env_file:
       - prod.env
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
@@ -27,9 +25,7 @@ services:
     env_file:
       - prod.env
     volumes:
-      - /var/run/docker.sock:/tmp/docker.sock
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -66,9 +62,7 @@ services:
     env_file:
       - prod.env
     volumes:
-      - /var/run/docker.sock:/tmp/docker.sock
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -103,9 +97,7 @@ services:
     env_file:
       - prod.env
     volumes:
-      - /var/run/docker.sock:/tmp/docker.sock
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
