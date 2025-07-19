@@ -170,7 +170,17 @@ def run_migrations():
             elif current_version is None:
                 # Fresh database - run all migrations
                 logger.info("Fresh database detected, running all migrations")
-                upgrade(revision="head")
+                # Since we have multiple heads, we need to upgrade to the merge point first
+                # then to the latest migration
+                try:
+                    logger.info("First upgrading to merge point h34de5fg6789")
+                    upgrade(revision="h34de5fg6789")
+                    logger.info("Now upgrading to add refresh tokens")
+                    upgrade(revision="add_refresh_tokens")
+                except Exception as e:
+                    logger.warning(f"Merge upgrade failed, trying direct upgrade to heads: {e}")
+                    # If merge fails, try upgrading to all heads
+                    upgrade(revision="heads")
             else:
                 # Need to apply merge migration
                 logger.info("Applying merge migration h34de5fg6789")
