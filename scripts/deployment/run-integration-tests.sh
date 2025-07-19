@@ -29,7 +29,7 @@ print_error() {
 }
 
 # Configuration
-STAGING_URL="http://localhost:3002"
+STAGING_URL="http://127.0.0.1:3002"
 TEST_RESULTS=()
 
 # Test API health endpoint

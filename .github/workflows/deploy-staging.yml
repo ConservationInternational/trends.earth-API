@@ -224,10 +224,33 @@ jobs:
           
           # Wait for services to be ready
           echo "⏳ Waiting for services to be ready..."
-          sleep 30
+          
+          # Check that all services are running with desired replicas
+          echo "📊 Waiting for all services to be running..."
+          max_wait=120
+          wait_time=0
+          
+          while [ $wait_time -lt $max_wait ]; do
+            # Check if all services have desired replicas running
+            pending_services=$(docker service ls --filter "name=trends-earth-staging" --format "table {{.Name}}\t{{.Replicas}}" | grep -v "1/1" | wc -l)
+            
+            if [ $pending_services -eq 1 ]; then  # Only header line should remain if all services are 1/1
+              echo "✅ All services are running"
+              break
+            fi
+            
+            echo "⏳ Waiting for services to be ready... ($wait_time/$max_wait seconds)"
+            docker service ls --filter "name=trends-earth-staging"
+            sleep 10
+            wait_time=$((wait_time + 10))
+          done
+          
+          if [ $wait_time -ge $max_wait ]; then
+            echo "⚠️ Some services may not be fully ready after $max_wait seconds"
+          fi
           
           # Check service status
-          echo "📊 Service status:"
+          echo "📊 Final service status:"
           docker service ls | grep trends-earth-staging
           
           # Health check
@@ -236,18 +259,41 @@ jobs:
           attempt=1
           
           while [ $attempt -le $max_attempts ]; do
-            if curl -f http://localhost:3002/api-health > /dev/null 2>&1; then
+            echo "⏳ Health check attempt $attempt/$max_attempts..."
+            
+            # First check if port is listening
+            if ! nc -z 127.0.0.1 3002 2>/dev/null; then
+              echo "⚠️ Port 3002 is not listening yet"
+            else
+              echo "✅ Port 3002 is listening"
+            fi
+            
+            # Try the health check using 127.0.0.1 instead of localhost
+            health_response=$(curl -f -s -w "HTTP_CODE:%{http_code}" http://127.0.0.1:3002/api-health 2>&1)
+            curl_exit_code=$?
+            
+            if [ $curl_exit_code -eq 0 ]; then
               echo "✅ Health check passed"
+              echo "Response: $health_response"
               break
             else
-              echo "⏳ Health check attempt $attempt/$max_attempts failed, retrying..."
-              sleep 10
-              attempt=$((attempt + 1))
+              echo "⏳ Health check failed with exit code $curl_exit_code"
+              echo "Response: $health_response"
             fi
+            
+            sleep 10
+            attempt=$((attempt + 1))
           done
           
           if [ $attempt -gt $max_attempts ]; then
             echo "❌ Health check failed after $max_attempts attempts"
+            echo "🔍 Final debugging information:"
+            echo "  - All running containers:"
+            docker ps --filter "name=trends-earth-staging"
+            echo "  - Manager service details:"
+            docker service inspect trends-earth-staging_manager --format="{{json .Spec.TaskTemplate.ContainerSpec}}" || echo "Service not found"
+            echo "  - Recent manager service logs:"
+            docker service logs --tail 50 trends-earth-staging_manager || echo "No logs available"
             exit 1
           fi
           
