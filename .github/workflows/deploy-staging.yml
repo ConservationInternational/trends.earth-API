@@ -234,7 +234,8 @@ jobs:
             # Check if all services have desired replicas running
             pending_services=$(docker service ls --filter "name=trends-earth-staging" --format "table {{.Name}}\t{{.Replicas}}" | grep -v "1/1" | wc -l)
             
-            if [ $pending_services -eq 1 ]; then  # Only header line should remain if all services are 1/1
+            # Migrate when running correctly will run once then exit, so we expect 1 service to not be replicated
+            if [ $pending_services -eq 2 ]; then  # Only header line and migrate line should remain if all other services are 1/1
               echo "✅ All services are running"
               break
             fi
