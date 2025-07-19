@@ -119,6 +119,25 @@ copy_recent_scripts() {
     
     print_status "Extracting scripts created or updated since $one_year_ago..."
     
+    # Check if production database is accessible
+    print_status "Testing connection to production database..."
+    if ! PGPASSWORD="$PROD_DB_PASSWORD" psql \
+        -h "$PROD_DB_HOST" \
+        -p "$PROD_DB_PORT" \
+        -U "$PROD_DB_USER" \
+        -d "$PROD_DB_NAME" \
+        -c "SELECT 1;" >/dev/null 2>&1; then
+        
+        print_warning "Cannot connect to production database - skipping script import"
+        print_warning "This may be due to network restrictions or pg_hba.conf configuration"
+        print_warning "Production database connection details:"
+        print_warning "  Host: $PROD_DB_HOST"
+        print_warning "  Port: $PROD_DB_PORT" 
+        print_warning "  User: $PROD_DB_USER"
+        print_warning "  Database: $PROD_DB_NAME"
+        return 0
+    fi
+    
     # Use psql to export recent scripts (pg_dump doesn't support --where)
     PGPASSWORD="$PROD_DB_PASSWORD" psql \
         -h "$PROD_DB_HOST" \
