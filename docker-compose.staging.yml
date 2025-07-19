@@ -111,6 +111,7 @@ volumes:
 networks:
   backend:
     driver: overlay
+    attachable: true
     ipam:
       config:
         - subnet: ${DOCKER_SUBNET:-10.1.0.0/16}

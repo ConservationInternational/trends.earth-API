@@ -345,6 +345,29 @@ jobs:
           
           # Run database setup using Docker network (same as migrate container)
           echo "🗄️ Running database setup within Docker network..."
+          
+          # Wait for network to be available
+          echo "🌐 Waiting for Docker network to be ready..."
+          max_network_wait=30
+          network_wait_time=0
+          
+          while [ $network_wait_time -lt $max_network_wait ]; do
+            if docker network ls --format "{{.Name}}" | grep -q "trends-earth-staging_backend"; then
+              echo "✅ Docker network trends-earth-staging_backend is available"
+              break
+            fi
+            echo "⏳ Waiting for network to be created... ($network_wait_time/$max_network_wait seconds)"
+            sleep 2
+            network_wait_time=$((network_wait_time + 2))
+          done
+          
+          if [ $network_wait_time -ge $max_network_wait ]; then
+            echo "❌ Docker network not available after $max_network_wait seconds"
+            echo "🔍 Available networks:"
+            docker network ls
+            exit 1
+          fi
+          
           docker run --rm \
             --network trends-earth-staging_backend \
             -v "$(pwd):/workspace" \
