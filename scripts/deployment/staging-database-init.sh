@@ -119,27 +119,27 @@ copy_recent_scripts() {
     
     print_status "Extracting scripts created or updated since $one_year_ago..."
     
-    # Export recent scripts from production database
-    PGPASSWORD="$PROD_DB_PASSWORD" pg_dump \
+    # Use psql to export recent scripts (pg_dump doesn't support --where)
+    PGPASSWORD="$PROD_DB_PASSWORD" psql \
         -h "$PROD_DB_HOST" \
         -p "$PROD_DB_PORT" \
         -U "$PROD_DB_USER" \
         -d "$PROD_DB_NAME" \
-        --data-only \
-        --table=script \
-        --where="created_at >= '$one_year_ago' OR updated_at >= '$one_year_ago'" \
+        -t -A -F',' \
+        -c "COPY (SELECT * FROM script WHERE created_at >= '$one_year_ago' OR updated_at >= '$one_year_ago') TO STDOUT WITH CSV HEADER;" \
         > "$temp_script_file"
     
     if [ -s "$temp_script_file" ]; then
         print_status "Importing recent scripts into staging database..."
         
-        # Import scripts into staging database
+        # Import scripts into staging database using COPY
         PGPASSWORD="$STAGING_DB_PASSWORD" psql \
             -h "$STAGING_DB_HOST" \
             -p "$STAGING_DB_PORT" \
             -U "$STAGING_DB_USER" \
             -d "$STAGING_DB_NAME" \
-            -f "$temp_script_file"
+            -c "COPY script FROM STDIN WITH CSV HEADER;" \
+            < "$temp_script_file"
         
         print_success "Recent scripts imported successfully"
     else
