@@ -418,6 +418,30 @@ jobs:
           chmod +x scripts/deployment/run-integration-tests.sh
           ./scripts/deployment/run-integration-tests.sh
 
+    - name: Notify Rollbar of deployment
+      if: success()
+      run: |
+        echo "🔔 Notifying Rollbar of successful deployment..."
+        
+        # Get deployment information
+        ENVIRONMENT="staging"
+        REVISION="${{ github.sha }}"
+        LOCAL_USERNAME="${{ github.actor }}"
+        COMMENT="Deployed to staging via GitHub Actions - Branch: ${{ github.ref_name }}, Commit: ${REVISION:0:7}"
+        
+        # Send deployment notification to Rollbar
+        curl -X POST 'https://api.rollbar.com/api/1/deploy/' \
+          -H 'Content-Type: application/json' \
+          -d '{
+            "access_token": "${{ secrets.ROLLBAR_SERVER_ACCESS_TOKEN }}",
+            "environment": "'"$ENVIRONMENT"'",
+            "revision": "'"$REVISION"'",
+            "local_username": "'"$LOCAL_USERNAME"'",
+            "comment": "'"$COMMENT"'"
+          }'
+        
+        echo "✅ Rollbar deployment notification sent successfully"
+
     - name: Cleanup security group access
       if: always()
       run: |
