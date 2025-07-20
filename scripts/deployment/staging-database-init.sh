@@ -138,14 +138,43 @@ copy_recent_scripts() {
         return 0
     fi
     
-    # Use psql to export recent scripts (pg_dump doesn't support --where)
+    # First, get the superadmin user ID that we'll assign to all imported scripts
+    superadmin_id=""
+    if [ -f /tmp/superadmin_id.txt ]; then
+        superadmin_id=$(cat /tmp/superadmin_id.txt)
+    else
+        # Get superadmin user ID from staging database
+        superadmin_id=$(PGPASSWORD="$STAGING_DB_PASSWORD" psql \
+            -h "$STAGING_DB_HOST" \
+            -p "$STAGING_DB_PORT" \
+            -U "$STAGING_DB_USER" \
+            -d "$STAGING_DB_NAME" \
+            -t -c "SELECT id FROM \"user\" WHERE role = 'SUPERADMIN' LIMIT 1;" | xargs)
+    fi
+    
+    if [ -z "$superadmin_id" ] || [ "$superadmin_id" = "" ]; then
+        print_error "Could not find superadmin user ID for script import"
+        return 1
+    fi
+    
+    print_status "Using superadmin user ID: $superadmin_id for imported scripts"
+    
+    # Export recent scripts with modified user_id
     PGPASSWORD="$PROD_DB_PASSWORD" psql \
         -h "$PROD_DB_HOST" \
         -p "$PROD_DB_PORT" \
         -U "$PROD_DB_USER" \
         -d "$PROD_DB_NAME" \
         -t -A -F',' \
-        -c "COPY (SELECT * FROM script WHERE created_at >= '$one_year_ago' OR updated_at >= '$one_year_ago') TO STDOUT WITH CSV HEADER;" \
+        -c "COPY (
+            SELECT 
+                id, name, slug, description, created_at, updated_at, 
+                '$superadmin_id' as user_id,  -- Replace user_id with staging superadmin
+                status, public, cpu_reservation, cpu_limit, 
+                memory_reservation, memory_limit, environment, environment_version
+            FROM script 
+            WHERE created_at >= '$one_year_ago' OR updated_at >= '$one_year_ago'
+        ) TO STDOUT WITH CSV HEADER;" \
         > "$temp_script_file"
     
     if [ -s "$temp_script_file" ]; then
@@ -262,31 +291,6 @@ EOF
     rm -f "$temp_user_file"
 }
 
-# Function to update script ownership
-update_script_ownership() {
-    print_status "Updating script ownership to test superadmin user..."
-    
-    # Get the superadmin ID
-    if [ -f /tmp/superadmin_id.txt ]; then
-        superadmin_id=$(cat /tmp/superadmin_id.txt)
-        
-        # Update all scripts to be owned by the test superadmin
-        PGPASSWORD="$STAGING_DB_PASSWORD" psql \
-            -h "$STAGING_DB_HOST" \
-            -p "$STAGING_DB_PORT" \
-            -U "$STAGING_DB_USER" \
-            -d "$STAGING_DB_NAME" \
-            -c "UPDATE script SET user_id = '$superadmin_id', updated_at = NOW() WHERE user_id IS NOT NULL;"
-        
-        print_success "Script ownership updated to test superadmin user"
-        
-        # Clean up
-        rm -f /tmp/superadmin_id.txt
-    else
-        print_error "Could not find superadmin ID for script ownership update"
-    fi
-}
-
 # Function to verify setup
 verify_setup() {
     print_status "Verifying staging database setup..."
@@ -327,6 +331,9 @@ verify_setup() {
     print_status "  Total Users: $(echo $user_count | xargs)" 
     print_status "  Superadmin Users: $(echo $superadmin_count | xargs)"
     print_status "  Admin Users: $(echo $admin_count | xargs)"
+    
+    # Clean up temporary files
+    rm -f /tmp/superadmin_id.txt
 }
 
 # Main execution
@@ -343,9 +350,8 @@ main() {
     done
     
     create_staging_database
-    copy_recent_scripts
-    create_test_users
-    update_script_ownership
+    create_test_users        # Create users first
+    copy_recent_scripts      # Then import scripts with correct user_id
     verify_setup
     
     print_success "Staging database setup completed successfully!"
