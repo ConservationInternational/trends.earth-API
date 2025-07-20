@@ -211,6 +211,170 @@ copy_recent_scripts() {
     rm -f "$temp_script_file" "$temp_insert_file"
 }
 
+# Function to copy recent status logs from production
+copy_recent_status_logs() {
+    print_status "Copying recent status logs from production database..."
+    
+    # Calculate date for last month
+    one_month_ago=$(date -d "1 month ago" '+%Y-%m-%d %H:%M:%S')
+    print_status "Copying status logs from: $one_month_ago"
+    
+    # Check if production database has status_log table
+    prod_status_log_exists=$(PGPASSWORD="$PROD_DB_PASSWORD" psql \
+        -h "$PROD_DB_HOST" \
+        -p "$PROD_DB_PORT" \
+        -U "$PROD_DB_USER" \
+        -d "$PROD_DB_NAME" \
+        -t -c "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'status_log');" | xargs)
+    
+    if [ "$prod_status_log_exists" != "t" ]; then
+        print_warning "Production database does not have status_log table, skipping status logs import"
+        return 0
+    fi
+    
+    # Check if staging database has status_log table
+    staging_status_log_exists=$(PGPASSWORD="$STAGING_DB_PASSWORD" psql \
+        -h "$STAGING_DB_HOST" \
+        -p "$STAGING_DB_PORT" \
+        -U "$STAGING_DB_USER" \
+        -d "$STAGING_DB_NAME" \
+        -t -c "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'status_log');" | xargs)
+    
+    if [ "$staging_status_log_exists" != "t" ]; then
+        print_warning "Staging database does not have status_log table, skipping status logs import"
+        return 0
+    fi
+    
+    # Export recent status logs using INSERT statements
+    temp_status_log_file="/tmp/staging_status_logs_insert.sql"
+    
+    PGPASSWORD="$PROD_DB_PASSWORD" psql \
+        -h "$PROD_DB_HOST" \
+        -p "$PROD_DB_PORT" \
+        -U "$PROD_DB_USER" \
+        -d "$PROD_DB_NAME" \
+        -t -A \
+        -c "
+        SELECT 
+            'INSERT INTO status_log (id, script_id, execution_id, status, start_date, end_date, register_date, executions_failed, executions_count) VALUES (' ||
+            QUOTE_LITERAL(id) || ', ' ||
+            QUOTE_LITERAL(script_id) || ', ' ||
+            QUOTE_LITERAL(COALESCE(execution_id, '')) || ', ' ||
+            QUOTE_LITERAL(COALESCE(status, '')) || ', ' ||
+            QUOTE_LITERAL(COALESCE(start_date::text, '')) || ', ' ||
+            QUOTE_LITERAL(COALESCE(end_date::text, '')) || ', ' ||
+            QUOTE_LITERAL(register_date::text) || ', ' ||
+            COALESCE(executions_failed::text, '0') || ', ' ||
+            COALESCE(executions_count::text, '0') ||
+            ') ON CONFLICT (id) DO NOTHING;'
+        FROM status_log 
+        WHERE register_date >= '$one_month_ago'
+        ORDER BY register_date DESC;" \
+        > "$temp_status_log_file"
+    
+    if [ -s "$temp_status_log_file" ]; then
+        print_status "Importing recent status logs into staging database..."
+        
+        # Count records being imported
+        record_count=$(grep -c "INSERT INTO status_log" "$temp_status_log_file" || echo "0")
+        print_status "Importing $record_count status log records..."
+        
+        # Execute the INSERT statements
+        PGPASSWORD="$STAGING_DB_PASSWORD" psql \
+            -h "$STAGING_DB_HOST" \
+            -p "$STAGING_DB_PORT" \
+            -U "$STAGING_DB_USER" \
+            -d "$STAGING_DB_NAME" \
+            -f "$temp_status_log_file"
+        
+        print_success "Recent status logs imported successfully ($record_count records)"
+    else
+        print_warning "No recent status logs found to import"
+    fi
+    
+    # Clean up temporary files
+    rm -f "$temp_status_log_file"
+}
+
+# Function to copy script logs for imported scripts
+copy_script_logs_for_imported_scripts() {
+    print_status "Copying script logs for imported scripts from production database..."
+    
+    # Check if production database has script_log table
+    prod_script_log_exists=$(PGPASSWORD="$PROD_DB_PASSWORD" psql \
+        -h "$PROD_DB_HOST" \
+        -p "$PROD_DB_PORT" \
+        -U "$PROD_DB_USER" \
+        -d "$PROD_DB_NAME" \
+        -t -c "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'script_log');" | xargs)
+    
+    if [ "$prod_script_log_exists" != "t" ]; then
+        print_warning "Production database does not have script_log table, skipping script logs import"
+        return 0
+    fi
+    
+    # Check if staging database has script_log table
+    staging_script_log_exists=$(PGPASSWORD="$STAGING_DB_PASSWORD" psql \
+        -h "$STAGING_DB_HOST" \
+        -p "$STAGING_DB_PORT" \
+        -U "$STAGING_DB_USER" \
+        -d "$STAGING_DB_NAME" \
+        -t -c "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'script_log');" | xargs)
+    
+    if [ "$staging_script_log_exists" != "t" ]; then
+        print_warning "Staging database does not have script_log table, skipping script logs import"
+        return 0
+    fi
+    
+    # Export script logs for scripts that exist in staging using INSERT statements
+    temp_script_log_file="/tmp/staging_script_logs_insert.sql"
+    
+    print_status "Exporting script logs for imported scripts..."
+    
+    PGPASSWORD="$PROD_DB_PASSWORD" psql \
+        -h "$PROD_DB_HOST" \
+        -p "$PROD_DB_PORT" \
+        -U "$PROD_DB_USER" \
+        -d "$PROD_DB_NAME" \
+        -t -A \
+        -c "
+        SELECT 
+            'INSERT INTO script_log (id, text, register_date, script_id) VALUES (' ||
+            QUOTE_LITERAL(sl.id) || ', ' ||
+            QUOTE_LITERAL(COALESCE(sl.text, '')) || ', ' ||
+            QUOTE_LITERAL(sl.register_date::text) || ', ' ||
+            QUOTE_LITERAL(sl.script_id) ||
+            ') ON CONFLICT (id) DO NOTHING;'
+        FROM script_log sl
+        INNER JOIN script s ON sl.script_id = s.id
+        WHERE (s.created_at >= '$(date -d "1 year ago" '+%Y-%m-%d')' OR s.updated_at >= '$(date -d "1 year ago" '+%Y-%m-%d')')
+        ORDER BY sl.register_date DESC;" \
+        > "$temp_script_log_file"
+    
+    if [ -s "$temp_script_log_file" ]; then
+        print_status "Importing script logs for imported scripts into staging database..."
+        
+        # Count records being imported
+        record_count=$(grep -c "INSERT INTO script_log" "$temp_script_log_file" || echo "0")
+        print_status "Importing $record_count script log records..."
+        
+        # Execute the INSERT statements
+        PGPASSWORD="$STAGING_DB_PASSWORD" psql \
+            -h "$STAGING_DB_HOST" \
+            -p "$STAGING_DB_PORT" \
+            -U "$STAGING_DB_USER" \
+            -d "$STAGING_DB_NAME" \
+            -f "$temp_script_log_file"
+        
+        print_success "Script logs for imported scripts imported successfully ($record_count records)"
+    else
+        print_warning "No script logs found for imported scripts"
+    fi
+    
+    # Clean up temporary files
+    rm -f "$temp_script_log_file"
+}
+
 # Function to create test users
 create_test_users() {
     print_status "Creating test users in staging database using Python script..."
@@ -319,8 +483,10 @@ main() {
     done
     
     create_staging_database
-    create_test_users        # Create users first
-    copy_recent_scripts      # Then import scripts with correct user_id
+    create_test_users                      # Create users first
+    copy_recent_scripts                    # Then import scripts with correct user_id
+    copy_recent_status_logs                # Import recent status logs for testing
+    copy_script_logs_for_imported_scripts  # Import script logs for the imported scripts
     verify_setup
     
     print_success "Staging database setup completed successfully!"
