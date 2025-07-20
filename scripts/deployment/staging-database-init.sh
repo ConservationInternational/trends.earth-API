@@ -159,7 +159,7 @@ copy_recent_scripts() {
     
     print_status "Using superadmin user ID: $superadmin_id for imported scripts"
     
-    # Export recent scripts with modified user_id, excluding null timestamps
+    # Export recent scripts with modified user_id, excluding null/empty timestamps
     PGPASSWORD="$PROD_DB_PASSWORD" psql \
         -h "$PROD_DB_HOST" \
         -p "$PROD_DB_PORT" \
@@ -176,6 +176,8 @@ copy_recent_scripts() {
             WHERE (created_at >= '$one_year_ago' OR updated_at >= '$one_year_ago')
               AND created_at IS NOT NULL 
               AND updated_at IS NOT NULL
+              AND created_at::text != ''
+              AND updated_at::text != ''
         ) TO STDOUT WITH CSV HEADER;" \
         > "$temp_script_file"
     
