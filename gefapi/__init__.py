@@ -131,12 +131,6 @@ def health_check():
     ), 200
 
 
-# Handle authentication via JWT
-# Verify JWT config is still set before initializing JWTManager
-key_to_print = app.config.get("JWT_SECRET_KEY", "NOT SET")
-if key_to_print and key_to_print != "NOT SET":
-    key_to_print = f"{key_to_print[:10]}..."
-print(f"JWT_SECRET_KEY before JWTManager init: {key_to_print}")
 jwt = JWTManager(app)
 
 
