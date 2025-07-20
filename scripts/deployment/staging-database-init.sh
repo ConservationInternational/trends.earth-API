@@ -216,9 +216,26 @@ create_test_users() {
     print_status "Creating test users in staging database using Python script..."
     
     # Use the Python user setup script which properly hashes passwords
+    # Run it inside the Docker container where all dependencies are available
     if [ -f "scripts/deployment/setup-staging-users.py" ]; then
-        print_status "Running Python user setup script..."
-        python3 scripts/deployment/setup-staging-users.py
+        print_status "Running Python user setup script inside Docker container..."
+        
+        # Find the manager container ID
+        manager_container_id=$(docker ps --filter "name=trends-earth-staging_manager" --format "{{.ID}}" | head -1)
+        
+        if [ -z "$manager_container_id" ]; then
+            print_error "Could not find trends-earth-staging_manager container"
+            exit 1
+        fi
+        
+        # Copy the script into the container
+        docker cp scripts/deployment/setup-staging-users.py "$manager_container_id:/opt/gef-api/setup-staging-users.py"
+        
+        # Run the script inside the container
+        docker exec "$manager_container_id" python setup-staging-users.py
+        
+        # Clean up the copied script
+        docker exec "$manager_container_id" rm -f /opt/gef-api/setup-staging-users.py
         
         print_success "Test users created successfully with proper password hashes"
         print_status "Test user credentials:"
