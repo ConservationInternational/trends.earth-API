@@ -865,7 +865,7 @@ def get_status_logs():
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 100))
         page = max(page, 1)
-        per_page = min(max(per_page, 1), 1000)
+        per_page = min(max(per_page, 1), 10000)
     except Exception:
         page, per_page = 1, 100
 
