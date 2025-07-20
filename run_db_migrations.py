@@ -74,13 +74,17 @@ def run_migrations():
             try:
                 # Use a fresh connection for migration state check
                 connection = db.engine.connect()
-                result = connection.execute(text("SELECT version_num FROM alembic_version")).fetchone()
+                result = connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).fetchone()
                 current_version = result[0] if result else "None"
                 logger.info(f"Current database version: {current_version}")
                 connection.close()
             except ProgrammingError as e:
-                if "relation \"alembic_version\" does not exist" in str(e):
-                    logger.info("Database appears to be fresh (no alembic_version table)")
+                if 'relation "alembic_version" does not exist' in str(e):
+                    logger.info(
+                        "Database appears to be fresh (no alembic_version table)"
+                    )
                     current_version = None
                 else:
                     logger.warning(f"Could not check current version: {e}")
@@ -170,15 +174,17 @@ def run_migrations():
             elif current_version is None:
                 # Fresh database - run all migrations
                 logger.info("Fresh database detected, running all migrations")
-                # Since we have multiple heads, we need to upgrade to the merge point first
-                # then to the latest migration
+                # Since we have multiple heads, we need to upgrade to the merge point
+                # first then to the latest migration
                 try:
                     logger.info("First upgrading to merge point h34de5fg6789")
                     upgrade(revision="h34de5fg6789")
                     logger.info("Now upgrading to add refresh tokens")
                     upgrade(revision="add_refresh_tokens")
                 except Exception as e:
-                    logger.warning(f"Merge upgrade failed, trying direct upgrade to heads: {e}")
+                    logger.warning(
+                        f"Merge upgrade failed, trying direct upgrade to heads: {e}"
+                    )
                     # If merge fails, try upgrading to all heads
                     upgrade(revision="heads")
             else:

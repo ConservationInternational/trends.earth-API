@@ -92,11 +92,11 @@ class User(db.Model):
         if not self.password:
             logger.warning(f"User {self.email} has no password hash stored")
             return False
-        
+
         if not password:
             logger.debug("Empty password provided for authentication")
             return False
-            
+
         try:
             return check_password_hash(self.password, password)
         except ValueError as e:
