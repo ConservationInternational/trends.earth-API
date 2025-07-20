@@ -159,7 +159,7 @@ copy_recent_scripts() {
     
     print_status "Using superadmin user ID: $superadmin_id for imported scripts"
     
-    # Export recent scripts with modified user_id, excluding null/empty timestamps
+    # Export recent scripts with proper timestamp formatting
     PGPASSWORD="$PROD_DB_PASSWORD" psql \
         -h "$PROD_DB_HOST" \
         -p "$PROD_DB_PORT" \
@@ -168,21 +168,23 @@ copy_recent_scripts() {
         -t -A -F',' \
         -c "COPY (
             SELECT 
-                id, name, slug, description, created_at, updated_at,
-                '$superadmin_id' as user_id,  -- Replace user_id with staging superadmin
+                id, name, slug, description, 
+                created_at::timestamp::text as created_at,
+                updated_at::timestamp::text as updated_at,
+                '$superadmin_id' as user_id,
                 status, public, cpu_reservation, cpu_limit, 
                 memory_reservation, memory_limit, environment, environment_version
             FROM script 
             WHERE (created_at >= '$one_year_ago' OR updated_at >= '$one_year_ago')
-              AND created_at IS NOT NULL 
-              AND updated_at IS NOT NULL
-              AND created_at::text != ''
-              AND updated_at::text != ''
         ) TO STDOUT WITH CSV HEADER;" \
         > "$temp_script_file"
     
     if [ -s "$temp_script_file" ]; then
         print_status "Importing recent scripts into staging database..."
+        
+        # Debug: Show the CSV content
+        print_status "CSV file content:"
+        cat "$temp_script_file"
         
         # Import scripts into staging database using COPY
         PGPASSWORD="$STAGING_DB_PASSWORD" psql \
@@ -198,7 +200,7 @@ copy_recent_scripts() {
         print_warning "No recent scripts found to import"
     fi
     
-    # Clean up temporary file
+    # Clean up temporary files
     rm -f "$temp_script_file"
 }
 
