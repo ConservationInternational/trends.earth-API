@@ -159,41 +159,48 @@ copy_recent_scripts() {
     
     print_status "Using superadmin user ID: $superadmin_id for imported scripts"
     
-    # Export recent scripts with proper timestamp formatting
+    # Export recent scripts using INSERT statements to avoid CSV formatting issues
+    temp_insert_file="/tmp/staging_scripts_insert.sql"
+    
     PGPASSWORD="$PROD_DB_PASSWORD" psql \
         -h "$PROD_DB_HOST" \
         -p "$PROD_DB_PORT" \
         -U "$PROD_DB_USER" \
         -d "$PROD_DB_NAME" \
-        -t -A -F',' \
-        -c "COPY (
-            SELECT 
-                id, name, slug, description, 
-                created_at::timestamp::text as created_at,
-                updated_at::timestamp::text as updated_at,
-                '$superadmin_id' as user_id,
-                status, public, cpu_reservation, cpu_limit, 
-                memory_reservation, memory_limit, environment, environment_version
-            FROM script 
-            WHERE (created_at >= '$one_year_ago' OR updated_at >= '$one_year_ago')
-        ) TO STDOUT WITH CSV HEADER;" \
-        > "$temp_script_file"
+        -t -A \
+        -c "
+        SELECT 
+            'INSERT INTO script (id, name, slug, description, created_at, updated_at, user_id, status, public, cpu_reservation, cpu_limit, memory_reservation, memory_limit, environment, environment_version) VALUES (' ||
+            QUOTE_LITERAL(id) || ', ' ||
+            QUOTE_LITERAL(COALESCE(name, '')) || ', ' ||
+            QUOTE_LITERAL(COALESCE(slug, '')) || ', ' ||
+            QUOTE_LITERAL(COALESCE(description, '')) || ', ' ||
+            QUOTE_LITERAL(created_at::text) || ', ' ||
+            QUOTE_LITERAL(updated_at::text) || ', ' ||
+            QUOTE_LITERAL('$superadmin_id') || ', ' ||
+            QUOTE_LITERAL(COALESCE(status, 'PENDING')) || ', ' ||
+            COALESCE(public::text, 'false') || ', ' ||
+            COALESCE(cpu_reservation::text, '0') || ', ' ||
+            COALESCE(cpu_limit::text, '0') || ', ' ||
+            COALESCE(memory_reservation::text, '0') || ', ' ||
+            COALESCE(memory_limit::text, '0') || ', ' ||
+            QUOTE_LITERAL(COALESCE(environment, '')) || ', ' ||
+            QUOTE_LITERAL(COALESCE(environment_version, '')) ||
+            ') ON CONFLICT (id) DO NOTHING;'
+        FROM script 
+        WHERE (created_at >= '$one_year_ago' OR updated_at >= '$one_year_ago');" \
+        > "$temp_insert_file"
     
-    if [ -s "$temp_script_file" ]; then
+    if [ -s "$temp_insert_file" ]; then
         print_status "Importing recent scripts into staging database..."
         
-        # Debug: Show the CSV content
-        print_status "CSV file content:"
-        cat "$temp_script_file"
-        
-        # Import scripts into staging database using COPY
+        # Execute the INSERT statements
         PGPASSWORD="$STAGING_DB_PASSWORD" psql \
             -h "$STAGING_DB_HOST" \
             -p "$STAGING_DB_PORT" \
             -U "$STAGING_DB_USER" \
             -d "$STAGING_DB_NAME" \
-            -c "COPY script FROM STDIN WITH CSV HEADER;" \
-            < "$temp_script_file"
+            -f "$temp_insert_file"
         
         print_success "Recent scripts imported successfully"
     else
@@ -201,7 +208,7 @@ copy_recent_scripts() {
     fi
     
     # Clean up temporary files
-    rm -f "$temp_script_file"
+    rm -f "$temp_script_file" "$temp_insert_file"
 }
 
 # Function to create test users
