@@ -300,6 +300,86 @@ jobs:
           
           echo "🎉 Staging deployment completed successfully!"
 
+    - name: Drop Staging Database
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ steps.ssh-port.outputs.port }}
+        script: |
+          set -e
+          
+          # Navigate to application directory
+          cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
+          
+          echo "🗑️ Dropping staging database for fresh deployment..."
+          
+          # Set staging database environment variables
+          export STAGING_DB_HOST="${{ secrets.STAGING_DB_HOST }}"
+          export STAGING_DB_PORT="${{ secrets.STAGING_DB_PORT }}"
+          export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
+          export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
+          export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
+          
+          # Wait for PostgreSQL service to be ready first
+          echo "🗄️ Waiting for PostgreSQL service to be ready..."
+          max_db_wait=60
+          db_wait_time=0
+          
+          while [ $db_wait_time -lt $max_db_wait ]; do
+            # Check if postgres service is running and has 1/1 replicas
+            postgres_status=$(docker service ls --filter "name=trends-earth-staging_postgres" --format "{{.Replicas}}" | head -1)
+            if [ "$postgres_status" = "1/1" ]; then
+              echo "✅ PostgreSQL service is running (1/1 replicas)"
+              break
+            fi
+            echo "⏳ Waiting for PostgreSQL service to be ready... ($db_wait_time/$max_db_wait seconds) - Status: $postgres_status"
+            sleep 5
+            db_wait_time=$((db_wait_time + 5))
+          done
+          
+          # Wait for port to be listening
+          echo "🗄️ Waiting for PostgreSQL port to be ready..."
+          max_port_wait=60
+          port_wait_time=0
+          
+          while [ $port_wait_time -lt $max_port_wait ]; do
+            if nc -z 127.0.0.1 5433 2>/dev/null; then
+              echo "✅ PostgreSQL port 5433 is listening"
+              break
+            fi
+            echo "⏳ Waiting for PostgreSQL port... ($port_wait_time/$max_port_wait seconds)"
+            sleep 5
+            port_wait_time=$((port_wait_time + 5))
+          done
+          
+          # Additional wait for database to be fully initialized
+          echo "⏳ Waiting for database initialization..."
+          sleep 15
+          
+          # Drop all existing connections to the staging database
+          echo "🔌 Terminating existing connections to staging database..."
+          PGPASSWORD="$STAGING_DB_PASSWORD" psql -h "$STAGING_DB_HOST" -p "$STAGING_DB_PORT" -U "$STAGING_DB_USER" -d postgres -c "
+            SELECT pg_terminate_backend(pid)
+            FROM pg_stat_activity 
+            WHERE datname = '$STAGING_DB_NAME' AND pid <> pg_backend_pid();
+          " || echo "No existing connections to terminate"
+          
+          # Drop the staging database
+          echo "💥 Dropping database $STAGING_DB_NAME..."
+          PGPASSWORD="$STAGING_DB_PASSWORD" psql -h "$STAGING_DB_HOST" -p "$STAGING_DB_PORT" -U "$STAGING_DB_USER" -d postgres -c "
+            DROP DATABASE IF EXISTS \"$STAGING_DB_NAME\";
+          "
+          
+          # Recreate the staging database
+          echo "🏗️ Creating fresh database $STAGING_DB_NAME..."
+          PGPASSWORD="$STAGING_DB_PASSWORD" psql -h "$STAGING_DB_HOST" -p "$STAGING_DB_PORT" -U "$STAGING_DB_USER" -d postgres -c "
+            CREATE DATABASE \"$STAGING_DB_NAME\" OWNER \"$STAGING_DB_USER\";
+          "
+          
+          echo "✅ Staging database dropped and recreated successfully!"
+
     - name: Setup Staging Database
       uses: appleboy/ssh-action@v1.0.0
       with:

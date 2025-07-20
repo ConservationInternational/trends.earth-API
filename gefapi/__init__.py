@@ -155,7 +155,15 @@ def create_token():
     email = request.json.get("email", None)
     password = request.json.get("password", None)
 
-    user = UserService.authenticate_user(email, password)
+    if not email or not password:
+        logger.warning("[JWT]: Missing email or password in request")
+        return jsonify({"msg": "Email and password are required"}), 400
+
+    try:
+        user = UserService.authenticate_user(email, password)
+    except Exception as e:
+        logger.error(f"[JWT]: Error during authentication: {str(e)}")
+        return jsonify({"msg": "Authentication failed"}), 500
 
     if user is None:
         return jsonify({"msg": "Bad username or password"}), 401
