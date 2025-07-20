@@ -256,20 +256,23 @@ copy_recent_status_logs() {
         -t -A \
         -c "
         SELECT 
-            'INSERT INTO status_log (id, script_id, execution_id, status, start_date, end_date, register_date, executions_failed, executions_count) VALUES (' ||
+            'INSERT INTO status_log (id, timestamp, executions_active, executions_ready, executions_running, executions_finished, executions_failed, executions_count, users_count, scripts_count, memory_available_percent, cpu_usage_percent) VALUES (' ||
             QUOTE_LITERAL(id) || ', ' ||
-            QUOTE_LITERAL(script_id) || ', ' ||
-            QUOTE_LITERAL(COALESCE(execution_id, '')) || ', ' ||
-            QUOTE_LITERAL(COALESCE(status, '')) || ', ' ||
-            QUOTE_LITERAL(COALESCE(start_date::text, '')) || ', ' ||
-            QUOTE_LITERAL(COALESCE(end_date::text, '')) || ', ' ||
-            QUOTE_LITERAL(register_date::text) || ', ' ||
+            QUOTE_LITERAL(timestamp::text) || ', ' ||
+            COALESCE(executions_active::text, '0') || ', ' ||
+            COALESCE(executions_ready::text, '0') || ', ' ||
+            COALESCE(executions_running::text, '0') || ', ' ||
+            COALESCE(executions_finished::text, '0') || ', ' ||
             COALESCE(executions_failed::text, '0') || ', ' ||
-            COALESCE(executions_count::text, '0') ||
+            COALESCE(executions_count::text, '0') || ', ' ||
+            COALESCE(users_count::text, '0') || ', ' ||
+            COALESCE(scripts_count::text, '0') || ', ' ||
+            COALESCE(memory_available_percent::text, '0.0') || ', ' ||
+            COALESCE(cpu_usage_percent::text, '0.0') ||
             ') ON CONFLICT (id) DO NOTHING;'
         FROM status_log 
-        WHERE register_date >= '$one_month_ago'
-        ORDER BY register_date DESC;" \
+        WHERE timestamp >= '$one_month_ago'
+        ORDER BY timestamp DESC;" \
         > "$temp_status_log_file"
     
     if [ -s "$temp_status_log_file" ]; then
