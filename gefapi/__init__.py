@@ -142,19 +142,20 @@ def swagger_spec():
     swagger_path = os.path.join(os.path.dirname(__file__), "static")
     if os.path.exists(os.path.join(swagger_path, "swagger.json")):
         return send_from_directory(swagger_path, "swagger.json")
-    
+
     # Fallback: Generate swagger spec dynamically if file doesn't exist
     try:
         # Import generate_swagger module to create spec on-demand
         import sys
+
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
         from generate_swagger import generate_openapi_spec
-        
+
         spec = generate_openapi_spec()
         return jsonify(spec)
     except Exception as e:
         logger.warning(f"Failed to generate swagger spec dynamically: {e}")
-        
+
         # Final fallback: return a basic swagger spec
         return jsonify(
             {
