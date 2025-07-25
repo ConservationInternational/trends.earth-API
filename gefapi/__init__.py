@@ -104,30 +104,28 @@ limiter = Limiter(
 from gefapi import tasks  # noqa: E402,F401
 from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
 
-# Blueprint Flask Routing
-app.register_blueprint(endpoints, url_prefix="/api/v1")
-
 # Flask-RESTX API Documentation Setup
-# Create Flask-RESTX API instance
+# Create Flask-RESTX API instance for documentation only
 api = Api(
     app,
     version="1.0",
     title="Trends.Earth API",
-    description="API for managing Scripts, Users, and Executions in Trends.Earth",
+    description="API for managing Scripts, Users, and Executions in Trends.Earth. See documentation below for endpoint details.",
     doc="/api/docs/",  # This will serve the Swagger UI at /api/docs/
-    prefix="/api/v1",
     contact="azvoleff@conservation.org",
     contact_email="azvoleff@conservation.org",
     license="MIT",
     license_url="https://opensource.org/licenses/MIT",
-    validate=True,  # Enable request/response validation
+    validate=False,  # No validation needed for documentation-only setup
 )
+
+# Blueprint Flask Routing - register after API setup
+app.register_blueprint(endpoints, url_prefix="/api/v1")
 
 
 # Initialize API documentation after api object creation
 def _init_api_docs():
     """Initialize API documentation modules after api object is available"""
-    import gefapi.api_decorators  # noqa: F401
     import gefapi.api_docs  # noqa: F401
 
 
