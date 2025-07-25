@@ -30,7 +30,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install poetry
-        poetry install --only=main
+        poetry install
         
     - name: Generate OpenAPI documentation
       run: |

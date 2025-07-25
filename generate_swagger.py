@@ -15,6 +15,11 @@ import warnings
 warnings.filterwarnings("ignore")
 logging.disable(logging.CRITICAL)
 
+# Set minimal environment variables for documentation generation
+os.environ.setdefault("SECRET_KEY", "dummy-key-for-docs")
+os.environ.setdefault("DATABASE_URL", "sqlite:///dummy.db")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
+
 # Add the project root to the Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
