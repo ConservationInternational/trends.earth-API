@@ -33,6 +33,7 @@ bleach = "*"
 python-slugify = "*"
 gunicorn = "*"
 gevent = "*"
+flask-restx = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
@@ -43,8 +44,6 @@ ruff = "*"
 mypy = "*"
 types-redis = "*"
 flask-restx = "*"
-apispec = { version = "*", extras = ["flask"] }
-marshmallow = "*"
 
 [tool.setuptools]
 packages = ["gefapi"]

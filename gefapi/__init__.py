@@ -11,6 +11,7 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from flask_limiter import Limiter
 from flask_migrate import Migrate
+from flask_restx import Api
 from flask_sqlalchemy import SQLAlchemy
 import rollbar
 import rollbar.contrib.flask
@@ -106,6 +107,32 @@ from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
 # Blueprint Flask Routing
 app.register_blueprint(endpoints, url_prefix="/api/v1")
 
+# Flask-RESTX API Documentation Setup
+# Create Flask-RESTX API instance
+api = Api(
+    app,
+    version="1.0",
+    title="Trends.Earth API",
+    description="API for managing Scripts, Users, and Executions in Trends.Earth",
+    doc="/api/docs/",  # This will serve the Swagger UI at /api/docs/
+    prefix="/api/v1",
+    contact="azvoleff@conservation.org",
+    contact_email="azvoleff@conservation.org",
+    license="MIT",
+    license_url="https://opensource.org/licenses/MIT",
+    validate=True,  # Enable request/response validation
+)
+
+
+# Initialize API documentation after api object creation
+def _init_api_docs():
+    """Initialize API documentation modules after api object is available"""
+    import gefapi.api_decorators  # noqa: F401
+    import gefapi.api_docs  # noqa: F401
+
+
+_init_api_docs()
+
 
 @app.route("/api-health", methods=["GET"])
 def health_check():
@@ -129,6 +156,14 @@ def health_check():
             "version": "1.0",
         }
     ), 200
+
+
+@app.route("/swagger.json", methods=["GET"])
+def swagger_spec():
+    """Serve the Flask-RESTX generated OpenAPI/Swagger specification"""
+    from flask import jsonify
+
+    return jsonify(api.__schema__)
 
 
 jwt = JWTManager(app)
