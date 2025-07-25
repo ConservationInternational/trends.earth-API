@@ -8,6 +8,14 @@ import json
 import os
 import sys
 from typing import Any
+import warnings
+
+# Suppress all warnings and logging that could corrupt JSON output
+warnings.filterwarnings("ignore")
+
+# Suppress logging completely for generation
+import logging
+logging.disable(logging.CRITICAL)
 
 # Add the project root to the Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
