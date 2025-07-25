@@ -34,14 +34,14 @@ jobs:
         
     - name: Generate OpenAPI documentation
       run: |
-        mkdir -p docs/api
-        python generate_swagger.py > docs/api/swagger.json
+        mkdir -p gefapi/static
+        python generate_swagger.py > gefapi/static/swagger.json
         
     - name: Commit and push if changed
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add docs/api/swagger.json
+        git add gefapi/static/swagger.json
         if git diff --staged --quiet; then
           echo "No changes to swagger.json"
         else

@@ -138,22 +138,35 @@ def swagger_spec():
 
     from flask import send_from_directory
 
-    # Try to serve the generated swagger.json file
-    swagger_path = os.path.join(os.path.dirname(__file__), "..", "docs", "api")
+    # Try to serve the generated swagger.json file from gefapi/static
+    swagger_path = os.path.join(os.path.dirname(__file__), "static")
     if os.path.exists(os.path.join(swagger_path, "swagger.json")):
         return send_from_directory(swagger_path, "swagger.json")
-    # Fallback: return a basic swagger spec
-    return jsonify(
-        {
-            "openapi": "3.0.0",
-            "info": {
-                "title": "Trends.Earth API",
-                "version": "1.0.0",
-                "description": "API documentation will be generated automatically",
-            },
-            "paths": {},
-        }
-    )
+    
+    # Fallback: Generate swagger spec dynamically if file doesn't exist
+    try:
+        # Import generate_swagger module to create spec on-demand
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+        from generate_swagger import generate_openapi_spec
+        
+        spec = generate_openapi_spec()
+        return jsonify(spec)
+    except Exception as e:
+        logger.warning(f"Failed to generate swagger spec dynamically: {e}")
+        
+        # Final fallback: return a basic swagger spec
+        return jsonify(
+            {
+                "openapi": "3.0.0",
+                "info": {
+                    "title": "Trends.Earth API",
+                    "version": "1.0.0",
+                    "description": "API documentation will be generated automatically",
+                },
+                "paths": {},
+            }
+        )
 
 
 @app.route("/api/docs/", methods=["GET"])
