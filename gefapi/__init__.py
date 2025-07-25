@@ -11,7 +11,6 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from flask_limiter import Limiter
 from flask_migrate import Migrate
-from flask_restx import Api
 from flask_sqlalchemy import SQLAlchemy
 import rollbar
 import rollbar.contrib.flask
@@ -104,32 +103,8 @@ limiter = Limiter(
 from gefapi import tasks  # noqa: E402,F401
 from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
 
-# Flask-RESTX API Documentation Setup
-# Create Flask-RESTX API instance for documentation only
-api = Api(
-    app,
-    version="1.0",
-    title="Trends.Earth API",
-    description="API for managing Scripts, Users, and Executions in Trends.Earth. See documentation below for endpoint details.",
-    doc="/api/docs/",  # This will serve the Swagger UI at /api/docs/
-    contact="azvoleff@conservation.org",
-    contact_email="azvoleff@conservation.org",
-    license="MIT",
-    license_url="https://opensource.org/licenses/MIT",
-    validate=False,  # No validation needed for documentation-only setup
-)
-
-# Blueprint Flask Routing - register after API setup
+# Blueprint Flask Routing
 app.register_blueprint(endpoints, url_prefix="/api/v1")
-
-
-# Initialize API documentation after api object creation
-def _init_api_docs():
-    """Initialize API documentation modules after api object is available"""
-    import gefapi.api_docs  # noqa: F401
-
-
-_init_api_docs()
 
 
 @app.route("/api-health", methods=["GET"])
@@ -158,10 +133,53 @@ def health_check():
 
 @app.route("/swagger.json", methods=["GET"])
 def swagger_spec():
-    """Serve the Flask-RESTX generated OpenAPI/Swagger specification"""
-    from flask import jsonify
+    """Serve the generated OpenAPI/Swagger specification"""
+    import os
+    from flask import send_from_directory
+    
+    # Try to serve the generated swagger.json file
+    swagger_path = os.path.join(os.path.dirname(__file__), '..', 'docs', 'api')
+    if os.path.exists(os.path.join(swagger_path, 'swagger.json')):
+        return send_from_directory(swagger_path, 'swagger.json')
+    else:
+        # Fallback: return a basic swagger spec
+        return jsonify({
+            "openapi": "3.0.0",
+            "info": {
+                "title": "Trends.Earth API",
+                "version": "1.0.0",
+                "description": "API documentation will be generated automatically"
+            },
+            "paths": {}
+        })
 
-    return jsonify(api.__schema__)
+
+@app.route("/api/docs/", methods=["GET"])
+def api_docs():
+    """Serve Swagger UI for API documentation"""
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Trends.Earth API Documentation</title>
+        <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui.css" />
+    </head>
+    <body>
+        <div id="swagger-ui"></div>
+        <script src="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-bundle.js"></script>
+        <script>
+            SwaggerUIBundle({
+                url: '/swagger.json',
+                dom_id: '#swagger-ui',
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIBundle.presets.standalone
+                ]
+            });
+        </script>
+    </body>
+    </html>
+    '''
 
 
 jwt = JWTManager(app)
@@ -317,17 +335,30 @@ def add_security_headers(response):
     # Prevent MIME type sniffing
     response.headers["X-Content-Type-Options"] = "nosniff"
 
-    # Prevent clickjacking by denying iframe embedding
-    response.headers["X-Frame-Options"] = "DENY"
+    # Prevent clickjacking by denying iframe embedding (except for API docs)
+    if request.path == '/api/docs/':
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"  # Allow iframe from same origin for Swagger UI
+    else:
+        response.headers["X-Frame-Options"] = "DENY"
 
     # Enable XSS protection in browsers
     response.headers["X-XSS-Protection"] = "1; mode=block"
 
     # Content Security Policy for any HTML content
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'"
-    )
+    # Allow Swagger UI CDN resources for API documentation
+    if request.path == '/api/docs/':
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://unpkg.com; "
+            "style-src 'self' 'unsafe-inline' https://unpkg.com; "
+            "font-src 'self' https://unpkg.com; "
+            "img-src 'self' data: https://unpkg.com"
+        )
+    else:
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'"
+        )
 
     # Force HTTPS if the request is secure
     if request.is_secure:
