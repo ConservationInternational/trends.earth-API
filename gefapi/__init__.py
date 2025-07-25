@@ -135,38 +135,45 @@ def health_check():
 def swagger_spec():
     """Serve the generated OpenAPI/Swagger specification"""
     import os
+
     from flask import send_from_directory
-    
+
     # Try to serve the generated swagger.json file
-    swagger_path = os.path.join(os.path.dirname(__file__), '..', 'docs', 'api')
-    if os.path.exists(os.path.join(swagger_path, 'swagger.json')):
-        return send_from_directory(swagger_path, 'swagger.json')
-    else:
-        # Fallback: return a basic swagger spec
-        return jsonify({
+    swagger_path = os.path.join(os.path.dirname(__file__), "..", "docs", "api")
+    if os.path.exists(os.path.join(swagger_path, "swagger.json")):
+        return send_from_directory(swagger_path, "swagger.json")
+    # Fallback: return a basic swagger spec
+    return jsonify(
+        {
             "openapi": "3.0.0",
             "info": {
                 "title": "Trends.Earth API",
                 "version": "1.0.0",
-                "description": "API documentation will be generated automatically"
+                "description": "API documentation will be generated automatically",
             },
-            "paths": {}
-        })
+            "paths": {},
+        }
+    )
 
 
 @app.route("/api/docs/", methods=["GET"])
 def api_docs():
     """Serve Swagger UI for API documentation"""
-    return '''
+    return """
     <!DOCTYPE html>
     <html>
     <head>
         <title>Trends.Earth API Documentation</title>
-        <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui.css" />
+        <link rel="stylesheet" type="text/css"
+              href="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui.css"
+              integrity="sha384-2/StnWvcTFa+ulN5XGsmRCRCHlS3w55zYM2opgTX9cGDkOHlC2PJMND08SWG4Bag"
+              crossorigin="anonymous" />
     </head>
     <body>
         <div id="swagger-ui"></div>
-        <script src="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-bundle.js"></script>
+        <script src="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-bundle.js"
+                integrity="sha384-GJoyyEnbeIyINXWDkEzUHpPPCZPcP2KrAg83c6DGAkTPr2tDHQ59DuqMRwAwsJwV"
+                crossorigin="anonymous"></script>
         <script>
             SwaggerUIBundle({
                 url: '/swagger.json',
@@ -174,12 +181,17 @@ def api_docs():
                 presets: [
                     SwaggerUIBundle.presets.apis,
                     SwaggerUIBundle.presets.standalone
-                ]
+                ],
+                // Security: Disable unsafe features
+                supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
+                validatorUrl: null, // Disable external validator
+                docExpansion: 'list',
+                defaultModelsExpandDepth: 1
             });
         </script>
     </body>
     </html>
-    '''
+    """
 
 
 jwt = JWTManager(app)
@@ -336,8 +348,9 @@ def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
 
     # Prevent clickjacking by denying iframe embedding (except for API docs)
-    if request.path == '/api/docs/':
-        response.headers["X-Frame-Options"] = "SAMEORIGIN"  # Allow iframe from same origin for Swagger UI
+    if request.path == "/api/docs/":
+        # Allow iframe from same origin for Swagger UI
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
     else:
         response.headers["X-Frame-Options"] = "DENY"
 
@@ -346,7 +359,7 @@ def add_security_headers(response):
 
     # Content Security Policy for any HTML content
     # Allow Swagger UI CDN resources for API documentation
-    if request.path == '/api/docs/':
+    if request.path == "/api/docs/":
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' https://unpkg.com; "
@@ -363,7 +376,7 @@ def add_security_headers(response):
     # Force HTTPS if the request is secure
     if request.is_secure:
         response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
+            "max-age=31536000; includeSubDomains; preload"
         )
 
     # Prevent referrer information leakage
@@ -371,5 +384,11 @@ def add_security_headers(response):
 
     # Control browser features and APIs
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
+    # Add additional security headers
+    response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
 
     return response

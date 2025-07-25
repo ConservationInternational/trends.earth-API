@@ -84,7 +84,7 @@ The application is composed of several Docker services, each with a specific pur
 
 ### Supporting Services
 
-- **`postgres`** - PostgreSQL database (version 9.6)
+- **`postgres`** - PostgreSQL database (version 16)
   - Stores all application data
   - Default port: 5432
   - Container name: `trendsearth-api-database` (development)
@@ -1058,6 +1058,59 @@ The project uses **Poetry** for dependency management:
 - `pyproject.toml` - Main dependency configuration
 - `poetry.lock` - Locked dependency versions
 - Dependencies are installed during Docker image build
+
+### API Documentation
+
+The API documentation is automatically generated and served at `/api/docs/` using Swagger UI.
+
+#### Swagger UI Security
+
+The API documentation uses CDN-hosted Swagger UI resources with **Subresource Integrity (SRI)** hashes for security:
+
+**Updating SRI Hashes:**
+When upgrading Swagger UI versions, update the SRI hashes using the provided script:
+
+```bash
+# Generate new SRI hashes for current Swagger UI version
+python3 scripts/update_swagger_sri.py
+
+# Automatically update the code with new hashes
+python3 scripts/update_swagger_sri.py --update
+```
+
+**Security Features:**
+- **SRI Verification**: Browser verifies CDN resources haven't been tampered with
+- **Supply Chain Protection**: Blocks modified or compromised external resources
+- **Content Security Policy**: Restricts resource loading to trusted sources only
+- **CORS Configuration**: Properly configured for secure cross-origin requests
+
+**Manual SRI Generation:**
+You can also generate SRI hashes manually:
+```bash
+# Generate hash for CSS
+curl -s https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui.css | openssl dgst -sha384 -binary | openssl base64 -A
+
+# Generate hash for JS
+curl -s https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-bundle.js | openssl dgst -sha384 -binary | openssl base64 -A
+```
+
+#### Documentation Generation
+
+The OpenAPI specification (`swagger.json`) is automatically generated from Flask routes using a GitHub Action:
+
+**Automatic Updates:**
+- **Daily**: Runs at 2 AM UTC
+- **On Push**: Triggered by changes to routes, models, or services
+- **Manual**: Can be triggered via GitHub Actions interface
+
+**Local Generation:**
+```bash
+# Generate swagger.json locally
+python3 generate_swagger.py > docs/api/swagger.json
+
+# Test generation script
+python3 test_swagger_generation.py
+```
 
 ### Code Structure
 
