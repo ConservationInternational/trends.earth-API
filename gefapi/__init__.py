@@ -174,6 +174,16 @@ def swagger_spec():
         )
 
 
+@app.route("/static/swagger-ui/<path:filename>", methods=["GET"])
+def swagger_ui_static(filename):
+    """Serve Swagger UI static files"""
+    import os
+    from flask import send_from_directory
+
+    static_path = os.path.join(os.path.dirname(__file__), "static", "swagger-ui")
+    return send_from_directory(static_path, filename)
+
+
 @app.route("/api/docs/", methods=["GET"])
 def api_docs():
     """Serve Swagger UI for API documentation"""
@@ -182,16 +192,11 @@ def api_docs():
     <html>
     <head>
         <title>Trends.Earth API Documentation</title>
-        <link rel="stylesheet" type="text/css"
-              href="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui.css"
-              integrity="sha384-2/StnWvcTFa+ulN5XGsmRCRCHlS3w55zYM2opgTX9cGDkOHlC2PJMND08SWG4Bag"
-              crossorigin="anonymous" />
+        <link rel="stylesheet" type="text/css" href="/static/swagger-ui/swagger-ui.css" />
     </head>
     <body>
         <div id="swagger-ui"></div>
-        <script src="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-bundle.js"
-                integrity="sha384-GJoyyEnbeIyINXWDkEzUHpPPCZPcP2KrAg83c6DGAkTPr2tDHQ59DuqMRwAwsJwV"
-                crossorigin="anonymous"></script>
+        <script src="/static/swagger-ui/swagger-ui-bundle.js"></script>
         <script>
             SwaggerUIBundle({
                 url: '/swagger.json',
@@ -376,14 +381,14 @@ def add_security_headers(response):
     response.headers["X-XSS-Protection"] = "1; mode=block"
 
     # Content Security Policy for any HTML content
-    # Allow Swagger UI CDN resources for API documentation
     if request.path == "/api/docs/":
+        # Strict CSP for API documentation - only allow self-hosted resources
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://unpkg.com; "
-            "style-src 'self' 'unsafe-inline' https://unpkg.com; "
-            "font-src 'self' https://unpkg.com; "
-            "img-src 'self' data: https://unpkg.com"
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "font-src 'self'; "
+            "img-src 'self' data:"
         )
     else:
         response.headers["Content-Security-Policy"] = (

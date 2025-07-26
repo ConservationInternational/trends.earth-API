@@ -1,0 +1,6 @@
+Swagger UI v4.15.5 - Downloaded assets
+Download date: Sat Jul 26 11:14:41 UTC 2025
+
+SRI Hashes:
+CSS: sha384-2/StnWvcTFa+ulN5XGsmRCRCHlS3w55zYM2opgTX9cGDkOHlC2PJMND08SWG4Bag
+JavaScript Bundle: sha384-GJoyyEnbeIyINXWDkEzUHpPPCZPcP2KrAg83c6DGAkTPr2tDHQ59DuqMRwAwsJwV

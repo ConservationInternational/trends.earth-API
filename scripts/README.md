@@ -285,3 +285,24 @@ gh secret delete AWS_ACCESS_KEY_ID --repo ConservationInternational/trends.earth
 gh secret delete AWS_SECRET_ACCESS_KEY --repo ConservationInternational/trends.earth-API
 # ... (repeat for other secrets)
 ```
+
+## Swagger UI Asset Management
+
+### Download Swagger UI Assets
+
+Use the `download_swagger_ui.py` script to download and host Swagger UI assets locally:
+
+```bash
+# Download latest Swagger UI assets
+python3 scripts/download_swagger_ui.py
+```
+
+**Benefits of Local Hosting:**
+- Enhanced security (no external CDN dependencies)
+- Better performance (faster loading)
+- Simplified Content Security Policy
+- Offline documentation capability
+
+**Assets Location:** `gefapi/static/swagger-ui/`
+
+**Version Updates:** Edit the `SWAGGER_VERSION` variable in the script when upgrading.

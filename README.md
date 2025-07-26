@@ -292,7 +292,7 @@ The API provides comprehensive filtering, sorting, and pagination capabilities f
 
 ### Interactive API Documentation
 
-The API includes interactive documentation powered by Flask-RESTX (Swagger UI):
+The API includes interactive documentation powered by Swagger UI with locally hosted assets:
 
 - **Development**: `http://localhost:3000/api/docs/`
 - **Staging**: `https://staging-api.trends.earth/api/docs/`
@@ -1065,34 +1065,27 @@ The API documentation is automatically generated and served at `/api/docs/` usin
 
 #### Swagger UI Security
 
-The API documentation uses CDN-hosted Swagger UI resources with **Subresource Integrity (SRI)** hashes for security:
+The API documentation uses **locally hosted** Swagger UI resources for maximum security:
 
-**Updating SRI Hashes:**
-When upgrading Swagger UI versions, update the SRI hashes using the provided script:
+**Local Asset Management:**
+Swagger UI assets are downloaded and hosted locally to eliminate external dependencies:
 
 ```bash
-# Generate new SRI hashes for current Swagger UI version
-python3 scripts/update_swagger_sri.py
-
-# Automatically update the code with new hashes
-python3 scripts/update_swagger_sri.py --update
+# Download latest Swagger UI assets
+python3 scripts/download_swagger_ui.py
 ```
 
-**Security Features:**
-- **SRI Verification**: Browser verifies CDN resources haven't been tampered with
-- **Supply Chain Protection**: Blocks modified or compromised external resources
-- **Content Security Policy**: Restricts resource loading to trusted sources only
-- **CORS Configuration**: Properly configured for secure cross-origin requests
+**Security Benefits:**
+- **No External Dependencies**: All resources served from same origin
+- **Supply Chain Protection**: No risk of compromised external CDN resources  
+- **Simplified CSP**: Content Security Policy doesn't need external domain exceptions
+- **Better Performance**: Faster loading without external requests
+- **Offline Capability**: Documentation works without internet access
 
-**Manual SRI Generation:**
-You can also generate SRI hashes manually:
-```bash
-# Generate hash for CSS
-curl -s https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui.css | openssl dgst -sha384 -binary | openssl base64 -A
-
-# Generate hash for JS
-curl -s https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-bundle.js | openssl dgst -sha384 -binary | openssl base64 -A
-```
+**Asset Location:**
+- CSS: `gefapi/static/swagger-ui/swagger-ui.css`
+- JavaScript: `gefapi/static/swagger-ui/swagger-ui-bundle.js`
+- Download info: `gefapi/static/swagger-ui/download_info.txt`
 
 #### Documentation Generation
 
@@ -1102,11 +1095,18 @@ The OpenAPI specification (`swagger.json`) is automatically generated from Flask
 - **Daily**: Runs at 2 AM UTC
 - **On Push**: Triggered by changes to routes, models, or services
 - **Manual**: Can be triggered via GitHub Actions interface
+- **Assets**: Automatically downloads and updates Swagger UI assets
 
 **Local Generation:**
 ```bash
+# Download Swagger UI assets (if not already present)
+python3 scripts/download_swagger_ui.py
+
 # Generate swagger.json locally
-python3 generate_swagger.py > docs/api/swagger.json
+python3 generate_swagger.py > gefapi/static/swagger.json
+
+# View documentation at: http://localhost:5000/api/docs/
+```
 
 # Test generation script
 python3 test_swagger_generation.py

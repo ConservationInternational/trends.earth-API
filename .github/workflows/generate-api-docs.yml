@@ -32,6 +32,10 @@ jobs:
         pip install poetry
         poetry install
         
+    - name: Download Swagger UI assets
+      run: |
+        python scripts/download_swagger_ui.py
+        
     - name: Generate OpenAPI documentation
       run: |
         mkdir -p gefapi/static
@@ -41,10 +45,10 @@ jobs:
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add gefapi/static/swagger.json
+        git add gefapi/static/
         if git diff --staged --quiet; then
-          echo "No changes to swagger.json"
+          echo "No changes to API documentation or assets"
         else
-          git commit -m "Auto-update API documentation [skip ci]"
+          git commit -m "Auto-update API documentation and assets [skip ci]"
           git push
         fi
