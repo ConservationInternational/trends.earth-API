@@ -892,6 +892,34 @@ def get_status_logs():
     )
 
 
+@endpoints.route("/rate-limit/status", methods=["GET"])
+@jwt_required()
+def get_rate_limit_status():
+    """
+    Query current rate limiting status. Accessible only to SUPERADMIN.
+    Returns information about users/IPs that are currently rate limited.
+    """
+    current_user_id = get_jwt_identity()
+    user = UserService.get_user(current_user_id)
+
+    if not user or user.role != "SUPERADMIN":
+        return jsonify({"msg": "Superadmin access required"}), 403
+
+    try:
+        from gefapi.utils.rate_limiting import get_current_rate_limits
+        
+        rate_limit_status = get_current_rate_limits()
+        
+        return jsonify({
+            "message": "Rate limiting status retrieved successfully",
+            "data": rate_limit_status
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Failed to get rate limit status: {e}")
+        return jsonify({"error": "Failed to retrieve rate limiting status"}), 500
+
+
 @endpoints.route("/rate-limit/reset", methods=["POST"])
 @jwt_required()
 def reset_rate_limits():

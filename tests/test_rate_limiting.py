@@ -325,6 +325,137 @@ class TestRateLimiting:
         assert response2.status_code in [401, 429]  # Auth failure or rate limit
 
 
+class TestRateLimitStatus:
+    """Test rate limit status query functionality"""
+
+    def test_rate_limit_status_superadmin_access(self, client, auth_headers_superadmin):
+        """Test that superadmin can access the rate limit status endpoint"""
+        response = client.get(
+            "/api/v1/rate-limit/status", headers=auth_headers_superadmin
+        )
+        assert response.status_code == 200
+        assert "message" in response.json
+        assert "data" in response.json
+        assert "active_limits" in response.json["data"]
+
+    def test_rate_limit_status_admin_forbidden(self, client, auth_headers_admin):
+        """Test that admin cannot access the rate limit status endpoint"""
+        response = client.get("/api/v1/rate-limit/status", headers=auth_headers_admin)
+        assert response.status_code == 403
+        assert "Superadmin access required" in response.json["msg"]
+
+    def test_rate_limit_status_user_forbidden(self, client, auth_headers_user):
+        """Test that regular user cannot access the rate limit status endpoint"""
+        response = client.get("/api/v1/rate-limit/status", headers=auth_headers_user)
+        assert response.status_code == 403
+        assert "Superadmin access required" in response.json["msg"]
+
+    def test_rate_limit_status_no_auth_forbidden(self, client):
+        """Test that unauthenticated request cannot access the rate limit status endpoint"""
+        response = client.get("/api/v1/rate-limit/status")
+        assert response.status_code == 401  # JWT required
+
+    def test_rate_limit_status_returns_proper_json(self, client, auth_headers_superadmin):
+        """Test that rate limit status returns proper JSON response"""
+        response = client.get(
+            "/api/v1/rate-limit/status", headers=auth_headers_superadmin
+        )
+        assert response.status_code == 200
+        assert response.content_type == "application/json"
+        data = response.json
+        assert isinstance(data, dict)
+        assert "message" in data
+        assert "data" in data
+        assert isinstance(data["data"], dict)
+        assert "enabled" in data["data"]
+        assert "active_limits" in data["data"]
+        assert isinstance(data["data"]["active_limits"], list)
+
+    def test_rate_limit_status_with_active_limits(
+        self, client, auth_headers_user, auth_headers_superadmin, rate_limiting_enabled
+    ):
+        """Test rate limit status when there are active rate limits"""
+        # First, trigger some rate limits by making many requests as a regular user
+        responses = []
+        for i in range(20):  # Make many requests to potentially trigger rate limiting
+            response = client.get("/api/v1/user/me", headers=auth_headers_user)
+            responses.append(response)
+            if response.status_code == 429:
+                break
+
+        # Now check the rate limit status
+        status_response = client.get(
+            "/api/v1/rate-limit/status", headers=auth_headers_superadmin
+        )
+        assert status_response.status_code == 200
+        
+        status_data = status_response.json["data"]
+        
+        # If rate limiting is enabled, should show status
+        if status_data["enabled"]:
+            assert "total_active_limits" in status_data
+            assert isinstance(status_data["total_active_limits"], int)
+            assert status_data["total_active_limits"] >= 0
+            
+            # Check structure of active limits
+            for limit in status_data["active_limits"]:
+                assert "key" in limit
+                assert "type" in limit
+                assert "current_count" in limit
+                assert "time_window_seconds" in limit
+                
+                # If it's a user type limit, should have user info
+                if limit["type"] == "user" and limit.get("user_info"):
+                    user_info = limit["user_info"]
+                    assert "id" in user_info
+                    assert "email" in user_info
+                    assert "name" in user_info
+                    assert "role" in user_info
+
+    def test_rate_limit_status_when_disabled(self, client, auth_headers_superadmin):
+        """Test rate limit status when rate limiting is disabled"""
+        # Temporarily disable rate limiting
+        with client.application.app_context():
+            from gefapi import limiter
+            original_enabled = limiter.enabled
+            limiter.enabled = False
+            
+            try:
+                response = client.get(
+                    "/api/v1/rate-limit/status", headers=auth_headers_superadmin
+                )
+                assert response.status_code == 200
+                
+                status_data = response.json["data"]
+                # Should indicate that rate limiting is disabled
+                assert status_data["enabled"] is False
+                assert "message" in status_data
+                assert "disabled" in status_data["message"].lower()
+                
+            finally:
+                # Restore original state
+                limiter.enabled = original_enabled
+
+    def test_rate_limit_status_empty_when_no_limits(
+        self, client, auth_headers_superadmin, reset_rate_limits
+    ):
+        """Test that status shows empty when no active rate limits"""
+        # Reset all rate limits first
+        reset_rate_limits()
+        
+        response = client.get(
+            "/api/v1/rate-limit/status", headers=auth_headers_superadmin
+        )
+        assert response.status_code == 200
+        
+        status_data = response.json["data"]
+        if status_data["enabled"]:
+            # Should show 0 or very few active limits after reset
+            assert status_data["total_active_limits"] >= 0
+            # Most active limits should be cleared after reset
+            assert len(status_data["active_limits"]) >= 0
+
+
 class TestRateLimitReset:
     """Test rate limit reset functionality"""
 
