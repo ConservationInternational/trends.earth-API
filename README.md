@@ -321,6 +321,7 @@ The interactive documentation allows you to:
   - Admin and SuperAdmin users are automatically exempt from all rate limits
   - Rate limits are applied per user (authenticated) or per IP address (unauthenticated)
   - Rate limit storage can be configured to use Redis or in-memory storage
+  - SuperAdmin users can query current rate limiting status via the `/api/v1/rate-limit/status` endpoint
   - SuperAdmin users can reset all rate limits via the `/api/v1/rate-limit/reset` endpoint
 
 **Field Control Parameters:**
@@ -706,6 +707,36 @@ GET /api/v1/execution?include=user_email
 - `POST /api/v1/user/<user_id>/recover-password` - Password recovery
 
 ### Rate Limiting Management
+- `GET /api/v1/rate-limit/status` - Query current rate limiting status (SuperAdmin only)
+  - **Access**: Restricted to users with `role: "SUPERADMIN"`
+  - **Purpose**: Provides visibility into current rate limiting state across the system
+  - **Response Data**:
+    - `enabled`: Whether rate limiting is currently active
+    - `storage_type`: Type of storage backend being used (e.g., Redis, Memory)
+    - `total_active_limits`: Count of currently active rate limits
+    - `active_limits`: Array of active rate limit entries, each containing:
+      - `key`: The rate limit identifier (user:id, ip:address, etc.)
+      - `type`: Type of limit ("user", "ip", "auth")
+      - `identifier`: The specific user ID or IP address being limited
+      - `current_count`: Current number of requests counted against the limit
+      - `time_window_seconds`: Time window for the rate limit
+      - `user_info`: User details (for user-type limits) including id, email, name, role
+  - **Example Request**:
+    ```bash
+    curl -X GET \
+      https://api.trends.earth/api/v1/rate-limit/status \
+      -H "Authorization: Bearer <superadmin_jwt_token>"
+    ```
+  - **Use Cases**:
+    - Monitor which users or IP addresses are currently rate limited
+    - Investigate rate limiting issues reported by users
+    - System monitoring and observability
+    - Debug rate limiting configuration problems
+  - **Error Responses**:
+    - `403 Forbidden` - User does not have SuperAdmin privileges
+    - `401 Unauthorized` - Valid JWT token required
+    - `500 Internal Server Error` - Failed to query rate limiting status
+
 - `POST /api/v1/rate-limit/reset` - Reset all rate limits (SuperAdmin only)
   - **Access**: Restricted to users with `role: "SUPERADMIN"`
   - **Purpose**: Clears all current rate limit counters across the system
