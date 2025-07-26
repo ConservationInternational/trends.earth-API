@@ -106,6 +106,12 @@ from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
 # Blueprint Flask Routing
 app.register_blueprint(endpoints, url_prefix="/api/v1")
 
+# Log registered routes for debugging
+logger.info(f"Registered Flask app with {len(list(app.url_map.iter_rules()))} total routes")
+for rule in app.url_map.iter_rules():
+    if not rule.endpoint.startswith(('static', 'health_check', 'swagger')):
+        logger.debug(f"Registered route: {rule.rule} -> {rule.endpoint}")
+
 
 @app.route("/api-health", methods=["GET"])
 def health_check():
@@ -131,6 +137,27 @@ def health_check():
     ), 200
 
 
+@app.route("/debug/routes", methods=["GET"])
+def debug_routes():
+    """Debug endpoint to show all registered routes"""
+    import os
+    
+    routes_info = []
+    for rule in app.url_map.iter_rules():
+        routes_info.append({
+            "rule": str(rule.rule),
+            "endpoint": rule.endpoint,
+            "methods": list(rule.methods)
+        })
+    
+    return jsonify({
+        "environment": os.getenv('ENVIRONMENT', 'unknown'),
+        "total_routes": len(routes_info),
+        "routes": routes_info[:20],  # First 20 routes for brevity
+        "api_routes": [r for r in routes_info if r["rule"].startswith("/api/v1")][:10]
+    })
+
+
 @app.route("/swagger.json", methods=["GET"])
 def swagger_spec():
     """Serve the generated OpenAPI/Swagger specification"""
@@ -138,20 +165,32 @@ def swagger_spec():
 
     from flask import send_from_directory
 
+    # Add debugging info
+    logger.info(f"Swagger endpoint called. Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
+    logger.info(f"Total registered routes: {len(list(app.url_map.iter_rules()))}")
+
     # Try to serve the generated swagger.json file from gefapi/static
     swagger_path = os.path.join(os.path.dirname(__file__), "static")
     swagger_file_path = os.path.join(swagger_path, "swagger.json")
 
+    logger.info(f"Checking for static swagger file at: {swagger_file_path}")
     if os.path.exists(swagger_file_path):
+        logger.info("Found static swagger.json file, serving it")
         return send_from_directory(swagger_path, "swagger.json")
 
     # Fallback: Generate swagger spec dynamically using current app context
     try:
         # Generate OpenAPI spec directly using current Flask app
+        logger.info("Attempting to generate swagger spec dynamically")
         spec = generate_openapi_spec_from_app()
+        logger.info(f"Successfully generated swagger spec with {len(spec.get('paths', {}))} paths")
         return jsonify(spec)
     except Exception as e:
         logger.error(f"Failed to generate swagger spec dynamically: {e}")
+        logger.error(f"Exception type: {type(e).__name__}")
+        logger.error(f"Exception details: {str(e)}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
 
         # Final fallback: return a basic swagger spec
         return jsonify(
@@ -174,78 +213,96 @@ def generate_openapi_spec_from_app():
     """Generate OpenAPI specification from current Flask app routes"""
     import re
 
+    logger.info("Starting dynamic OpenAPI spec generation")
     paths = {}
 
     # Iterate through all routes in the current app
-    for rule in app.url_map.iter_rules():
-        # Skip static files and internal endpoints
-        if rule.endpoint in [
-            "static",
-            "health_check",
-            "swagger_spec",
-            "api_docs",
-            "swagger_ui_static",
-        ]:
-            continue
+    route_count = 0
+    processed_routes = 0
+    
+    try:
+        for rule in app.url_map.iter_rules():
+            route_count += 1
+            # Skip static files and internal endpoints
+            if rule.endpoint in [
+                "static",
+                "health_check",
+                "swagger_spec",
+                "api_docs",
+                "swagger_ui_static",
+            ]:
+                logger.debug(f"Skipping internal endpoint: {rule.endpoint}")
+                continue
 
-        # Get the endpoint function
-        try:
-            endpoint_func = app.view_functions[rule.endpoint]
-        except KeyError:
-            continue
+            # Get the endpoint function
+            try:
+                endpoint_func = app.view_functions[rule.endpoint]
+            except KeyError:
+                logger.warning(f"No view function found for endpoint: {rule.endpoint}")
+                continue
 
-        # Convert Flask route to OpenAPI path
-        path = str(rule.rule)
-        # Convert Flask path parameters to OpenAPI format
-        path = path.replace("<", "{").replace(">", "}")
-        # Remove parameter types
-        path = re.sub(r"\{[^:}]*:", "{", path)
+            # Convert Flask route to OpenAPI path
+            path = str(rule.rule)
+            # Convert Flask path parameters to OpenAPI format
+            path = path.replace("<", "{").replace(">", "}")
+            # Remove parameter types
+            path = re.sub(r"\{[^:}]*:", "{", path)
 
-        try:
-            path_item = extract_route_info_from_app(rule, endpoint_func)
-            paths[path] = path_item
-        except Exception as e:
-            logger.warning(f"Could not process route {path}: {e}")
-            continue
+            try:
+                path_item = extract_route_info_from_app(rule, endpoint_func)
+                paths[path] = path_item
+                processed_routes += 1
+                logger.debug(f"Successfully processed route: {path}")
+            except Exception as e:
+                logger.warning(f"Could not process route {path}: {e}")
+                continue
 
-    # Build complete OpenAPI spec
-    spec = {
-        "openapi": "3.0.3",
-        "info": {
-            "title": "Trends.Earth API",
-            "version": "1.0.0",
-            "description": (
-                "API for managing Scripts, Users, and Executions in Trends.Earth"
-            ),
-            "contact": {
-                "name": "Trends.Earth Team",
-                "email": "azvoleff@conservation.org",
+        logger.info(f"Processed {processed_routes} out of {route_count} total routes")
+        
+        # Build complete OpenAPI spec
+        spec = {
+            "openapi": "3.0.3",
+            "info": {
+                "title": "Trends.Earth API",
+                "version": "1.0.0",
+                "description": (
+                    "API for managing Scripts, Users, and Executions in Trends.Earth"
+                ),
+                "contact": {
+                    "name": "Trends.Earth Team",
+                    "email": "azvoleff@conservation.org",
+                },
+                "license": {"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
             },
-            "license": {"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
-        },
-        "servers": [{"url": "/api/v1", "description": "API v1"}],
-        "components": {
-            "securitySchemes": {
-                "bearerAuth": {
-                    "type": "http",
-                    "scheme": "bearer",
-                    "bearerFormat": "JWT",
-                }
+            "servers": [{"url": "/api/v1", "description": "API v1"}],
+            "components": {
+                "securitySchemes": {
+                    "bearerAuth": {
+                        "type": "http",
+                        "scheme": "bearer",
+                        "bearerFormat": "JWT",
+                    }
+                },
+                "schemas": {
+                    "Error": {
+                        "type": "object",
+                        "properties": {
+                            "status": {"type": "integer"},
+                            "detail": {"type": "string"},
+                        },
+                    }
+                },
             },
-            "schemas": {
-                "Error": {
-                    "type": "object",
-                    "properties": {
-                        "status": {"type": "integer"},
-                        "detail": {"type": "string"},
-                    },
-                }
-            },
-        },
-        "paths": paths,
-    }
+            "paths": paths,
+        }
 
-    return spec
+        logger.info(f"Generated OpenAPI spec with {len(paths)} paths")
+        return spec
+        
+    except Exception as e:
+        logger.error(f"Error during route processing: {e}")
+        logger.error(f"Processed {processed_routes} routes before error")
+        raise
 
 
 def extract_route_info_from_app(rule, endpoint_func) -> dict[str, dict]:
