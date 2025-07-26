@@ -107,9 +107,10 @@ from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
 app.register_blueprint(endpoints, url_prefix="/api/v1")
 
 # Log registered routes for debugging
-logger.info(f"Registered Flask app with {len(list(app.url_map.iter_rules()))} total routes")
+total_routes = len(list(app.url_map.iter_rules()))
+logger.info(f"Registered Flask app with {total_routes} total routes")
 for rule in app.url_map.iter_rules():
-    if not rule.endpoint.startswith(('static', 'health_check', 'swagger')):
+    if not rule.endpoint.startswith(("static", "health_check", "swagger")):
         logger.debug(f"Registered route: {rule.rule} -> {rule.endpoint}")
 
 
@@ -141,21 +142,27 @@ def health_check():
 def debug_routes():
     """Debug endpoint to show all registered routes"""
     import os
-    
+
     routes_info = []
     for rule in app.url_map.iter_rules():
-        routes_info.append({
-            "rule": str(rule.rule),
-            "endpoint": rule.endpoint,
-            "methods": list(rule.methods)
-        })
-    
-    return jsonify({
-        "environment": os.getenv('ENVIRONMENT', 'unknown'),
-        "total_routes": len(routes_info),
-        "routes": routes_info[:20],  # First 20 routes for brevity
-        "api_routes": [r for r in routes_info if r["rule"].startswith("/api/v1")][:10]
-    })
+        routes_info.append(
+            {
+                "rule": str(rule.rule),
+                "endpoint": rule.endpoint,
+                "methods": list(rule.methods),
+            }
+        )
+
+    return jsonify(
+        {
+            "environment": os.getenv("ENVIRONMENT", "unknown"),
+            "total_routes": len(routes_info),
+            "routes": routes_info[:20],  # First 20 routes for brevity
+            "api_routes": [r for r in routes_info if r["rule"].startswith("/api/v1")][
+                :10
+            ],
+        }
+    )
 
 
 @app.route("/swagger.json", methods=["GET"])
@@ -166,7 +173,8 @@ def swagger_spec():
     from flask import send_from_directory
 
     # Add debugging info
-    logger.info(f"Swagger endpoint called. Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
+    environment = os.getenv("ENVIRONMENT", "unknown")
+    logger.info(f"Swagger endpoint called. Environment: {environment}")
     logger.info(f"Total registered routes: {len(list(app.url_map.iter_rules()))}")
 
     # Try to serve the generated swagger.json file from gefapi/static
@@ -183,13 +191,15 @@ def swagger_spec():
         # Generate OpenAPI spec directly using current Flask app
         logger.info("Attempting to generate swagger spec dynamically")
         spec = generate_openapi_spec_from_app()
-        logger.info(f"Successfully generated swagger spec with {len(spec.get('paths', {}))} paths")
+        paths_count = len(spec.get("paths", {}))
+        logger.info(f"Successfully generated swagger spec with {paths_count} paths")
         return jsonify(spec)
     except Exception as e:
         logger.error(f"Failed to generate swagger spec dynamically: {e}")
         logger.error(f"Exception type: {type(e).__name__}")
         logger.error(f"Exception details: {str(e)}")
         import traceback
+
         logger.error(f"Full traceback: {traceback.format_exc()}")
 
         # Final fallback: return a basic swagger spec
@@ -219,7 +229,7 @@ def generate_openapi_spec_from_app():
     # Iterate through all routes in the current app
     route_count = 0
     processed_routes = 0
-    
+
     try:
         for rule in app.url_map.iter_rules():
             route_count += 1
@@ -258,7 +268,7 @@ def generate_openapi_spec_from_app():
                 continue
 
         logger.info(f"Processed {processed_routes} out of {route_count} total routes")
-        
+
         # Build complete OpenAPI spec
         spec = {
             "openapi": "3.0.3",
@@ -272,7 +282,10 @@ def generate_openapi_spec_from_app():
                     "name": "Trends.Earth Team",
                     "email": "azvoleff@conservation.org",
                 },
-                "license": {"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
+                "license": {
+                    "name": "MIT",
+                    "url": "https://opensource.org/licenses/MIT",
+                },
             },
             "servers": [{"url": "/api/v1", "description": "API v1"}],
             "components": {
@@ -298,7 +311,7 @@ def generate_openapi_spec_from_app():
 
         logger.info(f"Generated OpenAPI spec with {len(paths)} paths")
         return spec
-        
+
     except Exception as e:
         logger.error(f"Error during route processing: {e}")
         logger.error(f"Processed {processed_routes} routes before error")
