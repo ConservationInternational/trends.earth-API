@@ -11,14 +11,39 @@ import sys
 from typing import Any
 import warnings
 
-# Suppress all warnings and logging that could corrupt JSON output
-warnings.filterwarnings("ignore")
-logging.disable(logging.CRITICAL)
+# Configure logging to stderr to avoid corrupting JSON output to stdout
+logging.basicConfig(
+    level=logging.WARNING,
+    format='%(levelname)s: %(message)s',
+    stream=sys.stderr
+)
+
+# Suppress specific warnings that are known to interfere with JSON output
+# but allow other warnings to be shown on stderr
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
+warnings.filterwarnings("ignore", message=".*SQLAlchemy.*")
+warnings.filterwarnings("ignore", message=".*Flask.*development server.*")
+warnings.filterwarnings("ignore", message=".*DOCKER_HOST.*")
+
+# Also suppress Docker-related logging messages that don't affect functionality
+class DockerWarningFilter(logging.Filter):
+    def filter(self, record):
+        return "DOCKER_HOST" not in record.getMessage()
+
+# Apply the filter to the root logger
+root_logger = logging.getLogger()
+root_logger.addFilter(DockerWarningFilter())
 
 # Set minimal environment variables for documentation generation
 os.environ.setdefault("SECRET_KEY", "dummy-key-for-docs")
+os.environ.setdefault("JWT_SECRET_KEY", "dummy-jwt-key-for-docs")
 os.environ.setdefault("DATABASE_URL", "sqlite:///dummy.db")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
+os.environ.setdefault("DOCKER_HOST", "unix:///var/run/docker.sock")  # Dummy Docker host to suppress warnings
+os.environ.setdefault("REGISTRY_URL", "dummy-registry")
+os.environ.setdefault("SCRIPTS_S3_BUCKET", "dummy-bucket")
+os.environ.setdefault("PARAMS_S3_BUCKET", "dummy-bucket")
 
 # Add the project root to the Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -101,16 +126,10 @@ def extract_route_info(rule, endpoint_func) -> dict[str, Any]:
                     )
                 except Exception as e:
                     # Skip problematic converters but continue processing
-                    print(
-                        f"Warning: Could not process parameter {key}: {e}",
-                        file=sys.stderr,
-                    )
+                    logging.warning(f"Could not process parameter {key}: {e}")
                     continue
     except Exception as e:
-        print(
-            f"Warning: Could not process route parameters for {rule.rule}: {e}",
-            file=sys.stderr,
-        )
+        logging.warning(f"Could not process route parameters for {rule.rule}: {e}")
 
     if parameters:
         operation["parameters"] = parameters
@@ -158,7 +177,7 @@ def generate_openapi_spec() -> dict[str, Any]:
                 path_item = extract_route_info(rule, endpoint_func)
                 paths[path] = path_item
             except Exception as e:
-                print(f"Warning: Could not process route {path}: {e}", file=sys.stderr)
+                logging.warning(f"Could not process route {path}: {e}")
                 continue
 
     # Build complete OpenAPI spec
@@ -202,7 +221,9 @@ def generate_openapi_spec() -> dict[str, Any]:
 if __name__ == "__main__":
     try:
         spec = generate_openapi_spec()
+        # Output JSON to stdout for consumption by other tools
         print(json.dumps(spec, indent=2))
     except Exception as e:
-        print(f"Error generating OpenAPI spec: {e}", file=sys.stderr)
+        # Log errors to stderr to avoid corrupting stdout JSON output
+        logging.error(f"Error generating OpenAPI spec: {e}")
         sys.exit(1)
