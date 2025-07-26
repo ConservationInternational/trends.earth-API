@@ -88,21 +88,15 @@ jobs:
           
           # Configure Docker client authentication
           mkdir -p $HOME/.docker
-          REGISTRY_ESCAPED=$(echo "${{ env.REGISTRY }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-          AUTH_ESCAPED=$(echo "${{ secrets.DOCKER_HTTP_SECRET }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-          cat > $HOME/.docker/config.json << 'EOF'
+          
+          # Create simplified Docker config without auth for production
+          echo "🔐 Creating Docker config for production..."
+          cat > $HOME/.docker/config.json <<-DOCKERCONFIG
           {
-            "auths": {
-              "REGISTRY_PLACEHOLDER": {
-                "auth": "AUTH_PLACEHOLDER"
-              }
-            },
-            "insecure-registries": ["REGISTRY_PLACEHOLDER"]
+            "insecure-registries": ["${{ env.REGISTRY }}"]
           }
-          EOF
-          # Replace placeholders with actual values
-          sed -i "s|REGISTRY_PLACEHOLDER|${REGISTRY_ESCAPED}|g" $HOME/.docker/config.json
-          sed -i "s|AUTH_PLACEHOLDER|${AUTH_ESCAPED}|g" $HOME/.docker/config.json
+          DOCKERCONFIG
+          echo "✅ Docker config created successfully"
           
           # Build the image with the appropriate tags
           echo "🔨 Building Docker image..."
