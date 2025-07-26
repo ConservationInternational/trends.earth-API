@@ -355,7 +355,9 @@ class TestRateLimitStatus:
         response = client.get("/api/v1/rate-limit/status")
         assert response.status_code == 401  # JWT required
 
-    def test_rate_limit_status_returns_proper_json(self, client, auth_headers_superadmin):
+    def test_rate_limit_status_returns_proper_json(
+        self, client, auth_headers_superadmin
+    ):
         """Test that rate limit status returns proper JSON response"""
         response = client.get(
             "/api/v1/rate-limit/status", headers=auth_headers_superadmin
@@ -417,6 +419,7 @@ class TestRateLimitStatus:
         # Temporarily disable rate limiting
         with client.application.app_context():
             from gefapi import limiter
+
             original_enabled = limiter.enabled
             limiter.enabled = False
 

@@ -223,7 +223,7 @@ def get_current_rate_limits():
             return {
                 "enabled": False,
                 "message": "Rate limiting is currently disabled",
-                "active_limits": []
+                "active_limits": [],
             }
 
         storage = limiter._storage
@@ -295,7 +295,7 @@ def get_current_rate_limits():
                     "current_count": current_count,
                     "type": "unknown",
                     "identifier": None,
-                    "user_info": None
+                    "user_info": None,
                 }
 
                 if rate_key.startswith("user:"):
@@ -311,7 +311,7 @@ def get_current_rate_limits():
                                 "id": user.id,
                                 "email": user.email,
                                 "name": user.name,
-                                "role": user.role
+                                "role": user.role,
                             }
                     except Exception as e:
                         logger.debug(f"Failed to get user info for {user_id}: {e}")
@@ -338,7 +338,7 @@ def get_current_rate_limits():
             "enabled": True,
             "storage_type": type(storage).__name__,
             "total_active_limits": len(active_limits),
-            "active_limits": active_limits
+            "active_limits": active_limits,
         }
 
     except Exception as e:
@@ -347,7 +347,7 @@ def get_current_rate_limits():
             "enabled": False,
             "error": "Failed to query rate limiting status",
             "message": str(e),
-            "active_limits": []
+            "active_limits": [],
         }
 
 
