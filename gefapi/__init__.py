@@ -178,6 +178,7 @@ def swagger_spec():
 def swagger_ui_static(filename):
     """Serve Swagger UI static files"""
     import os
+
     from flask import send_from_directory
 
     static_path = os.path.join(os.path.dirname(__file__), "static", "swagger-ui")
@@ -192,7 +193,8 @@ def api_docs():
     <html>
     <head>
         <title>Trends.Earth API Documentation</title>
-        <link rel="stylesheet" type="text/css" href="/static/swagger-ui/swagger-ui.css" />
+        <link rel="stylesheet" type="text/css"
+              href="/static/swagger-ui/swagger-ui.css" />
     </head>
     <body>
         <div id="swagger-ui"></div>

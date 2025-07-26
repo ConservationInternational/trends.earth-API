@@ -13,9 +13,7 @@ import warnings
 
 # Configure logging to stderr to avoid corrupting JSON output to stdout
 logging.basicConfig(
-    level=logging.WARNING,
-    format='%(levelname)s: %(message)s',
-    stream=sys.stderr
+    level=logging.WARNING, format="%(levelname)s: %(message)s", stream=sys.stderr
 )
 
 # Suppress specific warnings that are known to interfere with JSON output
@@ -26,10 +24,12 @@ warnings.filterwarnings("ignore", message=".*SQLAlchemy.*")
 warnings.filterwarnings("ignore", message=".*Flask.*development server.*")
 warnings.filterwarnings("ignore", message=".*DOCKER_HOST.*")
 
+
 # Also suppress Docker-related logging messages that don't affect functionality
 class DockerWarningFilter(logging.Filter):
     def filter(self, record):
         return "DOCKER_HOST" not in record.getMessage()
+
 
 # Apply the filter to the root logger
 root_logger = logging.getLogger()
@@ -40,7 +40,9 @@ os.environ.setdefault("SECRET_KEY", "dummy-key-for-docs")
 os.environ.setdefault("JWT_SECRET_KEY", "dummy-jwt-key-for-docs")
 os.environ.setdefault("DATABASE_URL", "sqlite:///dummy.db")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
-os.environ.setdefault("DOCKER_HOST", "unix:///var/run/docker.sock")  # Dummy Docker host to suppress warnings
+os.environ.setdefault(
+    "DOCKER_HOST", "unix:///var/run/docker.sock"
+)  # Dummy Docker host to suppress warnings
 os.environ.setdefault("REGISTRY_URL", "dummy-registry")
 os.environ.setdefault("SCRIPTS_S3_BUCKET", "dummy-bucket")
 os.environ.setdefault("PARAMS_S3_BUCKET", "dummy-bucket")
