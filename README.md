@@ -1089,23 +1089,33 @@ python3 scripts/download_swagger_ui.py
 
 #### Documentation Generation
 
-The OpenAPI specification (`swagger.json`) is automatically generated from Flask routes using a GitHub Action:
+The OpenAPI specification (`swagger.json`) and Swagger UI assets are automatically generated and downloaded during deployment:
 
 **Automatic Updates:**
-- **Daily**: Runs at 2 AM UTC
-- **On Push**: Triggered by changes to routes, models, or services
-- **Manual**: Can be triggered via GitHub Actions interface
-- **Assets**: Automatically downloads and updates Swagger UI assets
+- **On Deployment**: Generated during each staging/production deployment
+- **Real-time**: Always reflects the exact code being deployed
+- **Assets**: Swagger UI assets are downloaded and hosted locally
 
-**Local Generation:**
+**Local Development:**
 ```bash
 # Download Swagger UI assets (if not already present)
 python3 scripts/download_swagger_ui.py
+
+# Force download (overwrite existing files)
+python3 scripts/download_swagger_ui.py --force
 
 # Generate swagger.json locally
 python3 generate_swagger.py > gefapi/static/swagger.json
 
 # View documentation at: http://localhost:5000/api/docs/
+```
+
+**Manual Generation:**
+If you need to generate documentation outside of deployment:
+```bash
+# Generate and commit documentation updates
+python3 scripts/download_swagger_ui.py --force
+python3 generate_swagger.py > gefapi/static/swagger.json
 ```
 
 # Test generation script

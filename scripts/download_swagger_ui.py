@@ -5,6 +5,7 @@ This script downloads the CSS and JS files for Swagger UI and stores them
 in the gefapi/static/swagger-ui/ directory.
 """
 
+import argparse
 import base64
 from datetime import datetime
 import hashlib
@@ -67,9 +68,25 @@ def download_file(url: str, local_path: Path) -> tuple[bool, str]:
 
 def main():
     """Main function to download Swagger UI assets"""
-
+    
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Download Swagger UI assets and host them locally"
+    )
+    parser.add_argument(
+        "--force", 
+        action="store_true", 
+        help="Force download without confirmation, overwriting existing files"
+    )
+    parser.add_argument(
+        "--version",
+        default="4.15.5",
+        help="Swagger UI version to download (default: 4.15.5)"
+    )
+    args = parser.parse_args()
+    
     # Configuration - Update this when upgrading Swagger UI
-    swagger_version = "4.15.5"
+    swagger_version = args.version
 
     # Get project root directory
     script_dir = Path(__file__).parent
@@ -79,11 +96,11 @@ def main():
     print(f"Downloading Swagger UI v{swagger_version} assets...")
     print(f"Target directory: {static_dir}")
 
-    # Check if files already exist and prompt for confirmation
+    # Check if files already exist and prompt for confirmation (unless --force is used)
     css_file = static_dir / "swagger-ui.css"
     js_file = static_dir / "swagger-ui-bundle.js"
 
-    if css_file.exists() or js_file.exists():
+    if (css_file.exists() or js_file.exists()) and not args.force:
         print("\nExisting Swagger UI files found.")
         response = input(
             "Download new version? This will overwrite existing files. (y/N): "
@@ -91,6 +108,8 @@ def main():
         if response.lower() != "y":
             print("Download cancelled.")
             return
+    elif args.force and (css_file.exists() or js_file.exists()):
+        print("✅ Force flag set - overwriting existing files...")
 
     # URLs to download
     files_to_download = [

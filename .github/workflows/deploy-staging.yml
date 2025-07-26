@@ -70,7 +70,7 @@ jobs:
         script: |
           set -e
           
-          echo "� Building Docker image on staging server..."
+          echo "📚 Generating API documentation..."
           
           # Navigate to application directory
           cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
@@ -83,6 +83,36 @@ jobs:
             echo "🔄 Checking out staging branch..."
             git checkout staging
             git reset --hard origin/staging
+          else
+            echo "🔄 Checking out develop branch..."
+            git checkout develop
+            git reset --hard origin/develop
+          fi
+          
+          echo "✅ Currently on branch: $(git branch --show-current)"
+          
+          # Generate API documentation
+          echo "📝 Generating OpenAPI documentation..."
+          mkdir -p gefapi/static
+          python3 generate_swagger.py > gefapi/static/swagger.json || {
+            echo "⚠️ API documentation generation failed, but continuing with deployment..."
+            # Create a minimal fallback swagger.json
+            cat > gefapi/static/swagger.json <<-SWAGGER
+          {
+            "openapi": "3.0.0",
+            "info": {
+              "title": "Trends.Earth API",
+              "version": "1.0.0",
+              "description": "API documentation temporarily unavailable"
+            },
+            "paths": {}
+          }
+          SWAGGER
+          }
+          
+          echo "✅ API documentation prepared"
+          
+          echo "🔨 Building Docker image..."
           else
             echo "🔄 Checking out develop branch..."
             git checkout develop
