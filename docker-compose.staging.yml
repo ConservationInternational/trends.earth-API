@@ -97,9 +97,12 @@ services:
           memory: 200M
 
   redis:
-    image: redis
+    image: redis:7-alpine
     ports:
       - target: 6379
+    volumes:
+      # Persistent Redis data storage - retains data across deployments
+      - redis_staging_data:/data
     networks:
       - backend
     deploy:
@@ -109,9 +112,26 @@ services:
         reservations:
           cpus: "0.25"
           memory: 400M
+      # Rolling update configuration for Redis
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        failure_action: pause
+        monitor: 60s
+    # Append-only file persistence for Redis data durability
+    command: redis-server --appendonly yes --appendfsync everysec
 
 volumes:
   postgres_staging_data:
+  # Persistent Redis data volume - maintains session data, cache, and Celery task state across deployments
+  redis_staging_data:
+    driver: local
 
 networks:
   backend:
