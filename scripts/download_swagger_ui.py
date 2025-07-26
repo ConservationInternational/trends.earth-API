@@ -68,23 +68,23 @@ def download_file(url: str, local_path: Path) -> tuple[bool, str]:
 
 def main():
     """Main function to download Swagger UI assets"""
-    
+
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description="Download Swagger UI assets and host them locally"
     )
     parser.add_argument(
-        "--force", 
-        action="store_true", 
-        help="Force download without confirmation, overwriting existing files"
+        "--force",
+        action="store_true",
+        help="Force download without confirmation, overwriting existing files",
     )
     parser.add_argument(
         "--version",
         default="4.15.5",
-        help="Swagger UI version to download (default: 4.15.5)"
+        help="Swagger UI version to download (default: 4.15.5)",
     )
     args = parser.parse_args()
-    
+
     # Configuration - Update this when upgrading Swagger UI
     swagger_version = args.version
 
