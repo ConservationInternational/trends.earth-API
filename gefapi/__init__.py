@@ -131,12 +131,94 @@ def health_check():
     ), 200
 
 
-# Handle authentication via JWT
-# Verify JWT config is still set before initializing JWTManager
-key_to_print = app.config.get("JWT_SECRET_KEY", "NOT SET")
-if key_to_print and key_to_print != "NOT SET":
-    key_to_print = f"{key_to_print[:10]}..."
-print(f"JWT_SECRET_KEY before JWTManager init: {key_to_print}")
+@app.route("/swagger.json", methods=["GET"])
+def swagger_spec():
+    """Serve the generated OpenAPI/Swagger specification"""
+    import os
+
+    from flask import send_from_directory
+
+    # Try to serve the generated swagger.json file from gefapi/static
+    swagger_path = os.path.join(os.path.dirname(__file__), "static")
+    swagger_file_path = os.path.join(swagger_path, "swagger.json")
+
+    if os.path.exists(swagger_file_path):
+        return send_from_directory(swagger_path, "swagger.json")
+
+    # Fallback: Generate swagger spec dynamically if file doesn't exist
+    try:
+        # Import generate_swagger module to create spec on-demand
+        import sys
+
+        generate_swagger_path = os.path.join(os.path.dirname(__file__), "..")
+        sys.path.insert(0, generate_swagger_path)
+
+        from generate_swagger import generate_openapi_spec
+
+        spec = generate_openapi_spec()
+        return jsonify(spec)
+    except Exception as e:
+        logger.error(f"Failed to generate swagger spec dynamically: {e}")
+
+        # Final fallback: return a basic swagger spec
+        return jsonify(
+            {
+                "openapi": "3.0.0",
+                "info": {
+                    "title": "Trends.Earth API",
+                    "version": "1.0.0",
+                    "description": "API documentation will be generated automatically",
+                },
+                "paths": {},
+            }
+        )
+
+
+@app.route("/static/swagger-ui/<path:filename>", methods=["GET"])
+def swagger_ui_static(filename):
+    """Serve Swagger UI static files"""
+    import os
+
+    from flask import send_from_directory
+
+    static_path = os.path.join(os.path.dirname(__file__), "static", "swagger-ui")
+    return send_from_directory(static_path, filename)
+
+
+@app.route("/api/docs/", methods=["GET"])
+def api_docs():
+    """Serve Swagger UI for API documentation"""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Trends.Earth API Documentation</title>
+        <link rel="stylesheet" type="text/css"
+              href="/static/swagger-ui/swagger-ui.css" />
+    </head>
+    <body>
+        <div id="swagger-ui"></div>
+        <script src="/static/swagger-ui/swagger-ui-bundle.js"></script>
+        <script>
+            SwaggerUIBundle({
+                url: '/swagger.json',
+                dom_id: '#swagger-ui',
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIBundle.presets.standalone
+                ],
+                // Security: Disable unsafe features
+                supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
+                validatorUrl: null, // Disable external validator
+                docExpansion: 'list',
+                defaultModelsExpandDepth: 1
+            });
+        </script>
+    </body>
+    </html>
+    """
+
+
 jwt = JWTManager(app)
 
 
@@ -155,7 +237,15 @@ def create_token():
     email = request.json.get("email", None)
     password = request.json.get("password", None)
 
-    user = UserService.authenticate_user(email, password)
+    if not email or not password:
+        logger.warning("[JWT]: Missing email or password in request")
+        return jsonify({"msg": "Email and password are required"}), 400
+
+    try:
+        user = UserService.authenticate_user(email, password)
+    except Exception as e:
+        logger.error(f"[JWT]: Error during authentication: {str(e)}")
+        return jsonify({"msg": "Authentication failed"}), 500
 
     if user is None:
         return jsonify({"msg": "Bad username or password"}), 401
@@ -282,22 +372,36 @@ def add_security_headers(response):
     # Prevent MIME type sniffing
     response.headers["X-Content-Type-Options"] = "nosniff"
 
-    # Prevent clickjacking by denying iframe embedding
-    response.headers["X-Frame-Options"] = "DENY"
+    # Prevent clickjacking by denying iframe embedding (except for API docs)
+    if request.path == "/api/docs/":
+        # Allow iframe from same origin for Swagger UI
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    else:
+        response.headers["X-Frame-Options"] = "DENY"
 
     # Enable XSS protection in browsers
     response.headers["X-XSS-Protection"] = "1; mode=block"
 
     # Content Security Policy for any HTML content
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'"
-    )
+    if request.path == "/api/docs/":
+        # Strict CSP for API documentation - only allow self-hosted resources
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "font-src 'self'; "
+            "img-src 'self' data:"
+        )
+    else:
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'"
+        )
 
     # Force HTTPS if the request is secure
     if request.is_secure:
         response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
+            "max-age=31536000; includeSubDomains; preload"
         )
 
     # Prevent referrer information leakage
@@ -305,5 +409,11 @@ def add_security_headers(response):
 
     # Control browser features and APIs
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
+    # Add additional security headers
+    response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
 
     return response

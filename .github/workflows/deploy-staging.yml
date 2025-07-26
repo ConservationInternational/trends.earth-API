@@ -11,7 +11,7 @@ on:
       force_deploy:
         description: 'Force deployment even if no changes detected'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 env:
@@ -27,113 +27,71 @@ jobs:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Configure insecure registry
+    - name: Get runner IP and update security group
+      id: security-group
       run: |
-        echo "Configuring Docker for insecure registry: ${{ env.REGISTRY }}"
-        mkdir -p $HOME/.docker
-        # Escape any special characters in the registry URL and auth secret
-        REGISTRY_ESCAPED=$(echo "${{ env.REGISTRY }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-        AUTH_ESCAPED=$(echo "${{ secrets.DOCKER_HTTP_SECRET }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-        cat > $HOME/.docker/config.json << 'EOF'
-        {
-          "insecure-registries": ["REGISTRY_PLACEHOLDER"],
-          "auths": {
-            "REGISTRY_PLACEHOLDER": {
-              "auth": "AUTH_PLACEHOLDER"
-            }
-          }
-        }
-        EOF
-        # Replace placeholders with actual values
-        sed -i "s|REGISTRY_PLACEHOLDER|${REGISTRY_ESCAPED}|g" $HOME/.docker/config.json
-        sed -i "s|AUTH_PLACEHOLDER|${AUTH_ESCAPED}|g" $HOME/.docker/config.json
+        # Get the public IP of the GitHub Actions runner
+        RUNNER_IP=$(curl -s https://checkip.amazonaws.com)
+        echo "Runner IP: $RUNNER_IP"
+        echo "runner-ip=$RUNNER_IP" >> $GITHUB_OUTPUT
+        
+        # Add SSH access rule for the runner IP
+        echo "Adding SSH access for runner IP $RUNNER_IP to security group ${{ secrets.STAGING_SECURITY_GROUP_ID }}"
+        aws ec2 authorize-security-group-ingress \
+          --group-id "${{ secrets.STAGING_SECURITY_GROUP_ID }}" \
+          --protocol tcp \
+          --port 22 \
+          --cidr "${RUNNER_IP}/32" || true
+        
+        echo "Security group rule added successfully"
 
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=ref,event=branch
-          type=sha,prefix={{branch}}-
-          type=raw,value=staging
+    - name: Set SSH port variable
+      id: ssh-port
+      run: |
+        # Trim whitespace and newlines from the port
+        PORT="${{ secrets.STAGING_SSH_PORT || 22 }}"
+        PORT=$(echo "$PORT" | tr -d '[:space:]')
+        echo "port=$PORT" >> $GITHUB_OUTPUT
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        platforms: linux/amd64
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-    - name: Setup Staging Database
+    - name: Build and push image on staging server
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USERNAME }}
         key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        port: ${{ steps.ssh-port.outputs.port }}
         script: |
           set -e
+          
+          echo "📚 Generating API documentation..."
           
           # Navigate to application directory
           cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
           
-          # Set database environment variables
-          export STAGING_DB_HOST="${{ secrets.STAGING_DB_HOST }}"
-          export STAGING_DB_PORT="${{ secrets.STAGING_DB_PORT }}"
-          export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
-          export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
-          export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
-          
-          # Use defaults if not provided
-          export STAGING_DB_HOST="${STAGING_DB_HOST:-localhost}"
-          export STAGING_DB_PORT="${STAGING_DB_PORT:-5433}"
-          export STAGING_DB_NAME="${STAGING_DB_NAME:-trendsearth_staging}"
-          export STAGING_DB_USER="${STAGING_DB_USER:-trendsearth_staging}"
-          
-          # Run database setup script
-          chmod +x scripts/deployment/staging-postgres-container.sh
-          ./scripts/deployment/staging-postgres-container.sh
-
-    - name: Deploy to EC2 Staging
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.STAGING_HOST }}
-        username: ${{ secrets.STAGING_USERNAME }}
-        key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
-        script: |
-          set -e
-          
-          echo "🚀 Starting staging deployment..."
-          
-          # Navigate to application directory
-          cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
-          
-          # Pull latest changes
+          # Pull latest changes and checkout the correct branch
           git fetch origin
           
-          # Determine which branch to deploy
+          # Determine which branch to deploy and checkout
           if [ "${{ github.ref_name }}" = "staging" ]; then
+            echo "🔄 Checking out staging branch..."
+            git checkout staging
             git reset --hard origin/staging
           else
+            echo "🔄 Checking out develop branch..."
+            git checkout develop
             git reset --hard origin/develop
           fi
           
-          # Set Docker group ID for socket access
-          export DOCKER_GROUP_ID=$(getent group docker | cut -d: -f3)
+          echo "✅ Currently on branch: $(git branch --show-current)"
           
-          # Configure insecure registry on server
+          # Configure insecure registry on server if needed
           echo "📋 Configuring insecure registry on server..."
           sudo mkdir -p /etc/docker
           if [ ! -f /etc/docker/daemon.json ] || ! grep -q "insecure-registries" /etc/docker/daemon.json; then
@@ -144,35 +102,179 @@ jobs:
           
           # Configure Docker client authentication
           mkdir -p $HOME/.docker
-          REGISTRY_ESCAPED=$(echo "${{ env.REGISTRY }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-          AUTH_ESCAPED=$(echo "${{ secrets.DOCKER_HTTP_SECRET }}" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-          cat > $HOME/.docker/config.json << 'EOF'
-          {
-            "auths": {
-              "REGISTRY_PLACEHOLDER": {
-                "auth": "AUTH_PLACEHOLDER"
-              }
-            },
-            "insecure-registries": ["REGISTRY_PLACEHOLDER"]
-          }
-          EOF
-          # Replace placeholders with actual values
-          sed -i "s|REGISTRY_PLACEHOLDER|${REGISTRY_ESCAPED}|g" $HOME/.docker/config.json
-          sed -i "s|AUTH_PLACEHOLDER|${AUTH_ESCAPED}|g" $HOME/.docker/config.json
           
-          # Pull latest images
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
+          # Create simplified Docker config without auth for staging
+          echo "🔐 Creating Docker config for staging..."
+          cat > $HOME/.docker/config.json <<-DOCKERCONFIG
+          {
+            "insecure-registries": ["${{ env.REGISTRY }}"]
+          }
+          DOCKERCONFIG
+          echo "✅ Docker config created successfully"
+          
+          # Build the image with the appropriate tags
+          echo "🔨 Building Docker image..."
+          
+          # Create staging-specific tags
+          REGISTRY="${{ env.REGISTRY }}"
+          IMAGE_NAME="${{ env.IMAGE_NAME }}"
+          BRANCH_NAME="${{ github.ref_name }}"
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          
+          BUILT_TAGS="$REGISTRY/$IMAGE_NAME:$BRANCH_NAME
+          $REGISTRY/$IMAGE_NAME:$BRANCH_NAME-$SHORT_SHA
+          $REGISTRY/$IMAGE_NAME:staging"
+          
+          # Build with the first tag (primary tag)
+          PRIMARY_TAG="$REGISTRY/$IMAGE_NAME:$BRANCH_NAME"
+          echo "Building with primary tag: $PRIMARY_TAG"
+          docker build -t "$PRIMARY_TAG" .
+          
+          # Tag with additional tags
+          echo "$BUILT_TAGS" | while IFS= read -r tag; do
+            if [ -n "$tag" ] && [ "$tag" != "$PRIMARY_TAG" ]; then
+              echo "Tagging with: $tag"
+              docker tag "$PRIMARY_TAG" "$tag"
+            fi
+          done
+          
+          # Push all tags to the local registry
+          echo "🚀 Pushing images to local registry..."
+          echo "$BUILT_TAGS" | while IFS= read -r tag; do
+            if [ -n "$tag" ]; then
+              echo "Pushing: $tag"
+              docker push "$tag"
+            fi
+          done
+          
+          echo "✅ Image build and push completed!"
+          
+          # Generate API documentation using the built container
+          echo "📝 Generating OpenAPI documentation..."
+          mkdir -p gefapi/static
+          
+          # Run the swagger generation inside the container
+          docker run --rm \
+            -v "$(pwd)/gefapi/static:/app/gefapi/static" \
+            "$PRIMARY_TAG" \
+            python3 generate_swagger.py > /app/gefapi/static/swagger.json || {
+            echo "⚠️ API documentation generation failed, creating fallback..."
+            # Create a minimal fallback swagger.json
+            cat > gefapi/static/swagger.json <<-SWAGGER
+          {
+            "openapi": "3.0.0",
+            "info": {
+              "title": "Trends.Earth API",
+              "version": "1.0.0",
+              "description": "API documentation temporarily unavailable"
+            },
+            "paths": {}
+          }
+          SWAGGER
+          }
+          
+          echo "✅ API documentation prepared"
+
+    - name: Deploy to EC2 Staging
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ steps.ssh-port.outputs.port }}
+        script: |
+          set -e
+          
+          echo "🚀 Starting staging deployment..."
+          
+          # Navigate to application directory
+          cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
+          
+          # Set Docker group ID for socket access
+          export DOCKER_GROUP_ID=$(getent group docker | cut -d: -f3)
+          export DOCKER_REGISTRY="${{ secrets.DOCKER_REGISTRY }}"
+
+          # Set staging database environment variables
+          export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
+          export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
+          export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
           
           # Deploy with Docker Swarm
           echo "📦 Deploying services..."
+          
+          # Force remove existing stack and wait for complete cleanup
+          echo "🔄 Ensuring clean deployment environment..."
+          docker stack rm trends-earth-staging || true
+          
+          # Wait for all services to be completely removed
+          echo "⏳ Waiting for stack cleanup to complete..."
+          timeout=60
+          while [ $timeout -gt 0 ]; do
+            if ! docker service ls --format "{{.Name}}" | grep -q "trends-earth-staging"; then
+              echo "✅ Stack cleanup completed"
+              break
+            fi
+            echo "⏳ Waiting for services to stop... ($timeout seconds remaining)"
+            sleep 5
+            timeout=$((timeout - 5))
+          done
+          
+          # Additional cleanup - remove any lingering containers
+          echo "🧹 Cleaning up any remaining containers..."
+          docker ps -a --filter "name=trends-earth-staging" --format "{{.Names}}" | xargs -r docker rm -f || true
+          
+          # Remove any existing networks to ensure clean state
+          echo "🌐 Cleaning up overlay networks..."
+          if docker network ls --format "{{.Name}}" | grep -q "trends-earth-staging_backend"; then
+            echo "Removing existing network trends-earth-staging_backend..."
+            # Force remove network even if it has active endpoints
+            docker network rm trends-earth-staging_backend --force || true
+            echo "✅ Network cleanup completed"
+            sleep 3
+          fi
+          
+          # Ensure we're using the latest compose file
+          echo "📋 Verifying compose file..."
+          if [ ! -f "${{ env.COMPOSE_FILE }}" ]; then
+            echo "❌ Compose file not found: ${{ env.COMPOSE_FILE }}"
+            exit 1
+          fi
+          
+          # Deploy fresh stack
+          echo "🚀 Deploying fresh stack..."
           docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-staging
           
           # Wait for services to be ready
           echo "⏳ Waiting for services to be ready..."
-          sleep 30
+          
+          # Check that all services are running with desired replicas
+          echo "📊 Waiting for all services to be running..."
+          max_wait=120
+          wait_time=0
+          
+          while [ $wait_time -lt $max_wait ]; do
+            # Check if all services have desired replicas running
+            pending_services=$(docker service ls --filter "name=trends-earth-staging" --format "table {{.Name}}\t{{.Replicas}}" | grep -v "1/1" | wc -l)
+            
+            # Migrate when running correctly will run once then exit, so we expect 1 service to not be replicated
+            if [ $pending_services -eq 2 ]; then  # Only header line and migrate line should remain if all other services are 1/1
+              echo "✅ All services are running"
+              break
+            fi
+            
+            echo "⏳ Waiting for services to be ready... ($wait_time/$max_wait seconds)"
+            docker service ls --filter "name=trends-earth-staging"
+            sleep 10
+            wait_time=$((wait_time + 10))
+          done
+          
+          if [ $wait_time -ge $max_wait ]; then
+            echo "⚠️ Some services may not be fully ready after $max_wait seconds"
+          fi
           
           # Check service status
-          echo "📊 Service status:"
+          echo "📊 Final service status:"
           docker service ls | grep trends-earth-staging
           
           # Health check
@@ -181,50 +283,117 @@ jobs:
           attempt=1
           
           while [ $attempt -le $max_attempts ]; do
-            if curl -f http://localhost:3002/api-health > /dev/null 2>&1; then
+            echo "⏳ Health check attempt $attempt/$max_attempts..."
+            
+            # First check if port is listening
+            if ! nc -z 127.0.0.1 3002 2>/dev/null; then
+              echo "⚠️ Port 3002 is not listening yet"
+            else
+              echo "✅ Port 3002 is listening"
+            fi
+            
+            # Perform health check request
+            health_response=$(curl -f -s -w "HTTP_CODE:%{http_code}" http://127.0.0.1:3002/api-health 2>&1)
+            curl_exit_code=$?
+            
+            if [ $curl_exit_code -eq 0 ]; then
               echo "✅ Health check passed"
+              echo "Response: $health_response"
               break
             else
-              echo "⏳ Health check attempt $attempt/$max_attempts failed, retrying..."
-              sleep 10
-              attempt=$((attempt + 1))
+              echo "⏳ Health check failed with exit code $curl_exit_code"
+              echo "Response: $health_response"
             fi
+            
+            sleep 10
+            attempt=$((attempt + 1))
           done
           
           if [ $attempt -gt $max_attempts ]; then
             echo "❌ Health check failed after $max_attempts attempts"
+            echo "🔍 Final debugging information:"
+            echo "  - All running containers:"
+            docker ps --filter "name=trends-earth-staging"
+            echo "  - Manager service details:"
+            docker service inspect trends-earth-staging_manager --format="{{json .Spec.TaskTemplate.ContainerSpec}}" || echo "Service not found"
+            echo "  - Recent manager service logs:"
+            docker service logs --tail 50 trends-earth-staging_manager || echo "No logs available"
             exit 1
           fi
           
-          echo "🎉 Staging deployment completed successfully!"
+          echo "🎉 Initial service deployment completed successfully!"
 
-    - name: Setup Staging Data
+    - name: Setup Staging Database
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USERNAME }}
         key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        port: ${{ steps.ssh-port.outputs.port }}
         script: |
           set -e
           
           # Navigate to application directory
           cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
           
-          # Set database environment variables
+          # Wait for PostgreSQL service to be fully ready
+          echo "🗄️ Waiting for PostgreSQL service to be ready..."
+          max_db_wait=60
+          db_wait_time=0
+          
+          while [ $db_wait_time -lt $max_db_wait ]; do
+            # Check if postgres service is running and has 1/1 replicas
+            postgres_status=$(docker service ls --filter "name=trends-earth-staging_postgres" --format "{{.Replicas}}" | head -1)
+            if [ "$postgres_status" = "1/1" ]; then
+              echo "✅ PostgreSQL service is running (1/1 replicas)"
+              break
+            fi
+            echo "⏳ Waiting for PostgreSQL service to be ready... ($db_wait_time/$max_db_wait seconds) - Status: $postgres_status"
+            sleep 5
+            db_wait_time=$((db_wait_time + 5))
+          done
+          
+          if [ $db_wait_time -ge $max_db_wait ]; then
+            echo "❌ PostgreSQL service not ready after $max_db_wait seconds"
+            echo "🔍 Docker service status:"
+            docker service ls --filter "name=trends-earth-staging_postgres"
+            echo "🔍 PostgreSQL service logs:"
+            docker service logs --tail 20 trends-earth-staging_postgres || echo "No logs available"
+            exit 1
+          fi
+          
+          # Wait for port to be listening
+          echo "🗄️ Waiting for PostgreSQL port to be ready..."
+          max_port_wait=60
+          port_wait_time=0
+          
+          while [ $port_wait_time -lt $max_port_wait ]; do
+            if nc -z 127.0.0.1 5433 2>/dev/null; then
+              echo "✅ PostgreSQL port 5433 is listening"
+              break
+            fi
+            echo "⏳ Waiting for PostgreSQL port... ($port_wait_time/$max_port_wait seconds)"
+            sleep 5
+            port_wait_time=$((port_wait_time + 5))
+          done
+          
+          if [ $port_wait_time -ge $max_port_wait ]; then
+            echo "❌ PostgreSQL port not ready after $max_port_wait seconds"
+            exit 1
+          fi
+          
+          # Additional wait for database initialization
+          echo "⏳ Waiting for database initialization..."
+          sleep 15
+          
+          # Set staging database environment variables (using containerized database)
           export STAGING_DB_HOST="${{ secrets.STAGING_DB_HOST }}"
           export STAGING_DB_PORT="${{ secrets.STAGING_DB_PORT }}"
           export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
           export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
           export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
           
-          # Use defaults if not provided
-          export STAGING_DB_HOST="${STAGING_DB_HOST:-localhost}"
-          export STAGING_DB_PORT="${STAGING_DB_PORT:-5433}"
-          export STAGING_DB_NAME="${STAGING_DB_NAME:-trendsearth_staging}"
-          export STAGING_DB_USER="${STAGING_DB_USER:-trendsearth_staging}"
-          
-          # Production database (optional for script migration)
+          # Set production database environment variables (for data import)
           export PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}"
           export PROD_DB_PORT="${{ secrets.PROD_DB_PORT }}"
           export PROD_DB_NAME="${{ secrets.PROD_DB_NAME }}"
@@ -235,7 +404,7 @@ jobs:
           export PROD_DB_PORT="${PROD_DB_PORT:-5432}"
           export PROD_DB_NAME="${PROD_DB_NAME:-trendsearth}"
           
-          # Test user credentials (required)
+          # Set test user credentials
           export TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}"
           export TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}"
           export TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}"
@@ -243,9 +412,9 @@ jobs:
           export TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}"
           export TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}"
           
-          # Run data setup script
-          chmod +x scripts/deployment/staging-data-migration.sh
-          ./scripts/deployment/staging-data-migration.sh
+          # Run comprehensive database setup script
+          chmod +x scripts/deployment/staging-database-init.sh
+          ./scripts/deployment/staging-database-init.sh
 
     - name: Run integration tests
       uses: appleboy/ssh-action@v1.0.0
@@ -253,7 +422,7 @@ jobs:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USERNAME }}
         key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+        port: ${{ steps.ssh-port.outputs.port }}
         script: |
           set -e
           
@@ -271,3 +440,44 @@ jobs:
           # Run integration tests script
           chmod +x scripts/deployment/run-integration-tests.sh
           ./scripts/deployment/run-integration-tests.sh
+
+    - name: Notify Rollbar of deployment
+      if: success()
+      run: |
+        echo "🔔 Notifying Rollbar of successful deployment..."
+        
+        # Get deployment information
+        ENVIRONMENT="staging"
+        REVISION="${{ github.sha }}"
+        LOCAL_USERNAME="${{ github.actor }}"
+        COMMENT="Deployed to staging via GitHub Actions - Branch: ${{ github.ref_name }}, Commit: ${REVISION:0:7}"
+        
+        # Send deployment notification to Rollbar
+        curl -X POST 'https://api.rollbar.com/api/1/deploy/' \
+          -H 'Content-Type: application/json' \
+          -d '{
+            "access_token": "${{ secrets.ROLLBAR_SERVER_ACCESS_TOKEN }}",
+            "environment": "'"$ENVIRONMENT"'",
+            "revision": "'"$REVISION"'",
+            "local_username": "'"$LOCAL_USERNAME"'",
+            "comment": "'"$COMMENT"'"
+          }'
+        
+        echo "✅ Rollbar deployment notification sent successfully"
+
+    - name: Cleanup security group access
+      if: always()
+      run: |
+        # Remove the SSH access rule for the runner IP
+        RUNNER_IP="${{ steps.security-group.outputs.runner-ip }}"
+        if [ -n "$RUNNER_IP" ]; then
+          echo "Removing SSH access for runner IP $RUNNER_IP from security group ${{ secrets.STAGING_SECURITY_GROUP_ID }}"
+          aws ec2 revoke-security-group-ingress \
+            --group-id "${{ secrets.STAGING_SECURITY_GROUP_ID }}" \
+            --protocol tcp \
+            --port 22 \
+            --cidr "${RUNNER_IP}/32" || true
+          echo "Security group rule removed successfully"
+        else
+          echo "No runner IP found to remove from security group"
+        fi

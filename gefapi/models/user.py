@@ -1,6 +1,7 @@
 """USER MODEL"""
 
 import datetime
+import logging
 import uuid
 
 from flask_jwt_extended import create_access_token
@@ -10,6 +11,8 @@ from gefapi import db
 from gefapi.models import GUID
 
 db.GUID = GUID
+
+logger = logging.getLogger(__name__)
 
 
 class User(db.Model):
@@ -85,7 +88,21 @@ class User(db.Model):
         return generate_password_hash(password)
 
     def check_password(self, password):
-        return check_password_hash(self.password, password)
+        """Check if provided password matches stored hash"""
+        if not self.password:
+            logger.warning(f"User {self.email} has no password hash stored")
+            return False
+
+        if not password:
+            logger.debug("Empty password provided for authentication")
+            return False
+
+        try:
+            return check_password_hash(self.password, password)
+        except ValueError as e:
+            logger.error(f"Invalid password hash for user {self.email}: {e}")
+            logger.error(f"Stored hash format: {repr(self.password[:50])}...")
+            return False
 
     def get_token(self):
         """Generate JWT token"""

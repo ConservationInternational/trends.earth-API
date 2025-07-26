@@ -1,6 +1,6 @@
 from datetime import timedelta
-import os
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -153,4 +153,7 @@ if os.getenv("AWS_DEFAULT_REGION"):
 
 # Check for email configuration
 if not os.getenv("SPARKPOST_API_KEY"):
-    logger.warning("SPARKPOST_API_KEY is not set. Email functionality will be disabled. Set SPARKPOST_API_KEY environment variable to enable email notifications.")
+    logger.warning(
+        "SPARKPOST_API_KEY is not set. Email functionality will be disabled. "
+        "Set SPARKPOST_API_KEY environment variable to enable email notifications."
+    )

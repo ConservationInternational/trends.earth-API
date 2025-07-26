@@ -29,7 +29,7 @@ print_error() {
 }
 
 # Configuration
-STAGING_URL="http://localhost:3002"
+STAGING_URL="http://127.0.0.1:3002"
 TEST_RESULTS=()
 
 # Test API health endpoint
@@ -43,6 +43,32 @@ test_health_endpoint() {
     else
         print_error "❌ Health endpoint failed"
         TEST_RESULTS+=("FAIL: Health endpoint")
+        return 1
+    fi
+}
+
+# Test API documentation endpoint
+test_api_docs_endpoint() {
+    print_status "Testing API documentation endpoint..."
+    
+    local response=$(curl -s -w "%{http_code}" "$STAGING_URL/api/docs/")
+    local http_code="${response: -3}"
+    
+    if [ "$http_code" = "200" ]; then
+        # Check if response contains expected Swagger UI content
+        local body="${response%???}"
+        if echo "$body" | grep -q "swagger" && echo "$body" | grep -q "api"; then
+            print_success "✅ API documentation endpoint working"
+            TEST_RESULTS+=("PASS: API documentation")
+            return 0
+        else
+            print_error "❌ API documentation endpoint returned unexpected content"
+            TEST_RESULTS+=("FAIL: API documentation - unexpected content")
+            return 1
+        fi
+    else
+        print_error "❌ API documentation endpoint failed (HTTP: $http_code)"
+        TEST_RESULTS+=("FAIL: API documentation")
         return 1
     fi
 }
@@ -181,6 +207,9 @@ main() {
     
     # Test basic health endpoint
     test_health_endpoint
+    
+    # Test API documentation endpoint
+    test_api_docs_endpoint
     
     # Test user authentication and get tokens
     local superadmin_token=""

@@ -1,7 +1,6 @@
 # Trends.Earth API
 
 [![Tests](https://github.com/conservationinternational/trends.earth-API/workflows/Run%20Tests/badge.svg)](https://github.com/conservationinternational/trends.earth-API/actions/workflows/run-tests.yml)
-[![API Documentation](https://github.com/conservationinternational/trends.earth-API/workflows/Generate%20API%20Documentation/badge.svg)](https://github.com/conservationinternational/trends.earth-API/actions/workflows/generate-api-docs.yml)
 [![Code Quality](https://img.shields.io/badge/code%20quality-ruff-blue.svg)](https://github.com/astral-sh/ruff)
 [![Coverage](https://img.shields.io/badge/coverage-pytest--cov-green.svg)](https://pytest-cov.readthedocs.io/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
@@ -85,7 +84,7 @@ The application is composed of several Docker services, each with a specific pur
 
 ### Supporting Services
 
-- **`postgres`** - PostgreSQL database (version 9.6)
+- **`postgres`** - PostgreSQL database (version 16)
   - Stores all application data
   - Default port: 5432
   - Container name: `trendsearth-api-database` (development)
@@ -290,6 +289,20 @@ The API includes configurable rate limiting to protect against abuse and ensure 
 ## API Endpoints
 
 The API provides comprehensive filtering, sorting, and pagination capabilities for listing endpoints. All query parameters are optional, ensuring backward compatibility with existing implementations.
+
+### Interactive API Documentation
+
+The API includes interactive documentation powered by Swagger UI with locally hosted assets:
+
+- **Development**: `http://localhost:3000/api/docs/`
+- **Staging**: `https://staging-api.trends.earth/api/docs/`
+- **Production**: `https://api.trends.earth/api/docs/`
+
+The interactive documentation allows you to:
+- Browse all available endpoints
+- View request/response schemas
+- Test API calls directly from the browser
+- Download the OpenAPI specification
 
 **Common Features:**
 - **Filtering**: Support for date ranges, status filters, and field-specific filters
@@ -1046,6 +1059,69 @@ The project uses **Poetry** for dependency management:
 - `poetry.lock` - Locked dependency versions
 - Dependencies are installed during Docker image build
 
+### API Documentation
+
+The API documentation is automatically generated and served at `/api/docs/` using Swagger UI.
+
+#### Swagger UI Security
+
+The API documentation uses **locally hosted** Swagger UI resources for maximum security:
+
+**Local Asset Management:**
+Swagger UI assets are downloaded and hosted locally to eliminate external dependencies:
+
+```bash
+# Download latest Swagger UI assets
+python3 scripts/download_swagger_ui.py
+```
+
+**Security Benefits:**
+- **No External Dependencies**: All resources served from same origin
+- **Supply Chain Protection**: No risk of compromised external CDN resources  
+- **Simplified CSP**: Content Security Policy doesn't need external domain exceptions
+- **Better Performance**: Faster loading without external requests
+- **Offline Capability**: Documentation works without internet access
+
+**Asset Location:**
+- CSS: `gefapi/static/swagger-ui/swagger-ui.css`
+- JavaScript: `gefapi/static/swagger-ui/swagger-ui-bundle.js`
+- Download info: `gefapi/static/swagger-ui/download_info.txt`
+
+#### Documentation Generation
+
+The OpenAPI specification (`swagger.json`) and Swagger UI assets are automatically generated and downloaded during deployment:
+
+**Automatic Updates:**
+- **On Deployment**: Generated during each staging/production deployment
+- **Real-time**: Always reflects the exact code being deployed
+- **Assets**: Swagger UI assets are downloaded and hosted locally
+
+**Local Development:**
+```bash
+# Download Swagger UI assets (if not already present)
+python3 scripts/download_swagger_ui.py
+
+# Force download (overwrite existing files)
+python3 scripts/download_swagger_ui.py --force
+
+# Generate swagger.json locally
+python3 generate_swagger.py > gefapi/static/swagger.json
+
+# View documentation at: http://localhost:5000/api/docs/
+```
+
+**Manual Generation:**
+If you need to generate documentation outside of deployment:
+```bash
+# Generate and commit documentation updates
+python3 scripts/download_swagger_ui.py --force
+python3 generate_swagger.py > gefapi/static/swagger.json
+```
+
+# Test generation script
+python3 test_swagger_generation.py
+```
+
 ### Code Structure
 
 ```
@@ -1092,7 +1168,7 @@ Key environment variables to configure (see `.env` files):
 - `develop.env` - Development environment settings
 - `test.env` - Testing environment settings  
 - `staging.env` - Staging environment settings
-- `prod2.env` - Production environment settings
+- `prod.env` - Production environment settings
 
 ### Production Deployment
 
@@ -1275,44 +1351,6 @@ The cleanup task manages Docker resources created during script execution:
 
 - **Field Exclusion Support**: All serialization methods (`Script`, `User`, `Execution`) now support the `exclude` parameter to remove unwanted fields from API responses, improving performance and reducing payload sizes.
 - **Consistent Parameter Handling**: The `include` and `exclude` parameters are now consistently supported across all GET endpoints for scripts, users, and executions.
-
-### Automatic Documentation Generation
-
-The API documentation is automatically generated using OpenAPI/Swagger whenever code is pushed to the main branch:
-
-- **Swagger JSON**: Available at `/swagger.json` in the repository
-- **Interactive UI**: Generated HTML documentation in `/docs/swagger-ui/`
-- **Static Docs**: Comprehensive API reference in `/docs/api/`
-
-### Generating Documentation Locally
-
-To generate API documentation locally:
-
-```bash
-# Install additional dependencies
-pip install flask-restx apispec[flask] marshmallow
-
-# Generate OpenAPI specification
-python generate_swagger.py
-
-# This creates swagger.json with complete API specification
-```
-
-### GitHub Workflow
-
-The `.github/workflows/generate-api-docs.yml` workflow automatically:
-
-1. **Triggers on**: Push to `main` or `develop` branches, and pull requests
-2. **Sets up environment**: Python, PostgreSQL, Redis
-3. **Generates documentation**: Creates OpenAPI spec and HTML docs
-4. **Commits changes**: Auto-commits updated documentation (main branch only)
-5. **Provides artifacts**: Uploads docs as downloadable artifacts
-
-### Accessing Documentation
-
-- **Development**: Run `python generate_swagger.py` and open `swagger.json` in Swagger Editor
-- **Production**: Documentation is automatically deployed and available in the `docs/` directory
-- **API Testing**: Use the interactive Swagger UI to test endpoints directly
 
 ## Contributing
 

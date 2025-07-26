@@ -96,29 +96,15 @@ wait_for_db() {
 
 # Function to create staging database container
 create_staging_database() {
-    print_status "Creating staging PostgreSQL database container..."
+    print_status "PostgreSQL database container managed by Docker Compose..."
     
-    # Check if container already exists
-    if docker ps -a --format '{{.Names}}' | grep -q "trends-earth-staging-postgres"; then
-        print_status "Staging database container already exists, removing it..."
-        docker stop trends-earth-staging-postgres || true
-        docker rm trends-earth-staging-postgres || true
-    fi
-    
-    # Create PostgreSQL container for staging
-    docker run -d \
-        --name trends-earth-staging-postgres \
-        --network trends-earth-staging_backend \
-        -e POSTGRES_DB="$STAGING_DB_NAME" \
-        -e POSTGRES_USER="$STAGING_DB_USER" \
-        -e POSTGRES_PASSWORD="$STAGING_DB_PASSWORD" \
-        -p "$STAGING_DB_PORT:5432" \
-        postgres:13
+    # Skip container creation since it's managed by Docker Compose
+    print_status "Waiting for PostgreSQL service to be ready..."
     
     # Wait for database to be ready
     wait_for_db "$STAGING_DB_HOST" "$STAGING_DB_PORT" "$STAGING_DB_USER" "$STAGING_DB_NAME"
     
-    print_success "Staging database container created and ready"
+    print_success "Staging database is ready"
 }
 
 # Function to copy recent scripts from production
@@ -133,152 +119,311 @@ copy_recent_scripts() {
     
     print_status "Extracting scripts created or updated since $one_year_ago..."
     
-    # Export recent scripts from production database
-    PGPASSWORD="$PROD_DB_PASSWORD" pg_dump \
+    # Check if production database is accessible
+    print_status "Testing connection to production database..."
+    if ! PGPASSWORD="$PROD_DB_PASSWORD" psql \
         -h "$PROD_DB_HOST" \
         -p "$PROD_DB_PORT" \
         -U "$PROD_DB_USER" \
         -d "$PROD_DB_NAME" \
-        --data-only \
-        --table=script \
-        --where="created_at >= '$one_year_ago' OR updated_at >= '$one_year_ago'" \
-        > "$temp_script_file"
+        -c "SELECT 1;" >/dev/null 2>&1; then
+        
+        print_warning "Cannot connect to production database - skipping script import"
+        print_warning "This may be due to network restrictions or pg_hba.conf configuration"
+        print_warning "Production database connection details:"
+        print_warning "  Host: $PROD_DB_HOST"
+        print_warning "  Port: $PROD_DB_PORT" 
+        print_warning "  User: $PROD_DB_USER"
+        print_warning "  Database: $PROD_DB_NAME"
+        return 0
+    fi
     
-    if [ -s "$temp_script_file" ]; then
+    # First, get the superadmin user ID that we'll assign to all imported scripts
+    superadmin_id=""
+    if [ -f /tmp/superadmin_id.txt ]; then
+        superadmin_id=$(cat /tmp/superadmin_id.txt)
+    else
+        # Get superadmin user ID from staging database
+        superadmin_id=$(PGPASSWORD="$STAGING_DB_PASSWORD" psql \
+            -h "$STAGING_DB_HOST" \
+            -p "$STAGING_DB_PORT" \
+            -U "$STAGING_DB_USER" \
+            -d "$STAGING_DB_NAME" \
+            -t -c "SELECT id FROM \"user\" WHERE role = 'SUPERADMIN' LIMIT 1;" | xargs)
+    fi
+    
+    if [ -z "$superadmin_id" ] || [ "$superadmin_id" = "" ]; then
+        print_error "Could not find superadmin user ID for script import"
+        return 1
+    fi
+    
+    print_status "Using superadmin user ID: $superadmin_id for imported scripts"
+    
+    # Export recent scripts using INSERT statements to avoid CSV formatting issues
+    temp_insert_file="/tmp/staging_scripts_insert.sql"
+    
+    PGPASSWORD="$PROD_DB_PASSWORD" psql \
+        -h "$PROD_DB_HOST" \
+        -p "$PROD_DB_PORT" \
+        -U "$PROD_DB_USER" \
+        -d "$PROD_DB_NAME" \
+        -t -A \
+        -c "
+        SELECT 
+            'INSERT INTO script (id, name, slug, description, created_at, updated_at, user_id, status, public, cpu_reservation, cpu_limit, memory_reservation, memory_limit, environment, environment_version) VALUES (' ||
+            QUOTE_LITERAL(id) || ', ' ||
+            QUOTE_LITERAL(COALESCE(name, '')) || ', ' ||
+            QUOTE_LITERAL(COALESCE(slug, '')) || ', ' ||
+            QUOTE_LITERAL(COALESCE(description, '')) || ', ' ||
+            QUOTE_LITERAL(created_at::text) || ', ' ||
+            QUOTE_LITERAL(updated_at::text) || ', ' ||
+            QUOTE_LITERAL('$superadmin_id') || ', ' ||
+            QUOTE_LITERAL(COALESCE(status, 'PENDING')) || ', ' ||
+            COALESCE(public::text, 'false') || ', ' ||
+            COALESCE(cpu_reservation::text, '0') || ', ' ||
+            COALESCE(cpu_limit::text, '0') || ', ' ||
+            COALESCE(memory_reservation::text, '0') || ', ' ||
+            COALESCE(memory_limit::text, '0') || ', ' ||
+            QUOTE_LITERAL(COALESCE(environment, '')) || ', ' ||
+            QUOTE_LITERAL(COALESCE(environment_version, '')) ||
+            ') ON CONFLICT (id) DO NOTHING;'
+        FROM script 
+        WHERE (created_at >= '$one_year_ago' OR updated_at >= '$one_year_ago');" \
+        > "$temp_insert_file"
+    
+    if [ -s "$temp_insert_file" ]; then
         print_status "Importing recent scripts into staging database..."
         
-        # Import scripts into staging database
+        # Execute the INSERT statements
         PGPASSWORD="$STAGING_DB_PASSWORD" psql \
             -h "$STAGING_DB_HOST" \
             -p "$STAGING_DB_PORT" \
             -U "$STAGING_DB_USER" \
             -d "$STAGING_DB_NAME" \
-            -f "$temp_script_file"
+            -f "$temp_insert_file"
         
         print_success "Recent scripts imported successfully"
     else
         print_warning "No recent scripts found to import"
     fi
     
-    # Clean up temporary file
-    rm -f "$temp_script_file"
+    # Clean up temporary files
+    rm -f "$temp_script_file" "$temp_insert_file"
 }
 
-# Function to create test users
-create_test_users() {
-    print_status "Creating test users in staging database..."
+# Function to copy recent status logs from production
+copy_recent_status_logs() {
+    print_status "Copying recent status logs from production database..."
     
-    # Create temporary SQL file for user creation
-    temp_user_file="/tmp/staging_users.sql"
+    # Calculate date for last month
+    one_month_ago=$(date -d "1 month ago" '+%Y-%m-%d %H:%M:%S')
+    print_status "Copying status logs from: $one_month_ago"
     
-    # Generate UUIDs for test users
-    superadmin_id=$(python3 -c "import uuid; print(str(uuid.uuid4()))")
-    admin_id=$(python3 -c "import uuid; print(str(uuid.uuid4()))")
-    user_id=$(python3 -c "import uuid; print(str(uuid.uuid4()))")
+    # Check if production database has status_log table
+    prod_status_log_exists=$(PGPASSWORD="$PROD_DB_PASSWORD" psql \
+        -h "$PROD_DB_HOST" \
+        -p "$PROD_DB_PORT" \
+        -U "$PROD_DB_USER" \
+        -d "$PROD_DB_NAME" \
+        -t -c "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'status_log');" | xargs)
     
-    # Generate password hashes (this would normally be done by the application)
-    # For now, we'll use plaintext and let the application handle hashing
+    if [ "$prod_status_log_exists" != "t" ]; then
+        print_warning "Production database does not have status_log table, skipping status logs import"
+        return 0
+    fi
     
-    cat > "$temp_user_file" << EOF
--- Insert test users for staging environment
--- Note: Passwords will be hashed by the application
-
--- Test Superadmin User
-INSERT INTO "user" (id, email, name, country, institution, password, role, created_at, updated_at) 
-VALUES (
-    '$superadmin_id', 
-    '$TEST_SUPERADMIN_EMAIL', 
-    'Test Superadmin User', 
-    'Test Country', 
-    'Test Institution',
-    -- This is a placeholder - the actual password hash should be generated by the application
-    '\$2b\$12\$placeholder_hash_for_superadmin', 
-    'SUPERADMIN', 
-    NOW(), 
-    NOW()
-) ON CONFLICT (email) DO UPDATE SET
-    name = EXCLUDED.name,
-    role = EXCLUDED.role,
-    updated_at = NOW();
-
--- Test Admin User  
-INSERT INTO "user" (id, email, name, country, institution, password, role, created_at, updated_at) 
-VALUES (
-    '$admin_id', 
-    '$TEST_ADMIN_EMAIL', 
-    'Test Admin User', 
-    'Test Country', 
-    'Test Institution',
-    '\$2b\$12\$placeholder_hash_for_admin', 
-    'ADMIN', 
-    NOW(), 
-    NOW()
-) ON CONFLICT (email) DO UPDATE SET
-    name = EXCLUDED.name,
-    role = EXCLUDED.role,
-    updated_at = NOW();
-
--- Test Regular User
-INSERT INTO "user" (id, email, name, country, institution, password, role, created_at, updated_at) 
-VALUES (
-    '$user_id', 
-    '$TEST_USER_EMAIL', 
-    'Test Regular User', 
-    'Test Country', 
-    'Test Institution',
-    '\$2b\$12\$placeholder_hash_for_user', 
-    'USER', 
-    NOW(), 
-    NOW()
-) ON CONFLICT (email) DO UPDATE SET
-    name = EXCLUDED.name,
-    role = EXCLUDED.role,
-    updated_at = NOW();
-EOF
-    
-    # Execute user creation SQL
-    PGPASSWORD="$STAGING_DB_PASSWORD" psql \
+    # Check if staging database has status_log table
+    staging_status_log_exists=$(PGPASSWORD="$STAGING_DB_PASSWORD" psql \
         -h "$STAGING_DB_HOST" \
         -p "$STAGING_DB_PORT" \
         -U "$STAGING_DB_USER" \
         -d "$STAGING_DB_NAME" \
-        -f "$temp_user_file"
+        -t -c "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'status_log');" | xargs)
     
-    print_success "Test users created successfully"
-    print_status "Test user credentials:"
-    print_status "  Superadmin: $TEST_SUPERADMIN_EMAIL (password: $TEST_SUPERADMIN_PASSWORD)"
-    print_status "  Admin: $TEST_ADMIN_EMAIL (password: $TEST_ADMIN_PASSWORD)"  
-    print_status "  User: $TEST_USER_EMAIL (password: $TEST_USER_PASSWORD)"
+    if [ "$staging_status_log_exists" != "t" ]; then
+        print_warning "Staging database does not have status_log table, skipping status logs import"
+        return 0
+    fi
     
-    # Store the superadmin ID for script ownership update
-    echo "$superadmin_id" > /tmp/superadmin_id.txt
+    # Export recent status logs using INSERT statements
+    temp_status_log_file="/tmp/staging_status_logs_insert.sql"
     
-    # Clean up temporary file
-    rm -f "$temp_user_file"
-}
-
-# Function to update script ownership
-update_script_ownership() {
-    print_status "Updating script ownership to test superadmin user..."
+    PGPASSWORD="$PROD_DB_PASSWORD" psql \
+        -h "$PROD_DB_HOST" \
+        -p "$PROD_DB_PORT" \
+        -U "$PROD_DB_USER" \
+        -d "$PROD_DB_NAME" \
+        -t -A \
+        -c "
+        SELECT 
+            'INSERT INTO status_log (id, timestamp, executions_active, executions_ready, executions_running, executions_finished, executions_failed, executions_count, users_count, scripts_count, memory_available_percent, cpu_usage_percent) VALUES (' ||
+            QUOTE_LITERAL(id) || ', ' ||
+            QUOTE_LITERAL(timestamp::text) || ', ' ||
+            COALESCE(executions_active::text, '0') || ', ' ||
+            COALESCE(executions_ready::text, '0') || ', ' ||
+            COALESCE(executions_running::text, '0') || ', ' ||
+            COALESCE(executions_finished::text, '0') || ', ' ||
+            COALESCE(executions_failed::text, '0') || ', ' ||
+            COALESCE(executions_count::text, '0') || ', ' ||
+            COALESCE(users_count::text, '0') || ', ' ||
+            COALESCE(scripts_count::text, '0') || ', ' ||
+            COALESCE(memory_available_percent::text, '0.0') || ', ' ||
+            COALESCE(cpu_usage_percent::text, '0.0') ||
+            ') ON CONFLICT (id) DO NOTHING;'
+        FROM status_log 
+        WHERE timestamp >= '$one_month_ago'
+        ORDER BY timestamp DESC;" \
+        > "$temp_status_log_file"
     
-    # Get the superadmin ID
-    if [ -f /tmp/superadmin_id.txt ]; then
-        superadmin_id=$(cat /tmp/superadmin_id.txt)
+    if [ -s "$temp_status_log_file" ]; then
+        print_status "Importing recent status logs into staging database..."
         
-        # Update all scripts to be owned by the test superadmin
+        # Count records being imported
+        record_count=$(grep -c "INSERT INTO status_log" "$temp_status_log_file" || echo "0")
+        print_status "Importing $record_count status log records..."
+        
+        # Execute the INSERT statements
         PGPASSWORD="$STAGING_DB_PASSWORD" psql \
             -h "$STAGING_DB_HOST" \
             -p "$STAGING_DB_PORT" \
             -U "$STAGING_DB_USER" \
             -d "$STAGING_DB_NAME" \
-            -c "UPDATE script SET user_id = '$superadmin_id', updated_at = NOW() WHERE user_id IS NOT NULL;"
+            -f "$temp_status_log_file"
         
-        print_success "Script ownership updated to test superadmin user"
-        
-        # Clean up
-        rm -f /tmp/superadmin_id.txt
+        print_success "Recent status logs imported successfully ($record_count records)"
     else
-        print_error "Could not find superadmin ID for script ownership update"
+        print_warning "No recent status logs found to import"
+    fi
+    
+    # Clean up temporary files
+    rm -f "$temp_status_log_file"
+}
+
+# Function to copy script logs for imported scripts
+copy_script_logs_for_imported_scripts() {
+    print_status "Copying script logs for imported scripts from production database..."
+    
+    # Check if production database has script_log table
+    prod_script_log_exists=$(PGPASSWORD="$PROD_DB_PASSWORD" psql \
+        -h "$PROD_DB_HOST" \
+        -p "$PROD_DB_PORT" \
+        -U "$PROD_DB_USER" \
+        -d "$PROD_DB_NAME" \
+        -t -c "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'script_log');" | xargs)
+    
+    if [ "$prod_script_log_exists" != "t" ]; then
+        print_warning "Production database does not have script_log table, skipping script logs import"
+        return 0
+    fi
+    
+    # Check if staging database has script_log table
+    staging_script_log_exists=$(PGPASSWORD="$STAGING_DB_PASSWORD" psql \
+        -h "$STAGING_DB_HOST" \
+        -p "$STAGING_DB_PORT" \
+        -U "$STAGING_DB_USER" \
+        -d "$STAGING_DB_NAME" \
+        -t -c "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'script_log');" | xargs)
+    
+    if [ "$staging_script_log_exists" != "t" ]; then
+        print_warning "Staging database does not have script_log table, skipping script logs import"
+        return 0
+    fi
+    
+    # Export script logs for scripts that exist in staging using INSERT statements
+    temp_script_log_file="/tmp/staging_script_logs_insert.sql"
+    
+    print_status "Exporting script logs for imported scripts..."
+    
+    PGPASSWORD="$PROD_DB_PASSWORD" psql \
+        -h "$PROD_DB_HOST" \
+        -p "$PROD_DB_PORT" \
+        -U "$PROD_DB_USER" \
+        -d "$PROD_DB_NAME" \
+        -t -A \
+        -c "
+        SELECT 
+            'INSERT INTO script_log (id, text, register_date, script_id) VALUES (' ||
+            QUOTE_LITERAL(sl.id) || ', ' ||
+            QUOTE_LITERAL(COALESCE(sl.text, '')) || ', ' ||
+            QUOTE_LITERAL(sl.register_date::text) || ', ' ||
+            QUOTE_LITERAL(sl.script_id) ||
+            ') ON CONFLICT (id) DO NOTHING;'
+        FROM script_log sl
+        INNER JOIN script s ON sl.script_id = s.id
+        WHERE (s.created_at >= '$(date -d "1 year ago" '+%Y-%m-%d')' OR s.updated_at >= '$(date -d "1 year ago" '+%Y-%m-%d')')
+        ORDER BY sl.register_date DESC;" \
+        > "$temp_script_log_file"
+    
+    if [ -s "$temp_script_log_file" ]; then
+        print_status "Importing script logs for imported scripts into staging database..."
+        
+        # Count records being imported
+        record_count=$(grep -c "INSERT INTO script_log" "$temp_script_log_file" || echo "0")
+        print_status "Importing $record_count script log records..."
+        
+        # Execute the INSERT statements
+        PGPASSWORD="$STAGING_DB_PASSWORD" psql \
+            -h "$STAGING_DB_HOST" \
+            -p "$STAGING_DB_PORT" \
+            -U "$STAGING_DB_USER" \
+            -d "$STAGING_DB_NAME" \
+            -f "$temp_script_log_file"
+        
+        print_success "Script logs for imported scripts imported successfully ($record_count records)"
+    else
+        print_warning "No script logs found for imported scripts"
+    fi
+    
+    # Clean up temporary files
+    rm -f "$temp_script_log_file"
+}
+
+# Function to create test users
+create_test_users() {
+    print_status "Creating test users in staging database using Python script..."
+    
+    # Use the Python user setup script which properly hashes passwords
+    # Run it inside the Docker container where all dependencies are available
+    if [ -f "scripts/deployment/setup-staging-users.py" ]; then
+        print_status "Running Python user setup script inside Docker container..."
+        
+        # Find the manager container ID
+        manager_container_id=$(docker ps --filter "name=trends-earth-staging_manager" --format "{{.ID}}" | head -1)
+        
+        if [ -z "$manager_container_id" ]; then
+            print_error "Could not find trends-earth-staging_manager container"
+            exit 1
+        fi
+        
+        # Copy the script into the container
+        docker cp scripts/deployment/setup-staging-users.py "$manager_container_id:/opt/gef-api/setup-staging-users.py"
+        
+        # Run the script inside the container
+        docker exec "$manager_container_id" python setup-staging-users.py
+        
+        # Clean up the copied script
+        docker exec "$manager_container_id" rm -f /opt/gef-api/setup-staging-users.py
+        
+        print_success "Test users created successfully with proper password hashes"
+        print_status "Test user credentials:"
+        print_status "  Superadmin: $TEST_SUPERADMIN_EMAIL (password: $TEST_SUPERADMIN_PASSWORD)"
+        print_status "  Admin: $TEST_ADMIN_EMAIL (password: $TEST_ADMIN_PASSWORD)"  
+        print_status "  User: $TEST_USER_EMAIL (password: $TEST_USER_PASSWORD)"
+        
+        # Get the superadmin ID for script ownership updates
+        superadmin_id=$(PGPASSWORD="$STAGING_DB_PASSWORD" psql \
+            -h "$STAGING_DB_HOST" \
+            -p "$STAGING_DB_PORT" \
+            -U "$STAGING_DB_USER" \
+            -d "$STAGING_DB_NAME" \
+            -t -c "SELECT id FROM \"user\" WHERE email = '$TEST_SUPERADMIN_EMAIL' LIMIT 1;" | xargs)
+        
+        if [ -n "$superadmin_id" ] && [ "$superadmin_id" != "" ]; then
+            echo "$superadmin_id" > /tmp/superadmin_id.txt
+        fi
+    else
+        print_error "Python user setup script not found at scripts/deployment/setup-staging-users.py"
+        exit 1
     fi
 }
 
@@ -322,6 +467,9 @@ verify_setup() {
     print_status "  Total Users: $(echo $user_count | xargs)" 
     print_status "  Superadmin Users: $(echo $superadmin_count | xargs)"
     print_status "  Admin Users: $(echo $admin_count | xargs)"
+    
+    # Clean up temporary files
+    rm -f /tmp/superadmin_id.txt
 }
 
 # Main execution
@@ -338,9 +486,10 @@ main() {
     done
     
     create_staging_database
-    copy_recent_scripts
-    create_test_users
-    update_script_ownership
+    create_test_users                      # Create users first
+    copy_recent_scripts                    # Then import scripts with correct user_id
+    copy_recent_status_logs                # Import recent status logs for testing
+    copy_script_logs_for_imported_scripts  # Import script logs for the imported scripts
     verify_setup
     
     print_success "Staging database setup completed successfully!"

@@ -11,7 +11,7 @@ readme = "README.md"
 packages = [{ include = "gefapi" }]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.12"
+python = ">=3.9,<3.13"
 flask = "*"
 flask-cors = "*"
 flask-compress = "*"
@@ -42,9 +42,6 @@ pytest-html = "*"
 ruff = "*"
 mypy = "*"
 types-redis = "*"
-flask-restx = "*"
-apispec = { version = "*", extras = ["flask"] }
-marshmallow = "*"
 
 [tool.setuptools]
 packages = ["gefapi"]

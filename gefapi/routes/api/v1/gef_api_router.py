@@ -743,7 +743,7 @@ def delete_profile():
     exempt_when=is_rate_limiting_disabled,
 )  # Configurable rate limit for password recovery
 def recover_password(user):
-    """Revover password"""
+    """Recover password"""
     logger.info("[ROUTER]: Recovering password")
     try:
         user = UserService.recover_password(user)
@@ -865,8 +865,8 @@ def get_status_logs():
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 100))
         page = max(page, 1)
-        per_page = min(max(per_page, 1), 1000)
-    except Exception:
+        per_page = min(max(per_page, 1), 10000)
+    except ValueError:
         page, per_page = 1, 100
 
     try:

@@ -1,24 +1,26 @@
 services:
   migrate:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
-    build: .
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: migrate
     environment:
       PORT: 3000
     env_file:
       - staging.env
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
+    depends_on:
+      - postgres
     deploy:
       placement:
         constraints: [node.role == manager]
       restart_policy:
         condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
 
   manager:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: start
     environment:
       PORT: 3000
@@ -28,9 +30,7 @@ services:
     env_file:
       - staging.env
     volumes:
-      - /var/run/docker.sock:/tmp/docker.sock
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -42,16 +42,14 @@ services:
           memory: 400M
 
   worker:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: worker
     environment:
       PORT: 3000
     env_file:
-      - prod2.env
+      - staging.env
     volumes:
-      - /var/run/docker.sock:/tmp/docker.sock
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -63,16 +61,12 @@ services:
           memory: 400M
 
   beat:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api-staging
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: beat
     environment:
       PORT: 3000
     env_file:
       - staging.env
-    volumes:
-      - /var/run/docker.sock:/tmp/docker.sock
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
     networks:
       - backend
     deploy:
@@ -88,7 +82,7 @@ services:
     environment:
       POSTGRES_DB: ${STAGING_DB_NAME:-trendsearth_staging}
       POSTGRES_USER: ${STAGING_DB_USER:-trendsearth_staging}
-      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD}
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD:-postgres}
     ports:
       - target: 5432
         published: 5433
@@ -97,8 +91,6 @@ services:
     networks:
       - backend
     deploy:
-      placement:
-        constraints: [node.role == manager]
       resources:
         reservations:
           cpus: "0.25"
@@ -124,6 +116,7 @@ volumes:
 networks:
   backend:
     driver: overlay
+    attachable: true
     ipam:
       config:
         - subnet: ${DOCKER_SUBNET:-10.1.0.0/16}
