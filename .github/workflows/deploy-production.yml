@@ -357,9 +357,9 @@ jobs:
           
           # Test database connectivity through API
           echo "⏳ Testing basic API functionality..."
-          api_response=$(curl -f -s -w "HTTP_CODE:%{http_code}" http://127.0.0.1:3001/api/v1/auth/check-logged 2>&1)
+          api_response=$(curl -f -s -w "HTTP_CODE:%{http_code}" http://127.0.0.1:3001/api/v1/user/me 2>&1)
           if echo "$api_response" | grep -q "HTTP_CODE:200\|HTTP_CODE:401"; then
-            echo "✅ API responding correctly"
+            echo "✅ API responding correctly (authenticated endpoint returns 200 or 401 as expected)"
           else
             echo "❌ API not responding correctly: $api_response"
             exit 1
