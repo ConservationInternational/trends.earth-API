@@ -91,15 +91,6 @@ jobs:
           
           echo "✅ Currently on branch: $(git branch --show-current)"
           
-          echo "🔨 Building Docker image..."
-          else
-            echo "🔄 Checking out develop branch..."
-            git checkout develop
-            git reset --hard origin/develop
-          fi
-          
-          echo "✅ Currently on branch: $(git branch --show-current)"
-          
           # Configure insecure registry on server if needed
           echo "📋 Configuring insecure registry on server..."
           sudo mkdir -p /etc/docker
