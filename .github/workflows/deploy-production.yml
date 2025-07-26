@@ -140,11 +140,10 @@ jobs:
           echo "📝 Generating OpenAPI documentation..."
           mkdir -p gefapi/static
           
-          # Run the swagger generation inside the container
+          # Run the swagger generation and save to a temporary file first
           docker run --rm \
-            -v "$(pwd)/gefapi/static:/opt/gef-api/gefapi/static" \
             "$PRIMARY_TAG" \
-            sh -c "python3 generate_swagger.py > /opt/gef-api/gefapi/static/swagger.json" || {
+            sh -c "python3 generate_swagger.py" > gefapi/static/swagger.json || {
             echo "⚠️ API documentation generation failed, creating fallback..."
             # Create a minimal fallback swagger.json
             cat > gefapi/static/swagger.json <<-SWAGGER
@@ -159,6 +158,19 @@ jobs:
           }
           SWAGGER
           }
+          
+          echo "✅ Swagger JSON generated successfully"
+          
+          # Debug: Verify static files are present
+          echo "🔍 Verifying static files structure..."
+          echo "Contents of gefapi/static:"
+          ls -la gefapi/static/ || echo "No static directory found"
+          if [ -d "gefapi/static/swagger-ui" ]; then
+            echo "Contents of gefapi/static/swagger-ui:"
+            ls -la gefapi/static/swagger-ui/
+          else
+            echo "No swagger-ui directory found"
+          fi
           
           echo "✅ API documentation prepared"
 

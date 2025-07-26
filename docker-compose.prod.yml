@@ -26,6 +26,10 @@ services:
       - prod.env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: ./gefapi/static/swagger.json
+        target: /opt/gef-api/gefapi/static/swagger.json
+        read_only: true
     networks:
       - backend
     deploy:
