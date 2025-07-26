@@ -1089,12 +1089,12 @@ python3 scripts/download_swagger_ui.py
 
 #### Documentation Generation
 
-The OpenAPI specification (`swagger.json`) and Swagger UI assets are automatically generated and downloaded during deployment:
+The OpenAPI specification (`swagger.json`) and Swagger UI are now generated dynamically at runtime:
 
-**Automatic Updates:**
-- **On Deployment**: Generated during each staging/production deployment
-- **Real-time**: Always reflects the exact code being deployed
-- **Assets**: Swagger UI assets are downloaded and hosted locally
+**Dynamic Generation:**
+- **Real-time**: Always reflects the current code without needing regeneration
+- **On-demand**: Generated when accessing `/api/docs/` or `/swagger.json`
+- **Self-contained**: No external dependencies or static file management
 
 **Local Development:**
 ```bash
@@ -1104,22 +1104,13 @@ python3 scripts/download_swagger_ui.py
 # Force download (overwrite existing files)
 python3 scripts/download_swagger_ui.py --force
 
-# Generate swagger.json locally
-python3 generate_swagger.py > gefapi/static/swagger.json
-
 # View documentation at: http://localhost:5000/api/docs/
+# The swagger.json is generated automatically - no manual steps needed
 ```
 
-**Manual Generation:**
-If you need to generate documentation outside of deployment:
-```bash
-# Generate and commit documentation updates
-python3 scripts/download_swagger_ui.py --force
-python3 generate_swagger.py > gefapi/static/swagger.json
-```
-
-# Test generation script
-python3 test_swagger_generation.py
+**Accessing Documentation:**
+- **Interactive UI**: Visit `/api/docs/` for the full Swagger UI interface
+- **Raw Specification**: Visit `/swagger.json` for the OpenAPI spec JSON
 ```
 
 ### Code Structure

@@ -145,17 +145,10 @@ def swagger_spec():
     if os.path.exists(swagger_file_path):
         return send_from_directory(swagger_path, "swagger.json")
 
-    # Fallback: Generate swagger spec dynamically if file doesn't exist
+    # Fallback: Generate swagger spec dynamically using current app context
     try:
-        # Import generate_swagger module to create spec on-demand
-        import sys
-
-        generate_swagger_path = os.path.join(os.path.dirname(__file__), "..")
-        sys.path.insert(0, generate_swagger_path)
-
-        from generate_swagger import generate_openapi_spec
-
-        spec = generate_openapi_spec()
+        # Generate OpenAPI spec directly using current Flask app
+        spec = generate_openapi_spec_from_app()
         return jsonify(spec)
     except Exception as e:
         logger.error(f"Failed to generate swagger spec dynamically: {e}")
@@ -167,11 +160,188 @@ def swagger_spec():
                 "info": {
                     "title": "Trends.Earth API",
                     "version": "1.0.0",
-                    "description": "API documentation will be generated automatically",
+                    "description": (
+                        "API documentation temporarily unavailable - "
+                        "generation error occurred"
+                    ),
                 },
                 "paths": {},
             }
         )
+
+
+def generate_openapi_spec_from_app():
+    """Generate OpenAPI specification from current Flask app routes"""
+    import re
+
+    paths = {}
+
+    # Iterate through all routes in the current app
+    for rule in app.url_map.iter_rules():
+        # Skip static files and internal endpoints
+        if rule.endpoint in [
+            "static",
+            "health_check",
+            "swagger_spec",
+            "api_docs",
+            "swagger_ui_static",
+        ]:
+            continue
+
+        # Get the endpoint function
+        try:
+            endpoint_func = app.view_functions[rule.endpoint]
+        except KeyError:
+            continue
+
+        # Convert Flask route to OpenAPI path
+        path = str(rule.rule)
+        # Convert Flask path parameters to OpenAPI format
+        path = path.replace("<", "{").replace(">", "}")
+        # Remove parameter types
+        path = re.sub(r"\{[^:}]*:", "{", path)
+
+        try:
+            path_item = extract_route_info_from_app(rule, endpoint_func)
+            paths[path] = path_item
+        except Exception as e:
+            logger.warning(f"Could not process route {path}: {e}")
+            continue
+
+    # Build complete OpenAPI spec
+    spec = {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "Trends.Earth API",
+            "version": "1.0.0",
+            "description": (
+                "API for managing Scripts, Users, and Executions in Trends.Earth"
+            ),
+            "contact": {
+                "name": "Trends.Earth Team",
+                "email": "azvoleff@conservation.org",
+            },
+            "license": {"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
+        },
+        "servers": [{"url": "/api/v1", "description": "API v1"}],
+        "components": {
+            "securitySchemes": {
+                "bearerAuth": {
+                    "type": "http",
+                    "scheme": "bearer",
+                    "bearerFormat": "JWT",
+                }
+            },
+            "schemas": {
+                "Error": {
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "integer"},
+                        "detail": {"type": "string"},
+                    },
+                }
+            },
+        },
+        "paths": paths,
+    }
+
+    return spec
+
+
+def extract_route_info_from_app(rule, endpoint_func) -> dict[str, dict]:
+    """Extract information from a Flask route for current app"""
+    import inspect
+
+    methods = list(rule.methods - {"HEAD", "OPTIONS"})  # Remove default methods
+
+    # Get docstring
+    doc = inspect.getdoc(endpoint_func) or f"Endpoint: {rule.endpoint}"
+
+    # Extract summary and description
+    doc_lines = doc.split("\n")
+    summary = doc_lines[0] if doc_lines else rule.endpoint
+    description = "\n".join(doc_lines[1:]).strip() if len(doc_lines) > 1 else summary
+
+    # Basic operation info
+    operation = {
+        "summary": summary,
+        "description": description,
+        "responses": {
+            "200": {
+                "description": "Success",
+                "content": {"application/json": {"schema": {"type": "object"}}},
+            },
+            "400": {"description": "Bad Request"},
+            "401": {"description": "Unauthorized"},
+            "403": {"description": "Forbidden"},
+            "404": {"description": "Not Found"},
+            "500": {"description": "Internal Server Error"},
+        },
+    }
+
+    # Add authentication requirement for protected routes
+    if "jwt_required" in doc.lower() or "@jwt_required" in inspect.getsource(
+        endpoint_func
+    ):
+        operation["security"] = [{"bearerAuth": []}]
+
+    # Add parameters for path variables
+    parameters = []
+    try:
+        if hasattr(rule, "_converters") and rule._converters:
+            for key, converter_info in rule._converters.items():
+                try:
+                    # Handle different Flask versions
+                    if isinstance(converter_info, tuple) and len(converter_info) >= 3:
+                        converter, arguments, variable = converter_info[:3]
+                    else:
+                        variable = key
+                        converter = converter_info
+
+                    param_type = "string"  # default type
+
+                    # Determine parameter type based on converter
+                    if hasattr(converter, "__class__"):
+                        converter_name = converter.__class__.__name__
+                    else:
+                        converter_name = str(converter)
+
+                    if "Integer" in converter_name:
+                        param_type = "integer"
+                    elif "Float" in converter_name:
+                        param_type = "number"
+                    elif "UUID" in converter_name:
+                        param_type = "string"
+
+                    parameters.append(
+                        {
+                            "name": variable,
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": param_type},
+                            "description": f"Path parameter: {variable}",
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not process parameter {key}: {e}")
+                    continue
+    except Exception as e:
+        logger.warning(f"Could not process route parameters for {rule.rule}: {e}")
+
+    if parameters:
+        operation["parameters"] = parameters
+
+    # Create path item with methods
+    path_item = {}
+    for method in methods:
+        path_item[method.lower()] = operation.copy()
+
+        if method in ["POST", "PUT", "PATCH"]:
+            path_item[method.lower()]["requestBody"] = {
+                "content": {"application/json": {"schema": {"type": "object"}}}
+            }
+
+    return path_item
 
 
 @app.route("/static/swagger-ui/<path:filename>", methods=["GET"])

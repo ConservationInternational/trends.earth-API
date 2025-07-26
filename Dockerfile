@@ -30,7 +30,6 @@ RUN poetry config virtualenvs.create false && poetry install --no-interaction --
 COPY entrypoint.sh ./entrypoint.sh
 COPY main.py ./main.py
 COPY gunicorn.py ./gunicorn.py
-COPY generate_swagger.py ./generate_swagger.py
 COPY run_db_migrations.py ./run_db_migrations.py
 COPY ./migrations ./migrations
 COPY ./tests ./tests
