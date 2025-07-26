@@ -218,17 +218,17 @@ def get_current_rate_limits():
     try:
         from gefapi import limiter
         from gefapi.services import UserService
-        
+
         if not limiter.enabled or not RateLimitConfig.is_enabled():
             return {
                 "enabled": False,
                 "message": "Rate limiting is currently disabled",
                 "active_limits": []
             }
-        
+
         storage = limiter._storage
         active_limits = []
-        
+
         # Try to get all active rate limit keys from storage
         # The method to get keys varies by storage backend
         try:
@@ -238,43 +238,47 @@ def get_current_rate_limits():
                 pattern = "LIMITER/*"
                 keys = storage.storage.keys(pattern)
                 if isinstance(keys, (list, tuple)):
-                    rate_limit_keys = [key.decode() if isinstance(key, bytes) else key for key in keys]
+                    rate_limit_keys = [
+                        key.decode() if isinstance(key, bytes) else key for key in keys
+                    ]
                 else:
                     rate_limit_keys = []
             elif hasattr(storage, "storage") and hasattr(storage.storage, "scan_iter"):
                 # Redis storage with scan_iter method
-                rate_limit_keys = [key.decode() if isinstance(key, bytes) else key 
-                                 for key in storage.storage.scan_iter(match="LIMITER/*")]
+                rate_limit_keys = [
+                    key.decode() if isinstance(key, bytes) else key
+                    for key in storage.storage.scan_iter(match="LIMITER/*")
+                ]
             elif hasattr(storage, "storage") and isinstance(storage.storage, dict):
                 # Memory storage - direct dictionary access
                 rate_limit_keys = list(storage.storage.keys())
             else:
                 logger.warning("Unable to determine storage type for rate limit query")
                 rate_limit_keys = []
-                
+
         except Exception as e:
             logger.warning(f"Failed to get rate limit keys from storage: {e}")
             rate_limit_keys = []
-        
+
         # Process each rate limit key to extract user/IP information
         for key in rate_limit_keys:
             try:
                 # Rate limit keys typically follow patterns like:
                 # LIMITER/user:12345/60 (per minute limits)
-                # LIMITER/ip:192.168.1.1/3600 (per hour limits)  
+                # LIMITER/ip:192.168.1.1/3600 (per hour limits)
                 # LIMITER/auth:hash:ip/60 (auth endpoint limits)
-                
+
                 if not key.startswith("LIMITER/"):
                     continue
-                    
+
                 # Extract the rate limit key and time window
                 parts = key.split("/")
                 if len(parts) < 3:
                     continue
-                    
+
                 rate_key = parts[1]  # e.g., "user:12345", "ip:192.168.1.1"
                 time_window = parts[2]  # e.g., "60", "3600"
-                
+
                 # Get the current value/count from storage
                 try:
                     if hasattr(storage, "get"):
@@ -283,7 +287,7 @@ def get_current_rate_limits():
                         current_count = "unknown"
                 except Exception:
                     current_count = "unknown"
-                
+
                 # Parse the rate key to determine if it's a user or IP
                 limit_info = {
                     "key": rate_key,
@@ -293,12 +297,12 @@ def get_current_rate_limits():
                     "identifier": None,
                     "user_info": None
                 }
-                
+
                 if rate_key.startswith("user:"):
                     user_id = rate_key.split("user:")[1]
                     limit_info["type"] = "user"
                     limit_info["identifier"] = user_id
-                    
+
                     # Try to get user information
                     try:
                         user = UserService.get_user(user_id)
@@ -311,32 +315,32 @@ def get_current_rate_limits():
                             }
                     except Exception as e:
                         logger.debug(f"Failed to get user info for {user_id}: {e}")
-                        
+
                 elif rate_key.startswith("ip:"):
                     ip_address = rate_key.split("ip:")[1]
                     limit_info["type"] = "ip"
                     limit_info["identifier"] = ip_address
-                    
+
                 elif rate_key.startswith("auth:"):
                     # Auth keys are hashed, so we can't identify specific users
                     limit_info["type"] = "auth"
                     limit_info["identifier"] = rate_key
-                
+
                 # Only include limits that have a current count > 0 (actively limiting)
                 if isinstance(current_count, (int, float)) and current_count > 0:
                     active_limits.append(limit_info)
-                    
+
             except Exception as e:
                 logger.debug(f"Failed to process rate limit key {key}: {e}")
                 continue
-        
+
         return {
             "enabled": True,
             "storage_type": type(storage).__name__,
             "total_active_limits": len(active_limits),
             "active_limits": active_limits
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to query rate limits: {e}")
         return {

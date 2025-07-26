@@ -388,22 +388,22 @@ class TestRateLimitStatus:
             "/api/v1/rate-limit/status", headers=auth_headers_superadmin
         )
         assert status_response.status_code == 200
-        
+
         status_data = status_response.json["data"]
-        
+
         # If rate limiting is enabled, should show status
         if status_data["enabled"]:
             assert "total_active_limits" in status_data
             assert isinstance(status_data["total_active_limits"], int)
             assert status_data["total_active_limits"] >= 0
-            
+
             # Check structure of active limits
             for limit in status_data["active_limits"]:
                 assert "key" in limit
                 assert "type" in limit
                 assert "current_count" in limit
                 assert "time_window_seconds" in limit
-                
+
                 # If it's a user type limit, should have user info
                 if limit["type"] == "user" and limit.get("user_info"):
                     user_info = limit["user_info"]
@@ -419,19 +419,19 @@ class TestRateLimitStatus:
             from gefapi import limiter
             original_enabled = limiter.enabled
             limiter.enabled = False
-            
+
             try:
                 response = client.get(
                     "/api/v1/rate-limit/status", headers=auth_headers_superadmin
                 )
                 assert response.status_code == 200
-                
+
                 status_data = response.json["data"]
                 # Should indicate that rate limiting is disabled
                 assert status_data["enabled"] is False
                 assert "message" in status_data
                 assert "disabled" in status_data["message"].lower()
-                
+
             finally:
                 # Restore original state
                 limiter.enabled = original_enabled
@@ -442,12 +442,12 @@ class TestRateLimitStatus:
         """Test that status shows empty when no active rate limits"""
         # Reset all rate limits first
         reset_rate_limits()
-        
+
         response = client.get(
             "/api/v1/rate-limit/status", headers=auth_headers_superadmin
         )
         assert response.status_code == 200
-        
+
         status_data = response.json["data"]
         if status_data["enabled"]:
             # Should show 0 or very few active limits after reset

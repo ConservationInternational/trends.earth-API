@@ -907,14 +907,14 @@ def get_rate_limit_status():
 
     try:
         from gefapi.utils.rate_limiting import get_current_rate_limits
-        
+
         rate_limit_status = get_current_rate_limits()
-        
+
         return jsonify({
             "message": "Rate limiting status retrieved successfully",
             "data": rate_limit_status
         }), 200
-        
+
     except Exception as e:
         app.logger.error(f"Failed to get rate limit status: {e}")
         return jsonify({"error": "Failed to retrieve rate limiting status"}), 500
