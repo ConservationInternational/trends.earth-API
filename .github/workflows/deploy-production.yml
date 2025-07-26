@@ -144,7 +144,7 @@ jobs:
           docker run --rm \
             -v "$(pwd)/gefapi/static:/app/gefapi/static" \
             "$PRIMARY_TAG" \
-            python3 generate_swagger.py > /app/gefapi/static/swagger.json || {
+            sh -c "python3 generate_swagger.py > /app/gefapi/static/swagger.json" || {
             echo "⚠️ API documentation generation failed, creating fallback..."
             # Create a minimal fallback swagger.json
             cat > gefapi/static/swagger.json <<-SWAGGER
