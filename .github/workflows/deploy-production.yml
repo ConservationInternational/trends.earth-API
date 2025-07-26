@@ -193,39 +193,8 @@ jobs:
           export DOCKER_GROUP_ID=$(getent group docker | cut -d: -f3)
           export DOCKER_REGISTRY="${{ secrets.DOCKER_REGISTRY }}"
           
-          # Deploy with Docker Swarm
-          echo "📦 Deploying services..."
-          
-          # Force remove existing stack and wait for complete cleanup
-          echo "🔄 Ensuring clean deployment environment..."
-          docker stack rm trends-earth-prod || true
-          
-          # Wait for all services to be completely removed
-          echo "⏳ Waiting for stack cleanup to complete..."
-          timeout=60
-          while [ $timeout -gt 0 ]; do
-            if ! docker service ls --format "{{.Name}}" | grep -q "trends-earth-prod"; then
-              echo "✅ Stack cleanup completed"
-              break
-            fi
-            echo "⏳ Waiting for services to stop... ($timeout seconds remaining)"
-            sleep 5
-            timeout=$((timeout - 5))
-          done
-          
-          # Additional cleanup - remove any lingering containers
-          echo "🧹 Cleaning up any remaining containers..."
-          docker ps -a --filter "name=trends-earth-prod" --format "{{.Names}}" | xargs -r docker rm -f || true
-          
-          # Remove any existing networks to ensure clean state
-          echo "🌐 Cleaning up overlay networks..."
-          if docker network ls --format "{{.Name}}" | grep -q "trends-earth-prod_backend"; then
-            echo "Removing existing network trends-earth-prod_backend..."
-            # Force remove network even if it has active endpoints
-            docker network rm trends-earth-prod_backend --force || true
-            echo "✅ Network cleanup completed"
-            sleep 3
-          fi
+          # Deploy with Docker Swarm using rolling updates
+          echo "📦 Deploying services with rolling updates..."
           
           # Ensure we're using the latest compose file
           echo "📋 Verifying compose file..."
@@ -234,36 +203,61 @@ jobs:
             exit 1
           fi
           
-          # Deploy fresh stack
-          echo "🚀 Deploying fresh stack..."
+          # Deploy stack - this will perform rolling updates automatically
+          echo "🚀 Deploying stack with rolling updates..."
           docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
           
-          # Wait for services to be ready
-          echo "⏳ Waiting for services to be ready..."
+          # Wait for rolling update to complete
+          echo "⏳ Waiting for rolling update to complete..."
           
-          # Check that all services are running with desired replicas
-          echo "📊 Waiting for all services to be running..."
-          max_wait=120
+          # Monitor services for successful deployment
+          echo "📊 Monitoring service deployment..."
+          max_wait=180
           wait_time=0
           
           while [ $wait_time -lt $max_wait ]; do
-            # Check if all services have desired replicas running
-            pending_services=$(docker service ls --filter "name=trends-earth-prod" --format "table {{.Name}}\t{{.Replicas}}" | grep -v "1/1" | wc -l)
+            # Get the current state of services
+            services_status=$(docker service ls --filter "name=trends-earth-prod" --format "{{.Name}}\t{{.Replicas}}")
             
-            # Migrate when running correctly will run once then exit, so we expect 1 service to not be replicated
-            if [ $pending_services -eq 2 ]; then  # Only header line and migrate line should remain if all other services are 1/1
-              echo "✅ All services are running"
-              break
+            # Check if all services are converged (not updating)
+            updating_services=$(docker service ls --filter "name=trends-earth-prod" --format "{{.Name}}\t{{.UpdateStatus}}" | grep -v "completed\|paused\|" | wc -l)
+            
+            if [ "$updating_services" -eq 0 ]; then
+              # Check if all desired replicas are running
+              pending_services=$(echo "$services_status" | grep -v "1/1" | grep -v "migrate" | wc -l)
+              
+              if [ "$pending_services" -eq 0 ]; then
+                echo "✅ All services successfully deployed and running"
+                break
+              else
+                echo "⏳ Waiting for services to reach desired state..."
+              fi
+            else
+              echo "⏳ Rolling update in progress for $updating_services service(s)..."
             fi
             
-            echo "⏳ Waiting for services to be ready... ($wait_time/$max_wait seconds)"
-            docker service ls --filter "name=trends-earth-prod"
+            echo "Current service status:"
+            echo "$services_status"
+            
             sleep 10
             wait_time=$((wait_time + 10))
           done
           
           if [ $wait_time -ge $max_wait ]; then
-            echo "⚠️ Some services may not be fully ready after $max_wait seconds"
+            echo "⚠️ Rolling update did not complete within $max_wait seconds"
+            echo "🔍 Current service status:"
+            docker service ls --filter "name=trends-earth-prod" --format "table {{.Name}}\t{{.Replicas}}\t{{.UpdateStatus}}"
+            
+            echo "🔍 Checking for failed services..."
+            failed_services=$(docker service ls --filter "name=trends-earth-prod" --format "{{.Name}}\t{{.UpdateStatus}}" | grep "paused\|rollback_paused" || true)
+            
+            if [ -n "$failed_services" ]; then
+              echo "❌ Some services failed to update:"
+              echo "$failed_services"
+              echo "🔄 Automatic rollback will be handled by health check step"
+            else
+              echo "⚠️ Services may still be updating - proceeding to health check"
+            fi
           fi
           
           # Check service status

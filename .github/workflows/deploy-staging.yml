@@ -200,53 +200,72 @@ jobs:
           export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
           export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
           
-          # Deploy with Docker Swarm
-          echo "📦 Deploying services..."
-          
-          # Force remove existing stack and wait for complete cleanup
-          echo "🔄 Ensuring clean deployment environment..."
-          docker stack rm trends-earth-staging || true
-          
-          # Wait for all services to be completely removed
-          echo "⏳ Waiting for stack cleanup to complete..."
-          timeout=60
-          while [ $timeout -gt 0 ]; do
-            if ! docker service ls --format "{{.Name}}" | grep -q "trends-earth-staging"; then
-              echo "✅ Stack cleanup completed"
-              break
-            fi
-            echo "⏳ Waiting for services to stop... ($timeout seconds remaining)"
-            sleep 5
-            timeout=$((timeout - 5))
-          done
-          
-          # Additional cleanup - remove any lingering containers
-          echo "🧹 Cleaning up any remaining containers..."
-          docker ps -a --filter "name=trends-earth-staging" --format "{{.Names}}" | xargs -r docker rm -f || true
-          
-          # Remove any existing networks to ensure clean state
-          echo "🌐 Cleaning up overlay networks..."
-          if docker network ls --format "{{.Name}}" | grep -q "trends-earth-staging_backend"; then
-            echo "Removing existing network trends-earth-staging_backend..."
-            # Force remove network even if it has active endpoints
-            docker network rm trends-earth-staging_backend --force || true
-            echo "✅ Network cleanup completed"
-            sleep 3
-          fi
+          # Deploy with Docker Swarm using rolling updates
+          echo "📦 Deploying services with rolling updates..."
           
           # Ensure we're using the latest compose file
-          echo "📋 Verifying compose file..."
+          echo "� Verifying compose file..."
           if [ ! -f "${{ env.COMPOSE_FILE }}" ]; then
             echo "❌ Compose file not found: ${{ env.COMPOSE_FILE }}"
             exit 1
           fi
           
-          # Deploy fresh stack
-          echo "🚀 Deploying fresh stack..."
+          # Deploy stack - this will perform rolling updates automatically
+          echo "🚀 Deploying stack with rolling updates..."
           docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-staging
           
-          # Wait for services to be ready
-          echo "⏳ Waiting for services to be ready..."
+          # Wait for rolling update to complete
+          echo "⏳ Waiting for rolling update to complete..."
+          
+          # Monitor services for successful deployment
+          echo "📊 Monitoring service deployment..."
+          max_wait=180
+          wait_time=0
+          
+          while [ $wait_time -lt $max_wait ]; do
+            # Get the current state of services
+            services_status=$(docker service ls --filter "name=trends-earth-staging" --format "{{.Name}}\t{{.Replicas}}")
+            
+            # Check if all services are converged (not updating)
+            updating_services=$(docker service ls --filter "name=trends-earth-staging" --format "{{.Name}}\t{{.UpdateStatus}}" | grep -v "completed\|paused\|" | wc -l)
+            
+            if [ "$updating_services" -eq 0 ]; then
+              # Check if all desired replicas are running
+              pending_services=$(echo "$services_status" | grep -v "1/1" | grep -v "migrate" | wc -l)
+              
+              if [ "$pending_services" -eq 0 ]; then
+                echo "✅ All services successfully deployed and running"
+                break
+              else
+                echo "⏳ Waiting for services to reach desired state..."
+              fi
+            else
+              echo "⏳ Rolling update in progress for $updating_services service(s)..."
+            fi
+            
+            echo "Current service status:"
+            echo "$services_status"
+            
+            sleep 10
+            wait_time=$((wait_time + 10))
+          done
+          
+          if [ $wait_time -ge $max_wait ]; then
+            echo "⚠️ Rolling update did not complete within $max_wait seconds"
+            echo "🔍 Current service status:"
+            docker service ls --filter "name=trends-earth-staging" --format "table {{.Name}}\t{{.Replicas}}\t{{.UpdateStatus}}"
+            
+            echo "� Checking for failed services..."
+            failed_services=$(docker service ls --filter "name=trends-earth-staging" --format "{{.Name}}\t{{.UpdateStatus}}" | grep "paused\|rollback_paused" || true)
+            
+            if [ -n "$failed_services" ]; then
+              echo "❌ Some services failed to update:"
+              echo "$failed_services"
+              echo "🔄 Automatic rollback will be handled by health check step"
+            else
+              echo "⚠️ Services may still be updating - proceeding to health check"
+            fi
+          fi
           
           # Check that all services are running with desired replicas
           echo "📊 Waiting for all services to be running..."
