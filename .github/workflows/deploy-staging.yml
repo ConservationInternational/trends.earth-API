@@ -91,27 +91,6 @@ jobs:
           
           echo "✅ Currently on branch: $(git branch --show-current)"
           
-          # Generate API documentation
-          echo "📝 Generating OpenAPI documentation..."
-          mkdir -p gefapi/static
-          python3 generate_swagger.py > gefapi/static/swagger.json || {
-            echo "⚠️ API documentation generation failed, but continuing with deployment..."
-            # Create a minimal fallback swagger.json
-            cat > gefapi/static/swagger.json <<-SWAGGER
-          {
-            "openapi": "3.0.0",
-            "info": {
-              "title": "Trends.Earth API",
-              "version": "1.0.0",
-              "description": "API documentation temporarily unavailable"
-            },
-            "paths": {}
-          }
-          SWAGGER
-          }
-          
-          echo "✅ API documentation prepared"
-          
           echo "🔨 Building Docker image..."
           else
             echo "🔄 Checking out develop branch..."
@@ -179,6 +158,32 @@ jobs:
           done
           
           echo "✅ Image build and push completed!"
+          
+          # Generate API documentation using the built container
+          echo "📝 Generating OpenAPI documentation..."
+          mkdir -p gefapi/static
+          
+          # Run the swagger generation inside the container
+          docker run --rm \
+            -v "$(pwd)/gefapi/static:/app/gefapi/static" \
+            "$PRIMARY_TAG" \
+            python3 generate_swagger.py > /app/gefapi/static/swagger.json || {
+            echo "⚠️ API documentation generation failed, creating fallback..."
+            # Create a minimal fallback swagger.json
+            cat > gefapi/static/swagger.json <<-SWAGGER
+          {
+            "openapi": "3.0.0",
+            "info": {
+              "title": "Trends.Earth API",
+              "version": "1.0.0",
+              "description": "API documentation temporarily unavailable"
+            },
+            "paths": {}
+          }
+          SWAGGER
+          }
+          
+          echo "✅ API documentation prepared"
 
     - name: Deploy to EC2 Staging
       uses: appleboy/ssh-action@v1.0.0
