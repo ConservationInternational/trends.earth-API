@@ -16,22 +16,27 @@ services:
 
   manager:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
-    command: ["sh", "-c", "echo 'Manager container started' && echo 'Testing worker command...' && timeout 10s celery -A gefapi.celery worker -E --loglevel=DEBUG || echo 'Worker command test completed' && echo 'Now testing start command...' && exec gunicorn -c gunicorn.py gefapi.wsgi:application"]
+    command: start
     environment:
       PORT: 3000
       PYTHONUNBUFFERED: "1"
-    # Remove port mapping temporarily to test
-    # ports:
-    #   - target: 3000
-    #     published: 3001
-    #     protocol: tcp
-    #     mode: ingress
+    ports:
+      - target: 3000
+        published: 3001
+        protocol: tcp
+        mode: ingress
     env_file:
       - prod.env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/api-health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     deploy:
       placement:
         constraints: [node.role == manager]
