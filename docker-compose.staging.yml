@@ -8,8 +8,6 @@ services:
       - staging.env
     networks:
       - backend
-    depends_on:
-      - postgres
     deploy:
       placement:
         constraints: [node.role == manager]
@@ -98,8 +96,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - target: 6379
     volumes:
       # Persistent Redis data storage - retains data across deployments
       - redis_staging_data:/data
