@@ -31,12 +31,13 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/api-health').read()"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # Temporarily disable healthcheck to test if it's preventing startup
+    # healthcheck:
+    #   test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/api-health').read()"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
     deploy:
       placement:
         constraints: [node.role == manager]
