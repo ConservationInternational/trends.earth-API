@@ -1,17 +1,31 @@
 #!/bin/bash
 set -e
 
-# Simple Docker socket check - containers now run as root for guaranteed access
-if [ -e /var/run/docker.sock ]; then
-    if [ -w /var/run/docker.sock ]; then
-        echo "✅ Docker socket is accessible"
+# Docker socket check - only needed for services that require Docker access
+check_docker_access() {
+    if [ -e /var/run/docker.sock ]; then
+        if [ -w /var/run/docker.sock ]; then
+            echo "✅ Docker socket is accessible"
+        else
+            echo "⚠️ Docker socket is not writable"
+            echo "Socket permissions: $(ls -la /var/run/docker.sock)"
+        fi
     else
-        echo "⚠️ Docker socket is not writable (this should not happen with root user)"
-        echo "Socket permissions: $(ls -la /var/run/docker.sock)"
+        echo "⚠️ Docker socket not found at /var/run/docker.sock"
+        echo "Container will not be able to execute Docker operations"
     fi
-else
-    echo "⚠️ Docker socket not found at /var/run/docker.sock"
-    echo "Container will not be able to execute scripts that require Docker"
+}
+
+# Only check Docker access for services that need it
+if [ "$1" = "worker" ] && [ "$CELERY_WORKER_QUEUES" = "build" ]; then
+    echo "Build worker detected - checking Docker access..."
+    check_docker_access
+elif [ "$1" = "worker" ] && [ -z "$CELERY_WORKER_QUEUES" ]; then
+    # Default worker in development might need Docker access
+    if [ "$ENVIRONMENT" = "dev" ]; then
+        echo "Development worker - checking Docker access..."
+        check_docker_access
+    fi
 fi
 
 echo "---"
@@ -59,7 +73,14 @@ case "$1" in
         ;;
     worker)
         echo "Running celery"
-        exec celery -A gefapi.celery worker -E --loglevel=DEBUG
+        # Check for specific queue configuration
+        if [ -n "$CELERY_WORKER_QUEUES" ]; then
+            echo "Starting worker with queues: $CELERY_WORKER_QUEUES"
+            exec celery -A gefapi.celery worker -Q "$CELERY_WORKER_QUEUES" -E --loglevel=DEBUG
+        else
+            echo "Starting worker with default queues"
+            exec celery -A gefapi.celery worker -E --loglevel=DEBUG
+        fi
         ;;
     beat)
         echo "Running celery beat"

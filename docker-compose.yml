@@ -3,9 +3,6 @@ services:
     image: trendsearth-api
     build: .
     command: start
-    user: root
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -20,7 +17,25 @@ services:
     image: trendsearth-api
     build: .
     command: worker
+    environment:
+      CELERY_WORKER_QUEUES: default
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 400M
+
+  builder:
+    image: trendsearth-api
+    build: .
+    command: worker
     user: root
+    environment:
+      CELERY_WORKER_QUEUES: build
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
@@ -37,13 +52,10 @@ services:
     image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
     command: beat
-    user: root
     environment:
       PORT: 3000
     env_file:
       - prod.env
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:

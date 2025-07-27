@@ -20,7 +20,6 @@ services:
   manager:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: start
-    user: root
     environment:
       PORT: 3000
     ports:
@@ -28,8 +27,6 @@ services:
         published: 3002
     env_file:
       - staging.env
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -43,13 +40,12 @@ services:
   worker:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: worker
-    user: root
     environment:
       PORT: 3000
+      # Only handle execution tasks, not build tasks
+      CELERY_WORKER_QUEUES: default
     env_file:
       - staging.env
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -63,13 +59,10 @@ services:
   beat:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: beat
-    user: root
     environment:
       PORT: 3000
     env_file:
       - staging.env
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -79,6 +72,29 @@ services:
         reservations:
           cpus: "0.25"
           memory: 400M
+
+  builder:
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
+    command: worker
+    user: root
+    environment:
+      PORT: 3000
+      # Only handle build tasks that require Docker socket access
+      CELERY_WORKER_QUEUES: build
+    env_file:
+      - staging.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      replicas: 1
+      resources:
+        reservations:
+          cpus: "0.5"
+          memory: 800M
 
   postgres:
     image: postgres:16

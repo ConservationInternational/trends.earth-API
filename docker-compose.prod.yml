@@ -17,7 +17,6 @@ services:
   manager:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
     command: start
-    user: root
     environment:
       PORT: 3000
     ports:
@@ -25,8 +24,6 @@ services:
         published: 3001
     env_file:
       - prod.env
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -59,13 +56,12 @@ services:
   worker:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
     command: worker
-    user: root
     environment:
       PORT: 3000
+      # Only handle execution tasks, not build tasks
+      CELERY_WORKER_QUEUES: default
     env_file:
       - prod.env
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -96,13 +92,10 @@ services:
   beat:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
     command: beat
-    user: root
     environment:
       PORT: 3000
     env_file:
       - prod.env
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:
@@ -119,6 +112,46 @@ services:
         failure_action: rollback # Auto-rollback on failure
         monitor: 60s            # Monitor new containers for 60s
         max_failure_ratio: 0.3  # Allow 30% failure rate before rollback
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        failure_action: pause
+        monitor: 60s
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+
+  builder:
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
+    command: worker
+    user: root
+    environment:
+      PORT: 3000
+      # Only handle build tasks that require Docker socket access
+      CELERY_WORKER_QUEUES: build
+    env_file:
+      - prod.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      replicas: 1
+      resources:
+        reservations:
+          cpus: "0.5"
+          memory: 800M
+      # Rolling update configuration for builder
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
       rollback_config:
         parallelism: 1
         delay: 0s

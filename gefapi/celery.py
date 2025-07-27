@@ -23,6 +23,12 @@ def make_celery(app):
     )
     celery.conf.update(app.config)
 
+    # Configure task routing - build tasks go to build queue
+    celery.conf.task_routes = {
+        "gefapi.services.docker_service.docker_build": {"queue": "build"},
+        # All other tasks use default queue
+    }
+
     # Configure periodic tasks
     celery.conf.beat_schedule = {
         "collect-system-status": {

@@ -68,11 +68,34 @@ services:
     image: trendsearth_api
     build: .
     command: ["worker"]
+    environment:
+      ENVIRONMENT: dev
+      DEBUG: "True"
+      TESTING: "true"
+      CELERY_WORKER_QUEUES: default
+    env_file:
+      - develop.env
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+    networks:
+      - backend
+      - db
+    depends_on:
+      - migrate
+      - database
+      - redis
+
+  builder:
+    image: trendsearth_api
+    build: .
+    command: ["worker"]
     user: root
     environment:
       ENVIRONMENT: dev
       DEBUG: "True"
       TESTING: "true"
+      CELERY_WORKER_QUEUES: build
     env_file:
       - develop.env
     volumes:

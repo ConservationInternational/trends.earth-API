@@ -2,7 +2,6 @@ services:
   admin:
     image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
-    user: root
     environment:
       PORT: 3000
     ports:
@@ -10,6 +9,22 @@ services:
     env_file:
       - prod.env
     command: start
+    volumes:
+      - ./gefapi:/opt/gef-api/gefapi
+      - ./migrations:/opt/gef-api/migrations
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+  builder:
+    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
+    build: .
+    command: worker
+    user: root
+    environment:
+      CELERY_WORKER_QUEUES: build
+    env_file:
+      - prod.env
     volumes:
       - ./gefapi:/opt/gef-api/gefapi
       - ./migrations:/opt/gef-api/migrations
