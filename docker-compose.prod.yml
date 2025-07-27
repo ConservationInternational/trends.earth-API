@@ -16,7 +16,7 @@ services:
 
   manager:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
-    command: start
+    command: ["gunicorn", "-c", "gunicorn.py", "gefapi.wsgi:application"]
     environment:
       PORT: 3000
       PYTHONUNBUFFERED: "1"
