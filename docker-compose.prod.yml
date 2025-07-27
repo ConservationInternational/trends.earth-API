@@ -16,7 +16,7 @@ services:
 
   manager:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
-    command: ["gunicorn", "-c", "gunicorn.py", "gefapi.wsgi:application"]
+    command: ["sh", "-c", "echo 'Container starting...' && whoami && pwd && ls -la && echo 'Testing gunicorn availability...' && which gunicorn && echo 'Gunicorn found, testing import...' && python -c 'import gefapi.wsgi; print(\"WSGI import works\")' && echo 'Starting gunicorn...' && exec gunicorn -c gunicorn.py gefapi.wsgi:application"]
     environment:
       PORT: 3000
       PYTHONUNBUFFERED: "1"
