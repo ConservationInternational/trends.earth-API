@@ -78,7 +78,79 @@ def create_script():
 @endpoints.route("/script", strict_slashes=False, methods=["GET"])
 @jwt_required()
 def get_scripts():
-    """Get all scripts"""
+    """
+    Retrieve all scripts with flexible filtering, sorting, and pagination.
+
+    **Authentication**: JWT token required
+    **Access**: Returns scripts visible to the current user based on permissions
+
+    **Query Parameters**:
+    - `include`: Comma-separated list of additional fields to include in response
+    - `exclude`: Comma-separated list of fields to exclude from response
+    - `filter`: Search/filter scripts by name, description, or other attributes
+    - `sort`: Sort field (prefix with '-' for descending, e.g., '-created_at')
+    - `page`: Page number for pagination (triggers pagination when provided)
+    - `per_page`: Items per page (1-100, default: 20, max without pagination: 2000)
+
+    **Response Schema (without pagination)**:
+    ```json
+    {
+      "data": [
+        {
+          "id": "script-123",
+          "slug": "my-analysis-script",
+          "name": "Land Use Analysis",
+          "description": "Analyzes land use changes over time",
+          "status": "PUBLISHED",
+          "created_at": "2025-01-15T10:30:00Z",
+          "updated_at": "2025-01-15T10:30:00Z",
+          "user_id": "user-456",
+          "cpu": 2,
+          "memory": 4096,
+          "logs": false
+        }
+      ]
+    }
+    ```
+
+    **Response Schema (with pagination)**:
+    ```json
+    {
+      "data": [...],
+      "page": 1,
+      "per_page": 20,
+      "total": 150
+    }
+    ```
+
+    **Script Status Values**:
+    - `UPLOADED`: Script uploaded but not yet published
+    - `PUBLISHED`: Script is available for execution
+    - `UNPUBLISHED`: Script was published but later unpublished
+    - `FAILED`: Script validation or processing failed
+
+    **Filtering Examples**:
+    - `?filter=land` - Find scripts with "land" in name or description
+    - `?filter=status:PUBLISHED` - Find only published scripts
+    - `?filter=user:john@example.com` - Find scripts by specific user
+
+    **Sorting Examples**:
+    - `?sort=name` - Sort by name ascending
+    - `?sort=-created_at` - Sort by creation date descending
+    - `?sort=status` - Sort by status
+
+    **Field Control Examples**:
+    - `?include=executions_count` - Include execution statistics
+    - `?exclude=description,logs` - Exclude verbose fields
+
+    **Pagination Control**:
+    - Without pagination: Returns up to 2000 scripts in single response
+    - With pagination: `?page=1&per_page=20` - Returns paginated results
+
+    **Error Responses**:
+    - `401 Unauthorized`: JWT token required
+    - `500 Internal Server Error`: Failed to retrieve scripts
+    """
     logger.info("[ROUTER]: Getting all scripts")
 
     # Parse query parameters
@@ -282,7 +354,68 @@ def delete_script(script):
 )  # Rate limit script execution
 @jwt_required()
 def run_script(script):
-    """Run a script"""
+    """
+    Execute a script with provided parameters.
+
+    **Rate Limited**: Subject to execution limits (configurable per minute/hour)
+    **Authentication**: JWT token required
+    **Access**: Script must be published and user must have execution permissions
+
+    **Request Schema**:
+    ```json
+    {
+      "param1": "value1",
+      "param2": 123,
+      "param3": true,
+      "nested_param": {
+        "sub_param": "nested_value"
+      }
+    }
+    ```
+
+    **Path Parameters**:
+    - `script`: Script identifier/name to execute
+
+    **Request Body**: JSON object containing script parameters
+    - Parameters vary by script - see individual script documentation
+    - Can include nested objects and arrays
+    - Boolean, string, and numeric values supported
+
+    **Success Response Schema**:
+    ```json
+    {
+      "data": {
+        "id": "exec_123456",
+        "script_id": "my-script",
+        "status": "PENDING",
+        "params": {
+          "param1": "value1",
+          "param2": 123
+        },
+        "user_id": "user_789",
+        "created_at": "2025-01-15T10:30:00Z",
+        "updated_at": "2025-01-15T10:30:00Z",
+        "start_time": null,
+        "end_time": null,
+        "results": null
+      }
+    }
+    ```
+
+    **Execution States**:
+    - `PENDING`: Execution queued, waiting to start
+    - `RUNNING`: Currently executing
+    - `SUCCESS`: Completed successfully
+    - `FAILED`: Execution failed with error
+    - `CANCELLED`: Execution was cancelled
+
+    **Error Responses**:
+    - `400 Bad Request`: Invalid parameters or script not in valid state
+    - `401 Unauthorized`: JWT token required
+    - `404 Not Found`: Script does not exist
+    - `429 Too Many Requests`: Execution rate limit exceeded
+    - `500 Internal Server Error`: Execution creation failed
+    """
     logger.info("[ROUTER]: Running script: " + script)
     user = current_user
     try:
@@ -307,7 +440,84 @@ def run_script(script):
 @endpoints.route("/execution/user", strict_slashes=False, methods=["GET"])
 @jwt_required()
 def get_user_executions():
-    """Get executions for the current user"""
+    """
+    Retrieve executions for the current authenticated user.
+
+    **Authentication**: JWT token required
+    **Access**: Returns only executions belonging to the current user
+    **Scope**: User-specific endpoint - users can only see their own executions
+
+    **Query Parameters**:
+    - `include`: Comma-separated list of additional fields to include in response
+    - `exclude`: Comma-separated list of fields to exclude from response
+    - `filter`: Search/filter executions by script name, status, or other attributes
+    - `sort`: Sort field (prefix with '-' for descending, e.g., '-created_at',
+      '-updated_at')
+    - `page`: Page number for pagination (triggers pagination when provided)
+    - `per_page`: Items per page (1-100, default: 20)
+
+    **Response Schema (without pagination)**:
+    ```json
+    {
+      "data": [
+        {
+          "id": "exec-123",
+          "script_id": "script-456",
+          "status": "SUCCESS",
+          "params": {
+            "region": "africa",
+            "year_start": 2020,
+            "year_end": 2023
+          },
+          "user_id": "user-789",
+          "created_at": "2025-01-15T10:30:00Z",
+          "updated_at": "2025-01-15T11:45:00Z",
+          "start_time": "2025-01-15T10:31:00Z",
+          "end_time": "2025-01-15T11:45:00Z",
+          "results": {
+            "output_file": "analysis_results.json",
+            "summary": "Processing completed successfully"
+          }
+        }
+      ]
+    }
+    ```
+
+    **Response Schema (with pagination)**:
+    ```json
+    {
+      "data": [...],
+      "page": 1,
+      "per_page": 20,
+      "total": 45
+    }
+    ```
+
+    **Execution Status Values**:
+    - `PENDING`: Execution queued, waiting to start
+    - `RUNNING`: Currently executing
+    - `SUCCESS`: Completed successfully with results
+    - `FAILED`: Execution failed with error
+    - `CANCELLED`: Execution was cancelled before completion
+
+    **Filtering Examples**:
+    - `?filter=land-analysis` - Find executions related to "land-analysis" script
+    - `?filter=status:SUCCESS` - Find only successful executions
+    - `?filter=2024` - Find executions from 2024 (searches in timestamps)
+
+    **Sorting Examples**:
+    - `?sort=created_at` - Sort by creation time ascending
+    - `?sort=-updated_at` - Sort by last update descending (most recent first)
+    - `?sort=status` - Sort by execution status
+
+    **Field Control Examples**:
+    - `?include=logs,script_info` - Include execution logs and script details
+    - `?exclude=params,results` - Exclude verbose parameter and result data
+
+    **Error Responses**:
+    - `401 Unauthorized`: JWT token required
+    - `500 Internal Server Error`: Failed to retrieve executions
+    """
     logger.info(f"[ROUTER]: Getting executions for user: {current_user.email}")
     include = request.args.get("include")
     include = include.split(",") if include else []
@@ -370,7 +580,92 @@ def get_user_executions():
 @endpoints.route("/execution", strict_slashes=False, methods=["GET"])
 @jwt_required()
 def get_executions():
-    """Get all executions"""
+    """
+    Retrieve all executions with admin filtering and cross-user visibility.
+
+    **Authentication**: JWT token required
+    **Access**: Admin users can see all executions, regular users see only their own
+    **Admin Features**: ADMIN+ users can filter by user_id to view other users'
+      executions
+
+    **Query Parameters**:
+    - `user_id`: Filter executions by specific user ID (admin-only feature)
+    - `updated_at`: Filter executions updated after specific timestamp (ISO 8601)
+    - `status`: Filter by execution status (PENDING, RUNNING, SUCCESS, FAILED,
+      CANCELLED)
+    - `include`: Comma-separated list of additional fields to include
+    - `exclude`: Comma-separated list of fields to exclude
+    - `filter`: General search/filter across execution attributes
+    - `sort`: Sort field (prefix with '-' for descending, e.g., '-updated_at')
+    - `page`: Page number for pagination (triggers pagination when provided)
+    - `per_page`: Items per page (1-100, default: 20, max without pagination:
+      varies by permission)
+
+    **Response Schema (without pagination)**:
+    ```json
+    {
+      "data": [
+        {
+          "id": "exec-123",
+          "script_id": "script-456",
+          "status": "SUCCESS",
+          "params": {
+            "region": "africa",
+            "analysis_type": "vegetation_change"
+          },
+          "user_id": "user-789",
+          "created_at": "2025-01-15T10:30:00Z",
+          "updated_at": "2025-01-15T11:45:00Z",
+          "start_time": "2025-01-15T10:31:00Z",
+          "end_time": "2025-01-15T11:45:00Z",
+          "results": {
+            "analysis_complete": true,
+            "output_files": ["vegetation_2023.tif", "change_summary.json"]
+          }
+        }
+      ]
+    }
+    ```
+
+    **Response Schema (with pagination)**:
+    ```json
+    {
+      "data": [...],
+      "page": 1,
+      "per_page": 20,
+      "total": 1250
+    }
+    ```
+
+    **Admin Query Examples**:
+    - `?user_id=123` - View executions for specific user (admin only)
+    - `?status=FAILED` - Find all failed executions across system
+    - `?updated_at=2025-01-15T00:00:00Z` - Find executions updated since date
+
+    **Regular User Behavior**:
+    - Non-admin users: Only see their own executions regardless of user_id parameter
+    - Admin users: Can see all executions, can filter by user_id
+
+    **Filtering Examples**:
+    - `?filter=vegetation` - Find executions with "vegetation" in script or params
+    - `?filter=2024-12` - Find executions from December 2024
+    - `?status=RUNNING&sort=-created_at` - Find currently running executions,
+      newest first
+
+    **Sorting Examples**:
+    - `?sort=updated_at` - Sort by last update ascending
+    - `?sort=-created_at` - Sort by creation time descending (newest first)
+    - `?sort=status` - Sort by execution status alphabetically
+
+    **Timestamp Filtering**:
+    - `updated_at` parameter accepts ISO 8601 format: `2025-01-15T10:30:00Z`
+    - Returns executions updated after the specified timestamp
+    - Useful for incremental synchronization and monitoring
+
+    **Error Responses**:
+    - `401 Unauthorized`: JWT token required
+    - `500 Internal Server Error`: Failed to retrieve executions
+    """
     logger.info("[ROUTER]: Getting all executions: ")
     user_id = request.args.get("user_id", None)
     updated_at = request.args.get("updated_at", None)
@@ -542,7 +837,61 @@ def create_execution_log(execution):
 )  # Configurable rate limit for user creation
 @validate_user_creation
 def create_user():
-    """Create an user"""
+    """
+    Create a new user account.
+
+    **Rate Limited**: Subject to user creation rate limits (configurable)
+    **Access**: Public endpoint - no authentication required for basic user creation
+    **Admin Features**: Creating ADMIN/SUPERADMIN users requires SUPERADMIN
+      authentication
+
+    **Request Schema**:
+    ```json
+    {
+      "email": "user@example.com",
+      "password": "securePassword123",
+      "name": "John Doe",
+      "country": "US",
+      "institution": "Example Organization",
+      "role": "USER"
+    }
+    ```
+
+    **Request Fields**:
+    - `email`: User's email address (required, must be unique)
+    - `password`: User's password (required, minimum security requirements apply)
+    - `name`: User's full name (required)
+    - `country`: Two-letter country code (optional)
+    - `institution`: User's organization/institution (optional)
+    - `role`: User role - "USER", "ADMIN", or "SUPERADMIN" (default: "USER")
+
+    **Success Response Schema**:
+    ```json
+    {
+      "data": {
+        "id": "123",
+        "email": "user@example.com",
+        "name": "John Doe",
+        "role": "USER",
+        "country": "US",
+        "institution": "Example Organization",
+        "created_at": "2025-01-15T10:30:00Z",
+        "updated_at": "2025-01-15T10:30:00Z"
+      }
+    }
+    ```
+
+    **Role Creation Rules**:
+    - Anyone can create "USER" accounts
+    - Only SUPERADMIN users can create "ADMIN" or "SUPERADMIN" accounts
+    - Attempting to create privileged roles without permission returns 403 Forbidden
+
+    **Error Responses**:
+    - `400 Bad Request`: Email already exists, validation failed, or weak password
+    - `403 Forbidden`: Insufficient privileges to create the requested role
+    - `429 Too Many Requests`: Rate limit exceeded
+    - `500 Internal Server Error`: User creation failed
+    """
     logger.info("[ROUTER]: Creating user")
     body = request.get_json()
     if request.headers.get("Authorization", None) is not None:
@@ -574,7 +923,67 @@ def create_user():
 @endpoints.route("/user", strict_slashes=False, methods=["GET"])
 @jwt_required()
 def get_users():
-    """Get users"""
+    """
+    Retrieve list of users with filtering, sorting, and pagination.
+
+    **Authentication**: JWT token required
+    **Access**: Restricted to ADMIN and SUPERADMIN users only
+
+    **Query Parameters**:
+    - `include`: Comma-separated list of additional fields to include
+    - `exclude`: Comma-separated list of fields to exclude from response
+    - `filter`: Filter users by email, name, role, or other attributes
+    - `sort`: Sort field (prefix with '-' for descending, e.g., '-created_at')
+    - `page`: Page number for pagination (triggers pagination when provided)
+    - `per_page`: Items per page (1-100, default: 20)
+
+    **Response Schema (without pagination)**:
+    ```json
+    {
+      "data": [
+        {
+          "id": "123",
+          "email": "user@example.com",
+          "name": "John Doe",
+          "role": "USER",
+          "country": "US",
+          "institution": "Example Organization",
+          "created_at": "2025-01-15T10:30:00Z",
+          "updated_at": "2025-01-15T10:30:00Z"
+        }
+      ]
+    }
+    ```
+
+    **Response Schema (with pagination)**:
+    ```json
+    {
+      "data": [...],
+      "page": 1,
+      "per_page": 20,
+      "total": 150
+    }
+    ```
+
+    **Filtering Examples**:
+    - `?filter=admin` - Find users with "admin" in email, name, or role
+    - `?filter=role:ADMIN` - Find users with ADMIN role
+    - `?filter=country:US` - Find users from United States
+
+    **Sorting Examples**:
+    - `?sort=name` - Sort by name ascending
+    - `?sort=-created_at` - Sort by creation date descending
+    - `?sort=email` - Sort by email ascending
+
+    **Field Control Examples**:
+    - `?include=password_last_changed` - Include additional fields
+    - `?exclude=institution,country` - Exclude specified fields
+
+    **Error Responses**:
+    - `401 Unauthorized`: JWT token required
+    - `403 Forbidden`: Insufficient privileges (ADMIN+ required)
+    - `500 Internal Server Error`: Failed to retrieve users
+    """
     logger.info("[ROUTER]: Getting all users")
 
     identity = current_user
@@ -840,7 +1249,100 @@ def admin_change_password(user):
 @endpoints.route("/status", strict_slashes=False, methods=["GET"])
 @jwt_required()
 def get_status_logs():
-    """Get system status logs (Admin only)"""
+    """
+    Retrieve system status logs for monitoring and diagnostics.
+
+    **Authentication**: JWT token required
+    **Access**: Restricted to ADMIN and SUPERADMIN users only
+    **Purpose**: Monitor system health, track events, and diagnose issues
+
+    **Query Parameters**:
+    - `start_date`: Filter logs from this date onwards (ISO 8601 format)
+    - `end_date`: Filter logs up to this date (ISO 8601 format)
+    - `sort`: Sort field (prefix with '-' for descending, e.g., '-timestamp')
+    - `page`: Page number for pagination (default: 1)
+    - `per_page`: Items per page (1-10000, default: 100)
+
+    **Response Schema**:
+    ```json
+    {
+      "data": [
+        {
+          "id": "status-123",
+          "timestamp": "2025-01-15T10:30:00Z",
+          "level": "INFO",
+          "message": "System startup completed successfully",
+          "component": "application",
+          "details": {
+            "startup_time": "2.3s",
+            "memory_usage": "256MB"
+          },
+          "user_id": null,
+          "execution_id": null
+        },
+        {
+          "id": "status-124",
+          "timestamp": "2025-01-15T10:35:00Z",
+          "level": "WARNING",
+          "message": "High memory usage detected",
+          "component": "resource_monitor",
+          "details": {
+            "memory_usage": "85%",
+            "threshold": "80%"
+          },
+          "user_id": null,
+          "execution_id": null
+        }
+      ],
+      "page": 1,
+      "per_page": 100,
+      "total": 1547
+    }
+    ```
+
+    **Log Levels**:
+    - `DEBUG`: Detailed debugging information
+    - `INFO`: General system information and events
+    - `WARNING`: Warning conditions that should be monitored
+    - `ERROR`: Error conditions that affected operations
+    - `CRITICAL`: Critical conditions requiring immediate attention
+
+    **Component Types**:
+    - `application`: Core application events
+    - `authentication`: User authentication and authorization events
+    - `execution`: Script execution lifecycle events
+    - `resource_monitor`: System resource monitoring
+    - `database`: Database operations and health
+    - `api`: API request/response logging
+
+    **Date Filtering Examples**:
+    - `?start_date=2025-01-15T00:00:00Z` - Logs from January 15th onwards
+    - `?end_date=2025-01-15T23:59:59Z` - Logs up to end of January 15th
+    - `?start_date=2025-01-10T00:00:00Z&end_date=2025-01-15T23:59:59Z` - Logs
+      within date range
+
+    **Sorting Examples**:
+    - `?sort=timestamp` - Chronological order (oldest first)
+    - `?sort=-timestamp` - Reverse chronological (newest first, default)
+    - `?sort=level` - Sort by severity level
+
+    **Pagination Examples**:
+    - `?page=1&per_page=50` - First 50 entries
+    - `?page=2&per_page=100` - Next 100 entries
+    - Default pagination: 100 items per page
+
+    **Use Cases**:
+    - System health monitoring and alerting
+    - Debugging execution failures and performance issues
+    - Audit trail for system events and user actions
+    - Capacity planning and resource optimization
+    - Compliance and security monitoring
+
+    **Error Responses**:
+    - `401 Unauthorized`: JWT token required
+    - `403 Forbidden`: Insufficient privileges (ADMIN+ required)
+    - `500 Internal Server Error`: Failed to retrieve status logs
+    """
     logger.info("[ROUTER]: Getting status logs")
 
     # Check if user is admin or higher
@@ -896,8 +1398,63 @@ def get_status_logs():
 @jwt_required()
 def get_rate_limit_status():
     """
-    Query current rate limiting status. Accessible only to SUPERADMIN.
-    Returns information about users/IPs that are currently rate limited.
+    Query current rate limiting status across the system.
+
+    **Access**: Restricted to users with `role: "SUPERADMIN"`
+    **Purpose**: Provides visibility into current rate limiting state for monitoring
+      and debugging
+
+    **Response Schema**:
+    ```json
+    {
+      "message": "Rate limiting status retrieved successfully",
+      "data": {
+        "enabled": true,
+        "storage_type": "RedisStorage",
+        "total_active_limits": 5,
+        "active_limits": [
+          {
+            "key": "user:123",
+            "type": "user",
+            "identifier": "123",
+            "current_count": 8,
+            "time_window_seconds": "60",
+            "user_info": {
+              "id": "123",
+              "email": "user@example.com",
+              "name": "John Doe",
+              "role": "USER"
+            }
+          },
+          {
+            "key": "ip:192.168.1.100",
+            "type": "ip",
+            "identifier": "192.168.1.100",
+            "current_count": 15,
+            "time_window_seconds": "3600",
+            "user_info": null
+          }
+        ]
+      }
+    }
+    ```
+
+    **Response Fields**:
+    - `enabled`: Boolean indicating if rate limiting is active
+    - `storage_type`: Backend storage type (RedisStorage, MemoryStorage, etc.)
+    - `total_active_limits`: Count of currently active rate limit entries
+    - `active_limits`: Array of active rate limit entries with:
+      - `key`: Internal rate limit identifier
+      - `type`: Limit type ("user", "ip", "auth")
+      - `identifier`: User ID or IP address being limited
+      - `current_count`: Current request count against the limit
+      - `time_window_seconds`: Time window for the rate limit (60=1min, 3600=1hr)
+      - `user_info`: User details for user-type limits (null for IP limits)
+
+    **Error Responses**:
+    - `403 Forbidden`: User does not have SUPERADMIN privileges
+    - `401 Unauthorized`: Valid JWT token required
+    - `500 Internal Server Error`: Failed to query rate limiting status
     """
     current_user_id = get_jwt_identity()
     user = UserService.get_user(current_user_id)
@@ -926,7 +1483,37 @@ def get_rate_limit_status():
 @jwt_required()
 def reset_rate_limits():
     """
-    Reset all rate limits. Accessible only to SUPERADMIN.
+    Reset all rate limits across the system.
+
+    **Access**: Restricted to users with `role: "SUPERADMIN"`
+    **Purpose**: Clears all current rate limit counters - useful for emergency
+      situations or testing
+
+    **Request**: No request body required
+
+    **Success Response Schema**:
+    ```json
+    {
+      "message": "All rate limits have been reset."
+    }
+    ```
+
+    **Use Cases**:
+    - Emergency situations where legitimate users are being rate limited
+    - Testing and development environments
+    - After configuration changes to rate limiting policies
+    - System maintenance and debugging
+
+    **Behavior**:
+    - Clears all rate limit counters from storage (Redis/Memory)
+    - Affects all endpoints and all users/IP addresses
+    - Does not disable rate limiting - new requests will start fresh counters
+    - Operation is immediate and irreversible
+
+    **Error Responses**:
+    - `403 Forbidden`: User does not have SUPERADMIN privileges
+    - `401 Unauthorized`: Valid JWT token required
+    - `500 Internal Server Error`: Failed to reset rate limits
     """
     current_user_id = get_jwt_identity()
     user = UserService.get_user(current_user_id)
