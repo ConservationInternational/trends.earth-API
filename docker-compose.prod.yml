@@ -16,35 +16,39 @@ services:
 
   manager:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
-    command: ["sh", "-c", "echo 'Container starting...' && whoami && pwd && ls -la && echo 'Testing gunicorn availability...' && which gunicorn && echo 'Gunicorn found, testing import...' && python -c 'import gefapi.wsgi; print(\"WSGI import works\")' && echo 'Starting gunicorn...' && exec gunicorn -c gunicorn.py gefapi.wsgi:application"]
+    command: start
     environment:
       PORT: 3000
-      PYTHONUNBUFFERED: "1"
     ports:
       - target: 3000
         published: 3001
-        protocol: tcp
-        mode: ingress
     env_file:
       - prod.env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
-    # Temporarily disable healthcheck to test if it's preventing startup
-    # healthcheck:
-    #   test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/api-health').read()"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
-    #   start_period: 40s
     deploy:
       placement:
         constraints: [node.role == manager]
       resources:
         reservations:
-          cpus: "0.5"
-          memory: 512M
+          cpus: "0.25"
+          memory: 400M
+      # Rolling update configuration for zero-downtime deployments
+      update_config:
+        parallelism: 1          # Update one replica at a time
+        delay: 10s              # Wait 10s between updates
+        failure_action: rollback # Auto-rollback on failure
+        monitor: 60s            # Monitor new containers for 60s
+        max_failure_ratio: 0.3  # Allow 30% failure rate before rollback
+        order: start-first      # Start new before stopping old (zero downtime)
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        failure_action: pause
+        monitor: 60s
+        order: stop-first
       restart_policy:
         condition: on-failure
         delay: 10s
@@ -125,6 +129,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    ports:
+      - target: 6379
     volumes:
       # Persistent Redis data storage - retains data across deployments
       - redis_prod_data:/data
@@ -149,11 +155,6 @@ services:
         delay: 0s
         failure_action: pause
         monitor: 60s
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
-        window: 120s
     # Append-only file persistence for Redis data durability
     command: redis-server --appendonly yes --appendfsync everysec
 
