@@ -10,8 +10,10 @@ RUN apk update && apk upgrade && \
 
 RUN addgroup $USER && adduser -s /bin/bash -D -G $USER $USER
 
-# Add user to docker group for Docker socket access
-RUN addgroup docker && adduser $USER docker
+# Create docker group with a common GID that matches most systems
+# The entrypoint script will handle any GID mismatches
+RUN addgroup -g 999 docker || addgroup docker
+RUN adduser $USER docker
 
 # Install Poetry
 RUN pip install --upgrade pip && pip install poetry

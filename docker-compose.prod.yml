@@ -19,6 +19,8 @@ services:
     command: start
     environment:
       PORT: 3000
+      # Pass docker group ID as environment variable for runtime handling
+      DOCKER_GROUP_ID: ${DOCKER_GROUP_ID:-999}
     ports:
       - target: 3000
         published: 3001
@@ -28,6 +30,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
+    # For Swarm: add capabilities to modify groups at runtime
+    cap_add:
+      - DAC_OVERRIDE
     deploy:
       placement:
         constraints: [node.role == manager]
@@ -60,12 +65,17 @@ services:
     command: worker
     environment:
       PORT: 3000
+      # Pass docker group ID as environment variable for runtime handling
+      DOCKER_GROUP_ID: ${DOCKER_GROUP_ID:-999}
     env_file:
       - prod.env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
+    # For Swarm: add capabilities to modify groups at runtime
+    cap_add:
+      - DAC_OVERRIDE
     deploy:
       placement:
         constraints: [node.role == manager]
@@ -96,12 +106,17 @@ services:
     command: beat
     environment:
       PORT: 3000
+      # Pass docker group ID as environment variable for runtime handling
+      DOCKER_GROUP_ID: ${DOCKER_GROUP_ID:-999}
     env_file:
       - prod.env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
+    # For Swarm: add capabilities to modify groups at runtime
+    cap_add:
+      - DAC_OVERRIDE
     deploy:
       placement:
         constraints: [node.role == manager]

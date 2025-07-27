@@ -72,15 +72,17 @@ services:
       ENVIRONMENT: dev
       DEBUG: "True"
       TESTING: "true"
+      # Pass docker group ID as environment variable for runtime handling
+      DOCKER_GROUP_ID: ${DOCKER_GROUP_ID:-999}
     env_file:
       - develop.env
     volumes:
       - ./gefapi:/opt/gef-api/gefapi
       - ./migrations:/opt/gef-api/migrations
-      - /var/run/docker.sock:/tmp/docker.sock
-    # Add user to host docker group for socket access
-    group_add:
-      - ${DOCKER_GROUP_ID:-999}
+      - /var/run/docker.sock:/var/run/docker.sock
+    # For development: add capabilities to modify groups at runtime
+    cap_add:
+      - DAC_OVERRIDE
     networks:
       - backend
       - db
