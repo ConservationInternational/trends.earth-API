@@ -20,10 +20,9 @@ services:
   manager:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: start
+    user: root
     environment:
       PORT: 3000
-      # Pass docker group ID as environment variable for runtime handling
-      DOCKER_GROUP_ID: ${DOCKER_GROUP_ID:-999}
     ports:
       - target: 3000
         published: 3002
@@ -44,19 +43,15 @@ services:
   worker:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: worker
+    user: root
     environment:
       PORT: 3000
-      # Pass docker group ID as environment variable for runtime handling
-      DOCKER_GROUP_ID: ${DOCKER_GROUP_ID:-999}
     env_file:
       - staging.env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
-    # For Swarm: add capabilities to modify groups at runtime
-    cap_add:
-      - DAC_OVERRIDE
     deploy:
       placement:
         constraints: [node.role == manager]
@@ -68,10 +63,13 @@ services:
   beat:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
     command: beat
+    user: root
     environment:
       PORT: 3000
     env_file:
       - staging.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
     deploy:

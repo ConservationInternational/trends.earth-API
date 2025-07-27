@@ -2,10 +2,9 @@ services:
   admin:
     image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
+    user: root
     environment:
       PORT: 3000
-      # Pass docker group ID as environment variable for runtime handling
-      DOCKER_GROUP_ID: ${DOCKER_GROUP_ID:-999}
     ports:
       - target: 3000
     env_file:
@@ -15,9 +14,6 @@ services:
       - ./gefapi:/opt/gef-api/gefapi
       - ./migrations:/opt/gef-api/migrations
       - /var/run/docker.sock:/var/run/docker.sock
-    # For admin: add capabilities to modify groups at runtime
-    cap_add:
-      - DAC_OVERRIDE
     deploy:
       placement:
         constraints: [node.role == manager]

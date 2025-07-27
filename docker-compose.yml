@@ -3,16 +3,11 @@ services:
     image: trendsearth-api
     build: .
     command: start
-    environment:
-      # Pass docker group ID as environment variable for runtime handling
-      DOCKER_GROUP_ID: ${DOCKER_GROUP_ID:-999}
+    user: root
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
-    # For Swarm: add capabilities to modify groups at runtime
-    cap_add:
-      - DAC_OVERRIDE
     deploy:
       placement:
         constraints: [node.role == manager]
@@ -25,16 +20,11 @@ services:
     image: trendsearth-api
     build: .
     command: worker
-    environment:
-      # Pass docker group ID as environment variable for runtime handling
-      DOCKER_GROUP_ID: ${DOCKER_GROUP_ID:-999}
+    user: root
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
-    # For Swarm: add capabilities to modify groups at runtime
-    cap_add:
-      - DAC_OVERRIDE
     deploy:
       placement:
         constraints: [node.role == manager]
@@ -47,19 +37,15 @@ services:
     image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
     command: beat
+    user: root
     environment:
       PORT: 3000
-      # Pass docker group ID as environment variable for runtime handling
-      DOCKER_GROUP_ID: ${DOCKER_GROUP_ID:-999}
     env_file:
       - prod.env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backend
-    # For Swarm: add capabilities to modify groups at runtime
-    cap_add:
-      - DAC_OVERRIDE
     deploy:
       placement:
         constraints: [node.role == manager]
