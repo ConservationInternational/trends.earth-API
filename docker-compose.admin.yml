@@ -12,9 +12,6 @@ services:
     volumes:
       - ./gefapi:/opt/gef-api/gefapi
       - ./migrations:/opt/gef-api/migrations
-    deploy:
-      placement:
-        constraints: [node.role == manager]
 
   builder:
     image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api

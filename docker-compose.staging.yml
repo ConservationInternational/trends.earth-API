@@ -30,8 +30,6 @@ services:
     networks:
       - backend
     deploy:
-      placement:
-        constraints: [node.role == manager]
       resources:
         reservations:
           cpus: "0.25"
@@ -49,8 +47,6 @@ services:
     networks:
       - backend
     deploy:
-      placement:
-        constraints: [node.role == manager]
       resources:
         reservations:
           cpus: "0.25"
@@ -66,8 +62,6 @@ services:
     networks:
       - backend
     deploy:
-      placement:
-        constraints: [node.role == manager]
       resources:
         reservations:
           cpus: "0.25"
