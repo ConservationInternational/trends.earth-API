@@ -16,9 +16,10 @@ services:
 
   manager:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api
-    command: start
+    command: ["sh", "-c", "echo 'Container starting...' && python --version && echo 'Python works' && ls -la /opt/gef-api && echo 'Files exist' && python -c 'import gefapi; print(\"Import works\")' && echo 'About to start gunicorn...' && exec gunicorn -c gunicorn.py gefapi.wsgi:application"]
     environment:
       PORT: 3000
+      PYTHONUNBUFFERED: "1"  # Force Python to flush output immediately
     ports:
       - target: 3000
         published: 3001
@@ -41,8 +42,8 @@ services:
         constraints: [node.role == manager]
       resources:
         reservations:
-          cpus: "0.25"
-          memory: 400M
+          cpus: "0.5"
+          memory: 512M
       # Rolling update configuration for zero-downtime deployments
       update_config:
         parallelism: 1          # Update one replica at a time
