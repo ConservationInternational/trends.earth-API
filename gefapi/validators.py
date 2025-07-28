@@ -454,6 +454,7 @@ def validate_execution_update(func):
             if "results" in json_data and json_data["results"]:
                 # Limit results size to prevent abuse
                 from gefapi.config import SETTINGS
+
                 max_results_size = SETTINGS.get("MAX_RESULTS_SIZE", 50000)
                 results_str = str(json_data["results"])
                 if len(results_str) > max_results_size:
