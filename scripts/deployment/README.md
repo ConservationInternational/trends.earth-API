@@ -37,9 +37,8 @@ This directory contains modular deployment scripts that are used by the GitHub A
 | Script | Purpose | Dependencies | Used By |
 |--------|---------|-------------|---------|
 | `staging-postgres-container.sh` | Creates PostgreSQL container only | Docker, psql | Manual/debugging setup |
-| `staging-data-migration.sh` | Runs migrations, creates users, migrates scripts | Python3, psycopg2-binary, werkzeug | Manual/debugging setup |
-| `setup-staging-users.py` | Creates test users with proper password hashing | psycopg2-binary, werkzeug | Called by staging-data-migration.sh |
-| `migrate-production-scripts.py` | Copies recent scripts from production | psycopg2-binary | Called by staging-data-migration.sh |
+| `setup-staging-users.py` | Creates test users with proper password hashing | psycopg2-binary, werkzeug | Called by staging-database-init.sh |
+| `migrate-production-scripts.py` | Copies recent scripts from production | psycopg2-binary | Called by staging-database-init.sh |
 | `validate-environment.sh` | Validates required environment variables | bash | Manual validation |
 
 ## 🚀 Usage Patterns
@@ -64,11 +63,10 @@ The scripts are automatically called by the staging workflow in this order:
 
 ## Alternative Modular Setup
 
-For debugging or step-by-step setup, you can use the modular approach instead:
+For debugging or step-by-step setup, you can use the modular components:
 
 **Modular Components:**
 - `staging-postgres-container.sh` - Container setup only
-- `staging-data-migration.sh` - Data migrations and user setup
 - `setup-staging-users.py` - User creation with proper password hashing
 - `migrate-production-scripts.py` - Production script migration
 
@@ -100,13 +98,13 @@ export TEST_USER_PASSWORD="your-secure-password"
 export STAGING_DB_PASSWORD="your-secure-password"
 ./scripts/deployment/staging-postgres-container.sh
 
-# Setup staging data separately
+# Alternative: Use staging-database-init.sh for comprehensive setup
 export TEST_SUPERADMIN_EMAIL="admin@example.com"
 export TEST_SUPERADMIN_PASSWORD="your-secure-password"
 export TEST_ADMIN_PASSWORD="your-secure-password"
 export TEST_USER_PASSWORD="your-secure-password"
 # ... (other required test user vars)
-./scripts/deployment/staging-data-migration.sh
+./scripts/deployment/staging-database-init.sh
 
 # Run integration tests
 ./scripts/deployment/run-integration-tests.sh
@@ -198,9 +196,7 @@ export PROD_DB_PASSWORD="your-prod-password"
 ./scripts/deployment/staging-database-init.sh
 ```
 
-**vs. Modular Approach**: This script provides a comprehensive single-step setup alternative to running `staging-postgres-container.sh` + `staging-data-migration.sh` separately. Choose based on your needs:
-- Use `staging-database-init.sh` for complete setup with production data import (recommended)
-- Use the modular approach (`staging-postgres-container.sh` + `staging-data-migration.sh`) for more controlled, step-by-step setup
+**vs. Modular Approach**: This script provides a comprehensive single-step setup. For more granular control, you can use individual components like `staging-postgres-container.sh` for container setup only.
 
 ### staging-postgres-container.sh (Alternative)
 
@@ -230,41 +226,6 @@ export PROD_DB_PASSWORD="your-prod-password"
 [INFO] Waiting for database to be ready...
 [SUCCESS] Database is ready
 [SUCCESS] ✅ Staging database setup completed!
-```
-
-### staging-data-migration.sh (Alternative)
-
-**Purpose**: Orchestrates data setup including migrations, user creation, and script migration (data setup only).
-
-**Key Features**:
-- Database migration execution
-- Test user creation with proper validation
-- Optional production script migration
-- Comprehensive error handling
-- Summary reporting
-
-**Use Case**: Use this after `staging-postgres-container.sh` for step-by-step setup or debugging data migration issues.
-
-**Dependencies**:
-- `setup-staging-users.py`
-- `migrate-production-scripts.py`
-
-**Example Output**:
-```
-[INFO] 📊 Setting up staging data...
-[INFO] 🔄 Running database migrations...
-[SUCCESS] Database migrations completed
-[INFO] 👥 Creating test users...
-[SUCCESS] Test users created
-[INFO] 📜 Migrating recent scripts from production...
-[SUCCESS] Script migration completed
-[SUCCESS] 📊 Staging data setup summary:
-[INFO]   Test Users:
-[INFO]     Superadmin: test-superadmin@example.com
-[INFO]     Admin: test-admin@example.com
-[INFO]     User: test-user@example.com
-[INFO]   Production scripts migrated from: prod-server
-[SUCCESS] ✅ Staging data setup completed!
 ```
 
 ### run-integration-tests.sh
@@ -423,7 +384,7 @@ bash -x ./scripts/deployment/staging-postgres-container.sh
 # Or add debug flag to individual scripts
 export DEBUG=1
 export STAGING_DB_PASSWORD="your-secure-password"
-./scripts/deployment/staging-data-migration.sh
+./scripts/deployment/staging-database-init.sh
 ```
 
 ### Log Locations

@@ -28,48 +28,8 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Function to find a Docker Swarm service container
-find_service_container() {
-    local service_name="$1"
-    local container_id=""
-    
-    # Method 1: Try direct name match (for Docker Compose compatibility)
-    container_id=$(docker ps --filter "name=${service_name}" --format "{{.ID}}" 2>/dev/null | head -1)
-    if [ -n "$container_id" ]; then
-        echo "$container_id"
-        return 0
-    fi
-    
-    # Method 2: Try using Docker Swarm service labels
-    container_id=$(docker ps --filter "label=com.docker.swarm.service.name=${service_name}" --format "{{.ID}}" 2>/dev/null | head -1)
-    if [ -n "$container_id" ]; then
-        echo "$container_id"
-        return 0
-    fi
-    
-    # Method 3: Try partial name match for Docker Swarm task names (e.g., service_name.1.abc123)
-    container_id=$(docker ps --format "{{.ID}} {{.Names}}" 2>/dev/null | grep "${service_name}\." | head -1 | cut -d' ' -f1)
-    if [ -n "$container_id" ]; then
-        echo "$container_id"
-        return 0
-    fi
-    
-    # Method 4: Try using docker service ps to get task info, then find container
-    if command -v docker >/dev/null 2>&1; then
-        local task_id=$(docker service ps "${service_name}" --format "{{.ID}}" --filter "desired-state=running" 2>/dev/null | head -1)
-        if [ -n "$task_id" ]; then
-            # Get the container ID from the task
-            container_id=$(docker ps --filter "label=com.docker.swarm.task.id=${task_id}" --format "{{.ID}}" 2>/dev/null | head -1)
-            if [ -n "$container_id" ]; then
-                echo "$container_id"
-                return 0
-            fi
-        fi
-    fi
-    
-    # No container found
-    return 1
-}
+# Source Docker Swarm utilities
+source "$(dirname "$0")/../docker-swarm-utils.sh"
 
 # Database configuration from environment variables (required)
 STAGING_DB_HOST="${STAGING_DB_HOST:-localhost}"
@@ -430,50 +390,39 @@ create_test_users() {
     if [ -f "scripts/deployment/setup-staging-users.py" ]; then
         print_status "Running Python user setup script inside Docker container..."
         
-        # Find the manager container ID using the helper function
-        manager_container_id=$(find_service_container "trends-earth-staging_manager")
+        local service_name="trends-earth-staging_manager"
         
-        if [ -z "$manager_container_id" ] || [ $? -ne 0 ]; then
-            print_error "Could not find trends-earth-staging_manager container"
-            print_status "Debugging information:"
-            print_status "Available containers:"
-            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
-            print_status ""
-            print_status "Available Docker services:"
-            docker service ls --filter "name=trends-earth-staging" 2>/dev/null || echo "No Docker services found"
-            print_status ""
-            print_status "Docker service tasks:"
-            docker service ps trends-earth-staging_manager 2>/dev/null || echo "No service tasks found"
+        # Copy the script to the service and execute it
+        if copy_to_service "$service_name" "scripts/deployment/setup-staging-users.py" "/opt/gef-api/setup-staging-users.py"; then
+            # Run the script inside the container
+            if exec_on_service "$service_name" "python setup-staging-users.py"; then
+                # Clean up the copied script
+                exec_on_service "$service_name" "rm -f /opt/gef-api/setup-staging-users.py"
+                
+                print_success "Test users created successfully with proper password hashes"
+                print_status "Test user credentials:"
+                print_status "  Superadmin: $TEST_SUPERADMIN_EMAIL (password: $TEST_SUPERADMIN_PASSWORD)"
+                print_status "  Admin: $TEST_ADMIN_EMAIL (password: $TEST_ADMIN_PASSWORD)"  
+                print_status "  User: $TEST_USER_EMAIL (password: $TEST_USER_PASSWORD)"
+                
+                # Get the superadmin ID for script ownership updates
+                superadmin_id=$(PGPASSWORD="$STAGING_DB_PASSWORD" psql \
+                    -h "$STAGING_DB_HOST" \
+                    -p "$STAGING_DB_PORT" \
+                    -U "$STAGING_DB_USER" \
+                    -d "$STAGING_DB_NAME" \
+                    -t -c "SELECT id FROM \"user\" WHERE email = '$TEST_SUPERADMIN_EMAIL' LIMIT 1;" | xargs)
+                
+                if [ -n "$superadmin_id" ] && [ "$superadmin_id" != "" ]; then
+                    echo "$superadmin_id" > /tmp/superadmin_id.txt
+                fi
+            else
+                print_error "Failed to execute user creation script"
+                exit 1
+            fi
+        else
+            print_error "Failed to copy user creation script to service"
             exit 1
-        fi
-        
-        print_status "Found manager container: $manager_container_id"
-        
-        # Copy the script into the container
-        docker cp scripts/deployment/setup-staging-users.py "$manager_container_id:/opt/gef-api/setup-staging-users.py"
-        
-        # Run the script inside the container
-        docker exec "$manager_container_id" python setup-staging-users.py
-        
-        # Clean up the copied script
-        docker exec "$manager_container_id" rm -f /opt/gef-api/setup-staging-users.py
-        
-        print_success "Test users created successfully with proper password hashes"
-        print_status "Test user credentials:"
-        print_status "  Superadmin: $TEST_SUPERADMIN_EMAIL (password: $TEST_SUPERADMIN_PASSWORD)"
-        print_status "  Admin: $TEST_ADMIN_EMAIL (password: $TEST_ADMIN_PASSWORD)"  
-        print_status "  User: $TEST_USER_EMAIL (password: $TEST_USER_PASSWORD)"
-        
-        # Get the superadmin ID for script ownership updates
-        superadmin_id=$(PGPASSWORD="$STAGING_DB_PASSWORD" psql \
-            -h "$STAGING_DB_HOST" \
-            -p "$STAGING_DB_PORT" \
-            -U "$STAGING_DB_USER" \
-            -d "$STAGING_DB_NAME" \
-            -t -c "SELECT id FROM \"user\" WHERE email = '$TEST_SUPERADMIN_EMAIL' LIMIT 1;" | xargs)
-        
-        if [ -n "$superadmin_id" ] && [ "$superadmin_id" != "" ]; then
-            echo "$superadmin_id" > /tmp/superadmin_id.txt
         fi
     else
         print_error "Python user setup script not found at scripts/deployment/setup-staging-users.py"

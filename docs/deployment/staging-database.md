@@ -380,12 +380,13 @@ To update the staging setup scripts:
 The staging workflow now uses modular scripts for better maintainability:
 
 ### Core Scripts
-- **`staging-postgres-container.sh`**: PostgreSQL container setup and configuration
-- **`staging-data-migration.sh`**: Data migrations, user creation, and script migration
+- **`staging-database-init.sh`**: Comprehensive database setup, user creation, and data migration
+- **`staging-postgres-container.sh`**: PostgreSQL container setup only (alternative for granular control)
 - **`run-integration-tests.sh`**: Comprehensive API and authentication testing
 
 ### Benefits
-- **Modularity**: Each script handles a specific responsibility
+- **Comprehensive**: Main script handles all database setup needs
+- **Modularity**: Alternative scripts available for specific tasks
 - **Reusability**: Scripts can be run independently for debugging
 - **Maintainability**: Easier to update and test individual components
 - **Error Handling**: Better error reporting and recovery
