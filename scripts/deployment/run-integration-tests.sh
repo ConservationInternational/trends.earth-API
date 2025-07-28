@@ -36,35 +36,77 @@ TEST_RESULTS=()
 test_health_endpoint() {
     print_status "Testing health endpoint..."
     
-    # First check if the service is reachable
-    local response=$(curl -s -w "HTTPSTATUS:%{http_code}" "$STAGING_URL/api-health" 2>&1)
-    local curl_exit_code=$?
+    # Retry logic for health endpoint - service might be starting up
+    local max_attempts=12
+    local attempt=1
+    local wait_time=5
     
-    # Extract HTTP status and body
-    local http_code=$(echo "$response" | sed -n 's/.*HTTPSTATUS:\([0-9]*\)$/\1/p')
-    local body=$(echo "$response" | sed 's/HTTPSTATUS:[0-9]*$//')
-    
-    if [ $curl_exit_code -eq 0 ] && [ "$http_code" = "200" ]; then
-        # Additional validation: check if response contains expected fields
-        if echo "$body" | jq -e '.status' >/dev/null 2>&1; then
-            local status=$(echo "$body" | jq -r '.status')
-            local deployment_info=$(echo "$body" | jq -e '.deployment' >/dev/null 2>&1 && echo "present" || echo "missing")
-            
-            print_success "✅ Health endpoint working (status: $status, deployment info: $deployment_info)"
-            TEST_RESULTS+=("PASS: Health endpoint")
-            return 0
+    while [ $attempt -le $max_attempts ]; do
+        print_status "Health check attempt $attempt/$max_attempts..."
+        
+        # First check if port is reachable (using nc if available)
+        if command -v nc >/dev/null 2>&1; then
+            if ! nc -z 127.0.0.1 3002 2>/dev/null; then
+                print_status "⏳ Port 3002 not yet accessible, waiting ${wait_time}s..."
+                sleep $wait_time
+                attempt=$((attempt + 1))
+                continue
+            fi
         else
-            print_error "❌ Health endpoint returned invalid JSON response"
-            print_error "Response body: $body"
-            TEST_RESULTS+=("FAIL: Health endpoint - invalid JSON")
-            return 1
+            # Fallback: try a quick curl test if nc is not available
+            if ! curl -s --max-time 2 "$STAGING_URL/api-health" >/dev/null 2>&1; then
+                print_status "⏳ Service not yet accessible, waiting ${wait_time}s..."
+                sleep $wait_time
+                attempt=$((attempt + 1))
+                continue
+            fi
         fi
-    else
-        print_error "❌ Health endpoint failed (HTTP: $http_code, curl exit: $curl_exit_code)"
-        print_error "Response: $response"
-        TEST_RESULTS+=("FAIL: Health endpoint")
-        return 1
-    fi
+        
+        # Port is accessible, now test the endpoint
+        local response=$(curl -s -w "HTTPSTATUS:%{http_code}" --max-time 10 "$STAGING_URL/api-health" 2>&1)
+        local curl_exit_code=$?
+        
+        # Extract HTTP status and body
+        local http_code=$(echo "$response" | sed -n 's/.*HTTPSTATUS:\([0-9]*\)$/\1/p')
+        local body=$(echo "$response" | sed 's/HTTPSTATUS:[0-9]*$//')
+        
+        if [ $curl_exit_code -eq 0 ] && [ "$http_code" = "200" ]; then
+            # Additional validation: check if response contains expected fields
+            if echo "$body" | jq -e '.status' >/dev/null 2>&1; then
+                local status=$(echo "$body" | jq -r '.status')
+                local deployment_info=$(echo "$body" | jq -e '.deployment' >/dev/null 2>&1 && echo "present" || echo "missing")
+                
+                print_success "✅ Health endpoint working (status: $status, deployment info: $deployment_info)"
+                TEST_RESULTS+=("PASS: Health endpoint")
+                return 0
+            else
+                print_error "❌ Health endpoint returned invalid JSON response"
+                print_error "Response body: $body"
+                TEST_RESULTS+=("FAIL: Health endpoint - invalid JSON")
+                return 1
+            fi
+        else
+            print_status "⏳ Health endpoint not ready (HTTP: $http_code, curl exit: $curl_exit_code), waiting ${wait_time}s..."
+            if [ "$http_code" != "000" ] && [ "$http_code" != "" ]; then
+                print_status "Response: $response"
+            fi
+            sleep $wait_time
+            attempt=$((attempt + 1))
+        fi
+    done
+    
+    # If we get here, all attempts failed
+    print_error "❌ Health endpoint failed after $max_attempts attempts"
+    print_error "Final response: $response"
+    
+    # Additional debugging information
+    print_error "🔍 Debugging information:"
+    print_error "  - Staging URL: $STAGING_URL"
+    print_error "  - Port check: $(command -v nc >/dev/null 2>&1 && nc -z 127.0.0.1 3002 2>/dev/null && echo 'Port accessible' || echo 'Port not accessible')"
+    print_error "  - Quick curl test: $(curl -s --max-time 5 --connect-timeout 5 -w '%{http_code}' "$STAGING_URL/api-health" 2>/dev/null || echo 'Connection failed')"
+    
+    TEST_RESULTS+=("FAIL: Health endpoint")
+    return 1
 }
 
 # Test API documentation endpoint
@@ -239,6 +281,10 @@ show_test_summary() {
 # Main execution
 main() {
     print_status "🧪 Running staging integration tests..."
+    
+    # Give services a moment to fully initialize after deployment
+    print_status "⏳ Waiting 15 seconds for services to fully initialize..."
+    sleep 15
     
     # Test basic health endpoint
     test_health_endpoint
