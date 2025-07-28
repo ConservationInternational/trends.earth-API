@@ -38,7 +38,8 @@ def get_user_id_or_ip():
         verify_jwt_in_request(optional=True)
         current_user = get_current_user()
         if current_user:
-            # Exempt admin and superadmin users (including gef@gef.com) from rate limiting
+            # Exempt admin and superadmin users (including gef@gef.com)
+            # from rate limiting
             if is_admin_or_higher(current_user):
                 return None  # None indicates no rate limiting
             return f"user:{current_user.id}"
@@ -53,7 +54,8 @@ def get_rate_limit_key_for_auth():
     Uses email + IP to prevent account enumeration while still allowing rate limiting.
     Returns None if user should be exempt from rate limiting.
     """
-    # Check if this is an authenticated admin/superadmin user (including gef@gef.com) trying to get a new token
+    # Check if this is an authenticated admin/superadmin user
+    # (including gef@gef.com) trying to get a new token
     try:
         verify_jwt_in_request(optional=True)
         current_user = get_current_user()
@@ -75,14 +77,16 @@ def get_rate_limit_key_for_auth():
 
 def get_admin_aware_key():
     """
-    Key function that exempts admin and superadmin users (including gef@gef.com) from rate limiting.
+    Key function that exempts admin and superadmin users
+    (including gef@gef.com) from rate limiting.
     Used for general API endpoints.
     """
     try:
         verify_jwt_in_request(optional=True)
         current_user = get_current_user()
         if current_user:
-            # Exempt admin and superadmin users (including gef@gef.com) from rate limiting
+            # Exempt admin and superadmin users (including gef@gef.com)
+            # from rate limiting
             if is_admin_or_higher(current_user):
                 return None  # None indicates no rate limiting
             return f"user:{current_user.id}"

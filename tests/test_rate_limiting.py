@@ -531,7 +531,7 @@ class TestRateLimitReset:
     def test_gef_user_exemption_from_rate_limiting(self, client, gef_token):
         """Test that gef@gef.com user is exempt from rate limiting regardless of role"""
         auth_headers = {"Authorization": f"Bearer {gef_token}"}
-        
+
         # Make many requests as gef@gef.com user - should not be rate limited
         gef_responses = []
         for i in range(50):  # Make many requests
@@ -549,9 +549,7 @@ class TestRateLimitReset:
         )
 
         # Most responses should be successful
-        successful_responses = [
-            r for r in gef_responses if r.status_code in [200, 403]
-        ]
+        successful_responses = [r for r in gef_responses if r.status_code in [200, 403]]
         assert len(successful_responses) > 40, (
             "gef@gef.com user should have many successful requests"
         )

@@ -158,7 +158,8 @@ def monitor_failed_docker_services(self):
                     docker_service_name = f"execution-{execution.id}"
 
                     logger.debug(
-                        f"[TASK]: Checking Docker service {docker_service_name} for execution {execution.id}"
+                        f"[TASK]: Checking Docker service {docker_service_name} "
+                        f"for execution {execution.id}"
                     )
 
                     # Find the Docker service
@@ -169,9 +170,11 @@ def monitor_failed_docker_services(self):
                     checked_count += 1
 
                     if not services:
-                        # Service doesn't exist - this could mean it was never created or already removed
+                        # Service doesn't exist - this could mean it was never
+                        # created or already removed
                         logger.info(
-                            f"[TASK]: No Docker service found for execution {execution.id}, marking as failed"
+                            f"[TASK]: No Docker service found for execution "
+                            f"{execution.id}, marking as failed"
                         )
 
                         # Mark execution as failed
@@ -200,7 +203,9 @@ def monitor_failed_docker_services(self):
 
                         if _check_service_failed(service):
                             logger.info(
-                                f"[TASK]: Docker service {docker_service_name} has failed, marking execution {execution.id} as failed"
+                                f"[TASK]: Docker service {docker_service_name} "
+                                f"has failed, marking execution {execution.id} "
+                                f"as failed"
                             )
 
                             # Mark execution as failed
@@ -224,16 +229,19 @@ def monitor_failed_docker_services(self):
                             # Optionally clean up the failed service
                             try:
                                 logger.info(
-                                    f"[TASK]: Removing failed Docker service {docker_service_name}"
+                                    f"[TASK]: Removing failed Docker service "
+                                    f"{docker_service_name}"
                                 )
                                 service.remove()
                             except Exception as cleanup_error:
                                 logger.warning(
-                                    f"[TASK]: Failed to remove Docker service {docker_service_name}: {cleanup_error}"
+                                    f"[TASK]: Failed to remove Docker service "
+                                    f"{docker_service_name}: {cleanup_error}"
                                 )
                         else:
                             logger.debug(
-                                f"[TASK]: Docker service {docker_service_name} is still healthy"
+                                f"[TASK]: Docker service {docker_service_name} "
+                                f"is still healthy"
                             )
 
                 except Exception as e:
