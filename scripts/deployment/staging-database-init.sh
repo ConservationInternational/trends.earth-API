@@ -33,20 +33,42 @@ find_service_container() {
     local service_name="$1"
     local container_id=""
     
-    # First try direct name match (for Docker Compose compatibility)
-    container_id=$(docker ps --filter "name=${service_name}" --format "{{.ID}}" | head -1)
-    
-    # If that fails, try using Docker Swarm service labels
-    if [ -z "$container_id" ]; then
-        container_id=$(docker ps --filter "label=com.docker.swarm.service.name=${service_name}" --format "{{.ID}}" | head -1)
+    # Method 1: Try direct name match (for Docker Compose compatibility)
+    container_id=$(docker ps --filter "name=${service_name}" --format "{{.ID}}" 2>/dev/null | head -1)
+    if [ -n "$container_id" ]; then
+        echo "$container_id"
+        return 0
     fi
     
-    # If still not found, try partial name match for Docker Swarm task names
-    if [ -z "$container_id" ]; then
-        container_id=$(docker ps --format "{{.ID}} {{.Names}}" | grep "${service_name}\." | head -1 | cut -d' ' -f1)
+    # Method 2: Try using Docker Swarm service labels
+    container_id=$(docker ps --filter "label=com.docker.swarm.service.name=${service_name}" --format "{{.ID}}" 2>/dev/null | head -1)
+    if [ -n "$container_id" ]; then
+        echo "$container_id"
+        return 0
     fi
     
-    echo "$container_id"
+    # Method 3: Try partial name match for Docker Swarm task names (e.g., service_name.1.abc123)
+    container_id=$(docker ps --format "{{.ID}} {{.Names}}" 2>/dev/null | grep "${service_name}\." | head -1 | cut -d' ' -f1)
+    if [ -n "$container_id" ]; then
+        echo "$container_id"
+        return 0
+    fi
+    
+    # Method 4: Try using docker service ps to get task info, then find container
+    if command -v docker >/dev/null 2>&1; then
+        local task_id=$(docker service ps "${service_name}" --format "{{.ID}}" --filter "desired-state=running" 2>/dev/null | head -1)
+        if [ -n "$task_id" ]; then
+            # Get the container ID from the task
+            container_id=$(docker ps --filter "label=com.docker.swarm.task.id=${task_id}" --format "{{.ID}}" 2>/dev/null | head -1)
+            if [ -n "$container_id" ]; then
+                echo "$container_id"
+                return 0
+            fi
+        fi
+    fi
+    
+    # No container found
+    return 1
 }
 
 # Database configuration from environment variables (required)
@@ -411,12 +433,17 @@ create_test_users() {
         # Find the manager container ID using the helper function
         manager_container_id=$(find_service_container "trends-earth-staging_manager")
         
-        if [ -z "$manager_container_id" ]; then
+        if [ -z "$manager_container_id" ] || [ $? -ne 0 ]; then
             print_error "Could not find trends-earth-staging_manager container"
+            print_status "Debugging information:"
             print_status "Available containers:"
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
+            print_status ""
             print_status "Available Docker services:"
-            docker service ls --filter "name=trends-earth-staging" || echo "No Docker services found"
+            docker service ls --filter "name=trends-earth-staging" 2>/dev/null || echo "No Docker services found"
+            print_status ""
+            print_status "Docker service tasks:"
+            docker service ps trends-earth-staging_manager 2>/dev/null || echo "No service tasks found"
             exit 1
         fi
         
