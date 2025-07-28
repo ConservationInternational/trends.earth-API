@@ -135,7 +135,7 @@ The deployment process:
    - Performs health checks
 
 3. **Data Migration**
-   - Runs database migrations
+   - Database migrations run automatically via migrate service
    - Creates test users with hashed passwords
    - Copies recent scripts from production
    - Updates script ownership to test superadmin
@@ -151,17 +151,15 @@ The deployment process:
 If you need to run the setup manually:
 
 ```bash
-# 1. Setup staging database
-./scripts/deployment/staging-database-init.sh
-
-# 2. Create test users
+# Complete staging database setup (includes user creation and data migration)
 export STAGING_DB_PASSWORD="your-password"
-python3 scripts/deployment/setup-staging-users.py
-
-# 3. Migrate production scripts
-export PROD_DB_PASSWORD="prod-password"
-python3 scripts/deployment/migrate-production-scripts.py
+export TEST_SUPERADMIN_PASSWORD="superadmin-password"
+export TEST_ADMIN_PASSWORD="admin-password"
+export TEST_USER_PASSWORD="user-password"
+./scripts/deployment/staging-database-init.sh
 ```
+
+**Note**: Database migrations are handled automatically by the `trends-earth-staging_migrate` service when the Docker stack is deployed. The staging database init script focuses on data setup and user creation.
 
 ## Data Migration Details
 

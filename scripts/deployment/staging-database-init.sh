@@ -499,8 +499,7 @@ main() {
     print_status "=================================="
     print_status "Next steps:"
     print_status "1. Update your staging.env file with the database connection details"
-    print_status "2. Run database migrations if needed"
-    print_status "3. Test the application with the test user credentials"
+    print_status "2. Test the application with the test user credentials"
 }
 
 # Run main function if script is executed directly
