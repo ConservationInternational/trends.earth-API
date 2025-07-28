@@ -46,6 +46,7 @@ SETTINGS = {
     "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
     "UPLOAD_FOLDER": "/tmp/scripts",
     "ALLOWED_EXTENSIONS": {"tar.gz"},
+    "MAX_RESULTS_SIZE": int(os.getenv("MAX_RESULTS_SIZE", 300000)),  # 300KB default
     "JWT_ACCESS_TOKEN_EXPIRES": timedelta(
         seconds=60 * 60 * 1
     ),  # Reduced to 1 hour with refresh tokens

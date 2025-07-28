@@ -453,8 +453,10 @@ def validate_execution_update(func):
             # Sanitize results if provided
             if "results" in json_data and json_data["results"]:
                 # Limit results size to prevent abuse
+                from gefapi.config import SETTINGS
+                max_results_size = SETTINGS.get("MAX_RESULTS_SIZE", 50000)
                 results_str = str(json_data["results"])
-                if len(results_str) > 50000:  # 50KB limit
+                if len(results_str) > max_results_size:
                     return error(status=400, detail="Results data too large")
 
         except ValueError as e:
