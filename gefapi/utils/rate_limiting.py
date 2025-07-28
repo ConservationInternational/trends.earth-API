@@ -2,6 +2,7 @@
 
 import logging
 
+import rollbar
 from flask import current_app, jsonify, request
 from flask_jwt_extended import get_current_user, verify_jwt_in_request
 from flask_limiter.util import get_remote_address
@@ -96,7 +97,61 @@ def get_admin_aware_key():
 
 
 def create_rate_limit_response(retry_after=None):
-    """Create a standardized rate limit exceeded response"""
+    """Create a standardized rate limit exceeded response and send Rollbar notification"""
+    # Gather information about the rate limited request
+    user_info = None
+    user_id = None
+    ip_address = get_remote_address()
+    endpoint = request.endpoint or request.path
+    
+    # Try to get current user information
+    try:
+        verify_jwt_in_request(optional=True)
+        current_user = get_current_user()
+        if current_user:
+            user_info = {
+                "id": current_user.id,
+                "email": current_user.email,
+                "name": current_user.name,
+                "role": current_user.role
+            }
+            user_id = current_user.id
+    except Exception as e:
+        logger.debug(f"Could not get current user info for rate limit notification: {e}")
+    
+    # Send Rollbar notification about the rate limit
+    try:
+        rollbar_data = {
+            "user_id": user_id,
+            "ip_address": ip_address,
+            "endpoint": endpoint,
+            "user_agent": request.headers.get("User-Agent"),
+            "method": request.method,
+            "url": request.url,
+            "retry_after": retry_after,
+            "user_info": user_info
+        }
+        
+        # Create a descriptive message for Rollbar
+        if user_info:
+            message = f"Rate limit applied to user {user_info['email']} (ID: {user_id}) on endpoint {endpoint}"
+        else:
+            message = f"Rate limit applied to IP {ip_address} on endpoint {endpoint}"
+        
+        # Send notification to Rollbar
+        rollbar.report_message(
+            message=message,
+            level="warning",
+            extra_data=rollbar_data
+        )
+        
+        logger.warning(f"Rate limit applied: {message} - Data: {rollbar_data}")
+        
+    except Exception as e:
+        # Don't let Rollbar errors prevent the rate limit response
+        logger.error(f"Failed to send rate limit notification to Rollbar: {e}")
+    
+    # Create the response
     response_data = {
         "status": 429,
         "detail": "Rate limit exceeded. Please try again later.",
@@ -212,6 +267,10 @@ def rate_limit_error_handler(error):
     """Custom error handler for rate limit exceeded"""
     # Try to get retry_after from the error object, fallback to None
     retry_after = getattr(error, "retry_after", None)
+    
+    # Log the error for debugging
+    logger.info(f"Rate limit exceeded: {error}")
+    
     return create_rate_limit_response(retry_after=retry_after)
 
 
