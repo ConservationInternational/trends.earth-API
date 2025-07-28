@@ -285,7 +285,7 @@ class DockerService:
                 script = Script.query.get(Execution.query.get(execution_id).script_id)
 
                 client = get_docker_client()
-                
+
                 # Use Swarm HTTP API directly for better control
                 service_spec = {
                     "Name": f"execution-{execution_id}",
@@ -294,7 +294,7 @@ class DockerService:
                         "execution.script_id": str(script.id),
                         "service.type": "execution",
                         "managed.by": "trends.earth-api",
-                        "created.at": str(datetime.utcnow().isoformat())
+                        "created.at": str(datetime.utcnow().isoformat()),
                     },
                     "TaskTemplate": {
                         "ContainerSpec": {
@@ -303,44 +303,61 @@ class DockerService:
                             "Env": env,
                             "Labels": {
                                 "execution.id": str(execution_id),
-                                "service.type": "execution"
-                            }
-                            # Note: Health checks omitted for batch processing containers
-                            # that are expected to run once and exit
+                                "service.type": "execution",
+                            },
+                            # Note: Health checks omitted for batch processing
+                            # containers that are expected to run once and exit
                         },
                         "Resources": {
                             "Reservations": {
-                                "NanoCPUs": int(script.cpu_reservation * 1_000_000_000) if script.cpu_reservation else 250_000_000,  # 0.25 CPU default
-                                "MemoryBytes": script.memory_reservation if script.memory_reservation else 400 * 1024 * 1024  # 400MB default
+                                "NanoCPUs": (
+                                    int(script.cpu_reservation * 1_000_000_000)
+                                    if script.cpu_reservation
+                                    else 250_000_000  # 0.25 CPU default
+                                ),
+                                "MemoryBytes": (
+                                    script.memory_reservation
+                                    if script.memory_reservation
+                                    else 400 * 1024 * 1024  # 400MB default
+                                ),
                             },
                             "Limits": {
-                                "NanoCPUs": int(script.cpu_limit * 1_000_000_000) if script.cpu_limit else 1_000_000_000,  # 1 CPU default
-                                "MemoryBytes": script.memory_limit if script.memory_limit else 800 * 1024 * 1024  # 800MB default
-                            }
+                                "NanoCPUs": (
+                                    int(script.cpu_limit * 1_000_000_000)
+                                    if script.cpu_limit
+                                    else 1_000_000_000  # 1 CPU default
+                                ),
+                                "MemoryBytes": (
+                                    script.memory_limit
+                                    if script.memory_limit
+                                    else 800 * 1024 * 1024  # 800MB default
+                                ),
+                            },
                         },
                         "RestartPolicy": {
                             "Condition": "on-failure",
                             "Delay": 10_000_000_000,  # 10 seconds in nanoseconds
                             "MaxAttempts": 2,
-                            "Window": 120_000_000_000  # 2 minutes in nanoseconds
+                            "Window": 120_000_000_000,  # 2 minutes in nanoseconds
                         },
                         "Placement": {
                             "Constraints": [
-                                "node.role != manager",  # Prefer worker nodes for executions
-                                "node.availability == active"  # Only schedule on active nodes
+                                # Prefer worker nodes for executions
+                                "node.role != manager",
+                                # Only schedule on active nodes
+                                "node.availability == active",
                             ]
-                        }
+                        },
                     },
-                    "Mode": {
-                        "Replicated": {
-                            "Replicas": 1
-                        }
-                    }
+                    "Mode": {"Replicated": {"Replicas": 1}},
                 }
-                
+
                 # Create service via HTTP API
                 response = client.api.create_service(**service_spec)
-                logger.info(f"Created Swarm service for execution {execution_id}: {response.get('ID', 'unknown')}")
+                service_id = response.get("ID", "unknown")
+                logger.info(
+                    f"Created Swarm service for execution {execution_id}: {service_id}"
+                )
             else:
                 logger.info(
                     "Creating container (running in "
