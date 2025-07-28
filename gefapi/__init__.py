@@ -117,34 +117,49 @@ for rule in app.url_map.iter_rules():
 @app.route("/api-health", methods=["GET"])
 def health_check():
     """Simple health check endpoint with deployment information"""
+    health_status = "ok"
+    db_status = "unknown"
+
     try:
         # Test database connectivity by attempting a simple query
         # This approach checks the connection without relying on specific models
         from sqlalchemy import text
 
         result = db.session.execute(text("SELECT 1 as health_check")).fetchone()
-        db_status = "healthy" if result else "unhealthy"
+        db_status = "healthy" if result and result[0] == 1 else "unhealthy"
     except Exception as e:
         logger.warning(f"Database health check failed: {str(e)}")
         db_status = "unhealthy"
+        # Don't fail the health check just because database is down
+        # health_status = "degraded"
 
     # Get deployment information from environment variables
     commit_sha = os.getenv("GIT_COMMIT_SHA", "unknown")
     git_branch = os.getenv("GIT_BRANCH", "unknown")
     deployment_env = os.getenv("DEPLOYMENT_ENVIRONMENT", "unknown")
 
+    response_data = {
+        "status": health_status,
+        "timestamp": datetime.utcnow().isoformat(),
+        "database": db_status,
+        "version": "1.0",
+        "deployment": {
+            "commit_sha": commit_sha,
+            "branch": git_branch,
+            "environment": deployment_env,
+        },
+    }
+
+    # Return 200 even if database is unhealthy - this allows the service to be
+    # considered "up" while database issues are being resolved
+    return jsonify(response_data), 200
+
+
+@app.route("/ping", methods=["GET"])
+def ping():
+    """Simple ping endpoint without database dependency"""
     return jsonify(
-        {
-            "status": "ok",
-            "timestamp": datetime.utcnow().isoformat(),
-            "database": db_status,
-            "version": "1.0",
-            "deployment": {
-                "commit_sha": commit_sha,
-                "branch": git_branch,
-                "environment": deployment_env,
-            },
-        }
+        {"status": "ok", "timestamp": datetime.utcnow().isoformat(), "message": "pong"}
     ), 200
 
 
