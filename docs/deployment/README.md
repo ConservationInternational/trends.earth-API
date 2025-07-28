@@ -18,15 +18,21 @@ GitHub Repository
     ├── Push to staging/develop → Staging Deployment (port 3002)
     └── Docker Images → Private Registry (registry.company.com:5000)
 
+AWS Infrastructure
+    ├── EC2 Security Groups (dynamic GitHub Actions runner access)
+    ├── Automated security group rule management
+    └── AWS credentials for deployment automation
+
 EC2 Instances
     ├── Production Server
     │   ├── Docker Swarm Manager
     │   ├── Application: /opt/trends-earth-api
     │   └── Stack: trends-earth-prod
     └── Staging Server
-        ├── Docker Swarm Manager
+        ├── Docker Swarm Manager  
         ├── Application: /opt/trends-earth-api-staging
-        └── Stack: trends-earth-staging
+        ├── Stack: trends-earth-staging
+        └── Automated Database Setup (PostgreSQL + test data)
 ```
 
 ## Prerequisites
@@ -43,6 +49,8 @@ EC2 Instances
 - GitHub CLI (`gh`) installed
 - SSH client
 - Access to the Docker registry (registry.company.com:5000)
+- AWS CLI configured (for security group management)
+- Access to production database (for staging data import)
 
 ## Quick Start
 
@@ -51,27 +59,43 @@ EC2 Instances
 Run this on each deployment server (production and staging):
 
 ```bash
-# Clone the repository
+# Clone the repository  
 git clone https://github.com/ConservationInternational/trends.earth-API.git
 cd trends.earth-API
 
 # Make scripts executable
+chmod +x scripts/*.sh
 chmod +x scripts/deployment/*.sh
 
-# Setup Docker Swarm and secrets
-./scripts/deployment/setup-docker-swarm.sh
+# Setup Docker and required dependencies
+sudo apt update && sudo apt upgrade -y
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+
+# Initialize Docker Swarm
+docker swarm init
+
+# Create application directories
+sudo mkdir -p /opt/trends-earth-api
+sudo mkdir -p /opt/trends-earth-api-staging
+sudo chown -R $USER:$USER /opt/trends-earth-api*
 ```
 
 ### 2. GitHub Secrets Setup
 
-Run this on your local machine:
+Configure the required GitHub secrets manually in your repository settings:
 
 ```bash
-# Ensure you're in the repository directory
-cd trends.earth-API
+# Go to: https://github.com/ConservationInternational/trends.earth-API/settings/secrets/actions
 
-# Set up GitHub secrets
-./scripts/deployment/setup-github-secrets.sh
+# Add all the secrets listed in the "GitHub Secrets" section above
+# You can use the GitHub CLI to add secrets programmatically:
+
+gh secret set AWS_ACCESS_KEY_ID --body "your-aws-key"
+gh secret set AWS_SECRET_ACCESS_KEY --body "your-aws-secret"
+gh secret set STAGING_HOST --body "your-staging-server-ip"
+# ... add all other required secrets
 ```
 
 ### 3. Test Deployment
@@ -152,26 +176,54 @@ JWT_SECRET_KEY=your-staging-jwt-secret
 
 ### GitHub Secrets
 
-The following secrets will be configured automatically:
+The following secrets must be configured in your GitHub repository settings:
 
 #### Repository Secrets (shared)
-- `DOCKER_REGISTRY` - Docker registry URL
-- `DOCKER_USERNAME` - Registry username
-- `DOCKER_PASSWORD` - Registry password
+- `DOCKER_REGISTRY` - Docker registry URL (e.g., registry.company.com:5000)
+
+#### AWS Infrastructure Secrets (required for both environments)
+- `AWS_ACCESS_KEY_ID` - AWS access key for security group management
+- `AWS_SECRET_ACCESS_KEY` - AWS secret key for security group management  
+- `AWS_REGION` - AWS region (default: us-east-1)
 
 #### Production Environment Secrets
 - `PROD_HOST` - Production server IP/hostname
-- `PROD_USERNAME` - SSH username
-- `PROD_SSH_KEY` - SSH private key
+- `PROD_USERNAME` - SSH username for production server
+- `PROD_SSH_KEY` - SSH private key for production server
 - `PROD_SSH_PORT` - SSH port (default: 22)
-- `PROD_APP_PATH` - Application directory path
+- `PROD_APP_PATH` - Application directory path (default: /opt/trends-earth-api)
+- `PROD_SECURITY_GROUP_ID` - AWS security group ID for production server
 
 #### Staging Environment Secrets
 - `STAGING_HOST` - Staging server IP/hostname
-- `STAGING_USERNAME` - SSH username
-- `STAGING_SSH_KEY` - SSH private key
+- `STAGING_USERNAME` - SSH username for staging server
+- `STAGING_SSH_KEY` - SSH private key for staging server
 - `STAGING_SSH_PORT` - SSH port (default: 22)
-- `STAGING_APP_PATH` - Application directory path
+- `STAGING_APP_PATH` - Application directory path (default: /opt/trends-earth-api-staging)
+- `STAGING_SECURITY_GROUP_ID` - AWS security group ID for staging server
+
+#### Staging Database Secrets (for automated setup)
+- `STAGING_DB_NAME` - Staging database name
+- `STAGING_DB_USER` - Staging database user
+- `STAGING_DB_PASSWORD` - Staging database password
+
+#### Production Database Secrets (for staging data import)
+- `PROD_DB_HOST` - Production database hostname
+- `PROD_DB_PORT` - Production database port (default: 5432)
+- `PROD_DB_NAME` - Production database name (default: trendsearth)
+- `PROD_DB_USER` - Production database user
+- `PROD_DB_PASSWORD` - Production database password
+
+#### Test User Secrets (for staging environment)
+- `TEST_SUPERADMIN_EMAIL` - Test superadmin email
+- `TEST_SUPERADMIN_PASSWORD` - Test superadmin password
+- `TEST_ADMIN_EMAIL` - Test admin email
+- `TEST_ADMIN_PASSWORD` - Test admin password
+- `TEST_USER_EMAIL` - Test user email
+- `TEST_USER_PASSWORD` - Test user password
+
+#### Monitoring Secrets (optional)
+- `ROLLBAR_SERVER_ACCESS_TOKEN` - Rollbar access token for deployment notifications
 
 ## Deployment Workflows
 
@@ -182,11 +234,13 @@ Triggers on:
 - Manual workflow dispatch
 
 Process:
-1. Build Docker image
-2. Push to registry
-3. Deploy to production server via SSH
-4. Run health checks
-5. Send notifications
+1. AWS security group setup (dynamic runner IP access)
+2. Build Docker image
+3. Push to registry  
+4. Deploy to production server via SSH
+5. Run health checks with automatic rollback on failure
+6. Notify Rollbar of deployment
+7. Cleanup AWS security group rules
 
 ### Staging Deployment (`.github/workflows/deploy-staging.yml`)
 
@@ -196,12 +250,14 @@ Triggers on:
 - Manual workflow dispatch
 
 Process:
-1. Build Docker image
-2. Push to registry
-3. Deploy to staging server via SSH
-4. Run health checks
-5. Run integration tests
-6. Send notifications
+1. AWS security group setup (dynamic runner IP access)
+2. Build Docker image with staging tags
+3. Push to registry
+4. Deploy to staging server via SSH with rolling updates
+5. Wait for automated database migration and staging environment setup
+6. Run comprehensive integration tests
+7. Notify Rollbar of deployment
+8. Cleanup AWS security group rules
 
 ## Monitoring and Troubleshooting
 
@@ -220,11 +276,25 @@ docker service inspect trends-earth-prod_manager
 
 ### Health Checks
 ```bash
-# Production health check
+# Production health check (basic)
 curl http://localhost:3001/api-health
 
-# Staging health check
+# Staging health check (with version info for debugging)
 curl http://localhost:3002/api-health
+
+# Example response with commit SHA (staging):
+# {
+#   "status": "healthy",
+#   "environment": "staging", 
+#   "version": "a1b2c3d",
+#   "timestamp": "2025-01-28T10:30:00Z"
+# }
+
+# Example response (production - minimal info):
+# {
+#   "status": "healthy",
+#   "timestamp": "2025-01-28T10:30:00Z"
+# }
 ```
 
 ### Update Services
@@ -257,19 +327,25 @@ docker service rollback trends-earth-prod_worker
 docker service rollback trends-earth-prod_beat
 ```
 
-**Using the Rollback Script:**
+**Manual Rollback with Service Inspection:**
 ```bash
-# Interactive rollback with confirmation
-./scripts/deployment/rollback-production.sh
+# Check service update history and status
+docker service inspect trends-earth-prod_manager --format='{{json .UpdateStatus}}'
 
-# Force rollback without confirmation
-./scripts/deployment/rollback-production.sh -f
+# If UpdateStatus is null, check the service spec for current image
+docker service inspect trends-earth-prod_manager --format='{{.Spec.TaskTemplate.ContainerSpec.Image}}'
 
-# Rollback specific service only
-./scripts/deployment/rollback-production.sh -s manager
+# List all available image tags in registry (if accessible)
+docker image ls | grep trendsearth-api
 
-# Dry run to see what would happen
-./scripts/deployment/rollback-production.sh --dry-run
+# Check service version history (shows recent tasks)
+docker service ps trends-earth-prod_manager --format "table {{.Name}}\t{{.Image}}\t{{.CurrentState}}\t{{.Error}}" --no-trunc
+
+# Rollback to specific image version (replace with desired tag)
+docker service update --image registry.company.com:5000/trendsearth-api:previous-tag trends-earth-prod_manager
+
+# Alternative: Rollback to previous version (if update history exists)
+docker service rollback trends-earth-prod_manager
 ```
 
 #### Rollback Configuration
@@ -402,24 +478,62 @@ services:
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [GitHub CLI Documentation](https://cli.github.com/manual/)
 - [Docker Secrets Management](https://docs.docker.com/engine/swarm/secrets/)
+- [AWS EC2 Security Groups](https://docs.aws.amazon.com/ec2/latest/userguide/ec2-security-groups.html)
+
+## Project-Specific Documentation
+
+- [Staging Database Setup Guide](staging-database.md) - Detailed staging environment documentation
+- [Docker Swarm Multi-Node Guide](docker-swarm-multi-node.md) - Multi-node deployment specifics
+- [Scripts Documentation](../scripts/deployment/README.md) - Available deployment scripts
+- [Rate Limiting Documentation](../rate-limit-status-example.md) - API rate limiting features
 
 ## 🧪 Staging Environment
 
-The staging environment includes a complete database setup with:
+The staging environment provides a complete, isolated testing environment with:
 
-- **PostgreSQL Database**: Dedicated staging database container
-- **Production Data**: Recent scripts (past year) copied from production
-- **Test Users**: Pre-configured test accounts with different roles
-- **Automated Testing**: Comprehensive integration tests
-
-### Staging Features
-
-- **Database Isolation**: Separate staging database (port 5433)
-- **Test Users**: 
-  - Superadmin: `test-superadmin@example.com`
-  - Admin: `test-admin@example.com`
-  - User: `test-user@example.com`
-- **Data Migration**: Automatic copying of recent production scripts
+### **Automated Setup Features**
+- **PostgreSQL Database**: Dedicated staging database container (port 5433)
+- **Database Migrations**: Automatic schema updates via migrate service
+- **Production Data Import**: Recent scripts (past year) copied from production automatically
+- **Test Users**: Pre-configured test accounts with proper password hashing
 - **Script Ownership**: All scripts owned by test superadmin for consistent testing
+- **Comprehensive Testing**: Full integration test suite
 
-For detailed staging setup information, see [Staging Database Guide](staging-database.md).
+### **Staging Architecture**
+```
+Docker Swarm Stack (trends-earth-staging)
+├── postgres service (PostgreSQL database)
+├── migrate service (runs once: migrations + staging setup)
+├── manager service (API server on port 3002)
+├── worker service (Celery workers)
+├── beat service (Celery scheduler)
+└── redis service (Cache and message broker)
+```
+
+### **Test Users (Automatically Created)**
+- **Superadmin**: Email from `TEST_SUPERADMIN_EMAIL` secret
+- **Admin**: Email from `TEST_ADMIN_EMAIL` secret  
+- **User**: Email from `TEST_USER_EMAIL` secret
+- **Passwords**: From corresponding `TEST_*_PASSWORD` secrets
+
+### **Automated Data Import**
+The migrate service automatically:
+1. Applies all database migrations
+2. Creates test users with proper roles and password hashing
+3. Imports recent production scripts (created/updated in past year)
+4. Imports recent status logs (past month)
+5. Imports script logs for imported scripts
+6. Updates script ownership to test superadmin user
+7. Verifies the complete setup
+
+### **Monitoring Staging Setup**
+```bash
+# Check migrate service logs to monitor setup progress
+docker service logs trends-earth-staging_migrate
+
+# Check all staging services status
+docker service ls --filter "name=trends-earth-staging"
+
+# View staging database setup verification
+docker service logs trends-earth-staging_migrate | grep "VERIFICATION RESULTS" -A 20
+```
