@@ -1,6 +1,5 @@
 """DOCKER SERVICE"""
 
-import datetime
 import gzip
 import json
 import logging
