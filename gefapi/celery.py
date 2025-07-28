@@ -26,6 +26,7 @@ def make_celery(app):
     # Configure task routing - build tasks go to build queue
     celery.conf.task_routes = {
         "gefapi.services.docker_service.docker_build": {"queue": "build"},
+        "gefapi.services.docker_service.docker_run": {"queue": "build"},
         # All other tasks use default queue
     }
 

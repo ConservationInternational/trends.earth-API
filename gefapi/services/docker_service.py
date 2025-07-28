@@ -1,5 +1,6 @@
 """DOCKER SERVICE"""
 
+import datetime
 import gzip
 import json
 import logging
@@ -284,21 +285,62 @@ class DockerService:
                 script = Script.query.get(Execution.query.get(execution_id).script_id)
 
                 client = get_docker_client()
-                client.services.create(
-                    image=f"{REGISTRY_URL}/{image}",
-                    command="./entrypoint.sh",
-                    env=env,
-                    name="execution-" + str(execution_id),
-                    resources=docker.types.Resources(
-                        cpu_reservation=script.cpu_reservation,
-                        cpu_limit=script.cpu_limit,
-                        mem_reservation=script.memory_reservation,
-                        mem_limit=script.memory_limit,
-                    ),
-                    restart_policy=docker.types.RestartPolicy(
-                        condition="on-failure", delay=10, max_attempts=2, window=0
-                    ),
-                )
+                
+                # Use Swarm HTTP API directly for better control
+                service_spec = {
+                    "Name": f"execution-{execution_id}",
+                    "Labels": {
+                        "execution.id": str(execution_id),
+                        "execution.script_id": str(script.id),
+                        "service.type": "execution",
+                        "managed.by": "trends.earth-api",
+                        "created.at": str(datetime.utcnow().isoformat())
+                    },
+                    "TaskTemplate": {
+                        "ContainerSpec": {
+                            "Image": f"{REGISTRY_URL}/{image}",
+                            "Command": ["./entrypoint.sh"],
+                            "Env": env,
+                            "Labels": {
+                                "execution.id": str(execution_id),
+                                "service.type": "execution"
+                            }
+                            # Note: Health checks omitted for batch processing containers
+                            # that are expected to run once and exit
+                        },
+                        "Resources": {
+                            "Reservations": {
+                                "NanoCPUs": int(script.cpu_reservation * 1_000_000_000) if script.cpu_reservation else 250_000_000,  # 0.25 CPU default
+                                "MemoryBytes": script.memory_reservation if script.memory_reservation else 400 * 1024 * 1024  # 400MB default
+                            },
+                            "Limits": {
+                                "NanoCPUs": int(script.cpu_limit * 1_000_000_000) if script.cpu_limit else 1_000_000_000,  # 1 CPU default
+                                "MemoryBytes": script.memory_limit if script.memory_limit else 800 * 1024 * 1024  # 800MB default
+                            }
+                        },
+                        "RestartPolicy": {
+                            "Condition": "on-failure",
+                            "Delay": 10_000_000_000,  # 10 seconds in nanoseconds
+                            "MaxAttempts": 2,
+                            "Window": 120_000_000_000  # 2 minutes in nanoseconds
+                        },
+                        "Placement": {
+                            "Constraints": [
+                                "node.role != manager",  # Prefer worker nodes for executions
+                                "node.availability == active"  # Only schedule on active nodes
+                            ]
+                        }
+                    },
+                    "Mode": {
+                        "Replicated": {
+                            "Replicas": 1
+                        }
+                    }
+                }
+                
+                # Create service via HTTP API
+                response = client.api.create_service(**service_spec)
+                logger.info(f"Created Swarm service for execution {execution_id}: {response.get('ID', 'unknown')}")
             else:
                 logger.info(
                     "Creating container (running in "

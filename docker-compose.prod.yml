@@ -59,7 +59,6 @@ services:
     command: worker
     environment:
       PORT: 3000
-      # Only handle execution tasks, not build tasks
       CELERY_WORKER_QUEUES: default
     env_file:
       - prod.env
@@ -135,20 +134,23 @@ services:
     networks:
       - backend
     deploy:
+      replicas: 2  # Two builder nodes for docker_build and docker_run tasks
       placement:
-        constraints: [node.role == manager]
-      replicas: 1
+        constraints: [node.role == manager]  # Run on manager nodes with Docker socket
       resources:
         reservations:
           cpus: "0.5"
           memory: 800M
+        limits:
+          cpus: "2.0"  # Allow bursting for Docker operations
+          memory: 1.5G
       # Rolling update configuration for builder
       update_config:
         parallelism: 1
         delay: 10s
         failure_action: rollback
         monitor: 60s
-        max_failure_ratio: 0.3
+        max_failure_ratio: 0.5  # Allow 50% failure rate for redundancy
       rollback_config:
         parallelism: 1
         delay: 0s
