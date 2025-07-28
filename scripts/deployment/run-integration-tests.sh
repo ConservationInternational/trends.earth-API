@@ -36,12 +36,32 @@ TEST_RESULTS=()
 test_health_endpoint() {
     print_status "Testing health endpoint..."
     
-    if curl -f "$STAGING_URL/api-health" >/dev/null 2>&1; then
-        print_success "✅ Health endpoint working"
-        TEST_RESULTS+=("PASS: Health endpoint")
-        return 0
+    # First check if the service is reachable
+    local response=$(curl -s -w "HTTPSTATUS:%{http_code}" "$STAGING_URL/api-health" 2>&1)
+    local curl_exit_code=$?
+    
+    # Extract HTTP status and body
+    local http_code=$(echo "$response" | sed -n 's/.*HTTPSTATUS:\([0-9]*\)$/\1/p')
+    local body=$(echo "$response" | sed 's/HTTPSTATUS:[0-9]*$//')
+    
+    if [ $curl_exit_code -eq 0 ] && [ "$http_code" = "200" ]; then
+        # Additional validation: check if response contains expected fields
+        if echo "$body" | jq -e '.status' >/dev/null 2>&1; then
+            local status=$(echo "$body" | jq -r '.status')
+            local deployment_info=$(echo "$body" | jq -e '.deployment' >/dev/null 2>&1 && echo "present" || echo "missing")
+            
+            print_success "✅ Health endpoint working (status: $status, deployment info: $deployment_info)"
+            TEST_RESULTS+=("PASS: Health endpoint")
+            return 0
+        else
+            print_error "❌ Health endpoint returned invalid JSON response"
+            print_error "Response body: $body"
+            TEST_RESULTS+=("FAIL: Health endpoint - invalid JSON")
+            return 1
+        fi
     else
-        print_error "❌ Health endpoint failed"
+        print_error "❌ Health endpoint failed (HTTP: $http_code, curl exit: $curl_exit_code)"
+        print_error "Response: $response"
         TEST_RESULTS+=("FAIL: Health endpoint")
         return 1
     fi
