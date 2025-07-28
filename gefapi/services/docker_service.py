@@ -285,73 +285,26 @@ class DockerService:
                 script = Script.query.get(Execution.query.get(execution_id).script_id)
 
                 client = get_docker_client()
-
-                # Create service using Docker API with individual parameters
-                response = client.api.create_service(
-                    task_template={
-                        "ContainerSpec": {
-                            "Image": f"{REGISTRY_URL}/{image}",
-                            "Command": ["./entrypoint.sh"],
-                            "Env": env,
-                            "Labels": {
-                                "execution.id": str(execution_id),
-                                "service.type": "execution",
-                            },
-                        },
-                        "Resources": {
-                            "Reservations": {
-                                "NanoCPUs": (
-                                    int(script.cpu_reservation * 1_000_000_000)
-                                    if script.cpu_reservation
-                                    else 50_000_000  # 0.05 CPU default (minimal)
-                                ),
-                                "MemoryBytes": (
-                                    script.memory_reservation
-                                    if script.memory_reservation
-                                    else 100 * 1024 * 1024  # 100MB default (minimal)
-                                ),
-                            },
-                            "Limits": {
-                                "NanoCPUs": (
-                                    int(script.cpu_limit * 1_000_000_000)
-                                    if script.cpu_limit
-                                    else 1_000_000_000  # 1.0 CPU default (allow bursting)
-                                ),
-                                "MemoryBytes": (
-                                    script.memory_limit
-                                    if script.memory_limit
-                                    else 1024 * 1024 * 1024  # 1GB default (allow bursting)
-                                ),
-                            },
-                        },
-                        "RestartPolicy": {
-                            "Condition": "on-failure",
-                            "Delay": 10_000_000_000,  # 10 seconds in nanoseconds
-                            "MaxAttempts": 2,
-                            "Window": 120_000_000_000,  # 2 minutes in nanoseconds
-                        },
-                        "Placement": {
-                            "Constraints": [
-                                # Only schedule on active nodes
-                                "node.availability == active",
-                            ]
-                        },
-                    },
-                    name=f"execution-{execution_id}",
+                client.services.create(
+                    image=f"{REGISTRY_URL}/{image}",
+                    command="./entrypoint.sh",
+                    env=env,
+                    name="execution-" + str(execution_id),
                     labels={
                         "execution.id": str(execution_id),
                         "execution.script_id": str(script.id),
                         "service.type": "execution",
                         "managed.by": "trends.earth-api",
-                        "created.at": datetime.datetime.now(
-                            datetime.timezone.utc
-                        ).isoformat(),
                     },
-                    mode={"Replicated": {"Replicas": 1}},
-                )
-                service_id = response.get("ID", "unknown")
-                logger.info(
-                    f"Created Swarm service for execution {execution_id}: {service_id}"
+                    resources=docker.types.Resources(
+                        cpu_reservation=script.cpu_reservation,
+                        cpu_limit=script.cpu_limit,
+                        mem_reservation=script.memory_reservation,
+                        mem_limit=script.memory_limit,
+                    ),
+                    restart_policy=docker.types.RestartPolicy(
+                        condition="on-failure", delay=10, max_attempts=2, window=120
+                    ),
                 )
             else:
                 logger.info(
