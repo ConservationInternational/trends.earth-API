@@ -303,24 +303,24 @@ class DockerService:
                                 "NanoCPUs": (
                                     int(script.cpu_reservation * 1_000_000_000)
                                     if script.cpu_reservation
-                                    else 250_000_000  # 0.25 CPU default
+                                    else 100_000_000  # 0.1 CPU default (reduced)
                                 ),
                                 "MemoryBytes": (
                                     script.memory_reservation
                                     if script.memory_reservation
-                                    else 400 * 1024 * 1024  # 400MB default
+                                    else 200 * 1024 * 1024  # 200MB default (reduced)
                                 ),
                             },
                             "Limits": {
                                 "NanoCPUs": (
                                     int(script.cpu_limit * 1_000_000_000)
                                     if script.cpu_limit
-                                    else 1_000_000_000  # 1 CPU default
+                                    else 500_000_000  # 0.5 CPU default (reduced)
                                 ),
                                 "MemoryBytes": (
                                     script.memory_limit
                                     if script.memory_limit
-                                    else 800 * 1024 * 1024  # 800MB default
+                                    else 500 * 1024 * 1024  # 500MB default (reduced)
                                 ),
                             },
                         },
