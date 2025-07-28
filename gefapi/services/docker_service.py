@@ -294,7 +294,7 @@ class DockerService:
                         "execution.script_id": str(script.id),
                         "service.type": "execution",
                         "managed.by": "trends.earth-api",
-                        "created.at": str(datetime.utcnow().isoformat()),
+                        "created.at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     },
                     "TaskTemplate": {
                         "ContainerSpec": {
