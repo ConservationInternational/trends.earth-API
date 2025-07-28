@@ -16,7 +16,7 @@ on:
 
 env:
   REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
-  IMAGE_NAME: trendsearth-api-staging
+  IMAGE_NAME: trendsearth-api
   COMPOSE_FILE: docker-compose.staging.yml
 
 jobs:

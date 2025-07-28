@@ -1,6 +1,6 @@
 services:
   migrate:
-    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
     command: migrate
     environment:
       PORT: 3000
@@ -18,7 +18,7 @@ services:
         window: 60s
 
   manager:
-    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
     command: start
     environment:
       PORT: 3000
@@ -39,7 +39,7 @@ services:
           memory: 400M
 
   worker:
-    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
     command: worker
     environment:
       PORT: 3000
@@ -56,7 +56,7 @@ services:
           memory: 400M
 
   beat:
-    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
     command: beat
     environment:
       PORT: 3000
@@ -71,7 +71,7 @@ services:
           memory: 400M
 
   builder:
-    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api-staging
+    image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
     command: worker
     user: root
     environment:
