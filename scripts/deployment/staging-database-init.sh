@@ -28,6 +28,27 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Function to find a Docker Swarm service container
+find_service_container() {
+    local service_name="$1"
+    local container_id=""
+    
+    # First try direct name match (for Docker Compose compatibility)
+    container_id=$(docker ps --filter "name=${service_name}" --format "{{.ID}}" | head -1)
+    
+    # If that fails, try using Docker Swarm service labels
+    if [ -z "$container_id" ]; then
+        container_id=$(docker ps --filter "label=com.docker.swarm.service.name=${service_name}" --format "{{.ID}}" | head -1)
+    fi
+    
+    # If still not found, try partial name match for Docker Swarm task names
+    if [ -z "$container_id" ]; then
+        container_id=$(docker ps --format "{{.ID}} {{.Names}}" | grep "${service_name}\." | head -1 | cut -d' ' -f1)
+    fi
+    
+    echo "$container_id"
+}
+
 # Database configuration from environment variables (required)
 STAGING_DB_HOST="${STAGING_DB_HOST:-localhost}"
 STAGING_DB_PORT="${STAGING_DB_PORT:-5433}"
@@ -387,13 +408,19 @@ create_test_users() {
     if [ -f "scripts/deployment/setup-staging-users.py" ]; then
         print_status "Running Python user setup script inside Docker container..."
         
-        # Find the manager container ID
-        manager_container_id=$(docker ps --filter "name=trends-earth-staging_manager" --format "{{.ID}}" | head -1)
+        # Find the manager container ID using the helper function
+        manager_container_id=$(find_service_container "trends-earth-staging_manager")
         
         if [ -z "$manager_container_id" ]; then
             print_error "Could not find trends-earth-staging_manager container"
+            print_status "Available containers:"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
+            print_status "Available Docker services:"
+            docker service ls --filter "name=trends-earth-staging" || echo "No Docker services found"
             exit 1
         fi
+        
+        print_status "Found manager container: $manager_container_id"
         
         # Copy the script into the container
         docker cp scripts/deployment/setup-staging-users.py "$manager_container_id:/opt/gef-api/setup-staging-users.py"
