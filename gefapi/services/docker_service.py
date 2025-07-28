@@ -353,7 +353,7 @@ class DockerService:
                 }
 
                 # Create service via HTTP API
-                response = client.api.create_service(**service_spec)
+                response = client.api.create_service(service_spec)
                 service_id = response.get("ID", "unknown")
                 logger.info(
                     f"Created Swarm service for execution {execution_id}: {service_id}"
