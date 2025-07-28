@@ -33,7 +33,7 @@ services:
       resources:
         reservations:
           cpus: "0.25"
-          memory: 400M
+          memory: 100M
       # Rolling update configuration for zero-downtime deployments
       update_config:
         parallelism: 1          # Update one replica at a time
@@ -68,7 +68,7 @@ services:
       resources:
         reservations:
           cpus: "0.25"
-          memory: 400M
+          memory: 100M
       # Rolling update configuration
       update_config:
         parallelism: 1          # Update one replica at a time
@@ -100,7 +100,7 @@ services:
       resources:
         reservations:
           cpus: "0.25"
-          memory: 400M
+          memory: 100M
       # Rolling update configuration
       update_config:
         parallelism: 1          # Update one replica at a time

@@ -303,24 +303,24 @@ class DockerService:
                                 "NanoCPUs": (
                                     int(script.cpu_reservation * 1_000_000_000)
                                     if script.cpu_reservation
-                                    else 100_000_000  # 0.1 CPU default (reduced)
+                                    else 50_000_000  # 0.05 CPU default (minimal)
                                 ),
                                 "MemoryBytes": (
                                     script.memory_reservation
                                     if script.memory_reservation
-                                    else 200 * 1024 * 1024  # 200MB default (reduced)
+                                    else 100 * 1024 * 1024  # 100MB default (minimal)
                                 ),
                             },
                             "Limits": {
                                 "NanoCPUs": (
                                     int(script.cpu_limit * 1_000_000_000)
                                     if script.cpu_limit
-                                    else 500_000_000  # 0.5 CPU default (reduced)
+                                    else 1_000_000_000  # 1.0 CPU default (allow bursting)
                                 ),
                                 "MemoryBytes": (
                                     script.memory_limit
                                     if script.memory_limit
-                                    else 500 * 1024 * 1024  # 500MB default (reduced)
+                                    else 1024 * 1024 * 1024  # 1GB default (allow bursting)
                                 ),
                             },
                         },
@@ -332,8 +332,6 @@ class DockerService:
                         },
                         "Placement": {
                             "Constraints": [
-                                # Prefer worker nodes for executions
-                                "node.role != manager",
                                 # Only schedule on active nodes
                                 "node.availability == active",
                             ]

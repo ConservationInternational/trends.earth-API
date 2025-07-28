@@ -35,8 +35,8 @@ services:
     deploy:
       resources:
         reservations:
-          cpus: "0.25"
-          memory: 400M
+          cpus: "0.1"
+          memory: 100M
 
   worker:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
@@ -52,8 +52,8 @@ services:
     deploy:
       resources:
         reservations:
-          cpus: "0.25"
-          memory: 400M
+          cpus: "0.1"
+          memory: 100M
 
   beat:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
@@ -67,8 +67,8 @@ services:
     deploy:
       resources:
         reservations:
-          cpus: "0.25"
-          memory: 400M
+          cpus: "0.1"
+          memory: 100M
 
   builder:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
@@ -109,7 +109,7 @@ services:
     deploy:
       resources:
         reservations:
-          cpus: "0.25"
+          cpus: "0.1"
           memory: 200M
 
   redis:
@@ -126,8 +126,8 @@ services:
         constraints: [node.role == manager]
       resources:
         reservations:
-          cpus: "0.25"
-          memory: 400M
+          cpus: "0.1"
+          memory: 100M
       # Rolling update configuration for Redis
       update_config:
         parallelism: 1
