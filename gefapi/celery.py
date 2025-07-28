@@ -51,6 +51,10 @@ def make_celery(app):
             "task": "gefapi.tasks.refresh_token_cleanup.cleanup_expired_refresh_tokens",
             "schedule": 86400.0,  # Every day (86400 seconds)
         },
+        "monitor-failed-docker-services": {
+            "task": "gefapi.tasks.docker_service_monitoring.monitor_failed_docker_services",
+            "schedule": 600.0,  # Every 10 minutes (600 seconds)
+        },
     }
     celery.conf.timezone = "UTC"
 
