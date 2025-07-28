@@ -286,17 +286,9 @@ class DockerService:
 
                 client = get_docker_client()
 
-                # Use Swarm HTTP API directly for better control
-                service_spec = {
-                    "Name": f"execution-{execution_id}",
-                    "Labels": {
-                        "execution.id": str(execution_id),
-                        "execution.script_id": str(script.id),
-                        "service.type": "execution",
-                        "managed.by": "trends.earth-api",
-                        "created.at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    },
-                    "TaskTemplate": {
+                # Create service using Docker API with individual parameters
+                response = client.api.create_service(
+                    task_template={
                         "ContainerSpec": {
                             "Image": f"{REGISTRY_URL}/{image}",
                             "Command": ["./entrypoint.sh"],
@@ -305,8 +297,6 @@ class DockerService:
                                 "execution.id": str(execution_id),
                                 "service.type": "execution",
                             },
-                            # Note: Health checks omitted for batch processing
-                            # containers that are expected to run once and exit
                         },
                         "Resources": {
                             "Reservations": {
@@ -349,11 +339,18 @@ class DockerService:
                             ]
                         },
                     },
-                    "Mode": {"Replicated": {"Replicas": 1}},
-                }
-
-                # Create service via HTTP API
-                response = client.api.create_service(service_spec)
+                    name=f"execution-{execution_id}",
+                    labels={
+                        "execution.id": str(execution_id),
+                        "execution.script_id": str(script.id),
+                        "service.type": "execution",
+                        "managed.by": "trends.earth-api",
+                        "created.at": datetime.datetime.now(
+                            datetime.timezone.utc
+                        ).isoformat(),
+                    },
+                    mode={"Replicated": {"Replicas": 1}},
+                )
                 service_id = response.get("ID", "unknown")
                 logger.info(
                     f"Created Swarm service for execution {execution_id}: {service_id}"
