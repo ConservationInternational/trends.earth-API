@@ -148,18 +148,17 @@ The deployment process:
 
 ### Manual Setup
 
-If you need to run the setup manually:
+The staging database setup is now fully automated through the Docker migrate service:
 
 ```bash
-# Complete staging database setup (includes user creation and data migration)
-export STAGING_DB_PASSWORD="your-password"
-export TEST_SUPERADMIN_PASSWORD="superadmin-password"
-export TEST_ADMIN_PASSWORD="admin-password"
-export TEST_USER_PASSWORD="user-password"
-./scripts/deployment/staging-database-init.sh
+# Deploy the staging stack - everything happens automatically
+docker stack deploy -c docker-compose.staging.yml trends-earth-staging
+
+# Monitor the automated setup progress
+docker service logs trends-earth-staging_migrate
 ```
 
-**Note**: Database migrations are handled automatically by the `trends-earth-staging_migrate` service when the Docker stack is deployed. The staging database init script focuses on data setup and user creation.
+**Note**: Database migrations, user creation, and data import are all handled automatically by the `trends-earth-staging_migrate` service when the Docker stack is deployed. No manual scripts are required.
 
 ## Data Migration Details
 
@@ -373,22 +372,23 @@ To update the staging setup scripts:
 3. Push to `develop` or `staging` branch
 4. Monitor deployment workflow
 
-## 🔧 Modular Deployment Scripts
+## 🔧 Automated Container-Based Setup
 
-The staging workflow now uses modular scripts for better maintainability:
+The staging workflow now uses fully automated container-based setup:
 
-### Core Scripts
-- **`staging-database-init.sh`**: Comprehensive database setup, user creation, and data migration
-- **`staging-postgres-container.sh`**: PostgreSQL container setup only (alternative for granular control)
-- **`run-integration-tests.sh`**: Comprehensive API and authentication testing
+### Current Architecture
+- **`migrate` service**: Runs automatically in Docker container to handle all database operations
+- **`setup_staging_environment.py`**: Comprehensive setup script that runs inside the migrate container
+- **`run-integration-tests.sh`**: Comprehensive API and authentication testing (still available for manual use)
 
 ### Benefits
-- **Comprehensive**: Main script handles all database setup needs
-- **Modularity**: Alternative scripts available for specific tasks
-- **Reusability**: Scripts can be run independently for debugging
-- **Maintainability**: Easier to update and test individual components
-- **Error Handling**: Better error reporting and recovery
-- **Security**: No hardcoded passwords or default credentials
+- **Fully Automated**: No manual script execution required
+- **Multi-Node Compatible**: Runs inside containers where database access is guaranteed
+- **Comprehensive**: Handles migrations, user creation, and data import automatically
+- **Reliable**: Consistent container environment with all dependencies
+- **Error Handling**: Better error reporting and logging within containers
+- **Security**: No external database connections from deployment nodes
+- **Maintainability**: All setup logic contained in Python script within container
 
 See [Scripts Documentation](../scripts/deployment/README.md) for detailed information.
 

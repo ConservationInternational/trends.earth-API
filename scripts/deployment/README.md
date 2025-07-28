@@ -29,85 +29,88 @@ This directory contains modular deployment scripts that are used by the GitHub A
 
 | Script | Purpose | Dependencies | Used By |
 |--------|---------|-------------|---------|
-| `staging-database-init.sh` | **Primary**: Comprehensive database setup with production data import | Docker, psql, python3 | **GitHub Actions Workflow** |
 | `run-integration-tests.sh` | Comprehensive API and authentication testing | curl, jq | **GitHub Actions Workflow** |
+
+### Container-Based Setup (Automated)
+
+| Component | Purpose | Dependencies | Used By |
+|-----------|---------|-------------|---------|
+| `migrate` service | Database migrations and staging environment setup | Docker container with Python/PostgreSQL | **Docker Compose/Swarm** |
+| `setup_staging_environment.py` | Complete staging setup (users, data import, verification) | psycopg2-binary, werkzeug | Called by migrate service |
 
 ### Alternative/Manual Scripts
 
 | Script | Purpose | Dependencies | Used By |
 |--------|---------|-------------|---------|
 | `staging-postgres-container.sh` | Creates PostgreSQL container only | Docker, psql | Manual/debugging setup |
-| `setup-staging-users.py` | Creates test users with proper password hashing | psycopg2-binary, werkzeug | Called by staging-database-init.sh |
-| `migrate-production-scripts.py` | Copies recent scripts from production | psycopg2-binary | Called by staging-database-init.sh |
+| `setup-staging-users.py` | Creates test users with proper password hashing | psycopg2-binary, werkzeug | ~~Legacy - now handled by migrate service~~ |
+| `migrate-production-scripts.py` | Copies recent scripts from production | psycopg2-binary | ~~Legacy - now handled by migrate service~~ |
 | `validate-environment.sh` | Validates required environment variables | bash | Manual validation |
 
 ## 🚀 Usage Patterns
 
-### Automated Usage (GitHub Actions)
+### Automated Usage (GitHub Actions & Docker)
 
-The scripts are automatically called by the staging workflow in this order:
+The staging environment setup is now fully automated:
 
-1. **Comprehensive Database Setup**: `staging-database-init.sh`
-   - Creates PostgreSQL container
-   - Copies recent scripts from production database (past year)
+1. **Docker Service Deployment**: Standard Docker Compose/Swarm deployment
+   - PostgreSQL container starts automatically
+   - Database is created automatically via `POSTGRES_DB` environment variable
+
+2. **Migrate Service**: Runs automatically as part of deployment
+   - Applies database migrations
+   - Executes comprehensive staging environment setup
    - Creates properly configured test users (SUPERADMIN, ADMIN, USER)
+   - Imports recent scripts from production database (past year)
    - Updates script ownership to test users
    - Provides detailed verification and reporting
-
-2. **Application Deployment**: Standard Docker Swarm deployment
 
 3. **Integration Testing**: `run-integration-tests.sh`
    - Tests API health
    - Validates user authentication
    - Verifies permissions and data
 
-## Alternative Modular Setup
+### Container-Based Setup (Current Architecture)
 
-For debugging or step-by-step setup, you can use the modular components:
+All database operations now run inside Docker containers where network access and dependencies are guaranteed:
 
-**Modular Components:**
-- `staging-postgres-container.sh` - Container setup only
-- `setup-staging-users.py` - User creation with proper password hashing
-- `migrate-production-scripts.py` - Production script migration
+**Automatic Setup Process:**
+- ✅ Database creation (handled by PostgreSQL container)
+- ✅ Schema migrations (handled by migrate service)
+- ✅ User creation (handled by migrate service)
+- ✅ Production data import (handled by migrate service)
+- ✅ Setup verification (handled by migrate service)
 
-### Manual Usage
+### Legacy Manual Usage (Deprecated)
 
-**Primary Method (Comprehensive Setup)**:
+The following manual setup is no longer needed but retained for debugging:
+
+**Primary Method (Automated - Recommended)**:
 
 ```bash
-# Set all required environment variables first
-export STAGING_DB_PASSWORD="your-secure-password"
-export PROD_DB_PASSWORD="your-prod-password"
-export TEST_SUPERADMIN_EMAIL="admin@example.com"
-export TEST_SUPERADMIN_PASSWORD="your-secure-password"
-export TEST_ADMIN_PASSWORD="your-secure-password"
-export TEST_USER_PASSWORD="your-secure-password"
-# ... (other required test user vars)
+# Deploy the staging environment - everything happens automatically
+docker stack deploy -c docker-compose.staging.yml trends-earth-staging
 
-# Run comprehensive database setup
-./scripts/deployment/staging-database-init.sh
+# Monitor the automated setup progress
+docker service logs trends-earth-staging_migrate
 
-# Run integration tests
+# Run integration tests after setup completes
 ./scripts/deployment/run-integration-tests.sh
 ```
 
-**Alternative Modular Method (Step-by-step)**:
+**Alternative Manual Method (For Debugging Only)**:
 
 ```bash
-# Setup database container only
+# Setup database container only (if needed for debugging)
 export STAGING_DB_PASSWORD="your-secure-password"
 ./scripts/deployment/staging-postgres-container.sh
 
-# Alternative: Use staging-database-init.sh for comprehensive setup
+# Manual user creation (if needed for debugging)
 export TEST_SUPERADMIN_EMAIL="admin@example.com"
 export TEST_SUPERADMIN_PASSWORD="your-secure-password"
 export TEST_ADMIN_PASSWORD="your-secure-password"
 export TEST_USER_PASSWORD="your-secure-password"
-# ... (other required test user vars)
-./scripts/deployment/staging-database-init.sh
-
-# Run integration tests
-./scripts/deployment/run-integration-tests.sh
+python3 scripts/deployment/setup-staging-users.py
 ```
 
 ## 🔧 Environment Variables
@@ -148,26 +151,33 @@ PROD_DB_PASSWORD=                  # Optional: Required if PROD_DB_HOST set
 
 ## 📋 Script Details
 
-### staging-database-init.sh (Primary)
+### Migrate Service (Automated Setup)
 
-**Purpose**: Comprehensive staging database setup with production data import and test user creation.
+**Purpose**: Fully automated staging environment setup that runs inside Docker containers.
 
 **Key Features**:
-- Creates PostgreSQL container with full configuration
-- Imports recent scripts from production database (past year)
+- Runs database migrations automatically
 - Creates test users with proper roles and password hashing
+- Imports recent scripts from production database (past year)
 - Updates script ownership to test superadmin user
 - Comprehensive verification and reporting
-- Handles both container creation and data population
+- Handles all database operations from inside containers where network access is guaranteed
 
-**Required Environment Variables**:
+**Docker Service Configuration**:
+The migrate service is configured in `docker-compose.staging.yml` and runs automatically when the stack is deployed.
+
+**Environment Variables** (set in `staging.env`):
 ```bash
-# Staging database
-STAGING_DB_HOST=localhost
-STAGING_DB_PORT=5433
-STAGING_DB_NAME=trendsearth_staging
-STAGING_DB_USER=trendsearth_staging
-STAGING_DB_PASSWORD=your-secure-password
+# Database connection (automatically configured)
+DATABASE_URL=postgresql://trendsearth_staging:postgres@postgres:5432/trendsearth_staging
+
+# Test user credentials (passed from GitHub secrets)
+TEST_SUPERADMIN_EMAIL=test-superadmin@example.com
+TEST_ADMIN_EMAIL=test-admin@example.com
+TEST_USER_EMAIL=test-user@example.com
+TEST_SUPERADMIN_PASSWORD=your-secure-password
+TEST_ADMIN_PASSWORD=your-secure-password
+TEST_USER_PASSWORD=your-secure-password
 
 # Production database (for data import)
 PROD_DB_HOST=your-prod-host
@@ -175,25 +185,15 @@ PROD_DB_PORT=5432
 PROD_DB_NAME=trendsearth
 PROD_DB_USER=your-prod-user
 PROD_DB_PASSWORD=your-prod-password
-
-# Test user credentials
-TEST_SUPERADMIN_EMAIL=test-superadmin@example.com
-TEST_ADMIN_EMAIL=test-admin@example.com
-TEST_USER_EMAIL=test-user@example.com
-TEST_SUPERADMIN_PASSWORD=your-secure-password
-TEST_ADMIN_PASSWORD=your-secure-password
-TEST_USER_PASSWORD=your-secure-password
 ```
 
 **Usage**:
 ```bash
-# Set all required environment variables first
-export STAGING_DB_PASSWORD="your-secure-password"
-export PROD_DB_PASSWORD="your-prod-password"
-# ... (set other required variables)
+# Deploy the stack - migrate service runs automatically
+docker stack deploy -c docker-compose.staging.yml trends-earth-staging
 
-# Run comprehensive setup
-./scripts/deployment/staging-database-init.sh
+# Monitor progress
+docker service logs trends-earth-staging_migrate
 ```
 
 **vs. Modular Approach**: This script provides a comprehensive single-step setup. For more granular control, you can use individual components like `staging-postgres-container.sh` for container setup only.
@@ -378,13 +378,14 @@ which jq || sudo apt-get install jq
 Enable verbose output for all scripts:
 
 ```bash
-# Run with debug output
+# Run with debug output for manual container setup
 bash -x ./scripts/deployment/staging-postgres-container.sh
 
-# Or add debug flag to individual scripts
-export DEBUG=1
-export STAGING_DB_PASSWORD="your-secure-password"
-./scripts/deployment/staging-database-init.sh
+# Monitor automated setup progress
+docker service logs trends-earth-staging_migrate
+
+# Check migrate service with debug verbosity
+docker service logs --details trends-earth-staging_migrate
 ```
 
 ### Log Locations

@@ -316,7 +316,7 @@ jobs:
           
           echo "🎉 Initial service deployment completed successfully!"
 
-    - name: Setup Staging Database
+    - name: Wait for Database Migration and Setup
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.STAGING_HOST }}
@@ -329,85 +329,50 @@ jobs:
           # Navigate to application directory
           cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
           
-          # Wait for PostgreSQL service to be fully ready
-          echo "🗄️ Waiting for PostgreSQL service to be ready..."
-          max_db_wait=60
-          db_wait_time=0
+          echo "🗄️ Waiting for migrate service to complete database setup..."
+          max_wait=300  # 5 minutes
+          wait_time=0
           
-          while [ $db_wait_time -lt $max_db_wait ]; do
-            # Check if postgres service is running and has 1/1 replicas
-            postgres_status=$(docker service ls --filter "name=trends-earth-staging_postgres" --format "{{.Replicas}}" | head -1)
-            if [ "$postgres_status" = "1/1" ]; then
-              echo "✅ PostgreSQL service is running (1/1 replicas)"
+          while [ $wait_time -lt $max_wait ]; do
+            # Check if migrate service has completed (it should exit after migrations)
+            migrate_status=$(docker service ps trends-earth-staging_migrate --format "{{.CurrentState}}" --no-trunc | head -1)
+            
+            if echo "$migrate_status" | grep -q "Complete"; then
+              echo "✅ Database migration and staging setup completed successfully"
+              echo "📋 Migrate service final status: $migrate_status"
               break
+            elif echo "$migrate_status" | grep -q "Failed"; then
+              echo "❌ Database migration failed"
+              echo "� Migrate service status: $migrate_status"
+              echo "🔍 Migrate service logs:"
+              docker service logs --tail 50 trends-earth-staging_migrate || echo "No logs available"
+              exit 1
+            else
+              echo "⏳ Waiting for migrate service to complete... ($wait_time/$max_wait seconds)"
+              echo "📋 Current status: $migrate_status"
+              sleep 10
+              wait_time=$((wait_time + 10))
             fi
-            echo "⏳ Waiting for PostgreSQL service to be ready... ($db_wait_time/$max_db_wait seconds) - Status: $postgres_status"
-            sleep 5
-            db_wait_time=$((db_wait_time + 5))
           done
           
-          if [ $db_wait_time -ge $max_db_wait ]; then
-            echo "❌ PostgreSQL service not ready after $max_db_wait seconds"
-            echo "🔍 Docker service status:"
-            docker service ls --filter "name=trends-earth-staging_postgres"
-            echo "🔍 PostgreSQL service logs:"
-            docker service logs --tail 20 trends-earth-staging_postgres || echo "No logs available"
+          if [ $wait_time -ge $max_wait ]; then
+            echo "❌ Migration service did not complete within $max_wait seconds"
+            echo "🔍 Final migrate service status:"
+            docker service ps trends-earth-staging_migrate --format "table {{.Name}}\t{{.CurrentState}}\t{{.Error}}"
+            echo "🔍 Migrate service logs:"
+            docker service logs --tail 100 trends-earth-staging_migrate || echo "No logs available"
             exit 1
           fi
           
-          # Wait for port to be listening
-          echo "🗄️ Waiting for PostgreSQL port to be ready..."
-          max_port_wait=60
-          port_wait_time=0
-          
-          while [ $port_wait_time -lt $max_port_wait ]; do
-            if nc -z 127.0.0.1 5433 2>/dev/null; then
-              echo "✅ PostgreSQL port 5433 is listening"
-              break
-            fi
-            echo "⏳ Waiting for PostgreSQL port... ($port_wait_time/$max_port_wait seconds)"
-            sleep 5
-            port_wait_time=$((port_wait_time + 5))
-          done
-          
-          if [ $port_wait_time -ge $max_port_wait ]; then
-            echo "❌ PostgreSQL port not ready after $max_port_wait seconds"
-            exit 1
-          fi
-          
-          # Additional wait for database initialization
-          echo "⏳ Waiting for database initialization..."
-          sleep 15
-          
-          # Set staging database environment variables (using containerized database)
-          export STAGING_DB_HOST="${{ secrets.STAGING_DB_HOST }}"
-          export STAGING_DB_PORT="${{ secrets.STAGING_DB_PORT }}"
-          export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
-          export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
-          export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
-          
-          # Set production database environment variables (for data import)
-          export PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}"
-          export PROD_DB_PORT="${{ secrets.PROD_DB_PORT }}"
-          export PROD_DB_NAME="${{ secrets.PROD_DB_NAME }}"
-          export PROD_DB_USER="${{ secrets.PROD_DB_USER }}"
-          export PROD_DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}"
-          
-          # Use defaults if not provided
-          export PROD_DB_PORT="${PROD_DB_PORT:-5432}"
-          export PROD_DB_NAME="${PROD_DB_NAME:-trendsearth}"
-          
-          # Set test user credentials
-          export TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}"
-          export TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}"
-          export TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}"
-          export TEST_SUPERADMIN_PASSWORD="${{ secrets.TEST_SUPERADMIN_PASSWORD }}"
-          export TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}"
-          export TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}"
-          
-          # Run comprehensive database setup script
-          chmod +x scripts/deployment/staging-database-init.sh
-          ./scripts/deployment/staging-database-init.sh
+          # Display setup completion info
+          echo "🎉 Staging environment setup completed!"
+          echo "📝 The following was automatically configured by the migrate service:"
+          echo "   • Database migrations applied"
+          echo "   • Test users created with credentials from GitHub secrets"
+          echo "   • Production data imported (scripts, status logs)"
+          echo "   • Setup verification completed"
+          echo ""
+          echo "🔍 To check migrate service logs: docker service logs trends-earth-staging_migrate"
 
     - name: Run integration tests
       uses: appleboy/ssh-action@v1.0.0
