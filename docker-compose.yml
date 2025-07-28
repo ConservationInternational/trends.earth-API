@@ -3,6 +3,10 @@ services:
     image: trendsearth-api
     build: .
     command: start
+    environment:
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-local-dev}
+      GIT_BRANCH: ${GIT_BRANCH:-local}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-development}
     networks:
       - backend
     deploy:

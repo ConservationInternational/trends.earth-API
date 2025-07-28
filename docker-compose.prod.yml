@@ -19,6 +19,9 @@ services:
     command: start
     environment:
       PORT: 3000
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
     ports:
       - target: 3000
         published: 3001

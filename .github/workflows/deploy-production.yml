@@ -155,6 +155,11 @@ jobs:
           export DOCKER_GROUP_ID=$(getent group docker | cut -d: -f3)
           export DOCKER_REGISTRY="${{ secrets.DOCKER_REGISTRY }}"
           
+          # Set version information for health checks
+          export GIT_COMMIT_SHA="${{ github.sha }}"
+          export GIT_BRANCH="${{ github.ref_name }}"
+          export DEPLOYMENT_ENVIRONMENT="production"
+          
           # Deploy with Docker Swarm
           echo "📦 Deploying services..."
           

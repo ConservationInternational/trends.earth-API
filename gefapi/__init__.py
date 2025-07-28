@@ -116,7 +116,7 @@ for rule in app.url_map.iter_rules():
 
 @app.route("/api-health", methods=["GET"])
 def health_check():
-    """Simple health check endpoint"""
+    """Simple health check endpoint with deployment information"""
     try:
         # Test database connectivity by attempting a simple query
         # This approach checks the connection without relying on specific models
@@ -128,12 +128,22 @@ def health_check():
         logger.warning(f"Database health check failed: {str(e)}")
         db_status = "unhealthy"
 
+    # Get deployment information from environment variables
+    commit_sha = os.getenv("GIT_COMMIT_SHA", "unknown")
+    git_branch = os.getenv("GIT_BRANCH", "unknown")
+    deployment_env = os.getenv("DEPLOYMENT_ENVIRONMENT", "unknown")
+
     return jsonify(
         {
             "status": "ok",
             "timestamp": datetime.utcnow().isoformat(),
             "database": db_status,
             "version": "1.0",
+            "deployment": {
+                "commit_sha": commit_sha,
+                "branch": git_branch,
+                "environment": deployment_env,
+            },
         }
     ), 200
 
