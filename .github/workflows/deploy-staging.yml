@@ -310,10 +310,10 @@ jobs:
             echo "🔍 Final debugging information:"
             echo "  - All running containers:"
             docker ps --filter "name=trends-earth-staging"
-            echo "  - Manager service details:"
-            docker service inspect trends-earth-staging_manager --format="{{json .Spec.TaskTemplate.ContainerSpec}}" || echo "Service not found"
-            echo "  - Recent manager service logs:"
-            docker service logs --tail 50 trends-earth-staging_manager || echo "No logs available"
+            echo "  - API service details:"
+            docker service inspect trends-earth-staging_api --format="{{json .Spec.TaskTemplate.ContainerSpec}}" || echo "Service not found"
+            echo "  - Recent API service logs:"
+            docker service logs --tail 50 trends-earth-staging_api || echo "No logs available"
             exit 1
           fi
           

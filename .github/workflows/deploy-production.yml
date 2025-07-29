@@ -272,15 +272,15 @@ jobs:
             echo "🔍 Final debugging information:"
             echo "  - All running containers:"
             docker ps --filter "name=trends-earth-prod"
-            echo "  - Manager service details:"
-            docker service inspect trends-earth-prod_manager --format="{{json .Spec.TaskTemplate.ContainerSpec}}" || echo "Service not found"
-            echo "  - Recent manager service logs:"
-            docker service logs --tail 50 trends-earth-prod_manager || echo "No logs available"
+            echo "  - API service details:"
+            docker service inspect trends-earth-prod_api --format="{{json .Spec.TaskTemplate.ContainerSpec}}" || echo "Service not found"
+            echo "  - Recent API service logs:"
+            docker service logs --tail 50 trends-earth-prod_api || echo "No logs available"
             
             echo "🔄 Initiating automatic rollback..."
             
             # Rollback all services
-            docker service rollback trends-earth-prod_manager || echo "Manager rollback failed"
+            docker service rollback trends-earth-prod_api || echo "API rollback failed"
             docker service rollback trends-earth-prod_worker || echo "Worker rollback failed"  
             docker service rollback trends-earth-prod_beat || echo "Beat rollback failed"
             

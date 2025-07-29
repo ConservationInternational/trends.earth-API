@@ -241,12 +241,12 @@ You can test the staging environment manually:
 ### Service Logs
 ```bash
 # View staging service logs
-docker service logs trends-earth-staging_manager
+docker service logs trends-earth-staging_api
 docker service logs trends-earth-staging_worker
 docker service logs trends-earth-staging_postgres
 
 # Follow logs in real-time
-docker service logs -f trends-earth-staging_manager
+docker service logs -f trends-earth-staging_api
 ```
 
 ### Database Logs

@@ -1,5 +1,5 @@
 services:
-  manager:
+  api:
     image: trendsearth-api
     build: .
     command: start
@@ -29,7 +29,7 @@ services:
           cpus: "0.25"
           memory: 400M
 
-  builder:
+  docker:
     image: trendsearth-api
     build: .
     command: worker

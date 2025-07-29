@@ -86,7 +86,7 @@ services:
       - database
       - redis
 
-  builder:
+  docker:
     image: trendsearth_api
     build: .
     command: ["worker"]

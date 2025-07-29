@@ -14,7 +14,7 @@ services:
       restart_policy:
         condition: on-failure
 
-  manager:
+  api:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:latest
     command: start
     environment:
@@ -119,7 +119,7 @@ services:
         max_attempts: 3
         window: 120s
 
-  builder:
+  docker:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:latest
     command: worker
     user: root

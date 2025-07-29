@@ -1294,6 +1294,31 @@ def get_status_logs():
           "execution_id": null
         }
       ],
+      "swarm": {
+        "swarm_active": true,
+        "total_nodes": 3,
+        "total_managers": 1,
+        "total_workers": 2,
+        "nodes": [
+          {
+            "id": "node-id-123",
+            "hostname": "manager-01",
+            "role": "manager",
+            "is_manager": true,
+            "is_leader": true,
+            "availability": "active",
+            "state": "ready",
+            "cpu_count": 4.0,
+            "memory_gb": 8.0,
+            "running_tasks": 3,
+            "estimated_max_tasks": 8,
+            "available_capacity": 5,
+            "labels": {},
+            "created_at": "2025-01-15T10:00:00Z",
+            "updated_at": "2025-01-15T10:30:00Z"
+          }
+        }
+      ],
       "page": 1,
       "per_page": 100,
       "total": 1547
@@ -1392,6 +1417,93 @@ def get_status_logs():
         ),
         200,
     )
+
+
+@endpoints.route("/status/swarm", strict_slashes=False, methods=["GET"])
+@jwt_required()
+def get_swarm_status():
+    """
+    Get cached Docker Swarm cluster status including node information.
+
+    **Authentication**: JWT token required
+    **Access**: Restricted to ADMIN and SUPERADMIN users only
+    **Purpose**: Monitor Docker Swarm health, node resources, and capacity
+    **Performance**: Uses Redis-cached data updated every 2 minutes for fast response
+
+    **Response Schema**:
+    ```json
+    {
+      "data": {
+        "swarm_active": true,
+        "total_nodes": 3,
+        "total_managers": 1,
+        "total_workers": 2,
+        "nodes": [
+          {
+            "id": "node-id-123",
+            "hostname": "manager-01",
+            "role": "manager",
+            "is_manager": true,
+            "is_leader": true,
+            "availability": "active",
+            "state": "ready",
+            "cpu_count": 4.0,
+            "memory_gb": 8.0,
+            "running_tasks": 3,
+            "estimated_max_tasks": 8,
+            "available_capacity": 5,
+            "labels": {},
+            "created_at": "2025-01-15T10:00:00Z",
+            "updated_at": "2025-01-15T10:30:00Z"
+          }
+        ]
+      }
+    }
+    ```
+
+    **Error Responses**:
+    - 403: Access denied (non-admin user)
+    - 500: Server error
+    """
+    logger.info("[ROUTER]: Getting Docker Swarm status")
+
+    from flask_jwt_extended import get_jwt_identity
+
+    from gefapi.services import UserService
+
+    try:
+        # Check user permissions
+        user_id = get_jwt_identity()
+        user = UserService.get_user(user_id)
+
+        if not user or user.role not in ["ADMIN", "SUPERADMIN"]:
+            logger.error(f"[ROUTER]: Access denied for user {user_id}")
+            return error(status=403, detail="Access denied. Admin privileges required.")
+
+        # Get cached Docker Swarm information (fast)
+        try:
+            from gefapi.tasks.status_monitoring import get_cached_swarm_status
+
+            swarm_info = get_cached_swarm_status()
+        except Exception as swarm_error:
+            logger.warning(
+                f"[ROUTER]: Failed to get cached Docker Swarm info: {swarm_error}"
+            )
+            swarm_info = {
+                "error": f"Cache retrieval failed: {str(swarm_error)}",
+                "nodes": [],
+                "total_nodes": 0,
+                "total_managers": 0,
+                "total_workers": 0,
+                "swarm_active": False,
+            }
+
+        logger.info("[ROUTER]: Successfully retrieved swarm status")
+        return jsonify(data=swarm_info), 200
+
+    except Exception as e:
+        logger.error(f"[ROUTER]: Error getting swarm status: {str(e)}")
+        return error(status=500, detail="Error retrieving swarm status")
 
 
 @endpoints.route("/rate-limit/status", methods=["GET"])

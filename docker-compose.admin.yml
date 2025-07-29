@@ -13,7 +13,7 @@ services:
       - ./gefapi:/opt/gef-api/gefapi
       - ./migrations:/opt/gef-api/migrations
 
-  builder:
+  docker:
     image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
     build: .
     command: worker

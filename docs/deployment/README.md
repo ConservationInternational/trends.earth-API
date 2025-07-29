@@ -267,11 +267,11 @@ Process:
 docker service ls
 
 # Check specific service logs
-docker service logs trends-earth-prod_manager
-docker service logs trends-earth-staging_manager
+docker service logs trends-earth-prod_api
+docker service logs trends-earth-staging_api
 
 # Check service details
-docker service inspect trends-earth-prod_manager
+docker service inspect trends-earth-prod_api
 ```
 
 ### Health Checks
@@ -300,10 +300,10 @@ curl http://localhost:3002/api-health
 ### Update Services
 ```bash
 # Force service update (production)
-docker service update --force trends-earth-prod_manager
+docker service update --force trends-earth-prod_api
 
 # Force service update (staging)
-docker service update --force trends-earth-staging_manager
+docker service update --force trends-earth-staging_api
 ```
 
 ### Rollback
@@ -319,10 +319,10 @@ The production deployment includes automatic rollback capabilities:
 **Quick Manual Rollback:**
 ```bash
 # Rollback specific service to previous version
-docker service rollback trends-earth-prod_manager
+docker service rollback trends-earth-prod_api
 
 # Rollback all services
-docker service rollback trends-earth-prod_manager
+docker service rollback trends-earth-prod_api
 docker service rollback trends-earth-prod_worker  
 docker service rollback trends-earth-prod_beat
 ```
@@ -330,19 +330,19 @@ docker service rollback trends-earth-prod_beat
 **Manual Rollback with Service Inspection:**
 ```bash
 # Check service update history and status
-docker service inspect trends-earth-prod_manager --format='{{json .UpdateStatus}}'
+docker service inspect trends-earth-prod_api --format='{{json .UpdateStatus}}'
 
 # If UpdateStatus is null, check the service spec for current image
-docker service inspect trends-earth-prod_manager --format='{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+docker service inspect trends-earth-prod_api --format='{{.Spec.TaskTemplate.ContainerSpec.Image}}'
 
 # List all available image tags in registry (if accessible)
 docker image ls | grep trendsearth-api
 
 # Check service version history (shows recent tasks)
-docker service ps trends-earth-prod_manager --format "table {{.Name}}\t{{.Image}}\t{{.CurrentState}}\t{{.Error}}" --no-trunc
+docker service ps trends-earth-prod_api --format "table {{.Name}}\t{{.Image}}\t{{.CurrentState}}\t{{.Error}}" --no-trunc
 
 # Rollback to specific image version (replace with desired tag)
-docker service update --image registry.company.com:5000/trendsearth-api:previous-tag trends-earth-prod_manager
+docker service update --image registry.company.com:5000/trendsearth-api:previous-tag trends-earth-prod_api
 
 # Alternative: Rollback to previous version (if update history exists)
 docker service rollback trends-earth-prod_manager

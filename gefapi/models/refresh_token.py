@@ -16,17 +16,21 @@ class RefreshToken(db.Model):
     __tablename__ = "refresh_tokens"
 
     id = db.Column(
-        GUID(), primary_key=True, default=uuid.uuid4, unique=True, nullable=False
+        GUID(), primary_key=True, default=uuid.uuid4, nullable=False
     )
-    user_id = db.Column(GUID(), db.ForeignKey("user.id"), nullable=False)
-    token = db.Column(db.String(255), unique=True, nullable=False, index=True)
-    expires_at = db.Column(db.DateTime, nullable=False)
+    user_id = db.Column(GUID(), db.ForeignKey("user.id"), nullable=False, index=True)
+    token = db.Column(db.String(255), nullable=False, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
     created_at = db.Column(
         db.DateTime, default=datetime.datetime.utcnow, nullable=False
     )
     is_revoked = db.Column(db.Boolean, default=False, nullable=False)
     device_info = db.Column(db.String(500))  # Store user agent, IP, etc.
     last_used_at = db.Column(db.DateTime)
+
+    __table_args__ = (
+        db.UniqueConstraint('token', name='refresh_tokens_token_key'),
+    )
 
     # Relationship
     user = db.relationship("User", backref=db.backref("refresh_tokens", lazy=True))

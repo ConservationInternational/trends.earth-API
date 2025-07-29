@@ -1,29 +1,26 @@
-"""STATUS MONITORING TASKS"""
+"""ENHANCED STATUS MONITORING TASKS WITH DOCKER SWARM INFORMATION"""
 
 import contextlib
+import datetime
 import logging
 
 from celery import Task
+import psutil
 import rollbar
 from sqlalchemy import func
 
 from gefapi import db
 from gefapi.models import Execution, Script, StatusLog, User
 from gefapi.services.docker_service import get_docker_client
-from gefapi.utils.redis_cache import get_redis_cache
 
 logger = logging.getLogger(__name__)
 
-# Cache configuration
-SWARM_CACHE_KEY = "docker_swarm_status"
-SWARM_CACHE_TTL = 300  # 5 minutes TTL (buffer for 2-minute refresh cycle)
 
-
-class StatusMonitoringTask(Task):
-    """Base task for status monitoring"""
+class EnhancedStatusMonitoringTask(Task):
+    """Base task for enhanced status monitoring with Docker Swarm info"""
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
-        logger.error(f"Status monitoring task failed: {exc}")
+        logger.error(f"Enhanced status monitoring task failed: {exc}")
         rollbar.report_exc_info()
 
 
@@ -35,7 +32,7 @@ def _get_docker_swarm_info():
     """
     Collect Docker Swarm node information including resource usage,
     container counts, leader status, and available capacity.
-
+    
     Returns:
         dict: Docker swarm information with node details
     """
@@ -49,13 +46,13 @@ def _get_docker_swarm_info():
                 "total_nodes": 0,
                 "total_managers": 0,
                 "total_workers": 0,
-                "swarm_active": False,
+                "swarm_active": False
             }
 
         # Check if Docker is in swarm mode
         try:
             swarm_info = docker_client.info()
-            if swarm_info.get("Swarm", {}).get("LocalNodeState") != "active":
+            if not swarm_info.get('Swarm', {}).get('LocalNodeState') == 'active':
                 logger.info("Docker is not in swarm mode")
                 return {
                     "error": "Not in swarm mode",
@@ -63,7 +60,7 @@ def _get_docker_swarm_info():
                     "total_nodes": 0,
                     "total_managers": 0,
                     "total_workers": 0,
-                    "swarm_active": False,
+                    "swarm_active": False
                 }
         except Exception as e:
             logger.error(f"Error checking swarm status: {e}")
@@ -73,7 +70,7 @@ def _get_docker_swarm_info():
                 "total_nodes": 0,
                 "total_managers": 0,
                 "total_workers": 0,
-                "swarm_active": False,
+                "swarm_active": False
             }
 
         # Get swarm nodes
@@ -85,34 +82,34 @@ def _get_docker_swarm_info():
         for node in nodes:
             try:
                 node_attrs = node.attrs
-                node_spec = node_attrs.get("Spec", {})
-                node_status = node_attrs.get("Status", {})
-                node_description = node_attrs.get("Description", {})
-                node_resources = node_description.get("Resources", {})
-
+                node_spec = node_attrs.get('Spec', {})
+                node_status = node_attrs.get('Status', {})
+                node_description = node_attrs.get('Description', {})
+                node_resources = node_description.get('Resources', {})
+                
                 # Determine node role
-                role = node_spec.get("Role", "worker")
-                is_manager = role == "manager"
+                role = node_spec.get('Role', 'worker')
+                is_manager = role == 'manager'
                 is_leader = False
-
+                
                 if is_manager:
                     total_managers += 1
                     # Check if this manager is the leader
-                    manager_status = node_attrs.get("ManagerStatus", {})
-                    is_leader = manager_status.get("Leader", False)
+                    manager_status = node_attrs.get('ManagerStatus', {})
+                    is_leader = manager_status.get('Leader', False)
                 else:
                     total_workers += 1
 
                 # Get node availability
-                availability = node_spec.get("Availability", "unknown")
-
+                availability = node_spec.get('Availability', 'unknown')
+                
                 # Get node state and status
-                state = node_status.get("State", "unknown")
-
+                state = node_status.get('State', 'unknown')
+                
                 # Get resource information
-                nano_cpus = node_resources.get("NanoCPUs", 0)
-                memory_bytes = node_resources.get("MemoryBytes", 0)
-
+                nano_cpus = node_resources.get('NanoCPUs', 0)
+                memory_bytes = node_resources.get('MemoryBytes', 0)
+                
                 # Convert nano CPUs to regular CPU count
                 cpu_count = nano_cpus / 1_000_000_000 if nano_cpus else 0
                 # Convert memory bytes to GB
@@ -123,37 +120,28 @@ def _get_docker_swarm_info():
                     # Get all services and their tasks
                     services = docker_client.services.list()
                     tasks_on_node = 0
-
+                    
                     for service in services:
                         service_tasks = service.tasks()
                         for task in service_tasks:
-                            task_node_id = task.get("NodeID")
-                            task_state = task.get("Status", {}).get("State", "")
-                            if task_node_id == node_attrs.get("ID") and task_state in [
-                                "running",
-                                "starting",
-                                "pending",
-                            ]:
+                            task_node_id = task.get('NodeID')
+                            task_state = task.get('Status', {}).get('State', '')
+                            if (task_node_id == node_attrs.get('ID') and 
+                                task_state in ['running', 'starting', 'pending']):
                                 tasks_on_node += 1
-
+                                
                 except Exception as task_error:
-                    logger.warning(
-                        f"Could not get task count for node "
-                        f"{node_attrs.get('ID')}: {task_error}"
-                    )
+                    logger.warning(f"Could not get task count for node {node_attrs.get('ID')}: {task_error}")
                     tasks_on_node = 0
 
                 # Calculate available capacity (simplified)
-                # This is a rough estimate - in reality, capacity depends on
-                # many factors
-                max_tasks_estimate = (
-                    int(cpu_count * 2) if cpu_count > 0 else 0
-                )  # Rough estimate
+                # This is a rough estimate - in reality, capacity depends on many factors
+                max_tasks_estimate = int(cpu_count * 2) if cpu_count > 0 else 0  # Rough estimate
                 available_capacity = max(0, max_tasks_estimate - tasks_on_node)
 
                 node_info = {
-                    "id": node_attrs.get("ID"),
-                    "hostname": node_description.get("Hostname", "unknown"),
+                    "id": node_attrs.get('ID'),
+                    "hostname": node_description.get('Hostname', 'unknown'),
                     "role": role,
                     "is_manager": is_manager,
                     "is_leader": is_leader,
@@ -164,19 +152,19 @@ def _get_docker_swarm_info():
                     "running_tasks": tasks_on_node,
                     "estimated_max_tasks": max_tasks_estimate,
                     "available_capacity": available_capacity,
-                    "labels": node_spec.get("Labels", {}),
-                    "created_at": node_attrs.get("CreatedAt"),
-                    "updated_at": node_attrs.get("UpdatedAt"),
+                    "labels": node_spec.get('Labels', {}),
+                    "created_at": node_attrs.get('CreatedAt'),
+                    "updated_at": node_attrs.get('UpdatedAt')
                 }
-
+                
                 node_details.append(node_info)
-
+                
             except Exception as node_error:
                 logger.error(f"Error processing node {node.id}: {node_error}")
                 continue
 
         # Sort nodes by role (managers first) and then by hostname
-        node_details.sort(key=lambda x: (not x["is_manager"], x["hostname"]))
+        node_details.sort(key=lambda x: (not x['is_manager'], x['hostname']))
 
         return {
             "nodes": node_details,
@@ -184,7 +172,7 @@ def _get_docker_swarm_info():
             "total_managers": total_managers,
             "total_workers": total_workers,
             "swarm_active": True,
-            "error": None,
+            "error": None
         }
 
     except Exception as e:
@@ -195,104 +183,24 @@ def _get_docker_swarm_info():
             "total_nodes": 0,
             "total_managers": 0,
             "total_workers": 0,
-            "swarm_active": False,
+            "swarm_active": False
         }
 
 
-def get_cached_swarm_status():
+@celery.task(base=EnhancedStatusMonitoringTask, bind=True)
+def collect_enhanced_system_status(self):
     """
-    Get Docker Swarm status from cache, with fallback to real-time data.
-
-    Returns:
-        dict: Docker swarm information with node details
+    Collect enhanced system status including Docker Swarm node information.
+    This extends the original status collection with detailed swarm metrics.
     """
-    cache = get_redis_cache()
-
-    # Try to get from cache first
-    if cache.is_available():
-        cached_data = cache.get(SWARM_CACHE_KEY)
-        if cached_data:
-            logger.info("Retrieved Docker Swarm status from cache")
-            return cached_data
-        logger.info("No cached Docker Swarm status found")
-
-    # Fallback to real-time data if cache miss or unavailable
-    logger.info("Fetching real-time Docker Swarm status as fallback")
-    return _get_docker_swarm_info()
-
-
-def update_swarm_cache():
-    """
-    Update the Docker Swarm status cache with fresh data.
-
-    Returns:
-        dict: The fresh swarm data that was cached
-    """
-    cache = get_redis_cache()
-
-    # Get fresh swarm data
-    swarm_data = _get_docker_swarm_info()
-
-    # Cache the data if Redis is available
-    if cache.is_available():
-        success = cache.set(SWARM_CACHE_KEY, swarm_data, SWARM_CACHE_TTL)
-        if success:
-            logger.info("Successfully updated Docker Swarm status cache")
-        else:
-            logger.warning("Failed to update Docker Swarm status cache")
-    else:
-        logger.warning("Redis cache not available, cannot cache swarm status")
-
-    return swarm_data
-
-
-@celery.task(base=StatusMonitoringTask, bind=True)
-def refresh_swarm_cache_task(self):
-    """
-    Periodic task to refresh Docker Swarm status cache.
-    This task should run every 2 minutes on the build queue.
-    """
-    logger.info("[TASK]: Starting periodic Docker Swarm cache refresh")
-
-    try:
-        swarm_data = update_swarm_cache()
-        logger.info(
-            f"[TASK]: Docker Swarm cache refreshed - "
-            f"Active: {swarm_data['swarm_active']}, "
-            f"Nodes: {swarm_data['total_nodes']}, "
-            f"Managers: {swarm_data['total_managers']}, "
-            f"Workers: {swarm_data['total_workers']}"
-        )
-        return swarm_data
-    except Exception as error:
-        logger.error(f"[TASK]: Error refreshing Docker Swarm cache: {str(error)}")
-        logger.exception("Full traceback:")
-
-        # Report to rollbar if available
-        with contextlib.suppress(Exception):
-            rollbar.report_exc_info()
-
-        # Return error info instead of raising to avoid task failure
-        return {
-            "error": f"Cache refresh failed: {str(error)}",
-            "nodes": [],
-            "total_nodes": 0,
-            "total_managers": 0,
-            "total_workers": 0,
-            "swarm_active": False,
-        }
-
-
-@celery.task(base=StatusMonitoringTask, bind=True)
-def collect_system_status(self):
-    """Collect system status and save to status_log table"""
-    logger.info("[TASK]: Starting system status collection")
+    logger.info("[TASK]: Starting enhanced system status collection with Docker Swarm info")
 
     # Import here to get the app instance
     from gefapi import app
 
     with app.app_context():
         try:
+            # First, collect all the original status information
             # Count executions by status
             logger.info("[TASK]: Querying execution counts")
             execution_counts = (
@@ -375,34 +283,28 @@ def collect_system_status(self):
                 f"[TASK]: Counts - Users: {users_count}, Scripts: {scripts_count}"
             )
 
-            # System metrics tracking removed - no longer collecting CPU/memory data
+            # Get system metrics
+            logger.info("[TASK]: Collecting system metrics")
+            memory = psutil.virtual_memory()
+            memory_available_percent = memory.available / memory.total * 100
+            cpu_usage_percent = psutil.cpu_percent(interval=1)
 
-            # Get Docker Swarm information from cache (fast)
-            logger.info("[TASK]: Getting Docker Swarm information from cache")
-            try:
-                swarm_info = get_cached_swarm_status()
-                logger.info(
-                    f"[TASK]: Docker Swarm info retrieved - "
-                    f"Active: {swarm_info['swarm_active']}, "
-                    f"Nodes: {swarm_info['total_nodes']}, "
-                    f"Managers: {swarm_info['total_managers']}, "
-                    f"Workers: {swarm_info['total_workers']}"
-                )
-            except Exception as swarm_error:
-                logger.warning(
-                    f"[TASK]: Failed to get cached Docker Swarm info: {swarm_error}"
-                )
-                # Fallback to basic error response
-                swarm_info = {
-                    "error": f"Cache retrieval failed: {str(swarm_error)}",
-                    "nodes": [],
-                    "total_nodes": 0,
-                    "total_managers": 0,
-                    "total_workers": 0,
-                    "swarm_active": False,
-                }
+            logger.info(
+                f"[TASK]: System metrics - CPU: {cpu_usage_percent}%, "
+                f"Memory Available: {memory_available_percent:.1f}%"
+            )
+            
+            # NEW: Collect Docker Swarm information
+            logger.info("[TASK]: Collecting Docker Swarm node information")
+            swarm_info = _get_docker_swarm_info()
+            logger.info(
+                f"[TASK]: Docker Swarm - Active: {swarm_info['swarm_active']}, "
+                f"Nodes: {swarm_info['total_nodes']}, "
+                f"Managers: {swarm_info['total_managers']}, "
+                f"Workers: {swarm_info['total_workers']}"
+            )
 
-            # Create status log entry
+            # Create status log entry (original fields)
             logger.info("[TASK]: Creating status log entry")
             status_log = StatusLog(
                 executions_active=executions_active,
@@ -413,6 +315,8 @@ def collect_system_status(self):
                 executions_count=executions_count,
                 users_count=users_count,
                 scripts_count=scripts_count,
+                memory_available_percent=memory_available_percent,
+                cpu_usage_percent=cpu_usage_percent,
             )
 
             logger.info("[DB]: Adding status log to database")
@@ -423,14 +327,16 @@ def collect_system_status(self):
                 f"[TASK]: Status log created successfully with ID {status_log.id} "
                 f"at {status_log.timestamp}"
             )
-            # Return serialized data for task result with Docker Swarm info
+            
+            # Return enhanced data including swarm information
             result = status_log.serialize()
             result["docker_swarm"] = swarm_info
-            logger.info(f"[TASK]: Task completed successfully, returning: {result}")
+            
+            logger.info(f"[TASK]: Enhanced task completed successfully")
             return result
 
         except Exception as error:
-            logger.error(f"[TASK]: Error collecting system status: {str(error)}")
+            logger.error(f"[TASK]: Error collecting enhanced system status: {str(error)}")
             logger.exception("Full traceback:")
             # Try to rollback the session
             with contextlib.suppress(Exception):

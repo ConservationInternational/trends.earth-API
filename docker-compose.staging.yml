@@ -17,7 +17,7 @@ services:
         max_attempts: 3
         window: 60s
 
-  manager:
+  api:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
     command: start
     environment:
@@ -70,7 +70,7 @@ services:
           cpus: "0.1"
           memory: 100M
 
-  builder:
+  docker:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
     command: worker
     user: root

@@ -25,9 +25,7 @@ class StatusLog(db.Model):
 
     # Other counts
     users_count = db.Column(db.Integer(), default=0)
-    scripts_count = db.Column(db.Integer(), default=0)  # System metrics
-    memory_available_percent = db.Column(db.Float(), default=0.0)
-    cpu_usage_percent = db.Column(db.Float(), default=0.0)
+    scripts_count = db.Column(db.Integer(), default=0)
 
     def __init__(
         self,
@@ -39,8 +37,6 @@ class StatusLog(db.Model):
         executions_count=0,
         users_count=0,
         scripts_count=0,
-        memory_available_percent=0.0,
-        cpu_usage_percent=0.0,
     ):
         self.executions_active = executions_active
         self.executions_ready = executions_ready
@@ -50,8 +46,6 @@ class StatusLog(db.Model):
         self.executions_count = executions_count
         self.users_count = users_count
         self.scripts_count = scripts_count
-        self.memory_available_percent = memory_available_percent
-        self.cpu_usage_percent = cpu_usage_percent
 
     def __repr__(self):
         return f"<StatusLog {self.id!r}>"
@@ -69,6 +63,4 @@ class StatusLog(db.Model):
             "executions_count": self.executions_count,
             "users_count": self.users_count,
             "scripts_count": self.scripts_count,
-            "memory_available_percent": self.memory_available_percent,
-            "cpu_usage_percent": self.cpu_usage_percent,
         }
