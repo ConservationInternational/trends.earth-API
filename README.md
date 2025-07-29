@@ -249,18 +249,12 @@ The application supports configurable Docker registry and network settings via e
   - Staging default: `10.1.0.0/16`
   - Customize for your network requirements: `DOCKER_SUBNET=172.20.0.0/16`
 
-**Docker Security:**
-- `DOCKER_GROUP_ID` - Docker group ID for socket access (default: `999`)
-  - Find your group ID: `id -g docker`
-  - Required for containers to access Docker socket securely
-
 **Environment Files:**
 Create environment-specific files (`.env`, `prod.env`, `staging.env`) with these variables:
 ```bash
 # Example configuration
 REGISTRY_HOST=my-registry.example.com:5000
 DOCKER_SUBNET=10.10.0.0/16
-DOCKER_GROUP_ID=999
 ```
 
 ### Rate Limiting Configuration

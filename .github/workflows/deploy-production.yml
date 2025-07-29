@@ -151,8 +151,6 @@ jobs:
           # Navigate to application directory
           cd ${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}
           
-          # Set Docker group ID for socket access
-          export DOCKER_GROUP_ID=$(getent group docker | cut -d: -f3)
           export DOCKER_REGISTRY="${{ secrets.DOCKER_REGISTRY }}"
           
           # Set version information for health checks
