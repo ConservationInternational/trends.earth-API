@@ -30,10 +30,18 @@ def make_celery(app):
         # Route all scheduled tasks to default queue to match worker configuration
         "gefapi.tasks.status_monitoring.collect_system_status": {"queue": "default"},
         "gefapi.tasks.execution_cleanup.cleanup_stale_executions": {"queue": "default"},
-        "gefapi.tasks.execution_cleanup.cleanup_finished_executions": {"queue": "default"},
-        "gefapi.tasks.execution_cleanup.cleanup_old_failed_executions": {"queue": "default"},
-        "gefapi.tasks.refresh_token_cleanup.cleanup_expired_refresh_tokens": {"queue": "default"},
-        "gefapi.tasks.docker_service_monitoring.monitor_failed_docker_services": {"queue": "default"},
+        "gefapi.tasks.execution_cleanup.cleanup_finished_executions": {
+            "queue": "default"
+        },
+        "gefapi.tasks.execution_cleanup.cleanup_old_failed_executions": {
+            "queue": "default"
+        },
+        "gefapi.tasks.refresh_token_cleanup.cleanup_expired_refresh_tokens": {
+            "queue": "default"
+        },
+        "gefapi.tasks.docker_service_monitoring.monitor_failed_docker_services": {
+            "queue": "default"
+        },
         # All other tasks use default queue
     }
 
