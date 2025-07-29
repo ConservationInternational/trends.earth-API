@@ -2,12 +2,25 @@
 
 import logging
 
-from celery import shared_task
+from celery import Task
+import rollbar
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True)
+class RefreshTokenCleanupTask(Task):
+    """Base task for refresh token cleanup"""
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        logger.error(f"Refresh token cleanup task failed: {exc}")
+        rollbar.report_exc_info()
+
+
+# Import celery after other imports to avoid circular dependency
+from gefapi import celery  # noqa: E402
+
+
+@celery.task(base=RefreshTokenCleanupTask, bind=True)
 def cleanup_expired_refresh_tokens(self):
     """Celery task to clean up expired refresh tokens"""
     logger.info("[TASK]: Starting cleanup of expired refresh tokens")
