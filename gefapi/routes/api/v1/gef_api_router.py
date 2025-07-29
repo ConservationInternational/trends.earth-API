@@ -1294,31 +1294,6 @@ def get_status_logs():
           "execution_id": null
         }
       ],
-      "swarm": {
-        "swarm_active": true,
-        "total_nodes": 3,
-        "total_managers": 1,
-        "total_workers": 2,
-        "nodes": [
-          {
-            "id": "node-id-123",
-            "hostname": "manager-01",
-            "role": "manager",
-            "is_manager": true,
-            "is_leader": true,
-            "availability": "active",
-            "state": "ready",
-            "cpu_count": 4.0,
-            "memory_gb": 8.0,
-            "running_tasks": 3,
-            "estimated_max_tasks": 8,
-            "available_capacity": 5,
-            "labels": {},
-            "created_at": "2025-01-15T10:00:00Z",
-            "updated_at": "2025-01-15T10:30:00Z"
-          }
-        }
-      ],
       "page": 1,
       "per_page": 100,
       "total": 1547
