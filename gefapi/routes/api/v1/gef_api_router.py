@@ -1268,30 +1268,28 @@ def get_status_logs():
     {
       "data": [
         {
-          "id": "status-123",
+          "id": 123,
           "timestamp": "2025-01-15T10:30:00Z",
-          "level": "INFO",
-          "message": "System startup completed successfully",
-          "component": "application",
-          "details": {
-            "startup_time": "2.3s",
-            "memory_usage": "256MB"
-          },
-          "user_id": null,
-          "execution_id": null
+          "executions_active": 5,
+          "executions_ready": 2,
+          "executions_running": 3,
+          "executions_finished": 8,
+          "executions_failed": 1,
+          "executions_count": 1250,
+          "users_count": 45,
+          "scripts_count": 32
         },
         {
-          "id": "status-124",
+          "id": 124,
           "timestamp": "2025-01-15T10:35:00Z",
-          "level": "WARNING",
-          "message": "High memory usage detected",
-          "component": "resource_monitor",
-          "details": {
-            "memory_usage": "85%",
-            "threshold": "80%"
-          },
-          "user_id": null,
-          "execution_id": null
+          "executions_active": 8,
+          "executions_ready": 5,
+          "executions_running": 3,
+          "executions_finished": 12,
+          "executions_failed": 2,
+          "executions_count": 1265,
+          "users_count": 45,
+          "scripts_count": 32
         }
       ],
       "page": 1,
@@ -1300,20 +1298,23 @@ def get_status_logs():
     }
     ```
 
-    **Log Levels**:
-    - `DEBUG`: Detailed debugging information
-    - `INFO`: General system information and events
-    - `WARNING`: Warning conditions that should be monitored
-    - `ERROR`: Error conditions that affected operations
-    - `CRITICAL`: Critical conditions requiring immediate attention
+    **Status Log Fields**:
+    - `id`: Unique identifier for the status log entry
+    - `timestamp`: When the status was recorded (ISO 8601 format)
+    - `executions_active`: Number of active executions (RUNNING + PENDING)
+    - `executions_ready`: Number of executions in READY state
+    - `executions_running`: Number of currently running executions
+    - `executions_finished`: Executions completed since last status log
+    - `executions_failed`: Executions failed since last status log
+    - `executions_count`: Total number of executions in the system
+    - `users_count`: Total number of registered users
+    - `scripts_count`: Total number of uploaded scripts
 
-    **Component Types**:
-    - `application`: Core application events
-    - `authentication`: User authentication and authorization events
-    - `execution`: Script execution lifecycle events
-    - `resource_monitor`: System resource monitoring
-    - `database`: Database operations and health
-    - `api`: API request/response logging
+    **Monitoring Metrics**:
+    - Track execution queue length and processing status
+    - Monitor system capacity and user activity
+    - Identify trends in script execution success/failure rates
+    - System health indicators for capacity planning
 
     **Date Filtering Examples**:
     - `?start_date=2025-01-15T00:00:00Z` - Logs from January 15th onwards
@@ -1332,11 +1333,11 @@ def get_status_logs():
     - Default pagination: 100 items per page
 
     **Use Cases**:
-    - System health monitoring and alerting
-    - Debugging execution failures and performance issues
-    - Audit trail for system events and user actions
-    - Capacity planning and resource optimization
-    - Compliance and security monitoring
+    - Monitor execution queue length and processing capacity
+    - Track system growth (users and scripts over time)
+    - Analyze execution success rates and failure patterns
+    - Capacity planning based on execution activity trends
+    - Performance monitoring and bottleneck identification
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
