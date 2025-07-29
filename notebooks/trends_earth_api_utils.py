@@ -184,6 +184,153 @@ LAND_COVER_LEGEND_NESTING = {
     },
 }
 
+# Matrix names for land cover analysis
+DEGRADATION_MATRIX_NAME = "Degradation matrix"
+LAND_COVER_TRANSITION_MATRIX_NAME = "Land cover transition definition matrix"
+
+# ESA CCI to Custom Land Cover mapping for classification conversion
+ESA_TO_CUSTOM_LEGEND_NESTING = {
+    "nesting": {
+        "1": [50, 60, 61, 62, 70, 71, 72, 80, 81, 82, 90, 100],
+        "2": [110, 120, 121, 122, 130, 140, 150, 151, 152, 153],
+        "3": [10, 11, 12, 20, 30, 40],
+        "4": [160, 170, 180],
+        "5": [190],
+        "6": [200, 201, 202, 220],
+        "7": [210],
+        "-32768": [-32768],
+    }
+}
+
+# Standard degradation transition matrix for land cover analysis
+LAND_COVER_TRANSITION_MATRIX = {
+    "definitions": {
+        "name": DEGRADATION_MATRIX_NAME,
+        "transitions": [
+            {
+                "final": {"name_short": "Tree-covered"},
+                "initial": {"name_short": "Tree-covered"},
+                "meaning": "stable",
+            },
+            {
+                "final": {"name_short": "Grassland"},
+                "initial": {"name_short": "Tree-covered"},
+                "meaning": "degradation",
+            },
+            {
+                "final": {"name_short": "Cropland"},
+                "initial": {"name_short": "Tree-covered"},
+                "meaning": "degradation",
+            },
+            {
+                "final": {"name_short": "Wetland"},
+                "initial": {"name_short": "Tree-covered"},
+                "meaning": "degradation",
+            },
+            {
+                "final": {"name_short": "Artificial"},
+                "initial": {"name_short": "Tree-covered"},
+                "meaning": "degradation",
+            },
+            {
+                "final": {"name_short": "Bare land"},
+                "initial": {"name_short": "Tree-covered"},
+                "meaning": "degradation",
+            },
+            {
+                "final": {"name_short": "Water body"},
+                "initial": {"name_short": "Tree-covered"},
+                "meaning": "stable",
+            },
+            {
+                "final": {"name_short": "Tree-covered"},
+                "initial": {"name_short": "Grassland"},
+                "meaning": "improvement",
+            },
+            {
+                "final": {"name_short": "Grassland"},
+                "initial": {"name_short": "Grassland"},
+                "meaning": "stable",
+            },
+            {
+                "final": {"name_short": "Cropland"},
+                "initial": {"name_short": "Grassland"},
+                "meaning": "improvement",
+            },
+            {
+                "final": {"name_short": "Wetland"},
+                "initial": {"name_short": "Grassland"},
+                "meaning": "degradation",
+            },
+            {
+                "final": {"name_short": "Artificial"},
+                "initial": {"name_short": "Grassland"},
+                "meaning": "degradation",
+            },
+            {
+                "final": {"name_short": "Bare land"},
+                "initial": {"name_short": "Grassland"},
+                "meaning": "degradation",
+            },
+            {
+                "final": {"name_short": "Water body"},
+                "initial": {"name_short": "Grassland"},
+                "meaning": "stable",
+            },
+            {
+                "final": {"name_short": "Tree-covered"},
+                "initial": {"name_short": "Cropland"},
+                "meaning": "improvement",
+            },
+            {
+                "final": {"name_short": "Grassland"},
+                "initial": {"name_short": "Cropland"},
+                "meaning": "degradation",
+            },
+            {
+                "final": {"name_short": "Cropland"},
+                "initial": {"name_short": "Cropland"},
+                "meaning": "stable",
+            },
+            {
+                "final": {"name_short": "Wetland"},
+                "initial": {"name_short": "Cropland"},
+                "meaning": "degradation",
+            },
+            {
+                "final": {"name_short": "Artificial"},
+                "initial": {"name_short": "Cropland"},
+                "meaning": "degradation",
+            },
+            {
+                "final": {"name_short": "Bare land"},
+                "initial": {"name_short": "Cropland"},
+                "meaning": "degradation",
+            },
+        ],
+    },
+    "legend": {
+        "key": [
+            {"name_short": "Tree-covered"},
+            {"name_short": "Grassland"},
+            {"name_short": "Cropland"},
+            {"name_short": "Wetland"},
+            {"name_short": "Artificial"},
+            {"name_short": "Bare land"},
+            {"name_short": "Water body"},
+        ],
+        "name": "Custom Land Cover",
+        "nodata": {
+            "code": -32768,
+            "color": "#000000",
+            "description": None,
+            "name_long": "No data",
+            "name_short": "No data",
+        },
+    },
+    "name": LAND_COVER_TRANSITION_MATRIX_NAME,
+}
+
 # Common script parameters for different GEE scripts (based on real API examples)
 SCRIPT_PARAMS = {
     "productivity": {
@@ -207,6 +354,51 @@ SCRIPT_PARAMS = {
         "task_name": "productivity_test",
         "task_notes": "Testing productivity analysis",
     },
+    "sdg-15-3-1-sub-indicators": {
+        "crosses_180th": False,
+        "crs": 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]',
+        "geojsons": SAMPLE_GEOJSON,
+        "land_cover": {
+            "legend_nesting_custom_to_ipcc": LAND_COVER_LEGEND_NESTING,
+            "legend_nesting_esa_to_custom": ESA_TO_CUSTOM_LEGEND_NESTING,
+            "trans_matrix": LAND_COVER_TRANSITION_MATRIX,
+            "year_final": 2022,
+            "year_initial": 2001,
+        },
+        "local_context": {
+            "area_of_interest_name": "afghanistan-andkhoy-(faryab)-buffer-10.000",
+            "base_dir": "C:\\Users\\azvoleff\\trends_earth_data",
+        },
+        "period": {"name": "baseline", "year_final": 2016, "year_initial": 2001},
+        "population": {
+            "asset": "users/geflanddegradation/toolbox_datasets/worldpop_mf_v1_300m",
+            "source": "WorldPop (gender breakdown)",
+            "year": 2016,
+        },
+        "productivity": {
+            "asset_climate": None,
+            "asset_productivity": "users/geflanddegradation/toolbox_datasets/ndvi_modis_2001_2024",
+            "mode": "TrendsEarth-LPD-5",
+            "perf_year_final": 2016,
+            "perf_year_initial": 2001,
+            "state_year_bl_end": 2013,
+            "state_year_bl_start": 2001,
+            "state_year_tg_end": 2016,
+            "state_year_tg_start": 2014,
+            "traj_method": "ndvi_trend",
+            "traj_year_final": 2016,
+            "traj_year_initial": 2001,
+        },
+        "soil_organic_carbon": {
+            "fl": 0.8,
+            "legend_nesting_custom_to_ipcc": LAND_COVER_LEGEND_NESTING,
+            "legend_nesting_esa_to_custom": ESA_TO_CUSTOM_LEGEND_NESTING,
+            "year_final": 2022,
+            "year_initial": 2001,
+        },
+        "task_name": "sdg_15_3_1_test",
+        "task_notes": "Testing SDG 15.3.1 sub-indicators calculation",
+    },
     "land-cover": {
         "crosses_180th": False,
         "crs": 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]',
@@ -214,18 +406,7 @@ SCRIPT_PARAMS = {
         "fl": "per pixel",
         "geojsons": SAMPLE_GEOJSON,
         "legend_nesting_custom_to_ipcc": LAND_COVER_LEGEND_NESTING,
-        "legend_nesting_esa_to_custom": {
-            "nesting": {
-                "1": [50, 60, 61, 62, 70, 71, 72, 80, 81, 82, 90, 100],
-                "2": [110, 120, 121, 122, 130, 140, 150, 151, 152, 153],
-                "3": [10, 11, 12, 20, 30, 40],
-                "4": [160, 170, 180],
-                "5": [190],
-                "6": [200, 201, 202, 220],
-                "7": [210],
-                "-32768": [-32768],
-            }
-        },
+        "legend_nesting_esa_to_custom": ESA_TO_CUSTOM_LEGEND_NESTING,
         "year_final": 2020,
         "year_initial": 2015,
         "task_name": "land_cover_test",
@@ -238,18 +419,7 @@ SCRIPT_PARAMS = {
         "soil_organic_carbon": {
             "fl": 0.8,
             "legend_nesting_custom_to_ipcc": LAND_COVER_LEGEND_NESTING,
-            "legend_nesting_esa_to_custom": {
-                "nesting": {
-                    "1": [50, 60, 61, 62, 70, 71, 72, 80, 81, 82, 90, 100],
-                    "2": [110, 120, 121, 122, 130, 140, 150, 151, 152, 153],
-                    "3": [10, 11, 12, 20, 30, 40],
-                    "4": [160, 170, 180],
-                    "5": [190],
-                    "6": [200, 201, 202, 220],
-                    "7": [210],
-                    "-32768": [-32768],
-                }
-            },
+            "legend_nesting_esa_to_custom": ESA_TO_CUSTOM_LEGEND_NESTING,
             "year_final": 2020,
             "year_initial": 2015,
         },
