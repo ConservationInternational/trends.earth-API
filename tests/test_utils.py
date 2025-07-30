@@ -95,7 +95,6 @@ class StatusTestUtils:
             "executions_active": 5,
             "executions_pending": 2,
             "executions_completed_today": 10,
-            "cpu_usage_percent": 65.5,
             "memory_usage_percent": 45.2,
             "disk_usage_percent": 30.8,
             "database_connections": 8,

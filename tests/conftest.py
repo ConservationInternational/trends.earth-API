@@ -7,6 +7,8 @@ import sys
 import tempfile
 from unittest.mock import patch
 
+import pytest
+
 # Add the project root to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -14,7 +16,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ["ENV"] = "testing"
 
 from flask_jwt_extended import create_access_token
-import pytest
 
 from gefapi import app as flask_app
 from gefapi import db
@@ -393,8 +394,6 @@ def sample_status_log(app):
             executions_count=500,
             users_count=10,
             scripts_count=25,
-            memory_available_percent=75.5,
-            cpu_usage_percent=25.0,
         )
         db.session.add(status_log)
         db.session.commit()

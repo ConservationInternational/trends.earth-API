@@ -343,8 +343,7 @@ class StagingEnvironmentSetup:
                 """
                 SELECT id, timestamp, executions_active, executions_ready,
                        executions_running, executions_finished, executions_failed,
-                       executions_count, users_count, scripts_count,
-                       memory_available_percent, cpu_usage_percent
+                       executions_count, users_count, scripts_count
                 FROM status_log
                 WHERE timestamp >= %s
                 ORDER BY timestamp DESC
@@ -364,9 +363,8 @@ class StagingEnvironmentSetup:
                                               executions_ready, executions_running,
                                               executions_finished, executions_failed,
                                               executions_count, users_count,
-                                              scripts_count, memory_available_percent,
-                                              cpu_usage_percent)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                              scripts_count)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (id) DO NOTHING
                     """,
                         log,

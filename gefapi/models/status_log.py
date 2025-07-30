@@ -13,7 +13,7 @@ class StatusLog(db.Model):
 
     __tablename__ = "status_log"
     id = db.Column(db.Integer(), primary_key=True)
-    timestamp = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
+    timestamp = db.Column(db.DateTime(), default=lambda: datetime.datetime.now(datetime.UTC))
 
     # Execution counts
     executions_active = db.Column(db.Integer(), default=0)
@@ -54,7 +54,7 @@ class StatusLog(db.Model):
         """Return object data in easily serializeable format"""
         return {
             "id": self.id,
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "executions_active": self.executions_active,
             "executions_ready": self.executions_ready,
             "executions_running": self.executions_running,
@@ -63,6 +63,4 @@ class StatusLog(db.Model):
             "executions_count": self.executions_count,
             "users_count": self.users_count,
             "scripts_count": self.scripts_count,
-            "memory_available_percent": self.memory_available_percent,
-            "cpu_usage_percent": self.cpu_usage_percent,
         }
