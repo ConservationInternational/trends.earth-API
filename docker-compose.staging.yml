@@ -32,6 +32,7 @@ services:
       - staging.env
     networks:
       - backend
+      - execution
     deploy:
       resources:
         reservations:
@@ -156,3 +157,9 @@ networks:
     ipam:
       config:
         - subnet: ${DOCKER_SUBNET:-10.1.0.0/16}
+  execution:
+    driver: overlay
+    attachable: true
+    ipam:
+      config:
+        - subnet: ${EXECUTION_SUBNET:-10.1.1.0/24}

@@ -221,6 +221,7 @@ def get_cached_swarm_status():
     from gefapi.tasks.enhanced_status_monitoring import (
         _get_docker_swarm_info as _get_enhanced_docker_swarm_info,
     )
+
     return _get_enhanced_docker_swarm_info()
 
 
@@ -237,6 +238,7 @@ def update_swarm_cache():
     from gefapi.tasks.enhanced_status_monitoring import (
         _get_docker_swarm_info as _get_enhanced_docker_swarm_info,
     )
+
     swarm_data = _get_enhanced_docker_swarm_info()
 
     # Cache the data if Redis is available

@@ -13,6 +13,63 @@ from gefapi.utils.permissions import is_admin_or_higher
 logger = logging.getLogger(__name__)
 
 
+def is_internal_network_request():
+    """
+    Check if the request is coming from an internal Docker network.
+    Internal networks (like Docker execution network) should bypass rate limiting
+    to allow execution containers to communicate with the API.
+    """
+    try:
+        remote_ip = get_remote_address()
+
+        # Get network ranges from environment variables with defaults
+        import os
+
+        # Default Docker network ranges
+        internal_networks = [
+            "10.0.0.0/8",  # Docker default networks
+            "172.16.0.0/12",  # Docker bridge networks
+            "192.168.0.0/16",  # Private networks
+        ]
+
+        # Add execution network subnets from environment
+        execution_subnet = os.getenv("EXECUTION_SUBNET")
+        if execution_subnet:
+            internal_networks.append(execution_subnet)
+
+        # Add backend network subnet from environment (fallback compatibility)
+        docker_subnet = os.getenv("DOCKER_SUBNET")
+        if docker_subnet:
+            internal_networks.append(docker_subnet)
+
+        # Additional internal networks can be specified via comma-separated env var
+        additional_networks = os.getenv("INTERNAL_NETWORKS")
+        if additional_networks:
+            internal_networks.extend(
+                [net.strip() for net in additional_networks.split(",")]
+            )
+
+        import ipaddress
+
+        remote_addr = ipaddress.ip_address(remote_ip)
+
+        for network in internal_networks:
+            try:
+                if remote_addr in ipaddress.ip_network(network):
+                    logger.debug(
+                        f"Request from internal execution network: {remote_ip} (network: {network})"
+                    )
+                    return True
+            except ValueError as e:
+                logger.warning(f"Invalid network range '{network}': {e}")
+                continue
+
+        return False
+    except Exception as e:
+        logger.debug(f"Failed to check internal network: {e}")
+        return False
+
+
 def is_rate_limiting_disabled():
     """Helper function for exempt_when parameter to check if rate limiting is
     disabled"""
@@ -35,6 +92,10 @@ def get_user_id_or_ip():
     This provides better rate limiting granularity.
     Returns None if user should be exempt from rate limiting.
     """
+    # Check if this is from an internal network (execution containers)
+    if is_internal_network_request():
+        return None  # Exempt from rate limiting
+
     try:
         verify_jwt_in_request(optional=True)
         current_user = get_current_user()
@@ -55,6 +116,10 @@ def get_rate_limit_key_for_auth():
     Uses email + IP to prevent account enumeration while still allowing rate limiting.
     Returns None if user should be exempt from rate limiting.
     """
+    # Check if this is from an internal network (execution containers)
+    if is_internal_network_request():
+        return None  # Exempt from rate limiting
+
     # Check if this is an authenticated admin/superadmin user
     # (including gef@gef.com) trying to get a new token
     try:
@@ -79,9 +144,13 @@ def get_rate_limit_key_for_auth():
 def get_admin_aware_key():
     """
     Key function that exempts admin and superadmin users
-    (including gef@gef.com) from rate limiting.
+    (including gef@gef.com) from rate limiting, as well as internal network requests.
     Used for general API endpoints.
     """
+    # Check if this is from an internal network (execution containers)
+    if is_internal_network_request():
+        return None  # Exempt from rate limiting
+
     try:
         verify_jwt_in_request(optional=True)
         current_user = get_current_user()
@@ -240,10 +309,15 @@ class RateLimitConfig:
 def bypass_rate_limiting():
     """
     Check if rate limiting should be bypassed for this request.
-    Useful for testing or admin overrides.
+    Useful for testing, admin overrides, or internal network requests.
     """
     try:
         config = current_app.config
+
+        # Bypass for internal network requests (Docker backend network)
+        if is_internal_network_request():
+            logger.debug("Bypassing rate limiting for internal network request")
+            return True
 
         # Bypass in testing mode
         if config.get("TESTING", False):

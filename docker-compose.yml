@@ -9,6 +9,7 @@ services:
       DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-development}
     networks:
       - backend
+      - execution
     deploy:
       resources:
         reservations:
@@ -66,3 +67,4 @@ services:
 
 networks:
   backend:
+  execution:

@@ -29,6 +29,7 @@ services:
       - prod.env
     networks:
       - backend
+      - execution
     deploy:
       resources:
         reservations:
@@ -201,6 +202,13 @@ volumes:
 networks:
   backend:
     driver: overlay
+    attachable: true
     ipam:
       config:
         - subnet: ${DOCKER_SUBNET:-10.10.0.0/16}
+  execution:
+    driver: overlay
+    attachable: true
+    ipam:
+      config:
+        - subnet: ${EXECUTION_SUBNET:-10.10.1.0/24}

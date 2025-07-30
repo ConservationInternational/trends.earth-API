@@ -284,6 +284,23 @@ class DockerService:
                 script = Script.query.get(Execution.query.get(execution_id).script_id)
 
                 client = get_docker_client()
+
+                # Create network spec to connect to execution network for API access
+                networks = []
+                try:
+                    # Connect to execution network to allow internal API communication
+                    execution_network = client.networks.get("execution")
+                    networks = [execution_network.id]
+                    logger.info(
+                        f"Connecting execution-{execution_id} to execution network"
+                    )
+                except docker.errors.NotFound:
+                    logger.warning(
+                        "Execution network not found, execution will use external API access"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to get execution network: {e}")
+
                 client.services.create(
                     image=f"{REGISTRY_URL}/{image}",
                     command="./entrypoint.sh",
@@ -295,6 +312,7 @@ class DockerService:
                         "service.type": "execution",
                         "managed.by": "trends.earth-api",
                     },
+                    networks=networks,
                     resources=docker.types.Resources(
                         cpu_reservation=script.cpu_reservation,
                         cpu_limit=script.cpu_limit,

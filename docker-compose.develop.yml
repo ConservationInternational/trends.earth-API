@@ -37,6 +37,7 @@ services:
     networks:
       - backend
       - db
+      - execution
     depends_on:
       - migrate
       - database
@@ -188,3 +189,4 @@ volumes:
 networks:
   db:
   backend:
+  execution:
