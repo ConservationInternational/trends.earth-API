@@ -188,7 +188,15 @@ jobs:
             echo "Removing existing network trends-earth-prod_backend..."
             # Force remove network even if it has active endpoints
             docker network rm trends-earth-prod_backend --force || true
-            echo "✅ Network cleanup completed"
+            echo "✅ Backend network cleanup completed"
+            sleep 3
+          fi
+          
+          if docker network ls --format "{{.Name}}" | grep -q "trends-earth-prod_execution"; then
+            echo "Removing existing network trends-earth-prod_execution..."
+            # Force remove network even if it has active endpoints
+            docker network rm trends-earth-prod_execution --force || true
+            echo "✅ Execution network cleanup completed"
             sleep 3
           fi
           

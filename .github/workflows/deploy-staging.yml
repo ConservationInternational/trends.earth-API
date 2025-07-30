@@ -180,8 +180,26 @@ jobs:
           # Deploy with Docker Swarm using rolling updates
           echo "📦 Deploying services with rolling updates..."
           
+          # Clean up any corrupted networks that might prevent deployment
+          echo "🌐 Cleaning up overlay networks..."
+          if docker network ls --format "{{.Name}}" | grep -q "trends-earth-staging_backend"; then
+            echo "Removing existing network trends-earth-staging_backend..."
+            # Force remove network even if it has active endpoints
+            docker network rm trends-earth-staging_backend --force || true
+            echo "✅ Backend network cleanup completed"
+            sleep 3
+          fi
+          
+          if docker network ls --format "{{.Name}}" | grep -q "trends-earth-staging_execution"; then
+            echo "Removing existing network trends-earth-staging_execution..."
+            # Force remove network even if it has active endpoints
+            docker network rm trends-earth-staging_execution --force || true
+            echo "✅ Execution network cleanup completed"
+            sleep 3
+          fi
+          
           # Ensure we're using the latest compose file
-          echo "� Verifying compose file..."
+          echo "📋 Verifying compose file..."
           if [ ! -f "${{ env.COMPOSE_FILE }}" ]; then
             echo "❌ Compose file not found: ${{ env.COMPOSE_FILE }}"
             exit 1
