@@ -177,6 +177,12 @@ jobs:
           export GIT_BRANCH="${{ github.ref_name }}"
           export DEPLOYMENT_ENVIRONMENT="staging"
           
+          # Verify environment variables are set correctly
+          echo "📋 Environment variables:"
+          echo "  DOCKER_REGISTRY: $DOCKER_REGISTRY"
+          echo "  GIT_COMMIT_SHA: $GIT_COMMIT_SHA"
+          echo "  GIT_BRANCH: $GIT_BRANCH"
+          
           # Deploy with Docker Swarm using rolling updates
           echo "📦 Deploying services with rolling updates..."
           
