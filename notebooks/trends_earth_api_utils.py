@@ -335,11 +335,19 @@ LAND_COVER_TRANSITION_MATRIX = {
 SCRIPT_PARAMS = {
     "productivity": {
         "crosses_180th": False,
-        "crs": 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]',
+        "crs": (
+            'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,'
+            '298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],'
+            'PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],'
+            'UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],'
+            'AUTHORITY["EPSG","4326"]]'
+        ),
         "geojsons": SAMPLE_GEOJSON,
         "productivity": {
             "asset_climate": None,
-            "asset_productivity": "users/geflanddegradation/toolbox_datasets/ndvi_modis_2001_2024",
+            "asset_productivity": (
+                "users/geflanddegradation/toolbox_datasets/ndvi_modis_2001_2024"
+            ),
             "mode": "TrendsEarth-LPD-5",
             "perf_year_final": 2020,
             "perf_year_initial": 2015,
@@ -356,7 +364,13 @@ SCRIPT_PARAMS = {
     },
     "sdg-15-3-1-sub-indicators": {
         "crosses_180th": False,
-        "crs": 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]',
+        "crs": (
+            'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,'
+            '298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],'
+            'PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],'
+            'UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],'
+            'AUTHORITY["EPSG","4326"]]'
+        ),
         "geojsons": SAMPLE_GEOJSON,
         "land_cover": {
             "legend_nesting_custom_to_ipcc": LAND_COVER_LEGEND_NESTING,
@@ -377,7 +391,9 @@ SCRIPT_PARAMS = {
         },
         "productivity": {
             "asset_climate": None,
-            "asset_productivity": "users/geflanddegradation/toolbox_datasets/ndvi_modis_2001_2024",
+            "asset_productivity": (
+                "users/geflanddegradation/toolbox_datasets/ndvi_modis_2001_2024"
+            ),
             "mode": "TrendsEarth-LPD-5",
             "perf_year_final": 2016,
             "perf_year_initial": 2001,
@@ -401,7 +417,13 @@ SCRIPT_PARAMS = {
     },
     "land-cover": {
         "crosses_180th": False,
-        "crs": 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]',
+        "crs": (
+            'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,'
+            '298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],'
+            'PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],'
+            'UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],'
+            'AUTHORITY["EPSG","4326"]]'
+        ),
         "download_annual_lc": False,
         "fl": "per pixel",
         "geojsons": SAMPLE_GEOJSON,
@@ -414,7 +436,13 @@ SCRIPT_PARAMS = {
     },
     "soil-organic-carbon": {
         "crosses_180th": False,
-        "crs": 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]',
+        "crs": (
+            'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,'
+            '298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],'
+            'PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],'
+            'UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],'
+            'AUTHORITY["EPSG","4326"]]'
+        ),
         "geojsons": SAMPLE_GEOJSON,
         "soil_organic_carbon": {
             "fl": 0.8,
@@ -428,7 +456,13 @@ SCRIPT_PARAMS = {
     },
     "drought-vulnerability": {
         "crosses_180th": False,
-        "crs": 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]',
+        "crs": (
+            'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,'
+            '298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],'
+            'PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],'
+            'UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],'
+            'AUTHORITY["EPSG","4326"]]'
+        ),
         "geojsons": SAMPLE_GEOJSON,
         "land_cover": {
             "asset": "users/geflanddegradation/toolbox_datasets/lcov_esacc_1992_2022",
@@ -439,7 +473,9 @@ SCRIPT_PARAMS = {
             "source": "Gridded Population Count (gender breakdown)",
         },
         "spi": {
-            "asset": "users/geflanddegradation/toolbox_datasets/spi_gamma_gpcc_monthly_v2020",
+            "asset": (
+                "users/geflanddegradation/toolbox_datasets/spi_gamma_gpcc_monthly_v2020"
+            ),
             "lag": 12,
             "source": "GPCC V6 (Global Precipitation Climatology Centre)",
         },
