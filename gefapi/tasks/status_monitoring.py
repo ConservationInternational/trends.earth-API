@@ -226,7 +226,7 @@ def get_cached_swarm_status():
                     "cached_at": "unknown",
                     "cache_ttl": SWARM_CACHE_TTL,
                     "cache_key": SWARM_CACHE_KEY,
-                    "source": "legacy_cache"
+                    "source": "legacy_cache",
                 }
             return cached_data
         logger.info("No cached Docker Swarm status found")
@@ -236,6 +236,7 @@ def get_cached_swarm_status():
     from gefapi.tasks.enhanced_status_monitoring import (
         _get_docker_swarm_info as _get_enhanced_docker_swarm_info,
     )
+
     swarm_data = _get_enhanced_docker_swarm_info()
 
     # Add cache info to indicate this is real-time data
@@ -243,7 +244,7 @@ def get_cached_swarm_status():
         "cached_at": datetime.datetime.now(datetime.UTC).isoformat(),
         "cache_ttl": 0,  # Not cached
         "cache_key": SWARM_CACHE_KEY,
-        "source": "real_time_fallback"
+        "source": "real_time_fallback",
     }
 
     return swarm_data
@@ -268,6 +269,7 @@ def update_swarm_cache():
     from gefapi.tasks.enhanced_status_monitoring import (
         _get_docker_swarm_info as _get_enhanced_docker_swarm_info,
     )
+
     swarm_data = _get_enhanced_docker_swarm_info()
 
     # Add cache metadata
@@ -275,14 +277,17 @@ def update_swarm_cache():
     swarm_data["cache_info"] = {
         "cached_at": cache_timestamp.isoformat(),
         "cache_ttl": SWARM_CACHE_TTL,
-        "cache_key": SWARM_CACHE_KEY
+        "cache_key": SWARM_CACHE_KEY,
     }
 
     # Cache the data if Redis is available
     if cache.is_available():
         success = cache.set(SWARM_CACHE_KEY, swarm_data, SWARM_CACHE_TTL)
         if success:
-            logger.info(f"Successfully updated Docker Swarm status cache at {cache_timestamp.isoformat()}")
+            logger.info(
+                f"Successfully updated Docker Swarm status cache at "
+                f"{cache_timestamp.isoformat()}"
+            )
         else:
             logger.warning("Failed to update Docker Swarm status cache")
     else:
@@ -296,12 +301,13 @@ def refresh_swarm_cache_task(self):
     """
     Periodic task to refresh Docker Swarm status cache.
     This task should run every 2 minutes on the build queue.
-    
+
     Returns:
         dict: Docker swarm data with cache metadata, including:
               - Standard swarm information (nodes, managers, workers, etc.)
               - cache_info with cached_at timestamp and other metadata
-              - On error: error details with cache_info indicating source as 'refresh_task_error'
+              - On error: error details with cache_info indicating source as
+                'refresh_task_error'
     """
     logger.info("[TASK]: Starting periodic Docker Swarm cache refresh")
 
@@ -319,6 +325,7 @@ def refresh_swarm_cache_task(self):
         return swarm_data
     except Exception as error:
         import datetime
+
         logger.error(f"[TASK]: Error refreshing Docker Swarm cache: {str(error)}")
         logger.exception("Full traceback:")
 
@@ -338,8 +345,8 @@ def refresh_swarm_cache_task(self):
                 "cached_at": datetime.datetime.now(datetime.UTC).isoformat(),
                 "cache_ttl": 0,
                 "cache_key": SWARM_CACHE_KEY,
-                "source": "refresh_task_error"
-            }
+                "source": "refresh_task_error",
+            },
         }
 
 
@@ -347,13 +354,14 @@ def refresh_swarm_cache_task(self):
 def collect_system_status(self):
     """
     Collect system status and save to status_log table.
-    
+
     Returns:
         dict: System status information including:
               - Standard StatusLog fields (executions, users, scripts, etc.)
               - docker_swarm: Docker Swarm information with cache metadata
                 - cache_info field indicating when swarm data was cached/retrieved
-                - source field showing data origin (cached, real_time_fallback, error_fallback)
+                - source field showing data origin (cached, real_time_fallback,
+                  error_fallback)
     """
     logger.info("[TASK]: Starting system status collection")
 
@@ -450,16 +458,18 @@ def collect_system_status(self):
             logger.info("[TASK]: Getting Docker Swarm information from cache")
             try:
                 swarm_info = get_cached_swarm_status()
+                cache_source = swarm_info.get("cache_info", {}).get("source", "unknown")
                 logger.info(
                     f"[TASK]: Docker Swarm info retrieved - "
                     f"Active: {swarm_info['swarm_active']}, "
                     f"Nodes: {swarm_info['total_nodes']}, "
                     f"Managers: {swarm_info['total_managers']}, "
                     f"Workers: {swarm_info['total_workers']}, "
-                    f"Cache source: {swarm_info.get('cache_info', {}).get('source', 'unknown')}"
+                    f"Cache source: {cache_source}"
                 )
             except Exception as swarm_error:
                 import datetime
+
                 logger.warning(
                     f"[TASK]: Failed to get cached Docker Swarm info: {swarm_error}"
                 )
@@ -475,8 +485,8 @@ def collect_system_status(self):
                         "cached_at": datetime.datetime.now(datetime.UTC).isoformat(),
                         "cache_ttl": 0,
                         "cache_key": SWARM_CACHE_KEY,
-                        "source": "error_fallback"
-                    }
+                        "source": "error_fallback",
+                    },
                 }
 
             # Create status log entry
