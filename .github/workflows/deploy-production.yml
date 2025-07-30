@@ -153,6 +153,11 @@ jobs:
           
           export DOCKER_REGISTRY="${{ secrets.DOCKER_REGISTRY }}"
           
+          # Load and export critical environment variables from prod.env
+          # These are required for Docker network creation
+          export DOCKER_SUBNET=$(grep "^DOCKER_SUBNET=" prod.env | cut -d'=' -f2 || echo "10.10.0.0/16")
+          export EXECUTION_SUBNET=$(grep "^EXECUTION_SUBNET=" prod.env | cut -d'=' -f2 || echo "10.11.0.0/24")
+          
           # Set version information for health checks
           export GIT_COMMIT_SHA="${{ github.sha }}"
           export GIT_BRANCH="${{ github.ref_name }}"
@@ -161,6 +166,8 @@ jobs:
           # Verify environment variables are set correctly
           echo "📋 Environment variables:"
           echo "  DOCKER_REGISTRY: $DOCKER_REGISTRY"
+          echo "  DOCKER_SUBNET: $DOCKER_SUBNET"
+          echo "  EXECUTION_SUBNET: $EXECUTION_SUBNET"
           echo "  GIT_COMMIT_SHA: $GIT_COMMIT_SHA"
           echo "  GIT_BRANCH: $GIT_BRANCH"
           

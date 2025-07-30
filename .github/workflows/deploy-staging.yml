@@ -167,6 +167,11 @@ jobs:
           
           export DOCKER_REGISTRY="${{ secrets.DOCKER_REGISTRY }}"
 
+          # Load and export critical environment variables from staging.env
+          # These are required for Docker network creation
+          export DOCKER_SUBNET=$(grep "^DOCKER_SUBNET=" staging.env | cut -d'=' -f2 || echo "10.1.0.0/16")
+          export EXECUTION_SUBNET=$(grep "^EXECUTION_SUBNET=" staging.env | cut -d'=' -f2 || echo "10.2.0.0/24")
+
           # Set staging database environment variables
           export STAGING_DB_NAME="${{ secrets.STAGING_DB_NAME }}"
           export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
@@ -180,6 +185,8 @@ jobs:
           # Verify environment variables are set correctly
           echo "📋 Environment variables:"
           echo "  DOCKER_REGISTRY: $DOCKER_REGISTRY"
+          echo "  DOCKER_SUBNET: $DOCKER_SUBNET"
+          echo "  EXECUTION_SUBNET: $EXECUTION_SUBNET"
           echo "  GIT_COMMIT_SHA: $GIT_COMMIT_SHA"
           echo "  GIT_BRANCH: $GIT_BRANCH"
           
