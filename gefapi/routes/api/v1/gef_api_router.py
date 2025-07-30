@@ -1399,7 +1399,7 @@ def get_status_logs():
 @jwt_required()
 def get_swarm_status():
     """
-    Get cached Docker Swarm cluster status including comprehensive node information.
+    Get cached Docker Swarm cluster status including node information.
 
     **Authentication**: JWT token required
     **Access**: Restricted to ADMIN and SUPERADMIN users only
@@ -1410,59 +1410,33 @@ def get_swarm_status():
     ```json
     {
       "data": {
-        "swarm_active": true,              // Whether Docker is in swarm mode
-        "total_nodes": 3,                  // Total number of nodes in swarm
-        "total_managers": 1,               // Number of manager nodes
-        "total_workers": 2,                // Number of worker nodes
-        "error": null,                     // Error message if any
+        "swarm_active": true,
+        "total_nodes": 3,
+        "total_managers": 1,
+        "total_workers": 2,
         "nodes": [
           {
-            "id": "node-id-123",           // Unique node identifier
-            "hostname": "manager-01",       // Node hostname
-            "role": "manager",             // Node role: "manager" or "worker"
-            "is_manager": true,            // Whether node is a manager
-            "is_leader": true,             // Whether node is the swarm leader
-            # Node availability: "active", "pause", "drain"
-            "availability": "active",
-            "state": "ready",              // Node state: "ready", "down", "unknown"
-            "cpu_count": 4.0,              // Number of CPUs available
-            "memory_gb": 8.0,              // Memory in GB
-            "running_tasks": 3,            // Number of currently running tasks
-            "available_capacity": 37,      // Additional tasks that can fit
-            "resource_usage": {
-              "used_cpu_nanos": 300000000,        // CPU nanoseconds used
-              "used_memory_bytes": 536870912,     // Memory bytes used
-              "available_cpu_nanos": 3700000000,  // CPU nanoseconds available
-              "available_memory_bytes": 7548381184, // Memory bytes available
-              "used_cpu_percent": 7.5,            // CPU usage percentage
-              "used_memory_percent": 6.25         // Memory usage percentage
-            },
-            "labels": {"node.role": "manager"},  // Node labels/tags
-            "created_at": "2025-01-15T10:00:00Z", // Node creation timestamp
-            "updated_at": "2025-01-15T10:30:00Z"  // Node last update timestamp
-          },
-          {
-            "id": "worker-node-456",
-            "hostname": "worker-01",
-            "role": "worker",
-            "is_manager": false,
-            "is_leader": false,
+            "id": "node-id-123",
+            "hostname": "manager-01",
+            "role": "manager",
+            "is_manager": true,
+            "is_leader": true,
             "availability": "active",
             "state": "ready",
-            "cpu_count": 2.0,
-            "memory_gb": 4.0,
-            "running_tasks": 2,
-            "available_capacity": 18,
+            "cpu_count": 4.0,
+            "memory_gb": 8.0,
+            "running_tasks": 3,
+            "available_capacity": 5,
             "resource_usage": {
-              "used_cpu_nanos": 200000000,
-              "used_memory_bytes": 314572800,
-              "available_cpu_nanos": 1800000000,
-              "available_memory_bytes": 3979059200,
-              "used_cpu_percent": 10.0,
-              "used_memory_percent": 7.5
+              "used_cpu_nanos": 300000000,
+              "used_memory_bytes": 536870912,
+              "available_cpu_nanos": 3700000000,
+              "available_memory_bytes": 7548381184,
+              "used_cpu_percent": 7.5,
+              "used_memory_percent": 6.25
             },
-            "labels": {"node.role": "worker"},
-            "created_at": "2025-01-15T10:05:00Z",
+            "labels": {},
+            "created_at": "2025-01-15T10:00:00Z",
             "updated_at": "2025-01-15T10:30:00Z"
           }
         ]
@@ -1473,25 +1447,10 @@ def get_swarm_status():
     **Data Source**:
     - Uses cached Docker Swarm data from Redis (updated every 2 minutes)
     - Resource calculations based on actual Docker Swarm task reservations
-    - Node capacity calculated from CPU/memory resources and current task load
 
     **Error Responses**:
     - 403: Access denied (non-admin user)
     - 500: Server error
-
-    **Note**: When Docker is not in swarm mode or unavailable, returns:
-    ```json
-    {
-      "data": {
-        "swarm_active": false,
-        "error": "Not in swarm mode" | "Docker unavailable",
-        "nodes": [],
-        "total_nodes": 0,
-        "total_managers": 0,
-        "total_workers": 0
-      }
-    }
-    ```
     """
     logger.info("[ROUTER]: Getting Docker Swarm status")
 

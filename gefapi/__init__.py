@@ -58,23 +58,6 @@ with app.app_context():
 
 app.config["SQLALCHEMY_DATABASE_URI"] = SETTINGS.get("SQLALCHEMY_DATABASE_URI")
 app.config["UPLOAD_FOLDER"] = SETTINGS.get("UPLOAD_FOLDER")
-
-# Configure SQLAlchemy engine options for robust database connection handling
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    # Recycle connections after 1 hour to prevent stale connections
-    "pool_recycle": 3600,
-    # Enable connection pre-ping to test connections before use
-    "pool_pre_ping": True,
-    # Connection pool size - adjust based on your needs
-    "pool_size": 10,
-    # Maximum overflow connections
-    "max_overflow": 20,
-    # Pool timeout in seconds
-    "pool_timeout": 30,
-    # Enable connection pooling reset on return
-    "pool_reset_on_return": "commit",
-}
-
 # Transfer rate limiting configuration to Flask app config
 app.config["RATE_LIMITING"] = SETTINGS.get("RATE_LIMITING", {})
 

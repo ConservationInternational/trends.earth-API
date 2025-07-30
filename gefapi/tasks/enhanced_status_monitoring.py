@@ -530,6 +530,7 @@ def collect_enhanced_system_status(self):
             )
 
             if last_status_log:
+
                 # Count executions that finished after the last status log timestamp
                 executions_finished = (
                     db.session.query(func.count(Execution.id))
