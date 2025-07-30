@@ -4,7 +4,6 @@ import contextlib
 import logging
 
 from celery import Task
-import psutil
 import rollbar
 from sqlalchemy import func
 
@@ -409,8 +408,6 @@ def collect_enhanced_system_status(self):
                 "executions_count": int,
                 "users_count": int,
                 "scripts_count": int,
-                "memory_available_percent": float,
-                "cpu_usage_percent": float,
 
                 # Enhanced Docker Swarm information
                 "docker_swarm": {
@@ -460,8 +457,6 @@ def collect_enhanced_system_status(self):
             "executions_count": 272,
             "users_count": 42,
             "scripts_count": 18,
-            "memory_available_percent": 76.5,
-            "cpu_usage_percent": 23.4,
             "docker_swarm": {
                 "swarm_active": true,
                 "total_nodes": 3,
@@ -535,6 +530,7 @@ def collect_enhanced_system_status(self):
             )
 
             if last_status_log:
+
                 # Count executions that finished after the last status log timestamp
                 executions_finished = (
                     db.session.query(func.count(Execution.id))
@@ -593,18 +589,7 @@ def collect_enhanced_system_status(self):
                 f"[TASK]: Counts - Users: {users_count}, Scripts: {scripts_count}"
             )
 
-            # Get system metrics
-            logger.info("[TASK]: Collecting system metrics")
-            memory = psutil.virtual_memory()
-            memory_available_percent = memory.available / memory.total * 100
-            cpu_usage_percent = psutil.cpu_percent(interval=1)
-
-            logger.info(
-                f"[TASK]: System metrics - CPU: {cpu_usage_percent}%, "
-                f"Memory Available: {memory_available_percent:.1f}%"
-            )
-
-            # NEW: Collect Docker Swarm information
+            # Get Docker Swarm information
             logger.info("[TASK]: Collecting Docker Swarm node information")
             swarm_info = _get_docker_swarm_info()
             logger.info(
@@ -614,7 +599,7 @@ def collect_enhanced_system_status(self):
                 f"Workers: {swarm_info['total_workers']}"
             )
 
-            # Create status log entry (original fields)
+            # Create status log entry (original fields only)
             logger.info("[TASK]: Creating status log entry")
             status_log = StatusLog(
                 executions_active=executions_active,
@@ -625,8 +610,6 @@ def collect_enhanced_system_status(self):
                 executions_count=executions_count,
                 users_count=users_count,
                 scripts_count=scripts_count,
-                memory_available_percent=memory_available_percent,
-                cpu_usage_percent=cpu_usage_percent,
             )
 
             logger.info("[DB]: Adding status log to database")

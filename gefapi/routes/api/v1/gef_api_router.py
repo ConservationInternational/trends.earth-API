@@ -1426,8 +1426,15 @@ def get_swarm_status():
             "cpu_count": 4.0,
             "memory_gb": 8.0,
             "running_tasks": 3,
-            "estimated_max_tasks": 8,
             "available_capacity": 5,
+            "resource_usage": {
+              "used_cpu_nanos": 300000000,
+              "used_memory_bytes": 536870912,
+              "available_cpu_nanos": 3700000000,
+              "available_memory_bytes": 7548381184,
+              "used_cpu_percent": 7.5,
+              "used_memory_percent": 6.25
+            },
             "labels": {},
             "created_at": "2025-01-15T10:00:00Z",
             "updated_at": "2025-01-15T10:30:00Z"
@@ -1436,6 +1443,10 @@ def get_swarm_status():
       }
     }
     ```
+
+    **Data Source**:
+    - Uses cached Docker Swarm data from Redis (updated every 2 minutes)
+    - Resource calculations based on actual Docker Swarm task reservations
 
     **Error Responses**:
     - 403: Access denied (non-admin user)

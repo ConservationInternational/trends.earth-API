@@ -13,7 +13,7 @@ Example usage:
 
 import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 import warnings
 
 from IPython.display import HTML, display
@@ -475,7 +475,7 @@ class TrendsEarthAPIClient:
         self.user_id = None
         self.session = requests.Session()
 
-    def login(self, email: str, password: str) -> Dict[str, Any]:
+    def login(self, email: str, password: str) -> dict[str, Any]:
         """Login and get access tokens"""
         url = f"{self.base_url}/auth"
         payload = {"email": email, "password": password}
@@ -587,8 +587,8 @@ class TrendsEarthAPIClient:
 
 
 def create_user(
-    client: TrendsEarthAPIClient, user_data: Dict[str, Any]
-) -> Dict[str, Any]:
+    client: TrendsEarthAPIClient, user_data: dict[str, Any]
+) -> dict[str, Any]:
     """Create a new user"""
     try:
         response = client.make_request("POST", "/user", json=user_data)
@@ -605,7 +605,7 @@ def create_user(
         return {}
 
 
-def get_users(client: TrendsEarthAPIClient, **params) -> List[Dict[str, Any]]:
+def get_users(client: TrendsEarthAPIClient, **params) -> list[dict[str, Any]]:
     """Get list of users (admin only)"""
     try:
         response = client.make_request("GET", "/user", params=params)
@@ -621,7 +621,7 @@ def get_users(client: TrendsEarthAPIClient, **params) -> List[Dict[str, Any]]:
         return []
 
 
-def get_current_user(client: TrendsEarthAPIClient) -> Dict[str, Any]:
+def get_current_user(client: TrendsEarthAPIClient) -> dict[str, Any]:
     """Get current user profile"""
     try:
         response = client.make_request("GET", "/user/me")
@@ -638,8 +638,8 @@ def get_current_user(client: TrendsEarthAPIClient) -> Dict[str, Any]:
 
 
 def update_user_profile(
-    client: TrendsEarthAPIClient, updates: Dict[str, Any]
-) -> Dict[str, Any]:
+    client: TrendsEarthAPIClient, updates: dict[str, Any]
+) -> dict[str, Any]:
     """Update current user profile"""
     try:
         response = client.make_request("PATCH", "/user/me", json=updates)
@@ -659,7 +659,7 @@ def update_user_profile(
 # =============================================================================
 
 
-def get_scripts(client: TrendsEarthAPIClient, **params) -> List[Dict[str, Any]]:
+def get_scripts(client: TrendsEarthAPIClient, **params) -> list[dict[str, Any]]:
     """Get list of available scripts"""
     try:
         response = client.make_request("GET", "/script", params=params)
@@ -675,7 +675,7 @@ def get_scripts(client: TrendsEarthAPIClient, **params) -> List[Dict[str, Any]]:
         return []
 
 
-def get_script_details(client: TrendsEarthAPIClient, script_id: str) -> Dict[str, Any]:
+def get_script_details(client: TrendsEarthAPIClient, script_id: str) -> dict[str, Any]:
     """Get details of a specific script"""
     try:
         response = client.make_request("GET", f"/script/{script_id}")
@@ -692,8 +692,8 @@ def get_script_details(client: TrendsEarthAPIClient, script_id: str) -> Dict[str
 
 
 def run_script(
-    client: TrendsEarthAPIClient, script_id: str, params: Dict[str, Any]
-) -> Dict[str, Any]:
+    client: TrendsEarthAPIClient, script_id: str, params: dict[str, Any]
+) -> dict[str, Any]:
     """Execute a script with given parameters"""
     try:
         response = client.make_request("POST", f"/script/{script_id}/run", json=params)
@@ -716,7 +716,7 @@ def run_script(
 # =============================================================================
 
 
-def get_executions(client: TrendsEarthAPIClient, **params) -> List[Dict[str, Any]]:
+def get_executions(client: TrendsEarthAPIClient, **params) -> list[dict[str, Any]]:
     """Get list of executions"""
     try:
         response = client.make_request("GET", "/execution", params=params)
@@ -732,7 +732,7 @@ def get_executions(client: TrendsEarthAPIClient, **params) -> List[Dict[str, Any
         return []
 
 
-def get_user_executions(client: TrendsEarthAPIClient, **params) -> List[Dict[str, Any]]:
+def get_user_executions(client: TrendsEarthAPIClient, **params) -> list[dict[str, Any]]:
     """Get current user's executions"""
     try:
         response = client.make_request("GET", "/execution/user", params=params)
@@ -750,7 +750,7 @@ def get_user_executions(client: TrendsEarthAPIClient, **params) -> List[Dict[str
 
 def get_execution_details(
     client: TrendsEarthAPIClient, execution_id: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get details of a specific execution"""
     try:
         response = client.make_request("GET", f"/execution/{execution_id}")
@@ -768,7 +768,7 @@ def get_execution_details(
 
 def monitor_execution(
     client: TrendsEarthAPIClient, execution_id: str, max_wait: int = 300
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Monitor execution until completion or timeout"""
     start_time = time.time()
     print(f"🔄 Monitoring execution {execution_id}...")
@@ -801,7 +801,7 @@ def monitor_execution(
 # =============================================================================
 
 
-def get_system_status(client: TrendsEarthAPIClient, **params) -> List[Dict[str, Any]]:
+def get_system_status(client: TrendsEarthAPIClient, **params) -> list[dict[str, Any]]:
     """Get system status logs (admin only)"""
     try:
         response = client.make_request("GET", "/status", params=params)
@@ -817,7 +817,7 @@ def get_system_status(client: TrendsEarthAPIClient, **params) -> List[Dict[str, 
         return []
 
 
-def get_swarm_status(client: TrendsEarthAPIClient) -> Dict[str, Any]:
+def get_swarm_status(client: TrendsEarthAPIClient) -> dict[str, Any]:
     """Get Docker Swarm status (admin only)"""
     try:
         response = client.make_request("GET", "/status/swarm")
@@ -865,7 +865,7 @@ def display_system_overview(client: TrendsEarthAPIClient):
 # =============================================================================
 
 
-def get_rate_limit_status(client: TrendsEarthAPIClient) -> Dict[str, Any]:
+def get_rate_limit_status(client: TrendsEarthAPIClient) -> dict[str, Any]:
     """Get current rate limiting status (superadmin only)"""
     try:
         response = client.make_request("GET", "/rate-limit/status")
@@ -960,7 +960,7 @@ def test_rate_limiting(
 def test_gee_script_execution(
     client: TrendsEarthAPIClient,
     script_name: str,
-    custom_params: Optional[Dict[str, Any]] = None,
+    custom_params: Optional[dict[str, Any]] = None,
 ):
     """Test execution of a specific GEE script"""
     print(f"🌍 Testing {script_name} script execution")
@@ -1061,7 +1061,7 @@ def test_all_gee_scripts(client: TrendsEarthAPIClient, monitor: bool = False):
 # =============================================================================
 
 
-def display_execution_summary(executions: List[Dict[str, Any]]):
+def display_execution_summary(executions: list[dict[str, Any]]):
     """Display a nice summary of executions"""
     if not executions:
         print("No executions to display")
@@ -1109,7 +1109,7 @@ def run_comprehensive_test_suite(api_url: str = DEFAULT_BASE_URL):
     # Test 2: User Management
     print("\n2️⃣  Testing User Management")
     print("-" * 30)
-    current_user = get_current_user(client)
+    get_current_user(client)
     users = get_users(client, per_page=5)
 
     # Test 3: Script Management
@@ -1131,7 +1131,7 @@ def run_comprehensive_test_suite(api_url: str = DEFAULT_BASE_URL):
     if scripts:
         print("\n6️⃣  Testing GEE Script Execution")
         print("-" * 30)
-        gee_results = test_all_gee_scripts(client, monitor=False)
+        test_all_gee_scripts(client, monitor=False)
 
     # Test 7: Execution Monitoring
     print("\n7️⃣  Testing Execution Monitoring")

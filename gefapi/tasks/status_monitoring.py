@@ -201,10 +201,10 @@ def _get_docker_swarm_info():
 
 def get_cached_swarm_status():
     """
-    Get Docker Swarm status from cache, with fallback to real-time data.
+    Get Docker Swarm status from cache, with fallback to enhanced real-time data.
 
     Returns:
-        dict: Docker swarm information with node details
+        dict: Docker swarm information with enhanced node details
     """
     cache = get_redis_cache()
 
@@ -216,22 +216,28 @@ def get_cached_swarm_status():
             return cached_data
         logger.info("No cached Docker Swarm status found")
 
-    # Fallback to real-time data if cache miss or unavailable
-    logger.info("Fetching real-time Docker Swarm status as fallback")
-    return _get_docker_swarm_info()
+    # Fallback to enhanced real-time data if cache miss or unavailable
+    logger.info("Fetching enhanced Docker Swarm status as fallback")
+    from gefapi.tasks.enhanced_status_monitoring import (
+        _get_docker_swarm_info as _get_enhanced_docker_swarm_info,
+    )
+    return _get_enhanced_docker_swarm_info()
 
 
 def update_swarm_cache():
     """
-    Update the Docker Swarm status cache with fresh data.
+    Update the Docker Swarm status cache with fresh enhanced data.
 
     Returns:
-        dict: The fresh swarm data that was cached
+        dict: The fresh enhanced swarm data that was cached
     """
     cache = get_redis_cache()
 
-    # Get fresh swarm data
-    swarm_data = _get_docker_swarm_info()
+    # Get fresh enhanced swarm data
+    from gefapi.tasks.enhanced_status_monitoring import (
+        _get_docker_swarm_info as _get_enhanced_docker_swarm_info,
+    )
+    swarm_data = _get_enhanced_docker_swarm_info()
 
     # Cache the data if Redis is available
     if cache.is_available():

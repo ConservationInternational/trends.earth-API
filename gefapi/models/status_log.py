@@ -63,4 +63,6 @@ class StatusLog(db.Model):
             "executions_count": self.executions_count,
             "users_count": self.users_count,
             "scripts_count": self.scripts_count,
+            "memory_available_percent": self.memory_available_percent,
+            "cpu_usage_percent": self.cpu_usage_percent,
         }
