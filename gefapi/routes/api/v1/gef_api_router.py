@@ -1422,7 +1422,8 @@ def get_swarm_status():
             "role": "manager",             // Node role: "manager" or "worker"
             "is_manager": true,            // Whether node is a manager
             "is_leader": true,             // Whether node is the swarm leader
-            "availability": "active",      // Node availability: "active", "pause", "drain"
+            # Node availability: "active", "pause", "drain"
+            "availability": "active",
             "state": "ready",              // Node state: "ready", "down", "unknown"
             "cpu_count": 4.0,              // Number of CPUs available
             "memory_gb": 8.0,              // Memory in GB
@@ -1442,12 +1443,12 @@ def get_swarm_status():
           },
           {
             "id": "worker-node-456",
-            "hostname": "worker-01", 
+            "hostname": "worker-01",
             "role": "worker",
             "is_manager": false,
             "is_leader": false,
             "availability": "active",
-            "state": "ready", 
+            "state": "ready",
             "cpu_count": 2.0,
             "memory_gb": 4.0,
             "running_tasks": 2,

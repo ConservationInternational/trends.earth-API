@@ -6,10 +6,12 @@ import logging
 from celery import Task
 import rollbar
 from sqlalchemy import func
+from sqlalchemy.exc import DisconnectionError, OperationalError
 
 from gefapi import db
 from gefapi.models import Execution, Script, StatusLog, User
 from gefapi.services.docker_service import get_docker_client
+from gefapi.utils.database import retry_db_operation, test_database_connection
 from gefapi.utils.redis_cache import get_redis_cache
 
 logger = logging.getLogger(__name__)
@@ -351,6 +353,7 @@ def refresh_swarm_cache_task(self):
 
 
 @celery.task(base=StatusMonitoringTask, bind=True)
+@retry_db_operation(max_retries=3, backoff_seconds=2)
 def collect_system_status(self):
     """
     Collect system status and save to status_log table.
@@ -370,6 +373,23 @@ def collect_system_status(self):
 
     with app.app_context():
         try:
+            # Test database connectivity before proceeding
+            logger.info("[TASK]: Testing database connectivity")
+            if not test_database_connection():
+                logger.warning(
+                    "[TASK]: Initial database connection test failed, "
+                    "disposing connection pool"
+                )
+                db.engine.dispose()
+                # Test again after disposing
+                if not test_database_connection():
+                    raise OperationalError(
+                        "Database connection unavailable", None, None
+                    )
+
+            # Ensure we have a fresh database session
+            db.session.close()
+
             # Count executions by status
             logger.info("[TASK]: Querying execution counts")
             execution_counts = (
@@ -519,9 +539,25 @@ def collect_system_status(self):
         except Exception as error:
             logger.error(f"[TASK]: Error collecting system status: {str(error)}")
             logger.exception("Full traceback:")
-            # Try to rollback the session
-            with contextlib.suppress(Exception):
+
+            # Enhanced database cleanup for connection issues
+            try:
                 db.session.rollback()
+                logger.info("[DB]: Session rollback completed")
+            except Exception as rollback_error:
+                logger.warning(f"[DB]: Error during session rollback: {rollback_error}")
+
+            # If this is a database connection error, dispose of the connection pool
+            if isinstance(error, (OperationalError, DisconnectionError)):
+                try:
+                    db.engine.dispose()
+                    logger.info(
+                        "[DB]: Connection pool disposed due to connection error"
+                    )
+                except Exception as dispose_error:
+                    logger.warning(
+                        f"[DB]: Error disposing connection pool: {dispose_error}"
+                    )
 
             # Report to rollbar if available
             with contextlib.suppress(Exception):
