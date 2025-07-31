@@ -288,18 +288,48 @@ class DockerService:
                 # Create network spec to connect to execution network for API access
                 networks = []
                 try:
-                    # Connect to execution network to allow internal API communication
-                    execution_network = client.networks.get("execution")
-                    networks = [execution_network.id]
-                    logger.info(
-                        f"Connecting execution-{execution_id} to execution network"
-                    )
+                    # Autodetect execution network by matching environment
+                    execution_network = None
+                    current_env = os.getenv("ENVIRONMENT", "prod")
+
+                    # Get all networks and find the execution network for this environment
+                    all_networks = client.networks.list()
+                    for network in all_networks:
+                        network_name = network.name
+
+                        # For Docker Compose (only in development environment)
+                        if current_env == "dev" and network_name == "execution":
+                            execution_network = network
+                            logger.info(
+                                f"Found Docker Compose execution network: {network_name}"
+                            )
+                            break
+
+                        # For Docker Swarm (production/staging/any non-dev environment)
+                        # Match networks ending with "-{env}_execution"
+                        if network_name.endswith(f"-{current_env}_execution"):
+                            execution_network = network
+                            logger.info(
+                                f"Found environment-matched execution network: {network_name} for environment: {current_env}"
+                            )
+                            break
+
+                    if execution_network:
+                        networks = [execution_network.id]
+                        logger.info(
+                            f"Connecting execution-{execution_id} to execution network {execution_network.name}"
+                        )
+                    else:
+                        raise docker.errors.NotFound(
+                            f"No execution network found for environment: {current_env}"
+                        )
+
                 except docker.errors.NotFound:
                     logger.warning(
-                        "Execution network not found, execution will use external API access"
+                        f"Execution network not found for environment {os.getenv('ENVIRONMENT', 'prod')}, execution will use external API access"
                     )
                 except Exception as e:
-                    logger.warning(f"Failed to get execution network: {e}")
+                    logger.warning(f"Failed to autodetect execution network: {e}")
 
                 client.services.create(
                     image=f"{REGISTRY_URL}/{image}",
