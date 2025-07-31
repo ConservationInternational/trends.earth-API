@@ -44,6 +44,15 @@ class User(db.Model):
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
+    # Google Groups opt-in fields
+    google_groups_trends_earth_users = db.Column(
+        db.Boolean(), default=False, nullable=False
+    )
+    google_groups_trendsearth = db.Column(db.Boolean(), default=False, nullable=False)
+    google_groups_registration_status = db.Column(
+        db.Text(), default=None
+    )  # JSON status
+    google_groups_last_sync = db.Column(db.DateTime(), default=None)
 
     def __init__(self, email, password, name, country, institution, role="USER"):
         self.email = email
@@ -70,6 +79,18 @@ class User(db.Model):
             "country": self.country,
             "institution": self.institution,
         }
+
+        # Include Google Groups preferences if requested
+        if "google_groups" in include:
+            user["google_groups"] = {
+                "trends_earth_users": self.google_groups_trends_earth_users,
+                "trendsearth": self.google_groups_trendsearth,
+                "registration_status": self.google_groups_registration_status,
+                "last_sync": self.google_groups_last_sync.isoformat()
+                if self.google_groups_last_sync
+                else None,
+            }
+
         if "scripts" in include:
             user["scripts"] = self.serialize_scripts
 

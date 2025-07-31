@@ -33,6 +33,11 @@ bleach = "*"
 python-slugify = "*"
 gunicorn = "*"
 gevent = "*"
+# Google Groups integration dependencies
+google-auth = ">=2.0.0"
+google-auth-oauthlib = ">=0.5.0"
+google-auth-httplib2 = ">=0.1.0"
+google-api-python-client = ">=2.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
