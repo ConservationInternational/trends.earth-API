@@ -41,7 +41,7 @@ def make_celery(app):
             "queue": "default"
         },
         "gefapi.tasks.docker_service_monitoring.monitor_failed_docker_services": {
-            "queue": "default"
+            "queue": "build"  # FIXED: Route to build queue for Docker access
         },
         # All other tasks use default queue
     }
@@ -77,7 +77,7 @@ def make_celery(app):
             "task": (
                 "gefapi.tasks.docker_service_monitoring.monitor_failed_docker_services"
             ),
-            "schedule": 600.0,  # Every 10 minutes (600 seconds)
+            "schedule": 180.0,  # Every 3 minutes (180 seconds) - reduced from 10 minutes to close monitoring gap
         },
     }
     celery.conf.timezone = "UTC"

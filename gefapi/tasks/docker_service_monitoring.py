@@ -42,8 +42,8 @@ def _check_service_failed(service):
             # No tasks means service hasn't started properly
             return True
 
-        # Get recent tasks (within last 10 minutes)
-        recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=10)
+        # Get recent tasks (within last 15 minutes to catch restart patterns)
+        recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=15)
 
         active_tasks = []
         failed_tasks = []
@@ -79,10 +79,19 @@ def _check_service_failed(service):
         # Service is considered failed if:
         # 1. No active tasks AND
         # 2. Recent tasks have failed AND
-        # 3. Service has attempted retries (multiple failed tasks)
+        # 3. Service has attempted retries (at least 2 failed task indicates restart loop)
         if not active_tasks and failed_tasks and len(failed_tasks) >= 2:
             logger.info(
                 f"Service {service.name} considered failed: "
+                f"{len(active_tasks)} active tasks, {len(failed_tasks)} failed tasks"
+            )
+            return True
+
+        # Additional check: if we have many failed tasks (indicating restart loop)
+        # even with active tasks, consider it failed to break restart cycles
+        if len(failed_tasks) >= 3:
+            logger.warning(
+                f"Service {service.name} showing restart loop pattern: "
                 f"{len(active_tasks)} active tasks, {len(failed_tasks)} failed tasks"
             )
             return True
