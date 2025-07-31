@@ -4,6 +4,7 @@ services:
     build: .
     environment:
       PORT: 3000
+      FLASK_APP: main.py
     ports:
       - target: 3000
     env_file:
@@ -12,20 +13,4 @@ services:
     volumes:
       - ./gefapi:/opt/gef-api/gefapi
       - ./migrations:/opt/gef-api/migrations
-
-  docker:
-    image: ${REGISTRY_HOST:-registry.example.com:5000}/trendsearth-api
-    build: .
-    command: worker
-    user: root
-    environment:
-      CELERY_WORKER_QUEUES: build
-    env_file:
-      - prod.env
-    volumes:
-      - ./gefapi:/opt/gef-api/gefapi
-      - ./migrations:/opt/gef-api/migrations
-      - /var/run/docker.sock:/var/run/docker.sock
-    deploy:
-      placement:
-        constraints: [node.role == manager]
+      - ./scripts:/opt/gef-api/scripts

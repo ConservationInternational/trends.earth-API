@@ -176,9 +176,43 @@ class ScriptService:
 
         # User access control
         if is_admin_or_higher(user):
+            # Admins can see all scripts
             pass
         else:
-            query = query.filter(or_(Script.user_id == user.id, Script.public))
+            # Regular users can see:
+            # 1. Their own scripts
+            # 2. Public scripts
+            # 3. Scripts they have explicit access to (restricted scripts with
+            #    role/user access)
+            from sqlalchemy import and_, text
+
+            # Build access conditions
+            access_conditions = [
+                Script.user_id == user.id,  # Own scripts
+                # Public non-restricted scripts
+                and_(Script.public, not Script.restricted),
+            ]
+
+            # Add restricted script access based on role
+            if user.role in ["USER", "ADMIN", "SUPERADMIN"]:
+                access_conditions.append(
+                    and_(
+                        Script.restricted,
+                        text(
+                            f"JSON_EXTRACT(allowed_roles, '$') LIKE '%\"{user.role}\"%'"
+                        ),
+                    )
+                )
+
+            # Add restricted script access based on user ID
+            access_conditions.append(
+                and_(
+                    Script.restricted,
+                    text(f"JSON_EXTRACT(allowed_users, '$') LIKE '%\"{user.id}\"%'"),
+                )
+            )
+
+            query = query.filter(or_(*access_conditions))
 
         # SQL-style filter_param
         if filter_param:
@@ -310,31 +344,20 @@ class ScriptService:
                 logger.info(f"[SERVICE]: trying to get script {script_id}")
                 # If script_id is already a UUID object, use it directly
                 if isinstance(script_id, UUID):
-                    script = (
-                        db.session.query(Script)
-                        .filter(Script.id == script_id)
-                        .filter(or_(Script.user_id == user.id, Script.public))
-                        .first()
-                    )
+                    script = Script.query.filter_by(id=script_id).first()
                 else:
                     UUID(script_id, version=4)
-                    script = (
-                        db.session.query(Script)
-                        .filter(Script.id == script_id)
-                        .filter(or_(Script.user_id == user.id, Script.public))
-                        .first()
-                    )
+                    script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 logger.info("[SERVICE]: valueerror")
-                script = (
-                    db.session.query(Script)
-                    .filter(Script.slug == script_id)
-                    .filter(or_(Script.user_id == user.id, Script.public))
-                    .first()
-                )
+                script = Script.query.filter_by(slug=script_id).first()
             except Exception as error:
                 rollbar.report_exc_info()
                 raise error
+
+            # Check access permissions after retrieving the script
+            if script and not script.can_access(user):
+                script = None
         if not script:
             raise ScriptNotFound(
                 message="Script with id " + script_id + " does not exist"

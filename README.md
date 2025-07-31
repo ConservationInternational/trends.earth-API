@@ -139,9 +139,10 @@ The application uses a multi-container architecture with specialized services:
 - No local volume mounts
 
 #### Admin (`docker-compose.admin.yml`)
-- Lightweight container for administrative tasks
-- Direct access to production environment
-- Used for manual migrations and database operations
+- Minimal container for administrative tasks and direct access to production environment
+- Contains only the main API service without background workers or dependencies
+- Used for manual migrations, database operations, and administrative access
+- No Redis or Docker build capabilities (lightweight deployment)
 
 ### Entrypoint Commands
 
@@ -442,6 +443,16 @@ Authorization: Bearer <access_token>
 - `GET /api/v1/script/<script_id>/download` - Download script
 - `GET /api/v1/script/<script_id>/log` - Get script logs
 
+#### Script Access Control
+- `GET /api/v1/script/<script_id>/access` - Get script access control information
+- `PUT /api/v1/script/<script_id>/access/roles` - Set allowed roles for script access
+- `PUT /api/v1/script/<script_id>/access/users` - Set allowed users for script access
+- `POST /api/v1/script/<script_id>/access/users/<user_id>` - Add user to script access
+- `DELETE /api/v1/script/<script_id>/access/users/<user_id>` - Remove user from script access
+- `POST /api/v1/script/<script_id>/access/roles/<role>` - Add role to script access
+- `DELETE /api/v1/script/<script_id>/access/roles/<role>` - Remove role from script access
+- `DELETE /api/v1/script/<script_id>/access` - Clear all access restrictions
+
 #### Script Filtering & Sorting
 
 **Query Parameters:**
@@ -459,8 +470,30 @@ Authorization: Bearer <access_token>
 - `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
 
 **Access Control:**
-- **Regular users**: Can see their own scripts + public scripts
+- **Regular users**: Can see their own scripts + public scripts + scripts they have explicit access to
 - **Admin users**: Can see all scripts and filter by `user_id`
+- **Script access restrictions**: Scripts can be restricted to specific roles or users (see Script Access Control section)
+
+**Script Access Control:**
+Scripts support fine-grained access control beyond the basic public/private model:
+- `restricted`: Boolean indicating if script has access restrictions
+- Role-based access: Restrict to specific user roles (USER, ADMIN, SUPERADMIN)
+- User-based access: Restrict to specific individual users
+- Hybrid access: Combine role and user restrictions
+
+Example script response with access control:
+```json
+{
+  "id": "script-id",
+  "name": "My Restricted Script",
+  "public": false,
+  "restricted": true,
+  "allowed_roles": ["ADMIN", "SUPERADMIN"],
+  "allowed_users": ["user-id-1", "user-id-2"]
+}
+```
+
+See [Script Access Control Documentation](docs/script-access-control.md) for detailed usage.
 
 **Pagination:**
 By default, all scripts are returned without pagination. To enable pagination, include either `page` or `per_page` parameters in your request. When pagination is enabled, the response will include `page`, `per_page`, and `total` fields.

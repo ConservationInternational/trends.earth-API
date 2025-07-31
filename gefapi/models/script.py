@@ -39,6 +39,11 @@ class Script(db.Model):
         lazy="dynamic",
     )
     public = db.Column(db.Boolean(), default=False, nullable=False)
+    # Access control fields
+    allowed_roles = db.Column(db.Text(), default=None)  # JSON array of allowed roles
+    allowed_users = db.Column(db.Text(), default=None)  # JSON array of allowed user IDs
+    # Flag for restricted access
+    restricted = db.Column(db.Boolean(), default=False, nullable=False)
     # When setting cpu reservations, note that 1e8 is 10% of a CPU
     cpu_reservation = db.Column(db.BigInteger(), default=int(1e8))
     cpu_limit = db.Column(db.BigInteger(), default=int(5e8))
@@ -59,6 +64,9 @@ class Script(db.Model):
         memory_limit=None,
         environment=None,
         environment_version=None,
+        allowed_roles=None,
+        allowed_users=None,
+        restricted=False,
     ):
         self.name = name
         self.slug = slug
@@ -69,9 +77,99 @@ class Script(db.Model):
         self.memory_limit = memory_limit
         self.environment = environment
         self.environment_version = environment_version
+        self.allowed_roles = allowed_roles
+        self.allowed_users = allowed_users
+        self.restricted = restricted
 
     def __repr__(self):
         return f"<Script {self.name!r}>"
+
+    def can_access(self, user):
+        """Check if a user can access this script"""
+        import json
+
+        from gefapi.utils.permissions import is_admin_or_higher
+
+        # Admins and superadmins can always access
+        if is_admin_or_higher(user):
+            return True
+
+        # Script owner can always access
+        if user.id == self.user_id:
+            return True
+
+        # Public scripts can be accessed by anyone
+        if self.public:
+            return True
+
+        # If script is not restricted, any authenticated user can access
+        if not self.restricted:
+            return True
+
+        # Check role-based access
+        if self.allowed_roles:
+            try:
+                allowed_roles = json.loads(self.allowed_roles)
+                if user.role in allowed_roles:
+                    return True
+            except (json.JSONDecodeError, AttributeError):
+                pass
+
+        # Check user-based access
+        if self.allowed_users:
+            try:
+                allowed_users = json.loads(self.allowed_users)
+                if str(user.id) in allowed_users:
+                    return True
+            except (json.JSONDecodeError, AttributeError):
+                pass
+
+        return False
+
+    def set_allowed_roles(self, roles):
+        """Set allowed roles for this script"""
+        import json
+
+        if roles:
+            self.allowed_roles = json.dumps(roles) if isinstance(roles, list) else roles
+            self.restricted = True
+        else:
+            self.allowed_roles = None
+
+    def set_allowed_users(self, user_ids):
+        """Set allowed users for this script"""
+        import json
+
+        if user_ids:
+            if isinstance(user_ids, list):
+                self.allowed_users = json.dumps(user_ids)
+            else:
+                self.allowed_users = user_ids
+            self.restricted = True
+        else:
+            self.allowed_users = None
+
+    def get_allowed_roles(self):
+        """Get list of allowed roles"""
+        import json
+
+        if self.allowed_roles:
+            try:
+                return json.loads(self.allowed_roles)
+            except json.JSONDecodeError:
+                return []
+        return []
+
+    def get_allowed_users(self):
+        """Get list of allowed user IDs"""
+        import json
+
+        if self.allowed_users:
+            try:
+                return json.loads(self.allowed_users)
+            except json.JSONDecodeError:
+                return []
+        return []
 
     def serialize(self, include=None, exclude=None, user=None):
         """Return object data in easily serializeable format"""
@@ -87,6 +185,7 @@ class Script(db.Model):
             "user_id": self.user_id,
             "status": self.status,
             "public": self.public or False,
+            "restricted": self.restricted or False,
             "cpu_reservation": self.cpu_reservation,
             "cpu_limit": self.cpu_limit,
             "memory_reservation": self.memory_reservation,
@@ -109,6 +208,14 @@ class Script(db.Model):
         if "environment" in include:
             script["environment"] = self.environment
             script["environment_version"] = self.environment_version
+        if "access_control" in include:
+            if user and is_admin_or_higher(user):
+                script["allowed_roles"] = self.get_allowed_roles()
+                script["allowed_users"] = self.get_allowed_users()
+            elif user and user.id == self.user_id:
+                # Script owners can see access control info for their own scripts
+                script["allowed_roles"] = self.get_allowed_roles()
+                script["allowed_users"] = self.get_allowed_users()
 
         # Remove excluded fields
         for field in exclude:

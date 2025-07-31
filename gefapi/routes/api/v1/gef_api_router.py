@@ -57,6 +57,14 @@ def create_script():
     Create a new script
     """
     logger.info("[ROUTER]: Creating a script")
+
+    # Check if user is admin or superadmin
+    identity = get_jwt_identity()
+    if not is_admin_or_higher(identity):
+        return error(
+            status=403, detail="Only admins and superadmins can create scripts"
+        )
+
     sent_file = request.files.get("file")
     if sent_file.filename == "":
         sent_file.filename = "script"
