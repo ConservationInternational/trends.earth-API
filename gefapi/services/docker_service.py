@@ -292,7 +292,7 @@ class DockerService:
                     execution_network = None
                     current_env = os.getenv("ENVIRONMENT", "prod")
 
-                    # Get all networks and find the execution network for this environment
+                    # Find the execution network for this environment
                     all_networks = client.networks.list()
                     for network in all_networks:
                         network_name = network.name
@@ -301,7 +301,8 @@ class DockerService:
                         if current_env == "dev" and network_name == "execution":
                             execution_network = network
                             logger.info(
-                                f"Found Docker Compose execution network: {network_name}"
+                                f"Found Docker Compose execution network: "
+                                f"{network_name}"
                             )
                             break
 
@@ -310,14 +311,16 @@ class DockerService:
                         if network_name.endswith(f"-{current_env}_execution"):
                             execution_network = network
                             logger.info(
-                                f"Found environment-matched execution network: {network_name} for environment: {current_env}"
+                                f"Found environment-matched execution network: "
+                                f"{network_name} for environment: {current_env}"
                             )
                             break
 
                     if execution_network:
                         networks = [execution_network.id]
                         logger.info(
-                            f"Connecting execution-{execution_id} to execution network {execution_network.name}"
+                            f"Connecting execution-{execution_id} to execution "
+                            f"network {execution_network.name}"
                         )
                     else:
                         raise docker.errors.NotFound(
@@ -326,7 +329,9 @@ class DockerService:
 
                 except docker.errors.NotFound:
                     logger.warning(
-                        f"Execution network not found for environment {os.getenv('ENVIRONMENT', 'prod')}, execution will use external API access"
+                        f"Execution network not found for environment "
+                        f"{os.getenv('ENVIRONMENT', 'prod')}, execution "
+                        "will use external API access"
                     )
                 except Exception as e:
                     logger.warning(f"Failed to autodetect execution network: {e}")

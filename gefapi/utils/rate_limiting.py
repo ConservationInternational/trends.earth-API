@@ -57,7 +57,8 @@ def is_internal_network_request():
             try:
                 if remote_addr in ipaddress.ip_network(network):
                     logger.debug(
-                        f"Request from internal execution network: {remote_ip} (network: {network})"
+                        f"Request from internal execution network: {remote_ip} "
+                        f"(network: {network})"
                     )
                     return True
             except ValueError as e:
