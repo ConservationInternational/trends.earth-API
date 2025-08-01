@@ -338,6 +338,7 @@ def sample_script(app, regular_user):
         )
         script.status = "SUCCESS"
         script.public = True
+        script.restricted = False  # Explicitly set to False
         db.session.add(script)
         db.session.commit()
         return script
