@@ -26,9 +26,11 @@ def cleanup_expired_refresh_tokens(self):
     logger.info("[TASK]: Starting cleanup of expired refresh tokens")
 
     try:
+        from gefapi import app
         from gefapi.services.refresh_token_service import RefreshTokenService
 
-        cleaned_count = RefreshTokenService.cleanup_expired_tokens()
+        with app.app_context():
+            cleaned_count = RefreshTokenService.cleanup_expired_tokens()
 
         logger.info(
             f"[TASK]: Successfully cleaned up {cleaned_count} expired refresh tokens"
