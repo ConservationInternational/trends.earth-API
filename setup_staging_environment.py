@@ -122,6 +122,7 @@ class StagingEnvironmentSetup:
             return None
 
         superadmin_id = None
+        cursor = None
 
         try:
             cursor = conn.cursor()
@@ -181,16 +182,17 @@ class StagingEnvironmentSetup:
             conn.rollback()
             return None
         finally:
-            cursor.close()
+            if cursor:
+                cursor.close()
             conn.close()
 
     def copy_recent_scripts(self, superadmin_id):
-        """Copy recent scripts from production database."""
+        """Copy recent scripts from production database with reassigned IDs."""
         if not self.prod_db_config["password"]:
             logger.warning(
                 "No production database password provided, skipping script import"
             )
-            return
+            return {}
 
         logger.info("Copying recent scripts from production database...")
 
@@ -199,13 +201,17 @@ class StagingEnvironmentSetup:
             logger.warning(
                 "Could not connect to production database, skipping script import"
             )
-            return
+            return {}
 
         staging_conn = self.connect_to_database(self.staging_db_config)
         if not staging_conn:
             logger.error("Could not connect to staging database")
             prod_conn.close()
-            return
+            return {}
+
+        id_mapping = {}  # Maps old script IDs to new ones
+        prod_cursor = None
+        staging_cursor = None
 
         try:
             # Calculate date one year ago
@@ -214,7 +220,14 @@ class StagingEnvironmentSetup:
             prod_cursor = prod_conn.cursor()
             staging_cursor = staging_conn.cursor()
 
-            # Get recent scripts from production
+            # Clear existing scripts to avoid conflicts
+            logger.info("Clearing existing scripts from staging...")
+            staging_cursor.execute("DELETE FROM script")
+
+            # Reset the script ID sequence
+            staging_cursor.execute("SELECT setval('script_id_seq', 1, false)")
+
+            # Get recent scripts from production (excluding ID for reassignment)
             prod_cursor.execute(
                 """
                 SELECT id, name, slug, description, created_at, updated_at, status,
@@ -222,6 +235,7 @@ class StagingEnvironmentSetup:
                        memory_limit, environment, environment_version
                 FROM script
                 WHERE created_at >= %s OR updated_at >= %s
+                ORDER BY created_at ASC
             """,
                 (one_year_ago, one_year_ago),
             )
@@ -232,55 +246,85 @@ class StagingEnvironmentSetup:
             imported_count = 0
             for script in scripts:
                 try:
-                    # Insert script with superadmin ownership
+                    old_script_id = script[0]
+
+                    # Insert script without ID to get new sequential ID
                     staging_cursor.execute(
                         """
-                        INSERT INTO script (id, name, slug, description, created_at,
+                        INSERT INTO script (name, slug, description, created_at,
                                           updated_at, user_id, status, public,
                                           cpu_reservation, cpu_limit,
                                           memory_reservation, memory_limit,
                                           environment, environment_version)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                                 %s, %s)
-                        ON CONFLICT (id) DO NOTHING
+                        RETURNING id
                     """,
                         (
-                            script[0],
-                            script[1],
-                            script[2],
-                            script[3],
-                            script[4],
-                            script[5],
+                            script[1],  # name
+                            script[2],  # slug
+                            script[3],  # description
+                            script[4],  # created_at
+                            script[5],  # updated_at
                             superadmin_id,
-                            script[6],
-                            script[7],
-                            script[8],
-                            script[9],
-                            script[10],
-                            script[11],
-                            script[12],
-                            script[13],
+                            script[6],  # status
+                            script[7],  # public
+                            script[8],  # cpu_reservation
+                            script[9],  # cpu_limit
+                            script[10],  # memory_reservation
+                            script[11],  # memory_limit
+                            script[12],  # environment
+                            script[13],  # environment_version
                         ),
                     )
-                    if staging_cursor.rowcount > 0:
-                        imported_count += 1
+
+                    new_script_id = staging_cursor.fetchone()[0]
+                    id_mapping[old_script_id] = new_script_id
+                    imported_count += 1
+
+                    if imported_count % 50 == 0:
+                        logger.info(f"Imported {imported_count} scripts so far...")
+
                 except psycopg2.Error as e:
                     logger.warning(f"Failed to import script {script[0]}: {e}")
 
+            # Set sequence to start from a safe value after the imported scripts
+            staging_cursor.execute("SELECT MAX(id) FROM script")
+            max_id = staging_cursor.fetchone()[0]
+            if max_id:
+                # Set sequence to start from max_id + 1000 to provide buffer
+                next_val = max_id + 1000
+                staging_cursor.execute(
+                    f"SELECT setval('script_id_seq', {next_val}, false)"
+                )
+                logger.info(
+                    f"Reset script sequence to start from {next_val} "
+                    f"to avoid future conflicts"
+                )
+
             staging_conn.commit()
-            logger.info(f"Successfully imported {imported_count} scripts")
+            logger.info(
+                f"Successfully imported {imported_count} scripts "
+                f"with new sequential IDs"
+            )
+            logger.info(f"Script ID mapping created for {len(id_mapping)} scripts")
+
+            return id_mapping
 
         except psycopg2.Error as e:
             logger.error(f"Error copying scripts: {e}")
             staging_conn.rollback()
+            return {}
         finally:
-            prod_cursor.close()
-            staging_cursor.close()
+            if prod_cursor:
+                prod_cursor.close()
+            if staging_cursor:
+                staging_cursor.close()
             prod_conn.close()
             staging_conn.close()
 
     def copy_recent_status_logs(self):
-        """Copy recent status logs from production database."""
+        """Copy recent status logs from production database with reassigned IDs."""
         if not self.prod_db_config["password"]:
             logger.warning(
                 "No production database password provided, skipping status logs import"
@@ -335,18 +379,25 @@ class StagingEnvironmentSetup:
                 logger.warning("Staging database does not have status_log table")
                 return
 
+            # Clear existing status logs to avoid conflicts
+            logger.info("Clearing existing status logs from staging...")
+            staging_cursor.execute("DELETE FROM status_log")
+
+            # Reset the sequence to start from 1
+            staging_cursor.execute("ALTER SEQUENCE status_log_id_seq RESTART WITH 1")
+
             # Calculate date one month ago
             one_month_ago = datetime.now() - timedelta(days=30)
 
-            # Get recent status logs from production
+            # Get recent status logs from production (excluding ID for reassignment)
             prod_cursor.execute(
                 """
-                SELECT id, timestamp, executions_active, executions_ready,
+                SELECT timestamp, executions_active, executions_ready,
                        executions_running, executions_finished, executions_failed,
                        executions_count, users_count, scripts_count
                 FROM status_log
                 WHERE timestamp >= %s
-                ORDER BY timestamp DESC
+                ORDER BY timestamp ASC
             """,
                 (one_month_ago,),
             )
@@ -357,40 +408,63 @@ class StagingEnvironmentSetup:
             imported_count = 0
             for log in status_logs:
                 try:
+                    # Insert without ID to let the sequence generate new IDs
                     staging_cursor.execute(
                         """
-                        INSERT INTO status_log (id, timestamp, executions_active,
+                        INSERT INTO status_log (timestamp, executions_active,
                                               executions_ready, executions_running,
                                               executions_finished, executions_failed,
                                               executions_count, users_count,
                                               scripts_count)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (id) DO NOTHING
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                         log,
                     )
-                    if staging_cursor.rowcount > 0:
-                        imported_count += 1
+                    imported_count += 1
                 except psycopg2.Error as e:
-                    logger.warning(f"Failed to import status log {log[0]}: {e}")
+                    logger.warning(f"Failed to import status log: {e}")
+
+            # Update the sequence to start from a safe value after the imported logs
+            staging_cursor.execute("SELECT MAX(id) FROM status_log")
+            max_id = staging_cursor.fetchone()[0]
+            if max_id:
+                # Set sequence to start from max_id + 1000 to provide buffer
+                next_val = max_id + 1000
+                staging_cursor.execute(
+                    f"ALTER SEQUENCE status_log_id_seq RESTART WITH {next_val}"
+                )
+                logger.info(
+                    f"Reset sequence to start from {next_val} to avoid future conflicts"
+                )
 
             staging_conn.commit()
-            logger.info(f"Successfully imported {imported_count} status logs")
+            logger.info(
+                f"Successfully imported {imported_count} status logs "
+                f"with new sequential IDs"
+            )
 
         except psycopg2.Error as e:
             logger.error(f"Error copying status logs: {e}")
             staging_conn.rollback()
         finally:
-            prod_cursor.close()
-            staging_cursor.close()
+            if prod_cursor:
+                prod_cursor.close()
+            if staging_cursor:
+                staging_cursor.close()
             prod_conn.close()
             staging_conn.close()
 
-    def copy_script_logs(self):
-        """Copy script logs for imported scripts from production database."""
+    def copy_script_logs(self, script_id_mapping):
+        """Copy script logs for imported scripts using ID mapping."""
         if not self.prod_db_config["password"]:
             logger.warning(
                 "No production database password provided, skipping script logs import"
+            )
+            return
+
+        if not script_id_mapping:
+            logger.warning(
+                "No script ID mapping available, skipping script logs import"
             )
             return
 
@@ -444,20 +518,47 @@ class StagingEnvironmentSetup:
                 logger.warning("Staging database does not have script_log table")
                 return
 
-            # Calculate date one year ago
-            one_year_ago = datetime.now() - timedelta(days=365)
+            # Clear existing script logs
+            logger.info("Clearing existing script logs from staging...")
+            staging_cursor.execute("DELETE FROM script_log")
 
-            # Get script logs for scripts that exist in staging
-            prod_cursor.execute(
-                """
-                SELECT sl.id, sl.text, sl.register_date, sl.script_id
-                FROM script_log sl
-                INNER JOIN script s ON sl.script_id = s.id
-                WHERE s.created_at >= %s OR s.updated_at >= %s
-                ORDER BY sl.register_date DESC
-            """,
-                (one_year_ago, one_year_ago),
-            )
+            # Reset the script_log ID sequence if it exists
+            from contextlib import suppress
+
+            with suppress(psycopg2.Error):
+                staging_cursor.execute("SELECT setval('script_log_id_seq', 1, false)")
+
+            # Get script logs for the old script IDs that were imported
+            old_script_ids = list(script_id_mapping.keys())
+            if not old_script_ids:
+                logger.info("No script IDs to import logs for")
+                return
+
+            # Convert to tuple for SQL IN clause
+            old_script_ids_tuple = tuple(old_script_ids)
+
+            # Get script logs for scripts that were imported
+            if len(old_script_ids_tuple) == 1:
+                # Handle single item tuple
+                prod_cursor.execute(
+                    """
+                    SELECT id, text, register_date, script_id
+                    FROM script_log
+                    WHERE script_id = %s
+                    ORDER BY register_date ASC
+                """,
+                    (old_script_ids_tuple[0],),
+                )
+            else:
+                prod_cursor.execute(
+                    """
+                    SELECT id, text, register_date, script_id
+                    FROM script_log
+                    WHERE script_id IN %s
+                    ORDER BY register_date ASC
+                """,
+                    (old_script_ids_tuple,),
+                )
 
             script_logs = prod_cursor.fetchall()
             logger.info(f"Found {len(script_logs)} script logs to import")
@@ -465,26 +566,48 @@ class StagingEnvironmentSetup:
             imported_count = 0
             for log in script_logs:
                 try:
-                    # Check if the script exists in staging first
-                    staging_cursor.execute(
-                        "SELECT 1 FROM script WHERE id = %s", (log[3],)
-                    )
-                    if staging_cursor.fetchone():
+                    old_script_id = log[3]
+                    new_script_id = script_id_mapping.get(old_script_id)
+
+                    if new_script_id:
+                        # Insert without ID to let sequence generate new IDs
                         staging_cursor.execute(
                             """
-                            INSERT INTO script_log (id, text, register_date, script_id)
-                            VALUES (%s, %s, %s, %s)
-                            ON CONFLICT (id) DO NOTHING
+                            INSERT INTO script_log (text, register_date, script_id)
+                            VALUES (%s, %s, %s)
                         """,
-                            log,
+                            (log[1], log[2], new_script_id),
                         )
-                        if staging_cursor.rowcount > 0:
-                            imported_count += 1
+                        imported_count += 1
+
+                        if imported_count % 100 == 0:
+                            logger.info(
+                                f"Imported {imported_count} script logs so far..."
+                            )
+
                 except psycopg2.Error as e:
                     logger.warning(f"Failed to import script log {log[0]}: {e}")
 
+            # Set sequence to start from a safe value after the imported logs
+            try:
+                staging_cursor.execute("SELECT MAX(id) FROM script_log")
+                max_id = staging_cursor.fetchone()[0]
+                if max_id:
+                    # Set sequence to start from max_id + 1000 to provide buffer
+                    next_val = max_id + 1000
+                    staging_cursor.execute(
+                        f"SELECT setval('script_log_id_seq', {next_val}, false)"
+                    )
+                    logger.info(f"Reset script_log sequence to start from {next_val}")
+            except psycopg2.Error:
+                # Sequence might not exist, that's okay
+                pass
+
             staging_conn.commit()
-            logger.info(f"Successfully imported {imported_count} script logs")
+            logger.info(
+                f"Successfully imported {imported_count} script logs "
+                f"with remapped script IDs"
+            )
 
         except psycopg2.Error as e:
             logger.error(f"Error copying script logs: {e}")
@@ -504,6 +627,7 @@ class StagingEnvironmentSetup:
             logger.error("Could not connect to staging database for verification")
             return
 
+        cursor = None
         try:
             cursor = conn.cursor()
 
@@ -548,7 +672,8 @@ class StagingEnvironmentSetup:
         except psycopg2.Error as e:
             logger.error(f"Error during verification: {e}")
         finally:
-            cursor.close()
+            if cursor:
+                cursor.close()
             conn.close()
 
     def run(self):
@@ -560,10 +685,10 @@ class StagingEnvironmentSetup:
                 logger.error("Failed to create test users")
                 return False
 
-            # Import production data
-            self.copy_recent_scripts(superadmin_id)
+            # Import production data and get script ID mapping
+            script_id_mapping = self.copy_recent_scripts(superadmin_id)
             self.copy_recent_status_logs()
-            self.copy_script_logs()
+            self.copy_script_logs(script_id_mapping)
 
             # Verify setup
             self.verify_setup()

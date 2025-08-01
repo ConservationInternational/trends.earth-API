@@ -42,9 +42,8 @@ def wait_for_database(app):
             from gefapi import db
 
             # Test database connection within app context
-            with app.app_context():
-                with db.engine.connect() as connection:
-                    connection.execute(text("SELECT 1")).fetchone()
+            with app.app_context(), db.engine.connect() as connection:
+                connection.execute(text("SELECT 1")).fetchone()
 
             logger.info("Database is ready!")
             return True
@@ -102,46 +101,6 @@ def run_migrations():
         sys.exit(1)
 
     logger.info("Migration script completed successfully")
-
-
-def setup_staging_environment():
-    """Set up complete staging environment including users, scripts, and logs"""
-    import os
-
-    # Only run in staging environment
-    if os.getenv("ENVIRONMENT") != "staging":
-        logger.info("Not in staging environment, skipping staging setup")
-        return
-
-    logger.info("Setting up complete staging environment...")
-
-    try:
-        # Import the comprehensive setup module
-        import sys
-
-        sys.path.insert(0, "/opt/gef-api")
-
-        # Run the comprehensive staging setup
-        from setup_staging_environment import StagingEnvironmentSetup
-
-        setup = StagingEnvironmentSetup()
-        setup.run()
-
-        logger.info("Staging environment setup completed successfully")
-        print("✓ Staging environment setup completed successfully")
-
-    except Exception as e:
-        logger.error(f"Failed to setup staging environment: {e}")
-        print(f"✗ Staging environment setup failed: {e}")
-        # Don't fail the migration for staging setup issues
-        import traceback
-
-        traceback.print_exc()
-
-
-if __name__ == "__main__":
-    run_migrations()
-    setup_staging_environment()
 
 
 def setup_staging_environment():

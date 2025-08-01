@@ -42,7 +42,7 @@ class TestGoogleGroupsIntegration:
             try:
                 db.session.delete(user)
                 db.session.commit()
-            except:
+            except Exception:
                 # Ignore cleanup errors
                 db.session.rollback()
 
@@ -77,12 +77,25 @@ class TestGoogleGroupsIntegration:
             assert serialized["google_groups"]["trendsearth"] is False
             assert serialized["google_groups"]["last_sync"] is not None
 
+    @patch("gefapi.services.google_groups_service.SETTINGS")
     @patch("gefapi.services.google_groups_service.service_account")
     @patch("gefapi.services.google_groups_service.build")
     def test_google_groups_service_initialization(
-        self, mock_build, mock_service_account
+        self, mock_build, mock_service_account, mock_settings
     ):
         """Test Google Groups service initialization"""
+        # Mock settings to provide credentials
+        mock_settings.get.return_value = {
+            "type": "service_account",
+            "project_id": "test-project",
+            "private_key_id": "test-key-id",
+            "private_key": "-----BEGIN PRIVATE KEY-----\ntest-key\n-----END PRIVATE KEY-----\n",
+            "client_email": "test@test-project.iam.gserviceaccount.com",
+            "client_id": "123456789",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+
         # Mock successful initialization
         mock_credentials = Mock()
         mock_service_account.Credentials.from_service_account_info.return_value = (
