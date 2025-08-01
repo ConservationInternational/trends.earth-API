@@ -79,7 +79,7 @@ def _check_service_failed(service):
         # Service is considered failed if:
         # 1. No active tasks AND
         # 2. Recent tasks have failed AND
-        # 3. Service has attempted retries (at least 2 failed task indicates restart loop)
+        # 3. Service has attempted retries (multiple indicates restart loop)
         if not active_tasks and failed_tasks and len(failed_tasks) >= 2:
             logger.info(
                 f"Service {service.name} considered failed: "
