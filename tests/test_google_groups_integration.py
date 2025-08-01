@@ -18,27 +18,14 @@ class TestGoogleGroupsIntegration:
     @pytest.fixture
     def test_user(self, app):
         """Create test user"""
-        with app.app_context():
-            # Check if user already exists
-            existing_user = User.query.filter_by(email="test@example.com").first()
-            if existing_user:
-                # Ensure the existing user has the correct attributes for testing
-                existing_user.name = "Test User"
-                existing_user.country = "US"
-                existing_user.institution = "Test Org"
-                existing_user.role = "USER"
-                # Reset Google Groups fields to default state for testing
-                existing_user.google_groups_trends_earth_users = False
-                existing_user.google_groups_trendsearth = False
-                existing_user.google_groups_registration_status = None
-                existing_user.google_groups_last_sync = None
-                db.session.add(existing_user)
-                db.session.commit()
-                db.session.refresh(existing_user)
-                return existing_user
+        import uuid
 
+        # Use a unique email for each test to avoid conflicts
+        unique_email = f"test-{uuid.uuid4().hex[:8]}@example.com"
+
+        with app.app_context():
             user = User(
-                email="test@example.com",
+                email=unique_email,
                 password="password123",
                 name="Test User",
                 country="US",
@@ -48,7 +35,16 @@ class TestGoogleGroupsIntegration:
             db.session.add(user)
             db.session.commit()
             db.session.refresh(user)  # Ensure user is attached to session
-            return user
+
+            yield user
+
+            # Cleanup after test
+            try:
+                db.session.delete(user)
+                db.session.commit()
+            except:
+                # Ignore cleanup errors
+                db.session.rollback()
 
     def test_user_model_google_groups_fields(self, app, test_user):
         """Test that user model has Google Groups fields"""
@@ -154,7 +150,7 @@ class TestGoogleGroupsIntegration:
 
             result = service.sync_user_groups(user)
 
-            assert result["user_email"] == "test@example.com"
+            assert result["user_email"] == user.email
             assert "groups" in result
             assert "trends_earth_users" in result["groups"]
             assert "trendsearth" in result["groups"]
@@ -187,7 +183,7 @@ class TestGoogleGroupsIntegration:
             ) as mock_service:
                 mock_service.is_available.return_value = True
                 mock_service.sync_user_groups.return_value = {
-                    "user_email": "test@example.com",
+                    "user_email": user.email,
                     "groups": {"trends_earth_users": {"success": True}},
                 }
 
@@ -238,7 +234,7 @@ class TestGoogleGroupsIntegration:
             ) as mock_service:
                 mock_service.is_available.return_value = True
                 mock_service.sync_user_groups.return_value = {
-                    "user_email": "test@example.com",
+                    "user_email": user.email,
                     "groups": {"trends_earth_users": {"success": True}},
                 }
 
