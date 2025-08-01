@@ -19,21 +19,42 @@ class TestGoogleGroupsIntegration:
     def test_user(self, app):
         """Create test user"""
         with app.app_context():
+            # Check if user already exists
+            existing_user = User.query.filter_by(email="test@example.com").first()
+            if existing_user:
+                # Ensure the existing user has the correct attributes for testing
+                existing_user.name = "Test User"
+                existing_user.country = "US"
+                existing_user.institution = "Test Org"
+                existing_user.role = "USER"
+                # Reset Google Groups fields to default state for testing
+                existing_user.google_groups_trends_earth_users = False
+                existing_user.google_groups_trendsearth = False
+                existing_user.google_groups_registration_status = None
+                existing_user.google_groups_last_sync = None
+                db.session.add(existing_user)
+                db.session.commit()
+                db.session.refresh(existing_user)
+                return existing_user
+
             user = User(
                 email="test@example.com",
                 password="password123",
                 name="Test User",
                 country="US",
                 institution="Test Org",
+                role="USER",
             )
             db.session.add(user)
             db.session.commit()
+            db.session.refresh(user)  # Ensure user is attached to session
             return user
 
     def test_user_model_google_groups_fields(self, app, test_user):
         """Test that user model has Google Groups fields"""
         with app.app_context():
-            user = User.query.filter_by(email="test@example.com").first()
+            # Use the test_user fixture directly and merge it into the current session
+            user = db.session.merge(test_user)
 
             # Check default values
             assert user.google_groups_trends_earth_users is False
@@ -44,7 +65,8 @@ class TestGoogleGroupsIntegration:
     def test_user_serialize_includes_google_groups(self, app, test_user):
         """Test user serialization includes Google Groups data"""
         with app.app_context():
-            user = User.query.filter_by(email="test@example.com").first()
+            # Use the test_user fixture directly and merge it into the current session
+            user = db.session.merge(test_user)
 
             # Update some Google Groups preferences
             user.google_groups_trends_earth_users = True
@@ -118,7 +140,7 @@ class TestGoogleGroupsIntegration:
     def test_google_groups_service_sync_user(self, app, test_user):
         """Test syncing user's group memberships"""
         with app.app_context():
-            user = User.query.filter_by(email="test@example.com").first()
+            user = db.session.merge(test_user)
             user.google_groups_trends_earth_users = True
             user.google_groups_trendsearth = False
 
@@ -140,7 +162,7 @@ class TestGoogleGroupsIntegration:
     def test_get_google_groups_preferences_endpoint(self, app, test_user):
         """Test GET /user/me/google-groups endpoint"""
         with app.test_client() as client, app.app_context():
-            user = User.query.filter_by(email="test@example.com").first()
+            user = db.session.merge(test_user)
             token = user.get_token()
 
             response = client.get(
@@ -156,7 +178,7 @@ class TestGoogleGroupsIntegration:
     def test_update_google_groups_preferences_endpoint(self, app, test_user):
         """Test PUT /user/me/google-groups endpoint"""
         with app.test_client() as client, app.app_context():
-            user = User.query.filter_by(email="test@example.com").first()
+            user = db.session.merge(test_user)
             token = user.get_token()
 
             # Mock Google Groups service
@@ -191,7 +213,7 @@ class TestGoogleGroupsIntegration:
     def test_update_google_groups_invalid_preferences(self, app, test_user):
         """Test updating with invalid preferences"""
         with app.test_client() as client, app.app_context():
-            user = User.query.filter_by(email="test@example.com").first()
+            user = db.session.merge(test_user)
             token = user.get_token()
 
             response = client.put(
@@ -207,7 +229,7 @@ class TestGoogleGroupsIntegration:
     def test_sync_google_groups_endpoint(self, app, test_user):
         """Test POST /user/me/google-groups/sync endpoint"""
         with app.test_client() as client, app.app_context():
-            user = User.query.filter_by(email="test@example.com").first()
+            user = db.session.merge(test_user)
             token = user.get_token()
 
             # Mock Google Groups service
@@ -243,7 +265,7 @@ class TestGoogleGroupsIntegration:
     def test_sync_service_unavailable(self, app, test_user):
         """Test sync when Google Groups service is unavailable"""
         with app.test_client() as client, app.app_context():
-            user = User.query.filter_by(email="test@example.com").first()
+            user = db.session.merge(test_user)
             token = user.get_token()
 
             # Mock unavailable service
