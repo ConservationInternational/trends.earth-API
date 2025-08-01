@@ -6,25 +6,14 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from gefapi import create_app, db
+from gefapi import db
 from gefapi.models import User
 from gefapi.services.google_groups_service import GoogleGroupsService
 
 
+@pytest.mark.usefixtures("app", "client")
 class TestGoogleGroupsIntegration:
     """Test Google Groups integration functionality"""
-
-    @pytest.fixture
-    def app(self):
-        """Create test app"""
-        app = create_app()
-        app.config["TESTING"] = True
-        app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
-
-        with app.app_context():
-            db.create_all()
-            yield app
-            db.drop_all()
 
     @pytest.fixture
     def test_user(self, app):
