@@ -198,9 +198,7 @@ class ScriptService:
                 access_conditions.append(
                     and_(
                         Script.restricted,
-                        text(
-                            f"JSON_EXTRACT(allowed_roles, '$') LIKE '%\"{user.role}\"%'"
-                        ),
+                        text(f"allowed_roles::text LIKE '%\"{user.role}\"%'"),
                     )
                 )
 
@@ -208,7 +206,7 @@ class ScriptService:
             access_conditions.append(
                 and_(
                     Script.restricted,
-                    text(f"JSON_EXTRACT(allowed_users, '$') LIKE '%\"{user.id}\"%'"),
+                    text(f"allowed_users::text LIKE '%\"{user.id}\"%'"),
                 )
             )
 
