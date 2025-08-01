@@ -28,7 +28,7 @@ def cleanup():
 atexit.register(cleanup)
 
 
-def wait_for_database():
+def wait_for_database(app):
     """Wait for database to be ready"""
     logger.info("Waiting for database to be ready...")
 
@@ -41,9 +41,10 @@ def wait_for_database():
 
             from gefapi import db
 
-            # Test database connection
-            with db.engine.connect() as connection:
-                connection.execute(text("SELECT 1")).fetchone()
+            # Test database connection within app context
+            with app.app_context():
+                with db.engine.connect() as connection:
+                    connection.execute(text("SELECT 1")).fetchone()
 
             logger.info("Database is ready!")
             return True
@@ -64,9 +65,6 @@ def run_migrations():
     logger.info("Migration script started")
 
     try:
-        # Wait for database to be ready
-        wait_for_database()
-
         logger.info("Importing Flask-Migrate...")
         from flask_migrate import upgrade
 
@@ -74,6 +72,9 @@ def run_migrations():
         from gefapi import app
 
         logger.info("Imports completed successfully")
+
+        # Wait for database to be ready
+        wait_for_database(app)
 
         print("Creating Flask app context...")
         logger.info("Creating Flask app context...")
