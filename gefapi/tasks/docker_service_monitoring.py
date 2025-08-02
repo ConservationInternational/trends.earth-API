@@ -193,7 +193,7 @@ def monitor_failed_docker_services(self):
 
                         # Add log entry
                         log_entry = ExecutionLog(
-                            text="Cancelled by celery short-term cleanup task.",
+                            text="Cancelled by celery Docker service monitoring task.",
                             level="ERROR",
                             execution_id=execution.id,
                         )
@@ -224,7 +224,10 @@ def monitor_failed_docker_services(self):
 
                             # Add log entry
                             log_entry = ExecutionLog(
-                                text="Cancelled by celery short-term cleanup task.",
+                                text=(
+                                    "Cancelled by celery Docker "
+                                    "service monitoring task."
+                                ),
                                 level="ERROR",
                                 execution_id=execution.id,
                             )

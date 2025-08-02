@@ -9,7 +9,7 @@ import rollbar
 from sqlalchemy import and_
 
 from gefapi import db
-from gefapi.models import Execution
+from gefapi.models import Execution, ExecutionLog
 from gefapi.services.docker_service import get_docker_client
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,15 @@ def cleanup_stale_executions(self):
                     execution.end_date = datetime.datetime.utcnow()
                     execution.progress = 100
 
+                    # Add log entry
+                    log_entry = ExecutionLog(
+                        text="Cancelled by celery stale execution cleanup task.",
+                        level="ERROR",
+                        execution_id=execution.id,
+                    )
+
                     db.session.add(execution)
+                    db.session.add(log_entry)
 
                     # Try to clean up associated Docker service
                     docker_service_name = f"execution-{execution.id}"
