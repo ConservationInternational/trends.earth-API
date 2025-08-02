@@ -1422,6 +1422,12 @@ def get_swarm_status():
         "total_managers": 1,               // Number of manager nodes
         "total_workers": 2,                // Number of worker nodes
         "error": null,                     // Error message if any
+        "cache_info": {                    // Cache metadata
+          "cached_at": "2025-01-15T10:30:00Z",  // When data was cached/retrieved
+          "cache_ttl": 300,                     // Cache TTL in seconds
+          "cache_key": "docker_swarm_status",   // Redis cache key
+          "source": "cached"                    // Data source
+        },
         "nodes": [
           {
             "id": "node-id-123",           // Unique node identifier
@@ -1494,7 +1500,13 @@ def get_swarm_status():
         "nodes": [],
         "total_nodes": 0,
         "total_managers": 0,
-        "total_workers": 0
+        "total_workers": 0,
+        "cache_info": {
+          "cached_at": "2025-01-15T10:30:00Z",
+          "cache_ttl": 0,
+          "cache_key": "docker_swarm_status",
+          "source": "real_time_fallback" | "endpoint_error_fallback"
+        }
       }
     }
     ```
@@ -1520,6 +1532,8 @@ def get_swarm_status():
 
             swarm_info = get_cached_swarm_status()
         except Exception as swarm_error:
+            import datetime
+
             logger.warning(
                 f"[ROUTER]: Failed to get cached Docker Swarm info: {swarm_error}"
             )
@@ -1530,6 +1544,12 @@ def get_swarm_status():
                 "total_managers": 0,
                 "total_workers": 0,
                 "swarm_active": False,
+                "cache_info": {
+                    "cached_at": datetime.datetime.now(datetime.UTC).isoformat(),
+                    "cache_ttl": 0,
+                    "cache_key": "docker_swarm_status",
+                    "source": "endpoint_error_fallback",
+                },
             }
 
         logger.info("[ROUTER]: Successfully retrieved swarm status")
