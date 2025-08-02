@@ -39,9 +39,15 @@ case "$1" in
         echo "Running tests"
         export TESTING=true
         
+        # Get database configuration from environment
+        DB_USER=${POSTGRES_USER:-trendsearth_develop}
+        DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+        DB_HOST=${POSTGRES_HOST:-postgres}
+        DB_NAME=${POSTGRES_DB:-trendsearth_develop_db}
+        
         # Wait for database to be ready
         echo "Waiting for database to be ready..."
-        until PGPASSWORD=root psql -h database -U root -d postgres -c '\l' >/dev/null 2>&1; do
+        until PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c '\l' >/dev/null 2>&1; do
             echo "Database is unavailable - sleeping"
             sleep 2
         done
@@ -49,7 +55,7 @@ case "$1" in
         
         # Create test database if it doesn't exist
         echo "Creating test database if needed..."
-        PGPASSWORD=root psql -h database -U root -d postgres -c "CREATE DATABASE gef_test;" 2>/dev/null || echo "Test database already exists"
+        PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c "CREATE DATABASE gef_test;" 2>/dev/null || echo "Test database already exists"
         
         # Skip the first argument (which is "test") and pass the rest to pytest
         shift

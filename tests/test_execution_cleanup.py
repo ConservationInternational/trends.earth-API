@@ -4,7 +4,7 @@ import datetime
 from unittest.mock import MagicMock, patch
 
 from gefapi import db
-from gefapi.models import Execution
+from gefapi.models import Execution, ExecutionLog
 from gefapi.tasks.execution_cleanup import (
     cleanup_finished_executions,
     cleanup_old_failed_executions,
@@ -332,7 +332,17 @@ class TestExecutionCleanup:
         """Test that finished executions older than 1 day are ignored"""
         with app.app_context():
             # Clean up any existing finished executions to avoid interference
-            db_session.query(Execution).filter_by(status="FINISHED").delete()
+            # First, get all finished executions and delete them properly with cascade
+            finished_executions = (
+                db_session.query(Execution).filter_by(status="FINISHED").all()
+            )
+            for execution in finished_executions:
+                # Delete related execution logs first
+                db_session.query(ExecutionLog).filter_by(
+                    execution_id=execution.id
+                ).delete()
+                # Then delete the execution
+                db_session.delete(execution)
             db_session.commit()
 
             # Create a new execution for this test to avoid interference

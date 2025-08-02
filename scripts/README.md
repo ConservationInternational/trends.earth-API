@@ -306,3 +306,37 @@ python3 scripts/download_swagger_ui.py
 **Assets Location:** `gefapi/static/swagger-ui/`
 
 **Version Updates:** Edit the `SWAGGER_VERSION` variable in the script when upgrading.
+
+## Validation and Troubleshooting
+
+### Validate Staging Environment Setup
+
+Use the staging validation script to check if all required GitHub secrets are configured for script import:
+
+```bash
+# Check if staging can import scripts from production
+chmod +x scripts/validate-staging-secrets.sh
+./scripts/validate-staging-secrets.sh
+```
+
+**What it checks:**
+- Production database connection secrets (for data import)
+- Test user credential secrets (for staging users)
+- GitHub CLI authentication and access
+
+**Use cases:**
+- Troubleshooting missing scripts/logs in staging
+- Verifying setup after running `setup-github-deployment.sh`
+- Debugging staging deployment issues
+
+### Common Issues
+
+**Scripts not appearing in staging:**
+1. Run `./scripts/validate-staging-secrets.sh` to check secrets
+2. Check migrate service logs: `docker service logs trends-earth-staging_migrate`
+3. Verify production database connectivity from staging server
+
+**Authentication failures:**
+1. Verify test user secrets are set correctly
+2. Check password format (no special characters that break shell)
+3. Ensure test users were created by checking migrate service logs

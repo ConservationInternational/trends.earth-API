@@ -22,13 +22,18 @@ for arg in "$@"; do
 done
 
 echo "Starting necessary services..."
-docker compose -f docker-compose.develop.yml up -d database redis
+docker compose -f docker-compose.develop.yml up -d postgres redis
 
 echo "Waiting for services to be ready..."
 sleep 5
 
+# Get database configuration from environment
+DB_USER=${POSTGRES_USER:-trendsearth_develop}
+DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+DB_NAME=${POSTGRES_DB:-trendsearth_develop_db}
+
 echo "Creating test database if it doesn't exist..."
-docker compose -f docker-compose.develop.yml exec -T database psql -U root -d postgres -c "CREATE DATABASE gef_test;" 2>/dev/null || echo "Test database already exists"
+docker compose -f docker-compose.develop.yml exec -T postgres env PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME" -c "CREATE DATABASE gef_test;" 2>/dev/null || echo "Test database already exists"
 
 echo "Running tests..."
 if [ ${#PYTEST_ARGS[@]} -eq 0 ]; then
