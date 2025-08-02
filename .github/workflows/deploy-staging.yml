@@ -177,6 +177,21 @@ jobs:
           export STAGING_DB_USER="${{ secrets.STAGING_DB_USER }}"
           export STAGING_DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
           
+          # Set production database environment variables for data migration
+          export PROD_DB_HOST="${{ secrets.PROD_DB_HOST }}"
+          export PROD_DB_PORT="${{ secrets.PROD_DB_PORT }}"
+          export PROD_DB_NAME="${{ secrets.PROD_DB_NAME }}"
+          export PROD_DB_USER="${{ secrets.PROD_DB_USER }}"
+          export PROD_DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}"
+          
+          # Set test user credentials for staging environment setup
+          export TEST_SUPERADMIN_EMAIL="${{ secrets.TEST_SUPERADMIN_EMAIL }}"
+          export TEST_ADMIN_EMAIL="${{ secrets.TEST_ADMIN_EMAIL }}"
+          export TEST_USER_EMAIL="${{ secrets.TEST_USER_EMAIL }}"
+          export TEST_SUPERADMIN_PASSWORD="${{ secrets.TEST_SUPERADMIN_PASSWORD }}"
+          export TEST_ADMIN_PASSWORD="${{ secrets.TEST_ADMIN_PASSWORD }}"
+          export TEST_USER_PASSWORD="${{ secrets.TEST_USER_PASSWORD }}"
+          
           # Set version information for health checks
           export GIT_COMMIT_SHA="${{ github.sha }}"
           export GIT_BRANCH="${{ github.ref_name }}"
@@ -189,6 +204,9 @@ jobs:
           echo "  EXECUTION_SUBNET: $EXECUTION_SUBNET"
           echo "  GIT_COMMIT_SHA: $GIT_COMMIT_SHA"
           echo "  GIT_BRANCH: $GIT_BRANCH"
+          echo "  STAGING_DB_NAME: $STAGING_DB_NAME"
+          echo "  PROD_DB_HOST: $PROD_DB_HOST"
+          echo "  TEST_SUPERADMIN_EMAIL: $TEST_SUPERADMIN_EMAIL"
           
           # Deploy with Docker Swarm using rolling updates
           echo "📦 Deploying services with rolling updates..."
