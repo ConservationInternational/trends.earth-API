@@ -173,38 +173,45 @@ class Script(db.Model):
 
     def serialize(self, include=None, exclude=None, user=None):
         """Return object data in easily serializeable format
-        
+
         Args:
-            include (list, optional): List of additional fields to include in serialization
+            include (list, optional): List of additional fields to include in
+                serialization
             exclude (list, optional): List of fields to exclude from serialization
             user (User, optional): Current user for permission-based field inclusion
-            
+
         Returns:
             dict: Serialized script data
-            
+
         Default fields included:
             - id, name, slug, description, created_at, updated_at
             - user_id, status, public
             - cpu_reservation, cpu_limit, memory_reservation, memory_limit
-            
+
         Optional include fields:
             - logs: Include script logs (requires "logs" in include)
-            - user: Include full user object (requires "user" in include)  
-            - user_name: Include user name (requires "user_name" in include, admin only)
-            - user_email: Include user email (requires "user_email" in include, admin only)
-            - executions: Include script executions (requires "executions" in include)
-            - environment: Include environment details (requires "environment" in include)
-            - access_control: Include restriction fields (requires "access_control" in include)
-            
+            - user: Include full user object (requires "user" in include)
+            - user_name: Include user name (requires "user_name" in include,
+                admin only)
+            - user_email: Include user email (requires "user_email" in include,
+                admin only)
+            - executions: Include script executions (requires "executions" in
+                include)
+            - environment: Include environment details (requires "environment"
+                in include)
+            - access_control: Include restriction fields (requires
+                "access_control" in include)
+
         Access control fields (only included with "access_control" in include):
             - restricted: Boolean indicating if script has access restrictions
             - allowed_roles: List of roles allowed to access this script
             - allowed_users: List of user IDs allowed to access this script
-            
-        Note: Script restriction fields (restricted, allowed_roles, allowed_users) are 
-        excluded from default serialization for cleaner API responses. To include these 
-        fields, explicitly add "access_control" to the include parameter. Access control 
-        fields are only visible to admins/superadmins or script owners.
+
+        Note: Script restriction fields (restricted, allowed_roles, allowed_users)
+        are excluded from default serialization for cleaner API responses. To
+        include these fields, explicitly add "access_control" to the include
+        parameter. Access control fields are only visible to admins/superadmins
+        or script owners.
         """
         include = include if include else []
         exclude = exclude if exclude else []
