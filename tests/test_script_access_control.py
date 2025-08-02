@@ -23,32 +23,71 @@ from gefapi.utils.script_access import (
 class TestScriptAccessControl:
     """Test script access control functionality"""
 
+    def setup_method(self, method):
+        """Clean up test data before each test"""
+        # This will be called before each test method
+        pass
+
+    def teardown_method(self, method):
+        """Clean up test data after each test"""
+        # Clean up any test users we may have created to avoid conflicts
+        test_emails = [
+            "owner@test.com",
+            "admin@test.com",
+            "user@test.com",
+            "allowed@test.com",
+            "denied@test.com",
+            "user1@test.com",
+            "user2@test.com",
+        ]
+        for email in test_emails:
+            try:
+                user = User.query.filter_by(email=email).first()
+                if user:
+                    db.session.delete(user)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
     def create_test_user(self, app, email, role="USER"):
         """Create a test user"""
-        with app.app_context():
-            user = User(
-                email=email,
-                password="test123",
-                name="Test User",
-                country="Test Country",
-                institution="Test Institution",
-                role=role,
-            )
-            db.session.add(user)
+        # Check if user already exists
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user:
+            # Update existing user's role and return it
+            existing_user.role = role
+            existing_user.password = existing_user.set_password("test123")
+            db.session.add(existing_user)
             db.session.commit()
-            return user
+            return existing_user
+
+        user = User(
+            email=email,
+            password="placeholder",  # Will be overwritten with hashed password
+            name="Test User",
+            country="Test Country",
+            institution="Test Institution",
+            role=role,
+        )
+        user.password = user.set_password("test123")
+        db.session.add(user)
+        db.session.commit()
+        return user
 
     def create_test_script(self, app, user, name="Test Script"):
         """Create a test script"""
-        with app.app_context():
-            script = Script(
-                name=name,
-                slug=f"test-script-{name.lower().replace(' ', '-')}",
-                user_id=user.id,
-            )
-            db.session.add(script)
-            db.session.commit()
-            return script
+        # Ensure user is in current session
+        if user not in db.session:
+            user = db.session.merge(user)
+
+        script = Script(
+            name=name,
+            slug=f"test-script-{name.lower().replace(' ', '-')}",
+            user_id=user.id,
+        )
+        db.session.add(script)
+        db.session.commit()
+        return script
 
     def test_script_can_access_owner(self, app):
         """Test that script owner can always access their script"""

@@ -8,9 +8,16 @@ from gefapi.utils.permissions import is_admin_or_higher
 def can_manage_script_access(user, script):
     """Check if user can manage access control for a script
 
-    Only ADMIN and SUPERADMIN users can modify script access controls.
-    Script owners cannot modify access controls unless they are admin users.
+    Script owners and ADMIN/SUPERADMIN users can modify script access controls.
     """
+    if user is None:
+        return False
+
+    # Script owner can always manage their own script
+    if script.user_id == user.id:
+        return True
+
+    # Admins and superadmins can manage any script
     return is_admin_or_higher(user)
 
 

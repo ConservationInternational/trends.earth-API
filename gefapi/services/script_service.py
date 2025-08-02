@@ -9,7 +9,6 @@ from uuid import UUID
 
 import rollbar
 from slugify import slugify
-from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
 from gefapi import db
@@ -184,13 +183,13 @@ class ScriptService:
             # 2. Public scripts
             # 3. Scripts they have explicit access to (restricted scripts with
             #    role/user access)
-            from sqlalchemy import and_, text
+            from sqlalchemy import and_, or_, text
 
             # Build access conditions
             access_conditions = [
                 Script.user_id == user.id,  # Own scripts
                 # Public non-restricted scripts
-                and_(Script.public, not Script.restricted),
+                and_(Script.public, ~Script.restricted),  # type: ignore
             ]
 
             # Add restricted script access based on role

@@ -15,7 +15,7 @@ services:
       - backend
       - db
     depends_on:
-      - database
+      - postgres
       - redis
 
   api:
@@ -40,7 +40,7 @@ services:
       - execution
     depends_on:
       - migrate
-      - database
+      - postgres
       - redis
 
   test:
@@ -60,7 +60,7 @@ services:
       - backend
       - db
     depends_on:
-      database:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_started
@@ -84,7 +84,7 @@ services:
       - db
     depends_on:
       - migrate
-      - database
+      - postgres
       - redis
 
   docker:
@@ -108,7 +108,7 @@ services:
       - db
     depends_on:
       - migrate
-      - database
+      - postgres
       - redis
 
   beat:
@@ -129,7 +129,7 @@ services:
       - db
     depends_on:
       - migrate
-      - database
+      - postgres
       - redis
 
   redis:
@@ -147,24 +147,23 @@ services:
           cpus: "0.25"
           memory: 100M
 
-  database:
+  postgres:
     image: postgres:16
-    container_name: trendsearth-api-database
+    container_name: trendsearth-api-postgres
     environment:
-      POSTGRES_PASSWORD: root
-      POSTGRES_USER: root
-      POSTGRES_DB: gef
+      POSTGRES_DB: trendsearth_develop_db
+      POSTGRES_USER: trendsearth_develop
+      POSTGRES_PASSWORD: postgres
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
       - target: 5432
-        published: 5432
     env_file:
       - develop.env
     networks:
       - db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d gef"]
+      test: ["CMD-SHELL", "pg_isready -U trendsearth_develop -d trendsearth_develop_db"]
       interval: 5s
       timeout: 3s
       retries: 5

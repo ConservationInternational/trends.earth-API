@@ -59,8 +59,7 @@ def create_script():
     logger.info("[ROUTER]: Creating a script")
 
     # Check if user is admin or superadmin
-    identity = get_jwt_identity()
-    if not is_admin_or_higher(identity):
+    if not is_admin_or_higher(current_user):
         return error(
             status=403, detail="Only admins and superadmins can create scripts"
         )
