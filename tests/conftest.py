@@ -245,23 +245,20 @@ def regular_user(app):
     """Create regular user for testing"""
     with app.app_context():
         # Check if user already exists
-        existing_user = User.query.filter_by(email="user@test.com").first()
-        if existing_user:
-            # Ensure the existing user has the correct role
-            existing_user.role = "USER"
-            db.session.add(existing_user)
-            db.session.commit()
-            db.session.refresh(existing_user)
-            return existing_user
-
-        user = User(
-            email="user@test.com",
-            password="user123",
-            name="Regular User",
-            role="USER",
-            country="Test Country",
-            institution="Test Institution",
-        )
+        user = User.query.filter_by(email="user@test.com").first()
+        if user:
+            # Ensure the existing user has the correct role and password
+            user.role = "USER"
+            user.password = user.set_password("user123")
+        else:
+            user = User(
+                email="user@test.com",
+                password="user123",
+                name="Regular User",
+                role="USER",
+                country="Test Country",
+                institution="Test Institution",
+            )
         db.session.add(user)
         db.session.commit()
         db.session.refresh(user)  # Ensure user is attached to session
@@ -478,23 +475,20 @@ def regular_user_no_rate_limiting(app_no_rate_limiting):
     """Create regular user for testing without rate limiting"""
     with app_no_rate_limiting.app_context():
         # Check if user already exists
-        existing_user = User.query.filter_by(email="user@test.com").first()
-        if existing_user:
-            # Ensure the existing user has the correct role
-            existing_user.role = "USER"
-            db.session.add(existing_user)
-            db.session.commit()
-            db.session.refresh(existing_user)
-            return existing_user
-
-        user = User(
-            email="user@test.com",
-            password="user123",
-            name="Regular User",
-            role="USER",
-            country="Test Country",
-            institution="Test Institution",
-        )
+        user = User.query.filter_by(email="user@test.com").first()
+        if user:
+            # Ensure the existing user has the correct role and password
+            user.role = "USER"
+            user.password = user.set_password("user123")
+        else:
+            user = User(
+                email="user@test.com",
+                password="user123",
+                name="Regular User",
+                role="USER",
+                country="Test Country",
+                institution="Test Institution",
+            )
         db.session.add(user)
         db.session.commit()
         db.session.refresh(user)  # Ensure user is attached to session

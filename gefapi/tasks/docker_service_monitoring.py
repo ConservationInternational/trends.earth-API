@@ -33,20 +33,18 @@ def _check_service_failed(service):
         service: Docker service object
 
     Returns:
-        bool: True if service has failed (all tasks failed and exhausted retries)
+        bool: True if service is considered failed, False otherwise
     """
     try:
+        # Get tasks for this service from the last 10 minutes (reduced from 15)
+        recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=10)
+        # Also check for very recent failures (last 5 minutes for aggressive detection)
+        very_recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=5)
+
         tasks = service.tasks()
-
-        if not tasks:
-            # No tasks means service hasn't started properly
-            return True
-
-        # Get recent tasks (within last 15 minutes to catch restart patterns)
-        recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=15)
-
         active_tasks = []
         failed_tasks = []
+        very_recent_failed_tasks = []
 
         for task in tasks:
             task_status = task.get("Status", {})
@@ -55,6 +53,7 @@ def _check_service_failed(service):
 
             # Parse timestamp
             timestamp_str = task_status.get("Timestamp", "")
+            task_time = None
             try:
                 if timestamp_str:
                     # Remove timezone info for simpler parsing
@@ -75,24 +74,42 @@ def _check_service_failed(service):
                     active_tasks.append(task)
                 elif task_state in ["failed", "rejected", "shutdown"]:
                     failed_tasks.append(task)
+                    # Track very recent failures for aggressive restart loop detection
+                    if task_time and task_time >= very_recent_cutoff:
+                        very_recent_failed_tasks.append(task)
 
-        # Service is considered failed if:
-        # 1. No active tasks AND
-        # 2. Recent tasks have failed AND
-        # 3. Service has attempted retries (multiple indicates restart loop)
-        if not active_tasks and failed_tasks and len(failed_tasks) >= 2:
+        # Enhanced failure detection logic:
+
+        # 1. Classic failure: No active tasks AND recent failed tasks
+        if not active_tasks and failed_tasks and len(failed_tasks) >= 1:
             logger.info(
-                f"Service {service.name} considered failed: "
+                f"Service {service.name} considered failed (no active tasks): "
                 f"{len(active_tasks)} active tasks, {len(failed_tasks)} failed tasks"
             )
             return True
 
-        # Additional check: if we have many failed tasks (indicating restart loop)
-        # even with active tasks, consider it failed to break restart cycles
-        if len(failed_tasks) >= 3:
+        # 2. Restart loop detection: Multiple failed tasks regardless of active tasks
+        if len(failed_tasks) >= 2:
             logger.warning(
                 f"Service {service.name} showing restart loop pattern: "
                 f"{len(active_tasks)} active tasks, {len(failed_tasks)} failed tasks"
+            )
+            return True
+
+        # 3. Aggressive recent failure detection: Multiple failures in last 5 minutes
+        if len(very_recent_failed_tasks) >= 2:
+            logger.warning(
+                f"Service {service.name} showing rapid failure pattern: "
+                f"{len(very_recent_failed_tasks)} failures in last 5 minutes, "
+                f"{len(active_tasks)} active tasks"
+            )
+            return True
+
+        # 4. Single active task with recent failures indicates potential restart loop
+        if len(active_tasks) == 1 and len(failed_tasks) >= 1:
+            logger.warning(
+                f"Service {service.name} showing potential restart loop: "
+                f"1 active task with {len(failed_tasks)} recent failures"
             )
             return True
 
@@ -168,7 +185,8 @@ def monitor_failed_docker_services(self):
 
                     logger.debug(
                         f"[TASK]: Checking Docker service {docker_service_name} "
-                        f"for execution {execution.id}"
+                        f"for execution {execution.id} (status: {execution.status}, "
+                        f"started: {execution.start_date})"
                     )
 
                     # Find the Docker service
@@ -251,9 +269,21 @@ def monitor_failed_docker_services(self):
                                     f"{docker_service_name}: {cleanup_error}"
                                 )
                         else:
+                            # Get task summary for logging
+                            tasks = service.tasks()
+                            active_count = 0
+                            failed_count = 0
+                            for task in tasks:
+                                task_state = task.get("Status", {}).get("State", "")
+                                if task_state in ["running", "starting", "pending"]:
+                                    active_count += 1
+                                elif task_state in ["failed", "rejected", "shutdown"]:
+                                    failed_count += 1
+
                             logger.debug(
                                 f"[TASK]: Docker service {docker_service_name} "
-                                f"is still healthy"
+                                f"is still healthy (active tasks: {active_count}, "
+                                f"failed tasks: {failed_count})"
                             )
 
                 except Exception as e:

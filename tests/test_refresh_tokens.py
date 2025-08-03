@@ -107,7 +107,9 @@ class TestRefreshTokens:
 class TestRefreshTokenAPI:
     """Test refresh token API endpoints"""
 
-    def test_login_returns_refresh_token(self, client_no_rate_limiting):
+    def test_login_returns_refresh_token(
+        self, client_no_rate_limiting, regular_user_no_rate_limiting
+    ):
         """Test that login returns both access and refresh tokens"""
         response = client_no_rate_limiting.post(
             "/auth", json={"email": "user@test.com", "password": "user123"}
@@ -121,7 +123,9 @@ class TestRefreshTokenAPI:
         assert "user_id" in data
         assert "expires_in" in data
 
-    def test_refresh_token_endpoint(self, client_no_rate_limiting, user_token):
+    def test_refresh_token_endpoint(
+        self, client_no_rate_limiting, user_token, regular_user_no_rate_limiting
+    ):
         """Test the refresh token endpoint"""
         # First login to get refresh token
         login_response = client_no_rate_limiting.post(
@@ -143,7 +147,10 @@ class TestRefreshTokenAPI:
         assert "expires_in" in data
 
     def test_logout_endpoint(
-        self, client_no_rate_limiting, auth_headers_user_no_rate_limiting
+        self,
+        client_no_rate_limiting,
+        auth_headers_user_no_rate_limiting,
+        regular_user_no_rate_limiting,
     ):
         """Test the logout endpoint"""
         # Login first to get refresh token

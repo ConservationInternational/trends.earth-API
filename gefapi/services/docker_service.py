@@ -355,7 +355,7 @@ class DockerService:
                         mem_limit=script.memory_limit,
                     ),
                     restart_policy=docker.types.RestartPolicy(
-                        condition="on-failure", delay=30, max_attempts=3, window=3600
+                        condition="on-failure", delay=60, max_attempts=2, window=7200
                     ),
                 )
             else:
