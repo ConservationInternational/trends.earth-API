@@ -45,6 +45,13 @@ logger = logging.getLogger()
 log_level = SETTINGS.get("logging", {}).get("level", "INFO")
 logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
+# Suppress verbose Docker and HTTP debug logs to reduce log spam
+logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
+logging.getLogger("docker.utils.config").setLevel(logging.WARNING)
+logging.getLogger("docker.auth").setLevel(logging.WARNING)
+logging.getLogger("docker.api.client").setLevel(logging.WARNING)
+logging.getLogger("requests.packages.urllib3.connectionpool").setLevel(logging.WARNING)
+
 # Ensure all unhandled exceptions are logged, and reported to rollbar
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler = logging.StreamHandler(stream=sys.stdout)

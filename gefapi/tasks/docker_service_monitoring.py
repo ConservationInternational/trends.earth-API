@@ -151,13 +151,17 @@ def _check_service_failed(service):
 def monitor_failed_docker_services(self):
     """
     Monitor Docker services for failed executions and mark them as failed.
-    Runs every 1 minute to quickly detect restart loops and failed executions.
+    Runs every 2 minutes to detect restart loops and failed executions.
 
     Checks executions in PENDING, READY, RUNNING, or FAILED states because:
     - READY: Executions that just started (Docker service created)
     - RUNNING: Executions that are currently running
     - FAILED: Executions that failed but may be restarting due to restart policy
     - PENDING: Executions that are queued to start
+
+    Optimizations:
+    - Limits to 50 most recent executions within 24 hours to reduce memory usage
+    - Filters by start_date to avoid checking very old executions
     """
     logger.info("[TASK]: Starting Docker service monitoring")
 
@@ -171,9 +175,18 @@ def monitor_failed_docker_services(self):
             # RUNNING: Executions that are currently running
             # FAILED: Executions that failed but may be restarting due to restart policy
             # PENDING: Executions that are queued to start
+            # Limit to recent executions to reduce memory usage and processing time
             active_executions = (
                 db.session.query(Execution)
                 .filter(Execution.status.in_(["PENDING", "READY", "RUNNING", "FAILED"]))
+                .filter(
+                    Execution.start_date
+                    >= datetime.datetime.utcnow() - datetime.timedelta(hours=24)
+                )
+                .order_by(Execution.start_date.desc())
+                .limit(
+                    50
+                )  # Limit to 50 most recent executions to prevent memory issues
                 .all()
             )
 
