@@ -11,6 +11,7 @@ import tempfile
 
 import docker
 import rollbar
+from docker import errors as docker_errors
 
 from gefapi import celery as celery_app  # Rename to avoid mypy confusion
 from gefapi import db
@@ -251,7 +252,7 @@ class DockerService:
 
             return DockerService.push(script_id=script_id, tag_image=tag_image)
 
-        except docker.errors.APIError as error:
+        except docker_errors.APIError as error:
             logger.error(error)
 
             return False, error
@@ -374,7 +375,7 @@ class DockerService:
                     name="execution-" + str(execution_id),
                     remove=True,
                 )
-        except docker.errors.ImageNotFound as error:
+        except docker_errors.ImageNotFound as error:
             logger.error("Image not found", error)
 
             return False, error
@@ -384,3 +385,63 @@ class DockerService:
             return False, error
 
         return True, None
+
+    @staticmethod
+    def get_service_logs(execution_id):
+        """Get docker service logs for an execution by dispatching a celery task"""
+        logger.info(
+            f"Dispatching celery task to get docker logs for execution {execution_id}"
+        )
+        try:
+            result = celery_app.send_task('docker.get_service_logs', args=[execution_id])
+            # Wait for the task to complete with a timeout
+            logs = result.get(timeout=120)  # Wait for 2 minutes
+            return logs
+        except Exception as e:
+            logger.error(
+                f"Error dispatching or getting result for get_docker_logs_task for execution {execution_id}: {e}"
+            )
+            rollbar.report_exc_info()
+            raise e
+
+
+@celery_app.task(name="docker.get_service_logs")
+def get_docker_logs_task(execution_id):
+    """Celery task to get docker service logs for an execution"""
+    logger.info(f"Celery task: Getting docker logs for execution {execution_id}")
+    try:
+        client = get_docker_client()
+        if not client:
+            raise Exception("Docker client not available")
+
+        service_name = f"execution-{execution_id}"
+        services = client.services.list(name=service_name)
+
+        if not services:
+            logger.warning(f"Service {service_name} not found")
+            return None
+
+        service = services[0]
+        logs = service.logs(stdout=True, stderr=True, tail=1000, timestamps=True)
+
+        formatted_logs = []
+        for i, line in enumerate(logs):
+            log_entry = line.decode("utf-8").strip()
+            parts = log_entry.split(" ", 1)
+            timestamp_str = parts[0]
+            text = parts[1] if len(parts) > 1 else ""
+            formatted_logs.append(
+                {"id": i, "created_at": timestamp_str, "text": text}
+            )
+        return formatted_logs
+
+    except docker_errors.NotFound as e:
+        logger.warning(f"Could not find service for execution {execution_id}: {e}")
+        return None
+    except Exception as e:
+        logger.error(
+            f"Error getting docker logs for execution {execution_id} in celery task: {e}"
+        )
+        rollbar.report_exc_info()
+        # Re-raise the exception to mark the task as failed
+        raise e
