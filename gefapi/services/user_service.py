@@ -7,6 +7,7 @@ import string
 from uuid import UUID
 
 import rollbar
+from sqlalchemy import func
 
 from gefapi import db
 from gefapi.config import SETTINGS
@@ -107,15 +108,30 @@ class UserService:
                 )
                 if m:
                     field, op, value = m.groups()
-                    field = field.strip()
+                    field = field.strip().lower()
                     op = op.strip().lower()
                     value = value.strip().strip("'\"")
                     col = getattr(User, field, None)
                     if col is not None:
+                        # Check if this is a string column for case-insensitive compare
+                        is_string_col = (
+                            hasattr(col.type, "python_type")
+                            and isinstance(col.type.python_type, type)
+                            and issubclass(col.type.python_type, str)
+                        ) or str(col.type).upper().startswith(
+                            ("VARCHAR", "TEXT", "STRING")
+                        )
+
                         if op == "=":
-                            filter_clauses.append(col == value)
+                            if is_string_col:
+                                filter_clauses.append(func.lower(col) == value.lower())
+                            else:
+                                filter_clauses.append(col == value)
                         elif op == "!=":
-                            filter_clauses.append(col != value)
+                            if is_string_col:
+                                filter_clauses.append(func.lower(col) != value.lower())
+                            else:
+                                filter_clauses.append(col != value)
                         elif op == ">":
                             filter_clauses.append(col > value)
                         elif op == "<":
@@ -125,7 +141,7 @@ class UserService:
                         elif op == "<=":
                             filter_clauses.append(col <= value)
                         elif op == "like":
-                            filter_clauses.append(col.like(value))
+                            filter_clauses.append(col.ilike(value))
             if filter_clauses:
                 query = query.filter(and_(*filter_clauses))
 
@@ -138,7 +154,7 @@ class UserService:
                 if not sort_expr:
                     continue
                 parts = sort_expr.split()
-                field = parts[0]
+                field = parts[0].lower()
                 direction = parts[1].lower() if len(parts) > 1 else "asc"
                 col = getattr(User, field, None)
                 if col is not None:

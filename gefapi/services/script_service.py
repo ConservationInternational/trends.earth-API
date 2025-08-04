@@ -9,6 +9,7 @@ from uuid import UUID
 
 import rollbar
 from slugify import slugify
+from sqlalchemy import func
 from werkzeug.utils import secure_filename
 
 from gefapi import db
@@ -228,7 +229,7 @@ class ScriptService:
                 )
                 if m:
                     field, op, value = m.groups()
-                    field = field.strip()
+                    field = field.strip().lower()
                     op = op.strip().lower()
                     value = value.strip().strip("'\"")
 
@@ -245,10 +246,29 @@ class ScriptService:
                     else:
                         col = getattr(Script, field, None)
                     if col is not None:
+                        # Check if this is a string column for case-insensitive compare
+                        is_string_col = (
+                            field in ["user_name", "user_email"]
+                            or (
+                                hasattr(col.type, "python_type")
+                                and isinstance(col.type.python_type, type)
+                                and issubclass(col.type.python_type, str)
+                            )
+                            or str(col.type)
+                            .upper()
+                            .startswith(("VARCHAR", "TEXT", "STRING"))
+                        )
+
                         if op == "=":
-                            filter_clauses.append(col == value)
+                            if is_string_col:
+                                filter_clauses.append(func.lower(col) == value.lower())
+                            else:
+                                filter_clauses.append(col == value)
                         elif op == "!=":
-                            filter_clauses.append(col != value)
+                            if is_string_col:
+                                filter_clauses.append(func.lower(col) != value.lower())
+                            else:
+                                filter_clauses.append(col != value)
                         elif op == ">":
                             filter_clauses.append(col > value)
                         elif op == "<":
@@ -258,7 +278,7 @@ class ScriptService:
                         elif op == "<=":
                             filter_clauses.append(col <= value)
                         elif op == "like":
-                            filter_clauses.append(col.like(value))
+                            filter_clauses.append(col.ilike(value))
             if join_users:
                 query = query.join(User, Script.user_id == User.id)
             if filter_clauses:
@@ -273,7 +293,7 @@ class ScriptService:
                 if not sort_expr:
                     continue
                 parts = sort_expr.split()
-                field = parts[0]
+                field = parts[0].lower()
                 direction = parts[1].lower() if len(parts) > 1 else "asc"
                 col = getattr(Script, field, None)
                 if col is not None:

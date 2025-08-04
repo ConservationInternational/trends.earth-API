@@ -87,7 +87,7 @@ class ExecutionService:
 
         # Apply other filters
         if status:
-            query = query.filter(Execution.status == status)
+            query = query.filter(func.lower(Execution.status) == status.lower())
         if updated_at:
             query = query.filter(Execution.end_date >= updated_at)
 
@@ -107,7 +107,7 @@ class ExecutionService:
                 )
                 if m:
                     field, op, value = m.groups()
-                    field = field.strip()
+                    field = field.strip().lower()
                     op = op.strip().lower()
                     value = value.strip().strip("'\"")
 
@@ -132,10 +132,29 @@ class ExecutionService:
                     else:
                         col = getattr(Execution, field, None)
                     if col is not None:
+                        # Check if this is a string column for case-insensitive compare
+                        is_string_col = (
+                            field in ["script_name", "user_name", "user_email"]
+                            or (
+                                hasattr(col.type, "python_type")
+                                and isinstance(col.type.python_type, type)
+                                and issubclass(col.type.python_type, str)
+                            )
+                            or str(col.type)
+                            .upper()
+                            .startswith(("VARCHAR", "TEXT", "STRING"))
+                        )
+
                         if op == "=":
-                            filter_clauses.append(col == value)
+                            if is_string_col:
+                                filter_clauses.append(func.lower(col) == value.lower())
+                            else:
+                                filter_clauses.append(col == value)
                         elif op == "!=":
-                            filter_clauses.append(col != value)
+                            if is_string_col:
+                                filter_clauses.append(func.lower(col) != value.lower())
+                            else:
+                                filter_clauses.append(col != value)
                         elif op == ">":
                             filter_clauses.append(col > value)
                         elif op == "<":
@@ -145,7 +164,7 @@ class ExecutionService:
                         elif op == "<=":
                             filter_clauses.append(col <= value)
                         elif op == "like":
-                            filter_clauses.append(col.like(value))
+                            filter_clauses.append(col.ilike(value))
             # Join with script and user tables if needed due to filtering on
             # fields not in executions table
             if join_scripts:
@@ -164,7 +183,7 @@ class ExecutionService:
                 if not sort_expr:
                     continue
                 parts = sort_expr.split()
-                field = parts[0]
+                field = parts[0].lower()
                 direction = parts[1].lower() if len(parts) > 1 else "asc"
                 col = getattr(Execution, field, None)
                 if col is not None:
