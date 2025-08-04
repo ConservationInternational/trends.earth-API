@@ -36,10 +36,10 @@ def _check_service_failed(service):
         bool: True if service is considered failed, False otherwise
     """
     try:
-        # Get tasks for this service from the last 10 minutes (reduced from 15)
-        recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=10)
-        # Also check for very recent failures (last 5 minutes for aggressive detection)
-        very_recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=5)
+        # Get tasks for this service from the last 5 minutes (reduced window for faster detection)
+        recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=5)
+        # Also check for very recent failures (last 2 minutes for aggressive detection)
+        very_recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=2)
 
         tasks = service.tasks()
         active_tasks = []
@@ -113,6 +113,32 @@ def _check_service_failed(service):
             )
             return True
 
+        # 5. AGGRESSIVE: Even single failure with active task in very recent time (last 2 minutes)
+        ultra_recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=2)
+        ultra_recent_failures = []
+        for task in very_recent_failed_tasks:
+            task_status = task.get("Status", {})
+            timestamp_str = task_status.get("Timestamp", "")
+            try:
+                if timestamp_str:
+                    timestamp_str = timestamp_str.replace("Z", "+00:00")
+                    task_time = datetime.datetime.fromisoformat(
+                        timestamp_str.replace("Z", "+00:00")
+                    )
+                    if task_time >= ultra_recent_cutoff:
+                        ultra_recent_failures.append(task)
+            except (ValueError, TypeError):
+                # If we can't parse timestamp, include it anyway for safety
+                ultra_recent_failures.append(task)
+
+        if len(ultra_recent_failures) >= 1 and len(active_tasks) >= 1:
+            logger.warning(
+                f"Service {service.name} showing immediate restart pattern: "
+                f"{len(ultra_recent_failures)} failures in last 2 minutes with "
+                f"{len(active_tasks)} active tasks - likely restart loop"
+            )
+            return True
+
         return False
 
     except Exception as e:
@@ -125,7 +151,13 @@ def _check_service_failed(service):
 def monitor_failed_docker_services(self):
     """
     Monitor Docker services for failed executions and mark them as failed.
-    Runs every 10 minutes to check pending/running executions.
+    Runs every 1 minute to quickly detect restart loops and failed executions.
+
+    Checks executions in PENDING, READY, RUNNING, or FAILED states because:
+    - READY: Executions that just started (Docker service created)
+    - RUNNING: Executions that are currently running
+    - FAILED: Executions that failed but may be restarting due to restart policy
+    - PENDING: Executions that are queued to start
     """
     logger.info("[TASK]: Starting Docker service monitoring")
 
@@ -134,10 +166,14 @@ def monitor_failed_docker_services(self):
 
     with app.app_context():
         try:
-            # Find executions in PENDING or RUNNING state
+            # Find executions in PENDING, READY, RUNNING, or FAILED state
+            # READY: Executions that just started (Docker service created)
+            # RUNNING: Executions that are currently running
+            # FAILED: Executions that failed but may be restarting due to restart policy
+            # PENDING: Executions that are queued to start
             active_executions = (
                 db.session.query(Execution)
-                .filter(Execution.status.in_(["PENDING", "RUNNING"]))
+                .filter(Execution.status.in_(["PENDING", "READY", "RUNNING", "FAILED"]))
                 .all()
             )
 
@@ -211,7 +247,7 @@ def monitor_failed_docker_services(self):
 
                         # Add log entry
                         log_entry = ExecutionLog(
-                            text="Cancelled by celery Docker service monitoring task.",
+                            text="Cancelled by celery task 'monitor_failed_docker_services'.",
                             level="ERROR",
                             execution_id=execution.id,
                         )
@@ -243,8 +279,8 @@ def monitor_failed_docker_services(self):
                             # Add log entry
                             log_entry = ExecutionLog(
                                 text=(
-                                    "Cancelled by celery Docker "
-                                    "service monitoring task."
+                                    "Cancelled by celery task 'monitor_failed_docker_services' - "
+                                    "Docker service detected in restart loop or failed state."
                                 ),
                                 level="ERROR",
                                 execution_id=execution.id,

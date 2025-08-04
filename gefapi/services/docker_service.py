@@ -10,8 +10,8 @@ import tarfile
 import tempfile
 
 import docker
-import rollbar
 from docker import errors as docker_errors
+import rollbar
 
 from gefapi import celery as celery_app  # Rename to avoid mypy confusion
 from gefapi import db
@@ -393,7 +393,9 @@ class DockerService:
             f"Dispatching celery task to get docker logs for execution {execution_id}"
         )
         try:
-            result = celery_app.send_task('docker.get_service_logs', args=[execution_id])
+            result = celery_app.send_task(
+                "docker.get_service_logs", args=[execution_id]
+            )
             # Wait for the task to complete with a timeout
             logs = result.get(timeout=120)  # Wait for 2 minutes
             return logs
@@ -430,9 +432,7 @@ def get_docker_logs_task(execution_id):
             parts = log_entry.split(" ", 1)
             timestamp_str = parts[0]
             text = parts[1] if len(parts) > 1 else ""
-            formatted_logs.append(
-                {"id": i, "created_at": timestamp_str, "text": text}
-            )
+            formatted_logs.append({"id": i, "created_at": timestamp_str, "text": text})
         return formatted_logs
 
     except docker_errors.NotFound as e:

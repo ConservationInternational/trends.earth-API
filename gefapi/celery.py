@@ -77,7 +77,7 @@ def make_celery(app):
             "task": (
                 "gefapi.tasks.docker_service_monitoring.monitor_failed_docker_services"
             ),
-            "schedule": 180.0,  # Every 3 minutes (180 seconds)
+            "schedule": 60.0,  # Every 1 minute (60 seconds) - reduced for faster restart loop detection
         },
     }
     celery.conf.timezone = "UTC"
