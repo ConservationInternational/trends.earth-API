@@ -36,134 +36,58 @@ def _check_service_failed(service):
         bool: True if service is considered failed, False otherwise
     """
     try:
-        # Get tasks for this service from the last 5 minutes (faster detection)
-        recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=5)
-        # Also check for very recent failures (last 2 minutes for aggressive detection)
-        very_recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=2)
-
         tasks = service.tasks()
-        active_tasks = []
-        failed_tasks = []
-        very_recent_failed_tasks = []
 
-        logger.debug(f"Service {service.name}: Processing {len(tasks)} total tasks")
+        # Count task states - simple and reliable
+        active_tasks = 0
+        failed_tasks = 0
 
         for task in tasks:
             task_status = task.get("Status", {})
-            task_state = task_status.get("State", "")
-            desired_state = task.get("DesiredState", "")
+            task_state = task_status.get("State", "").lower()
+            desired_state = task.get("DesiredState", "").lower()
 
-            # Parse timestamp
-            timestamp_str = task_status.get("Timestamp", "")
-            task_time = None
-            try:
-                if timestamp_str:
-                    # Remove timezone info for simpler parsing
-                    timestamp_str = timestamp_str.replace("Z", "+00:00")
-                    task_time = datetime.datetime.fromisoformat(
-                        timestamp_str.replace("Z", "+00:00")
-                    )
-
-                    # Only consider recent tasks
-                    if task_time < recent_cutoff:
-                        logger.debug(
-                            f"Service {service.name}: Skipping old task {task_state} "
-                            f"from {task_time} (before {recent_cutoff})"
-                        )
-                        continue
-            except (ValueError, TypeError):
-                # If we can't parse timestamp, include the task anyway
-                logger.debug(
-                    f"Service {service.name}: Could not parse timestamp '{timestamp_str}', "
-                    f"including task anyway"
-                )
-                pass
-
-            if desired_state.lower() == "running":
-                if task_state.lower() in ["running", "starting", "pending"]:
-                    active_tasks.append(task)
-                    logger.debug(f"Service {service.name}: Found active task: {task_state}")
-                elif task_state.lower() in ["failed", "rejected", "shutdown"]:
-                    failed_tasks.append(task)
-                    logger.debug(
-                        f"Service {service.name}: Found failed task: {task_state} "
-                        f"at {task_time}"
-                    )
-                    # Track very recent failures for aggressive restart loop detection
-                    if task_time and task_time >= very_recent_cutoff:
-                        very_recent_failed_tasks.append(task)
+            # Only count tasks that should be running
+            if desired_state == "running":
+                if task_state in ["running", "starting", "pending"]:
+                    active_tasks += 1
+                elif task_state in ["failed", "rejected", "shutdown"]:
+                    failed_tasks += 1
 
         logger.debug(
-            f"Service {service.name}: Summary - {len(active_tasks)} active, "
-            f"{len(failed_tasks)} failed, {len(very_recent_failed_tasks)} very recent failed"
+            f"Service {service.name}: {active_tasks} active, "
+            f"{failed_tasks} failed tasks"
         )
 
         # Specific debug for the problematic execution
         if "2e9a613c-cb54-4ced-8ad5-aec689577945" in service.name:
             logger.warning(
-                f"RESTART LOOP DEBUG for execution 2e9a613c-cb54-4ced-8ad5-aec689577945: "
-                f"Service {service.name}, {len(active_tasks)} active tasks, "
-                f"{len(failed_tasks)} failed tasks, {len(very_recent_failed_tasks)} very recent failed"
+                f"RESTART LOOP DEBUG for execution "
+                f"2e9a613c-cb54-4ced-8ad5-aec689577945: "
+                f"Service {service.name}, {active_tasks} active, {failed_tasks} failed"
             )
 
-        # Enhanced failure detection logic:
+        # Simple failure detection rules:
 
-        # 1. Classic failure: No active tasks AND recent failed tasks
-        if not active_tasks and failed_tasks and len(failed_tasks) >= 1:
+        # 1. No active tasks but has failed tasks = service failed
+        if active_tasks == 0 and failed_tasks > 0:
             logger.warning(
-                f"Service {service.name} considered failed (no active tasks): "
-                f"{len(active_tasks)} active tasks, {len(failed_tasks)} failed tasks"
-            )
-            return True
-
-        # 2. Restart loop detection: Multiple failed tasks regardless of active tasks
-        if len(failed_tasks) >= 2:
-            logger.warning(
-                f"Service {service.name} showing restart loop pattern: "
-                f"{len(active_tasks)} active tasks, {len(failed_tasks)} failed tasks"
+                f"Service {service.name} failed: no active tasks, {failed_tasks} failed"
             )
             return True
 
-        # 3. Aggressive recent failure detection: Multiple failures in last 2 minutes
-        if len(very_recent_failed_tasks) >= 2:
+        # 2. Multiple failed tasks = restart loop
+        if failed_tasks >= 2:
             logger.warning(
-                f"Service {service.name} showing rapid failure pattern: "
-                f"{len(very_recent_failed_tasks)} failures in last 2 minutes, "
-                f"{len(active_tasks)} active tasks"
+                f"Service {service.name} in restart loop: {failed_tasks} failed tasks"
             )
             return True
 
-        # 4. Single active task with recent failures indicates potential restart loop
-        if len(active_tasks) >= 1 and len(failed_tasks) >= 1:
+        # 3. Active task with failed tasks = potential restart loop
+        if active_tasks > 0 and failed_tasks > 0:
             logger.warning(
-                f"Service {service.name} showing potential restart loop: "
-                f"{len(active_tasks)} active task(s) with {len(failed_tasks)} recent failures"
-            )
-            return True
-
-        # 5. AGGRESSIVE: Even single failure with active task in very recent time
-        ultra_recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=2)
-        ultra_recent_failures = []
-        for task in very_recent_failed_tasks:
-            task_status = task.get("Status", {})
-            timestamp_str = task_status.get("Timestamp", "")
-            try:
-                if timestamp_str:
-                    timestamp_str = timestamp_str.replace("Z", "+00:00")
-                    task_time = datetime.datetime.fromisoformat(
-                        timestamp_str.replace("Z", "+00:00")
-                    )
-                    if task_time >= ultra_recent_cutoff:
-                        ultra_recent_failures.append(task)
-            except (ValueError, TypeError):
-                # If we can't parse timestamp, include it anyway for safety
-                ultra_recent_failures.append(task)
-
-        if len(ultra_recent_failures) >= 1 and len(active_tasks) >= 1:
-            logger.warning(
-                f"Service {service.name} showing immediate restart pattern: "
-                f"{len(ultra_recent_failures)} failures in last 2 minutes with "
-                f"{len(active_tasks)} active tasks - likely restart loop"
+                f"Service {service.name} potential restart loop: "
+                f"{active_tasks} active, {failed_tasks} failed"
             )
             return True
 
@@ -171,7 +95,6 @@ def _check_service_failed(service):
 
     except Exception as e:
         logger.error(f"Error checking service {service.name} status: {e}")
-        # If we can't determine status, assume it's not failed to avoid false positives
         return False
 
 
@@ -358,9 +281,17 @@ def monitor_failed_docker_services(self):
                             failed_count = 0
                             for task in tasks:
                                 task_state = task.get("Status", {}).get("State", "")
-                                if task_state.lower() in ["running", "starting", "pending"]:
+                                if task_state.lower() in [
+                                    "running",
+                                    "starting",
+                                    "pending",
+                                ]:
                                     active_count += 1
-                                elif task_state.lower() in ["failed", "rejected", "shutdown"]:
+                                elif task_state.lower() in [
+                                    "failed",
+                                    "rejected",
+                                    "shutdown",
+                                ]:
                                     failed_count += 1
 
                             logger.debug(
