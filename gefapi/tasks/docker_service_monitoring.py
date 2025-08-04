@@ -46,6 +46,8 @@ def _check_service_failed(service):
         failed_tasks = []
         very_recent_failed_tasks = []
 
+        logger.debug(f"Service {service.name}: Processing {len(tasks)} total tasks")
+
         for task in tasks:
             task_status = task.get("Status", {})
             task_state = task_status.get("State", "")
@@ -64,25 +66,51 @@ def _check_service_failed(service):
 
                     # Only consider recent tasks
                     if task_time < recent_cutoff:
+                        logger.debug(
+                            f"Service {service.name}: Skipping old task {task_state} "
+                            f"from {task_time} (before {recent_cutoff})"
+                        )
                         continue
             except (ValueError, TypeError):
                 # If we can't parse timestamp, include the task anyway
+                logger.debug(
+                    f"Service {service.name}: Could not parse timestamp '{timestamp_str}', "
+                    f"including task anyway"
+                )
                 pass
 
-            if desired_state == "running":
-                if task_state in ["running", "starting", "pending"]:
+            if desired_state.lower() == "running":
+                if task_state.lower() in ["running", "starting", "pending"]:
                     active_tasks.append(task)
-                elif task_state in ["failed", "rejected", "shutdown"]:
+                    logger.debug(f"Service {service.name}: Found active task: {task_state}")
+                elif task_state.lower() in ["failed", "rejected", "shutdown"]:
                     failed_tasks.append(task)
+                    logger.debug(
+                        f"Service {service.name}: Found failed task: {task_state} "
+                        f"at {task_time}"
+                    )
                     # Track very recent failures for aggressive restart loop detection
                     if task_time and task_time >= very_recent_cutoff:
                         very_recent_failed_tasks.append(task)
+
+        logger.debug(
+            f"Service {service.name}: Summary - {len(active_tasks)} active, "
+            f"{len(failed_tasks)} failed, {len(very_recent_failed_tasks)} very recent failed"
+        )
+
+        # Specific debug for the problematic execution
+        if "2e9a613c-cb54-4ced-8ad5-aec689577945" in service.name:
+            logger.warning(
+                f"RESTART LOOP DEBUG for execution 2e9a613c-cb54-4ced-8ad5-aec689577945: "
+                f"Service {service.name}, {len(active_tasks)} active tasks, "
+                f"{len(failed_tasks)} failed tasks, {len(very_recent_failed_tasks)} very recent failed"
+            )
 
         # Enhanced failure detection logic:
 
         # 1. Classic failure: No active tasks AND recent failed tasks
         if not active_tasks and failed_tasks and len(failed_tasks) >= 1:
-            logger.info(
+            logger.warning(
                 f"Service {service.name} considered failed (no active tasks): "
                 f"{len(active_tasks)} active tasks, {len(failed_tasks)} failed tasks"
             )
@@ -96,20 +124,20 @@ def _check_service_failed(service):
             )
             return True
 
-        # 3. Aggressive recent failure detection: Multiple failures in last 5 minutes
+        # 3. Aggressive recent failure detection: Multiple failures in last 2 minutes
         if len(very_recent_failed_tasks) >= 2:
             logger.warning(
                 f"Service {service.name} showing rapid failure pattern: "
-                f"{len(very_recent_failed_tasks)} failures in last 5 minutes, "
+                f"{len(very_recent_failed_tasks)} failures in last 2 minutes, "
                 f"{len(active_tasks)} active tasks"
             )
             return True
 
         # 4. Single active task with recent failures indicates potential restart loop
-        if len(active_tasks) == 1 and len(failed_tasks) >= 1:
+        if len(active_tasks) >= 1 and len(failed_tasks) >= 1:
             logger.warning(
                 f"Service {service.name} showing potential restart loop: "
-                f"1 active task with {len(failed_tasks)} recent failures"
+                f"{len(active_tasks)} active task(s) with {len(failed_tasks)} recent failures"
             )
             return True
 
@@ -330,9 +358,9 @@ def monitor_failed_docker_services(self):
                             failed_count = 0
                             for task in tasks:
                                 task_state = task.get("Status", {}).get("State", "")
-                                if task_state in ["running", "starting", "pending"]:
+                                if task_state.lower() in ["running", "starting", "pending"]:
                                     active_count += 1
-                                elif task_state in ["failed", "rejected", "shutdown"]:
+                                elif task_state.lower() in ["failed", "rejected", "shutdown"]:
                                     failed_count += 1
 
                             logger.debug(
