@@ -42,6 +42,17 @@ def _check_service_failed(service):
         active_tasks = 0
         failed_tasks = 0
 
+        # Debug: log all task states for the problematic execution
+        if "2e9a613c-cb54-4ced-8ad5-aec689577945" in service.name:
+            logger.warning(f"TASK DEBUG: All tasks for {service.name}:")
+            for i, task in enumerate(tasks):
+                task_status = task.get("Status", {})
+                task_state = task_status.get("State", "")
+                desired_state = task.get("DesiredState", "")
+                logger.warning(
+                    f"  Task {i+1}: state='{task_state}', desired='{desired_state}'"
+                )
+
         for task in tasks:
             task_status = task.get("Status", {})
             task_state = task_status.get("State", "").lower()
@@ -275,24 +286,29 @@ def monitor_failed_docker_services(self):
                                     f"{docker_service_name}: {cleanup_error}"
                                 )
                         else:
-                            # Get task summary for logging
+                            # Get task summary for logging - use same logic as _check_service_failed
                             tasks = service.tasks()
                             active_count = 0
                             failed_count = 0
                             for task in tasks:
-                                task_state = task.get("Status", {}).get("State", "")
-                                if task_state.lower() in [
-                                    "running",
-                                    "starting",
-                                    "pending",
-                                ]:
-                                    active_count += 1
-                                elif task_state.lower() in [
-                                    "failed",
-                                    "rejected",
-                                    "shutdown",
-                                ]:
-                                    failed_count += 1
+                                task_status = task.get("Status", {})
+                                task_state = task_status.get("State", "").lower()
+                                desired_state = task.get("DesiredState", "").lower()
+
+                                # Only count tasks that should be running (same as _check_service_failed)
+                                if desired_state == "running":
+                                    if task_state in [
+                                        "running",
+                                        "starting",
+                                        "pending",
+                                    ]:
+                                        active_count += 1
+                                    elif task_state in [
+                                        "failed",
+                                        "rejected",
+                                        "shutdown",
+                                    ]:
+                                        failed_count += 1
 
                             logger.debug(
                                 f"[TASK]: Docker service {docker_service_name} "
