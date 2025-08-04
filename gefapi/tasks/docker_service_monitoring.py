@@ -36,7 +36,7 @@ def _check_service_failed(service):
         bool: True if service is considered failed, False otherwise
     """
     try:
-        # Get tasks for this service from the last 5 minutes (reduced window for faster detection)
+        # Get tasks for this service from the last 5 minutes (faster detection)
         recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=5)
         # Also check for very recent failures (last 2 minutes for aggressive detection)
         very_recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=2)
@@ -113,7 +113,7 @@ def _check_service_failed(service):
             )
             return True
 
-        # 5. AGGRESSIVE: Even single failure with active task in very recent time (last 2 minutes)
+        # 5. AGGRESSIVE: Even single failure with active task in very recent time
         ultra_recent_cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=2)
         ultra_recent_failures = []
         for task in very_recent_failed_tasks:
@@ -247,7 +247,11 @@ def monitor_failed_docker_services(self):
 
                         # Add log entry
                         log_entry = ExecutionLog(
-                            text="Cancelled by celery task 'monitor_failed_docker_services'.",
+                            text=(
+                                "Cancelled by celery task "
+                                "'monitor_failed_docker_services' "
+                                "- Docker service not found."
+                            ),
                             level="ERROR",
                             execution_id=execution.id,
                         )
@@ -279,8 +283,10 @@ def monitor_failed_docker_services(self):
                             # Add log entry
                             log_entry = ExecutionLog(
                                 text=(
-                                    "Cancelled by celery task 'monitor_failed_docker_services' - "
-                                    "Docker service detected in restart loop or failed state."
+                                    "Cancelled by celery task "
+                                    "'monitor_failed_docker_services' "
+                                    "- Docker service detected in restart "
+                                    "loop or failed state."
                                 ),
                                 level="ERROR",
                                 execution_id=execution.id,

@@ -401,7 +401,8 @@ class DockerService:
             return logs
         except Exception as e:
             logger.error(
-                f"Error dispatching or getting result for get_docker_logs_task for execution {execution_id}: {e}"
+                f"Error dispatching or getting result for get_docker_logs_task "
+                f"for execution {execution_id}: {e}"
             )
             rollbar.report_exc_info()
             raise e
@@ -440,7 +441,8 @@ def get_docker_logs_task(execution_id):
         return None
     except Exception as e:
         logger.error(
-            f"Error getting docker logs for execution {execution_id} in celery task: {e}"
+            f"Error getting docker logs for execution {execution_id} "
+            f"in celery task: {e}"
         )
         rollbar.report_exc_info()
         # Re-raise the exception to mark the task as failed
