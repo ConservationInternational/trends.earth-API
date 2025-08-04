@@ -58,12 +58,14 @@ def _check_service_failed(service):
             task_state = task_status.get("State", "").lower()
             desired_state = task.get("DesiredState", "").lower()
 
-            # Only count tasks that should be running
+            # Count active tasks (only those that should be running)
             if desired_state == "running":
                 if task_state in ["running", "starting", "pending"]:
                     active_tasks += 1
-                elif task_state in ["failed", "rejected", "shutdown"]:
-                    failed_tasks += 1
+
+            # Count failed tasks (regardless of desired state - important for restart loops)
+            if task_state in ["failed", "rejected", "shutdown"]:
+                failed_tasks += 1
 
         logger.debug(
             f"Service {service.name}: {active_tasks} active, "
@@ -295,7 +297,7 @@ def monitor_failed_docker_services(self):
                                 task_state = task_status.get("State", "").lower()
                                 desired_state = task.get("DesiredState", "").lower()
 
-                                # Only count tasks that should be running (same as _check_service_failed)
+                                # Count active tasks (only those that should be running)
                                 if desired_state == "running":
                                     if task_state in [
                                         "running",
@@ -303,12 +305,14 @@ def monitor_failed_docker_services(self):
                                         "pending",
                                     ]:
                                         active_count += 1
-                                    elif task_state in [
-                                        "failed",
-                                        "rejected",
-                                        "shutdown",
-                                    ]:
-                                        failed_count += 1
+
+                                # Count failed tasks (regardless of desired state)
+                                if task_state in [
+                                    "failed",
+                                    "rejected",
+                                    "shutdown",
+                                ]:
+                                    failed_count += 1
 
                             logger.debug(
                                 f"[TASK]: Docker service {docker_service_name} "
