@@ -418,7 +418,7 @@ def get_docker_logs_task(execution_id):
             raise Exception("Docker client not available")
 
         service_name = f"execution-{execution_id}"
-        services = client.services.list(name=service_name)
+        services = client.services.list(filters={"name": service_name})
 
         if not services:
             logger.warning(f"Service {service_name} not found")
