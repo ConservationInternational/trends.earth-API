@@ -44,6 +44,9 @@ def make_celery(app):
         "gefapi.tasks.docker_service_monitoring.monitor_failed_docker_services": {
             "queue": "build"
         },
+        "gefapi.tasks.docker_completed_monitoring.monitor_completed_docker_services": {
+            "queue": "build"
+        },
         # All other tasks use default queue
     }
 
@@ -79,6 +82,13 @@ def make_celery(app):
                 "gefapi.tasks.docker_service_monitoring.monitor_failed_docker_services"
             ),
             "schedule": 120.0,  # Every 2 minutes (120 seconds) - balanced detection
+        },
+        "monitor-completed-docker-services": {
+            "task": (
+                "gefapi.tasks.docker_completed_monitoring.monitor_completed_docker_services"
+            ),
+            "schedule": 180.0,  # Every 3 minutes - check for completed services
+            "options": {"queue": "build"},  # Run on build queue with Docker access
         },
     }
     celery.conf.timezone = "UTC"
