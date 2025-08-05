@@ -16,8 +16,6 @@ class TestDockerCompletedMonitoring:
         self, mock_get_docker_client, app, db_session, sample_execution
     ):
         """Test basic monitoring task functionality"""
-        execution_id = sample_execution.id
-
         # Set execution to FINISHED status (already completed in database)
         sample_execution.status = "FINISHED"
         sample_execution.end_date = datetime.datetime.utcnow() - datetime.timedelta(
@@ -28,6 +26,9 @@ class TestDockerCompletedMonitoring:
         )
         db_session.add(sample_execution)
         db_session.commit()
+
+        # Get the execution ID after it's committed to the database
+        execution_id = sample_execution.id
 
         # Mock Docker client and service
         mock_client = MagicMock()
@@ -118,6 +119,9 @@ class TestDockerCompletedMonitoring:
         db_session.add(sample_execution)
         db_session.commit()
 
+        # Get the execution ID after it's committed to the database
+        execution_id = sample_execution.id
+
         # Mock Docker client and service
         mock_client = MagicMock()
         mock_get_docker_client.return_value = mock_client
@@ -128,7 +132,7 @@ class TestDockerCompletedMonitoring:
 
         # Mock services.list to return our service only when filtered by the right name
         def mock_services_list(filters=None):
-            if filters and filters.get("name") == f"execution-{sample_execution.id}":
+            if filters and filters.get("name") == f"execution-{execution_id}":
                 return [mock_service]
             return []
 
