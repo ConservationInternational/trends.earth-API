@@ -42,28 +42,20 @@ def _check_service_failed(service):
         active_tasks = 0
         failed_tasks = 0
 
-        # Debug: log all task states for the problematic execution
-        if "2e9a613c-cb54-4ced-8ad5-aec689577945" in service.name:
-            logger.warning(f"TASK DEBUG: All tasks for {service.name}:")
-            for i, task in enumerate(tasks):
-                task_status = task.get("Status", {})
-                task_state = task_status.get("State", "")
-                desired_state = task.get("DesiredState", "")
-                logger.warning(
-                    f"  Task {i+1}: state='{task_state}', desired='{desired_state}'"
-                )
-
         for task in tasks:
             task_status = task.get("Status", {})
             task_state = task_status.get("State", "").lower()
             desired_state = task.get("DesiredState", "").lower()
 
             # Count active tasks (only those that should be running)
-            if desired_state == "running":
-                if task_state in ["running", "starting", "pending"]:
-                    active_tasks += 1
+            if desired_state == "running" and task_state in [
+                "running",
+                "starting",
+                "pending",
+            ]:
+                active_tasks += 1
 
-            # Count failed tasks (regardless of desired state - important for restart loops)
+            # Count failed tasks (regardless of desired state - important for loops)  # noqa: E501
             if task_state in ["failed", "rejected", "shutdown"]:
                 failed_tasks += 1
 
@@ -71,14 +63,6 @@ def _check_service_failed(service):
             f"Service {service.name}: {active_tasks} active, "
             f"{failed_tasks} failed tasks"
         )
-
-        # Specific debug for the problematic execution
-        if "2e9a613c-cb54-4ced-8ad5-aec689577945" in service.name:
-            logger.warning(
-                f"RESTART LOOP DEBUG for execution "
-                f"2e9a613c-cb54-4ced-8ad5-aec689577945: "
-                f"Service {service.name}, {active_tasks} active, {failed_tasks} failed"
-            )
 
         # Simple failure detection rules:
 
@@ -288,7 +272,7 @@ def monitor_failed_docker_services(self):
                                     f"{docker_service_name}: {cleanup_error}"
                                 )
                         else:
-                            # Get task summary for logging - use same logic as _check_service_failed
+                            # Get task summary for logging - use same logic  # noqa: E501
                             tasks = service.tasks()
                             active_count = 0
                             failed_count = 0
@@ -298,13 +282,12 @@ def monitor_failed_docker_services(self):
                                 desired_state = task.get("DesiredState", "").lower()
 
                                 # Count active tasks (only those that should be running)
-                                if desired_state == "running":
-                                    if task_state in [
-                                        "running",
-                                        "starting",
-                                        "pending",
-                                    ]:
-                                        active_count += 1
+                                if desired_state == "running" and task_state in [
+                                    "running",
+                                    "starting",
+                                    "pending",
+                                ]:
+                                    active_count += 1
 
                                 # Count failed tasks (regardless of desired state)
                                 if task_state in [

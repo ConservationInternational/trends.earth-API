@@ -27,7 +27,7 @@ def make_celery(app):
     celery.conf.task_routes = {
         "gefapi.services.docker_service.docker_build": {"queue": "build"},
         "gefapi.services.docker_service.docker_run": {"queue": "build"},
-        "docker.get_service_logs": {"queue": "build"}, 
+        "docker.get_service_logs": {"queue": "build"},
         "gefapi.tasks.status_monitoring.refresh_swarm_cache_task": {"queue": "build"},
         # Route all scheduled tasks to default queue to match worker configuration
         "gefapi.tasks.status_monitoring.collect_system_status": {"queue": "default"},
