@@ -107,6 +107,9 @@ def monitor_failed_docker_services(self):
     - FAILED: Executions that failed but may be restarting due to restart policy
     - PENDING: Executions that are queued to start
 
+    To prevent endless monitoring loops, executions with no Docker service
+    (already cleaned up) are skipped rather than re-marked as failed.
+
     Optimizations:
     - Limits to 50 most recent executions within 24 hours to reduce memory usage
     - Filters by start_date to avoid checking very old executions
@@ -133,8 +136,8 @@ def monitor_failed_docker_services(self):
                 )
                 .order_by(Execution.start_date.desc())
                 .limit(
-                    50
-                )  # Limit to 50 most recent executions to prevent memory issues
+                    100
+                )  # Limit to 100 most recent executions to prevent memory issues
                 .all()
             )
 
@@ -194,8 +197,17 @@ def monitor_failed_docker_services(self):
                     checked_count += 1
 
                     if not services:
-                        # Service doesn't exist - this could mean it was never
-                        # created or already removed
+                        # Service doesn't exist - check if execution is already failed
+                        if execution.status == "FAILED":
+                            # Execution is already failed and service is gone - skip it
+                            # to prevent endless monitoring loops
+                            logger.debug(
+                                f"[TASK]: Execution {execution.id} is already FAILED "
+                                f"and Docker service is gone - skipping"
+                            )
+                            continue
+
+                        # Service doesn't exist and execution is not failed yet
                         logger.info(
                             f"[TASK]: No Docker service found for execution "
                             f"{execution.id}, marking as failed"
