@@ -35,10 +35,10 @@ class GEEService:
 
         # Regex patterns to match GEE task IDs in various log formats
         patterns = [
-            r"Starting GEE task ([A-Z0-9]{26})",
-            r"for task ([A-Z0-9]{26})",
-            r"task.*?([A-Z0-9]{26})",
-            r"GEE.*?task.*?([A-Z0-9]{26})",
+            r"Starting GEE task ([A-Z0-9]{24})",
+            r"for task ([A-Z0-9]{24})",
+            r"task.*?([A-Z0-9]{24})",
+            r"GEE.*?task.*?([A-Z0-9]{24})",
         ]
 
         for log_text in execution_logs:
@@ -46,10 +46,10 @@ class GEEService:
                 continue
 
             for pattern in patterns:
-                matches = re.findall(pattern, log_text, re.IGNORECASE)
+                matches = re.findall(pattern, log_text)
                 for match in matches:
                     # Validate that the match looks like a valid GEE task ID
-                    if len(match) == 26 and match.isalnum() and match.isupper():
+                    if len(match) == 24 and match.isalnum() and match.isupper():
                         task_ids.add(match)
                         logger.debug(f"Found GEE task ID: {match}")
 

@@ -76,7 +76,7 @@ class TestExecutionCancellation:
         assert "Failed to get GEE access token" in result["error"]
 
     @patch("gefapi.services.execution_service.ExecutionLog")
-    @patch("gefapi.services.execution_service.get_docker_client")
+    @patch("gefapi.services.docker_service.get_docker_client")
     @patch.object(GEEService, "cancel_gee_tasks_from_execution")
     def test_cancel_execution_with_docker_and_gee(
         self, mock_gee_cancel, mock_docker_client, mock_execution_log
