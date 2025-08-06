@@ -595,6 +595,7 @@ GET /api/v1/script?include=user_name
 - `GET /api/v1/execution` - List executions with filtering and sorting
 - `GET /api/v1/execution/<execution_id>` - Get specific execution
 - `PATCH /api/v1/execution/<execution_id>` - Update execution (Admin only)
+- `POST /api/v1/execution/<execution_id>/cancel` - Cancel execution and associated GEE tasks
 - `GET /api/v1/execution/<execution_id>/log` - Get execution logs
 - `POST /api/v1/execution/<execution_id>/log` - Add execution log (Admin only)
 - `GET /api/v1/execution/<execution_id>/download-results` - Download results
@@ -732,6 +733,49 @@ GET /api/v1/execution?include=user_email
 - `DELETE /api/v1/user/<user_id>` - Delete user (Admin only)
 - `DELETE /api/v1/user/me` - Delete own account
 - `POST /api/v1/user/<user_id>/recover-password` - Password recovery
+
+### Execution Cancellation
+- `POST /api/v1/execution/<execution_id>/cancel` - Cancel a running execution
+  - **Access**: Requires authenticated user who owns the execution or Admin privileges
+  - **Purpose**: Cancels a running execution by stopping the Docker service/container and any associated Google Earth Engine tasks
+  - **Parameters**:
+    - `execution_id`: The ID of the execution to cancel
+  - **Response**: Returns the updated execution object with cancellation status
+  - **Process**:
+    1. Validates user permissions (execution owner or Admin)
+    2. Stops and removes the Docker service/container
+    3. Extracts Google Earth Engine task IDs from execution logs
+    4. Attempts to cancel any found GEE tasks via Google Earth Engine REST API
+    5. Updates execution status in database
+  - **Example Request**:
+    ```bash
+    curl -X POST \
+      https://api.trends.earth/api/v1/execution/12345/cancel \
+      -H "Authorization: Bearer <jwt_token>" \
+      -H "Content-Type: application/json"
+    ```
+  - **Example Response**:
+    ```json
+    {
+      "data": {
+        "type": "execution",
+        "id": "12345",
+        "attributes": {
+          "status": "CANCELLED",
+          "start_date": "2023-01-15T10:00:00Z",
+          "end_date": "2023-01-15T10:05:30Z",
+          "logs": "...",
+          "script": "land_cover",
+          "params": {...}
+        }
+      }
+    }
+    ```
+  - **Error Responses**:
+    - `403 Forbidden` - User does not own execution and is not Admin
+    - `404 Not Found` - Execution not found
+    - `400 Bad Request` - Execution is not in a cancellable state
+    - `500 Internal Server Error` - Failed to cancel execution
 
 ### Rate Limiting Management
 - `GET /api/v1/rate-limit/status` - Query current rate limiting status (SuperAdmin only)

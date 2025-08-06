@@ -776,6 +776,172 @@ def update_execution(execution):
     return jsonify(data=execution.serialize(user=current_user)), 200
 
 
+@endpoints.route(
+    "/execution/<execution>/cancel", strict_slashes=False, methods=["POST"]
+)
+@jwt_required()
+def cancel_execution(execution):
+    """
+    Cancel a running execution and any associated Google Earth Engine tasks.
+
+    **Authentication**: JWT token required
+    **Access**: Users can cancel their own executions, ADMIN+ users can cancel any
+    **Purpose**: Immediately stops execution processing, cleans up resources, and
+    cancels any associated Google Earth Engine tasks that may have been started.
+
+    **Path Parameters**:
+    - `execution`: The ID of the execution to cancel
+
+    **Request**: No request body required - this is a POST endpoint that triggers
+    cancellation
+
+    **Usage Examples**:
+    ```bash
+    # Cancel your own execution
+    curl -X POST "https://api.trends.earth/api/v1/execution/abc123-def456/cancel" \
+         -H "Authorization: Bearer your_jwt_token"
+
+    # Admin canceling any user's execution
+    curl -X POST "https://api.trends.earth/api/v1/execution/xyz789-uvw012/cancel" \
+         -H "Authorization: Bearer admin_jwt_token"
+    ```
+
+    **Success Response Schema**:
+    ```json
+    {
+      "data": {
+        "execution": {
+          "id": "abc123-def456",
+          "script_id": "vegetation-analysis",
+          "status": "CANCELLED",
+          "params": {
+            "region": "africa",
+            "year_start": 2020,
+            "year_end": 2023
+          },
+          "user_id": "user-789",
+          "created_at": "2025-01-15T10:30:00Z",
+          "updated_at": "2025-01-15T10:35:00Z",
+          "start_time": "2025-01-15T10:31:00Z",
+          "end_time": "2025-01-15T10:35:00Z",
+          "progress": 100
+        },
+        "cancellation_details": {
+          "execution_id": "abc123-def456",
+          "previous_status": "RUNNING",
+          "docker_service_stopped": true,
+          "docker_container_stopped": false,
+          "gee_tasks_cancelled": [
+            {
+              "task_id": "6CIGR7EG2J45GJ2DN2J7X3WZ",
+              "success": true,
+              "error": null,
+              "status": "CANCELLED"
+            },
+            {
+              "task_id": "YBKKBHM2V63JYBVIPCCRY7A2",
+              "success": true,
+              "error": null,
+              "status": "CANCELLED"
+            }
+          ],
+          "errors": []
+        }
+      }
+    }
+    ```
+
+    **Response Fields**:
+    - `execution`: The updated execution object with CANCELLED status
+    - `cancellation_details`: Detailed information about what was cancelled:
+      - `execution_id`: ID of the cancelled execution
+      - `previous_status`: Status before cancellation (e.g., "RUNNING", "PENDING")
+      - `docker_service_stopped`: Whether Docker service was found and stopped
+      - `docker_container_stopped`: Whether Docker container was found and stopped
+      - `gee_tasks_cancelled`: Array of Google Earth Engine tasks that were cancelled
+        - `task_id`: The GEE task identifier
+        - `success`: Whether the cancellation was successful
+        - `error`: Error message if cancellation failed
+        - `status`: Final status of the GEE task
+      - `errors`: Any errors encountered during cancellation process
+
+    **Cancellation Process**:
+    1. **Docker Resources**: Stops and removes Docker services/containers associated
+       with the execution
+    2. **GEE Task Detection**: Scans execution logs for Google Earth Engine task IDs
+       using patterns like:
+       - "Starting GEE task 6CIGR7EG2J45GJ2DN2J7X3WZ"
+       - "Backing off ... for task YBKKBHM2V63JYBVIPCCRY7A2"
+    3. **GEE Task Cancellation**: Uses Google Earth Engine REST API to cancel
+       detected tasks
+    4. **Status Update**: Sets execution status to CANCELLED and logs the cancellation
+
+    **Cancellable States**:
+    - `PENDING`: Execution queued, waiting to start
+    - `READY`: Execution initialized and starting
+    - `RUNNING`: Currently executing
+
+    **Non-Cancellable States**:
+    - `FINISHED`: Execution completed successfully
+    - `FAILED`: Execution already failed
+    - `CANCELLED`: Execution already cancelled
+
+    **Error Responses**:
+    - `400 Bad Request`: Execution is not in a cancellable state
+      ```json
+      {
+        "status": 400,
+        "detail": "Cannot cancel execution in FINISHED state"
+      }
+      ```
+    - `401 Unauthorized`: JWT token required
+    - `403 Forbidden`: User can only cancel their own executions (unless admin)
+      ```json
+      {
+        "status": 403,
+        "detail": "You can only cancel your own executions"
+      }
+      ```
+    - `404 Not Found`: Execution does not exist
+    - `500 Internal Server Error`: Cancellation process failed
+
+    **Partial Cancellation**: The endpoint will attempt to cancel all associated
+    resources even if some steps fail. Check the `cancellation_details.errors` array
+    for any issues encountered during the process.
+    """
+    logger.info(f"[ROUTER]: Canceling execution {execution}")
+    user = current_user
+
+    try:
+        # Check if user can cancel this execution
+        execution_obj = ExecutionService.get_execution(execution, user)
+        if not execution_obj:
+            return error(status=404, detail="Execution not found")
+
+        # Only allow users to cancel their own executions, or admins to cancel any
+        if not is_admin_or_higher(user) and execution_obj.user_id != user.id:
+            return error(status=403, detail="You can only cancel your own executions")
+
+        # Check if execution is in a cancellable state
+        if execution_obj.status in ["FINISHED", "FAILED", "CANCELLED"]:
+            return error(
+                status=400,
+                detail=f"Cannot cancel execution in {execution_obj.status} state",
+            )
+
+        # Cancel the execution
+        result = ExecutionService.cancel_execution(execution)
+
+        return jsonify(data=result), 200
+
+    except ExecutionNotFound as e:
+        logger.error("[ROUTER]: " + e.message)
+        return error(status=404, detail=e.message)
+    except Exception as e:
+        logger.error("[ROUTER]: " + str(e))
+        return error(status=500, detail="Failed to cancel execution")
+
+
 @endpoints.route("/execution/<execution>/log", strict_slashes=False, methods=["GET"])
 def get_execution_logs(execution):
     """Get the exectuion logs"""

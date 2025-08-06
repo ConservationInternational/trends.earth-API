@@ -429,3 +429,202 @@ class ExecutionService:
                 .all()
             )
         return execution.logs
+
+    @staticmethod
+    def cancel_execution(execution_id):
+        """Cancel an execution and any associated Google Earth Engine tasks"""
+        logger.info(f"[SERVICE]: Canceling execution {execution_id}")
+
+        from gefapi.services.docker_service import get_docker_client
+        from gefapi.services.gee_service import GEEService
+
+        try:
+            # Get the execution
+            execution = ExecutionService.get_execution(execution_id=execution_id)
+            if not execution:
+                raise ExecutionNotFound(
+                    message="Execution with id " + execution_id + " does not exist"
+                )
+
+            # Check if execution is in a cancellable state
+            if execution.status in ["FINISHED", "FAILED", "CANCELLED"]:
+                raise Exception(f"Cannot cancel execution in {execution.status} state")
+
+            cancellation_results = {
+                "execution_id": execution.id,
+                "previous_status": execution.status,
+                "docker_service_stopped": False,
+                "docker_container_stopped": False,
+                "gee_tasks_cancelled": [],
+                "errors": [],
+            }
+
+            # 1. Stop Docker service/container
+            try:
+                docker_client = get_docker_client()
+                if docker_client is not None:
+                    docker_service_name = f"execution-{execution.id}"
+
+                    # Try to stop Docker service first (for swarm mode)
+                    try:
+                        services = docker_client.services.list(
+                            filters={"name": docker_service_name}
+                        )
+                        for service in services:
+                            logger.info(
+                                f"[SERVICE]: Stopping Docker service {service.name}"
+                            )
+                            service.remove()
+                            cancellation_results["docker_service_stopped"] = True
+                            break
+                    except Exception as docker_error:
+                        logger.warning(
+                            f"[SERVICE]: Failed to stop Docker service: {docker_error}"
+                        )
+                        cancellation_results["errors"].append(
+                            f"Docker service stop failed: {str(docker_error)}"
+                        )
+
+                    # Try to stop Docker container (for standalone mode)
+                    try:
+                        containers = docker_client.containers.list(
+                            filters={"name": docker_service_name}, all=True
+                        )
+                        for container in containers:
+                            logger.info(
+                                f"[SERVICE]: Stopping Docker container {container.name}"
+                            )
+                            if container.status == "running":
+                                container.stop(timeout=10)
+                            container.remove(force=True)
+                            cancellation_results["docker_container_stopped"] = True
+                            break
+                    except Exception as docker_error:
+                        logger.warning(
+                            f"[SERVICE]: Failed to stop Docker container: "
+                            f"{docker_error}"
+                        )
+                        cancellation_results["errors"].append(
+                            f"Docker container stop failed: {str(docker_error)}"
+                        )
+                else:
+                    logger.warning(
+                        "[SERVICE]: Docker client not available for cancellation"
+                    )
+                    cancellation_results["errors"].append("Docker client not available")
+            except Exception as docker_error:
+                logger.error(f"[SERVICE]: Error accessing Docker: {docker_error}")
+                cancellation_results["errors"].append(
+                    f"Docker access error: {str(docker_error)}"
+                )
+
+            # 2. Get execution logs to scan for GEE task IDs
+            try:
+                logs = (
+                    ExecutionLog.query.filter(ExecutionLog.execution_id == execution.id)
+                    .order_by(ExecutionLog.register_date)
+                    .all()
+                )
+                log_texts = [log.text for log in logs if log.text]
+
+                if log_texts:
+                    logger.info(
+                        f"[SERVICE]: Scanning {len(log_texts)} log entries for "
+                        f"GEE task IDs"
+                    )
+                    gee_results = GEEService.cancel_gee_tasks_from_execution(log_texts)
+                    cancellation_results["gee_tasks_cancelled"] = gee_results
+
+                    # Log GEE cancellation results
+                    for gee_result in gee_results:
+                        if gee_result["success"]:
+                            logger.info(
+                                f"[SERVICE]: Successfully cancelled GEE task "
+                                f"{gee_result['task_id']}"
+                            )
+                        else:
+                            logger.warning(
+                                f"[SERVICE]: Failed to cancel GEE task "
+                                f"{gee_result['task_id']}: {gee_result['error']}"
+                            )
+                            cancellation_results["errors"].append(
+                                f"GEE task {gee_result['task_id']}: "
+                                f"{gee_result['error']}"
+                            )
+                else:
+                    logger.info("[SERVICE]: No logs found to scan for GEE task IDs")
+            except Exception as gee_error:
+                logger.error(
+                    f"[SERVICE]: Error processing GEE task cancellation: {gee_error}"
+                )
+                cancellation_results["errors"].append(
+                    f"GEE task cancellation error: {str(gee_error)}"
+                )
+                rollbar.report_exc_info()
+
+            # 3. Update execution status to CANCELLED
+            try:
+                execution.status = "CANCELLED"
+                execution.end_date = datetime.datetime.utcnow()
+                execution.progress = 100
+
+                # Add cancellation log entry
+                cancellation_summary = []
+                if cancellation_results["docker_service_stopped"]:
+                    cancellation_summary.append("Docker service stopped")
+                if cancellation_results["docker_container_stopped"]:
+                    cancellation_summary.append("Docker container stopped")
+                if cancellation_results["gee_tasks_cancelled"]:
+                    successful_cancellations = len(
+                        [
+                            r
+                            for r in cancellation_results["gee_tasks_cancelled"]
+                            if r["success"]
+                        ]
+                    )
+                    cancellation_summary.append(
+                        f"{successful_cancellations}/"
+                        f"{len(cancellation_results['gee_tasks_cancelled'])} "
+                        f"GEE tasks cancelled"
+                    )
+
+                summary_text = (
+                    "; ".join(cancellation_summary)
+                    if cancellation_summary
+                    else "No active resources found to cancel."
+                )
+                log_text = f"Execution cancelled by user. {summary_text}"
+                if cancellation_results["errors"]:
+                    error_text = "; ".join(cancellation_results["errors"][:3])
+                    log_text += f" Errors: {error_text}"  # Limit error details
+
+                cancellation_log = ExecutionLog(
+                    text=log_text, level="INFO", execution_id=execution.id
+                )
+
+                db.session.add(execution)
+                db.session.add(cancellation_log)
+                db.session.commit()
+
+                logger.info(
+                    f"[SERVICE]: Successfully cancelled execution {execution.id}"
+                )
+
+            except Exception as db_error:
+                logger.error(
+                    f"[SERVICE]: Failed to update execution status: {db_error}"
+                )
+                rollbar.report_exc_info()
+                raise db_error
+
+            return {
+                "execution": execution.serialize(),
+                "cancellation_details": cancellation_results,
+            }
+
+        except Exception as error:
+            logger.error(
+                f"[SERVICE]: Error cancelling execution {execution_id}: {error}"
+            )
+            rollbar.report_exc_info()
+            raise error
