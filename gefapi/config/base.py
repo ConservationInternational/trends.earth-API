@@ -110,7 +110,7 @@ SETTINGS = {
         "PASSWORD_RESET_LIMITS": [
             s.strip()
             for s in (
-                os.getenv("PASSWORD_RESET_LIMITS") or "10 per hour,3 per minute"
+                os.getenv("PASSWORD_RESET_LIMITS") or "3 per hour,1 per minute"
             ).split(",")
         ],  # Very strict for password reset
         "USER_CREATION_LIMITS": [

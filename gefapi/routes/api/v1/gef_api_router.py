@@ -2001,3 +2001,6 @@ def revoke_all_user_sessions():
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
+
+
+
