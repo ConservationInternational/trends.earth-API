@@ -447,3 +447,68 @@ def get_docker_logs_task(execution_id):
         rollbar.report_exc_info()
         # Re-raise the exception to mark the task as failed
         raise e
+
+
+@celery_app.task(name="docker.cancel_execution")
+def cancel_execution_task(execution_id):
+    """
+    Celery task to cancel a Docker execution.
+    This runs on the build queue where Docker access is available.
+    """
+    logger.info(f"Celery task: Canceling Docker resources for execution {execution_id}")
+    
+    cancellation_results = {
+        "docker_service_stopped": False,
+        "docker_container_stopped": False,
+        "errors": [],
+    }
+    
+    try:
+        client = get_docker_client()
+        if not client:
+            error_msg = "Docker client not available"
+            logger.warning(f"[DOCKER_CANCEL]: {error_msg}")
+            cancellation_results["errors"].append(error_msg)
+            return cancellation_results
+            
+        docker_service_name = f"execution-{execution_id}"
+        
+        # Try to stop Docker service first (for swarm mode)
+        try:
+            services = client.services.list(filters={"name": docker_service_name})
+            for service in services:
+                logger.info(f"[DOCKER_CANCEL]: Stopping Docker service {service.name}")
+                service.remove()
+                cancellation_results["docker_service_stopped"] = True
+                break
+        except Exception as docker_error:
+            error_msg = f"Docker service stop failed: {str(docker_error)}"
+            logger.warning(f"[DOCKER_CANCEL]: {error_msg}")
+            cancellation_results["errors"].append(error_msg)
+        
+        # Try to stop Docker container (for standalone mode)
+        try:
+            containers = client.containers.list(
+                filters={"name": docker_service_name}, all=True
+            )
+            for container in containers:
+                logger.info(f"[DOCKER_CANCEL]: Stopping Docker container {container.name}")
+                if container.status == "running":
+                    container.stop(timeout=10)
+                container.remove(force=True)
+                cancellation_results["docker_container_stopped"] = True
+                break
+        except Exception as docker_error:
+            error_msg = f"Docker container stop failed: {str(docker_error)}"
+            logger.warning(f"[DOCKER_CANCEL]: {error_msg}")
+            cancellation_results["errors"].append(error_msg)
+            
+        logger.info(f"[DOCKER_CANCEL]: Completed cancellation for execution {execution_id}")
+        return cancellation_results
+        
+    except Exception as error:
+        error_msg = f"Docker cancellation error: {str(error)}"
+        logger.error(f"[DOCKER_CANCEL]: {error_msg}")
+        rollbar.report_exc_info()
+        cancellation_results["errors"].append(error_msg)
+        return cancellation_results
