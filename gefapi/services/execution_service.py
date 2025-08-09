@@ -468,25 +468,33 @@ class ExecutionService:
             try:
                 if not celery_app:
                     raise ImportError("Celery app not available")
-                
-                logger.info(f"[SERVICE]: Dispatching Docker cancellation task for execution {execution.id}")
+
+                logger.info(
+                    f"[SERVICE]: Dispatching Docker cancellation task for execution {execution.id}"
+                )
                 # Send task to build queue where Docker access is available
                 task_result = celery_app.send_task(
-                    "docker.cancel_execution", 
+                    "docker.cancel_execution",
                     args=[execution.id],
-                    queue="build"  # Use build queue for Docker access
+                    queue="build",  # Use build queue for Docker access
                 )
-                
+
                 # Wait for Docker cancellation to complete with timeout
                 docker_results = task_result.get(timeout=60)  # 1 minute timeout
-                
+
                 # Merge Docker cancellation results
-                cancellation_results["docker_service_stopped"] = docker_results.get("docker_service_stopped", False)
-                cancellation_results["docker_container_stopped"] = docker_results.get("docker_container_stopped", False)
+                cancellation_results["docker_service_stopped"] = docker_results.get(
+                    "docker_service_stopped", False
+                )
+                cancellation_results["docker_container_stopped"] = docker_results.get(
+                    "docker_container_stopped", False
+                )
                 cancellation_results["errors"].extend(docker_results.get("errors", []))
-                
-                logger.info(f"[SERVICE]: Docker cancellation completed for execution {execution.id}")
-                
+
+                logger.info(
+                    f"[SERVICE]: Docker cancellation completed for execution {execution.id}"
+                )
+
             except Exception as docker_error:
                 error_msg = f"Docker cancellation task failed: {str(docker_error)}"
                 logger.error(f"[SERVICE]: {error_msg}")
