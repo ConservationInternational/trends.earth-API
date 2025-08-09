@@ -14,6 +14,12 @@ from gefapi.models import Execution, ExecutionLog, Script, User
 from gefapi.services import EmailService, ScriptService, UserService, docker_run
 from gefapi.utils.permissions import is_admin_or_higher
 
+# Import celery at module level for testing
+try:
+    from gefapi import celery as celery_app
+except ImportError:
+    celery_app = None
+
 logger = logging.getLogger()
 
 EXECUTION_FINISHED_MAIL_CONTENT = """
@@ -435,7 +441,6 @@ class ExecutionService:
         """Cancel an execution and any associated Google Earth Engine tasks"""
         logger.info(f"[SERVICE]: Canceling execution {execution_id}")
 
-        from gefapi.services.docker_service import get_docker_client
         from gefapi.services.gee_service import GEEService
 
         try:
@@ -459,64 +464,34 @@ class ExecutionService:
                 "errors": [],
             }
 
-            # 1. Stop Docker service/container
+            # 1. Stop Docker service/container using Celery task
             try:
-                docker_client = get_docker_client()
-                if docker_client is not None:
-                    docker_service_name = f"execution-{execution.id}"
-
-                    # Try to stop Docker service first (for swarm mode)
-                    try:
-                        services = docker_client.services.list(
-                            filters={"name": docker_service_name}
-                        )
-                        for service in services:
-                            logger.info(
-                                f"[SERVICE]: Stopping Docker service {service.name}"
-                            )
-                            service.remove()
-                            cancellation_results["docker_service_stopped"] = True
-                            break
-                    except Exception as docker_error:
-                        logger.warning(
-                            f"[SERVICE]: Failed to stop Docker service: {docker_error}"
-                        )
-                        cancellation_results["errors"].append(
-                            f"Docker service stop failed: {str(docker_error)}"
-                        )
-
-                    # Try to stop Docker container (for standalone mode)
-                    try:
-                        containers = docker_client.containers.list(
-                            filters={"name": docker_service_name}, all=True
-                        )
-                        for container in containers:
-                            logger.info(
-                                f"[SERVICE]: Stopping Docker container {container.name}"
-                            )
-                            if container.status == "running":
-                                container.stop(timeout=10)
-                            container.remove(force=True)
-                            cancellation_results["docker_container_stopped"] = True
-                            break
-                    except Exception as docker_error:
-                        logger.warning(
-                            f"[SERVICE]: Failed to stop Docker container: "
-                            f"{docker_error}"
-                        )
-                        cancellation_results["errors"].append(
-                            f"Docker container stop failed: {str(docker_error)}"
-                        )
-                else:
-                    logger.warning(
-                        "[SERVICE]: Docker client not available for cancellation"
-                    )
-                    cancellation_results["errors"].append("Docker client not available")
-            except Exception as docker_error:
-                logger.error(f"[SERVICE]: Error accessing Docker: {docker_error}")
-                cancellation_results["errors"].append(
-                    f"Docker access error: {str(docker_error)}"
+                if not celery_app:
+                    raise ImportError("Celery app not available")
+                
+                logger.info(f"[SERVICE]: Dispatching Docker cancellation task for execution {execution.id}")
+                # Send task to build queue where Docker access is available
+                task_result = celery_app.send_task(
+                    "docker.cancel_execution", 
+                    args=[execution.id],
+                    queue="build"  # Use build queue for Docker access
                 )
+                
+                # Wait for Docker cancellation to complete with timeout
+                docker_results = task_result.get(timeout=60)  # 1 minute timeout
+                
+                # Merge Docker cancellation results
+                cancellation_results["docker_service_stopped"] = docker_results.get("docker_service_stopped", False)
+                cancellation_results["docker_container_stopped"] = docker_results.get("docker_container_stopped", False)
+                cancellation_results["errors"].extend(docker_results.get("errors", []))
+                
+                logger.info(f"[SERVICE]: Docker cancellation completed for execution {execution.id}")
+                
+            except Exception as docker_error:
+                error_msg = f"Docker cancellation task failed: {str(docker_error)}"
+                logger.error(f"[SERVICE]: {error_msg}")
+                cancellation_results["errors"].append(error_msg)
+                rollbar.report_exc_info()
 
             # 2. Get execution logs to scan for GEE task IDs
             try:

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 from typing import Any, Optional
 
@@ -64,20 +65,28 @@ class GEEService:
             Access token string if successful, None otherwise
         """
         try:
-            # Try to get service account JSON from environment
-            service_account_json = SETTINGS.get("environment", {}).get(
-                "EE_SERVICE_ACCOUNT_JSON"
+            # Try to get service account JSON from environment - check both locations
+            service_account_json = (
+                SETTINGS.get("environment", {}).get("EE_SERVICE_ACCOUNT_JSON") 
+                or os.getenv("EE_SERVICE_ACCOUNT_JSON")
             )
+            
             if not service_account_json:
                 logger.warning(
-                    "EE_SERVICE_ACCOUNT_JSON not configured, cannot get GEE "
-                    "access token"
+                    "EE_SERVICE_ACCOUNT_JSON not configured in environment or settings, "
+                    "cannot get GEE access token"
                 )
                 return None
 
             try:
-                service_account_data = json.loads(service_account_json)
-            except json.JSONDecodeError as e:
+                # Handle both base64 encoded and direct JSON
+                if service_account_json.startswith('eyJ'):  # Base64 encoded JSON starts with 'eyJ'
+                    import base64
+                    decoded_json = base64.b64decode(service_account_json).decode('utf-8')
+                    service_account_data = json.loads(decoded_json)
+                else:
+                    service_account_data = json.loads(service_account_json)
+            except (json.JSONDecodeError, ValueError) as e:
                 logger.error(f"Failed to parse EE_SERVICE_ACCOUNT_JSON: {e}")
                 return None
 
@@ -103,6 +112,7 @@ class GEEService:
             request = google.auth.transport.requests.Request()
             credentials.refresh(request)
 
+            logger.info("Successfully obtained GEE service account token")
             return credentials.token
 
         except Exception as e:

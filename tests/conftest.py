@@ -729,3 +729,134 @@ def rate_limiting_disabled(app):
 
 
 # No database cleanup fixture - let tests handle their own state
+
+
+# Stats testing fixtures
+
+@pytest.fixture(scope='function')
+def mock_redis():
+    """Create a mock Redis client that properly intercepts cache calls."""
+    from unittest.mock import MagicMock, patch
+    
+    # Create a comprehensive mock Redis cache
+    mock_redis_cache = MagicMock()
+    
+    # Configure common Redis cache operations
+    mock_redis_cache.is_available.return_value = True
+    mock_redis_cache.get.return_value = None  # Cache miss by default
+    mock_redis_cache.set.return_value = True
+    mock_redis_cache.setex.return_value = True
+    mock_redis_cache.delete.return_value = 1
+    mock_redis_cache.get_ttl.side_effect = lambda key: {
+        'stats_service:get_dashboard_stats:period=all': 240,
+        'stats_service:get_execution_stats:period=last_month': 180
+    }.get(key, 300)
+    
+    # Mock the underlying client for direct operations
+    mock_redis_client = MagicMock()
+    mock_redis_cache.client = mock_redis_client
+    mock_redis_client.scan_iter.return_value = []
+    mock_redis_client.delete.return_value = 0
+    mock_redis_client.ping.return_value = True
+    mock_redis_client.ttl.return_value = 300
+    
+    # Apply patches for both the module-level cache and the getter function
+    with patch('gefapi.utils.redis_cache.redis_cache', mock_redis_cache), \
+         patch('gefapi.utils.redis_cache.get_redis_cache', return_value=mock_redis_cache), \
+         patch('gefapi.services.stats_service.get_redis_cache', return_value=mock_redis_cache):
+        yield mock_redis_cache
+
+
+@pytest.fixture(scope='function')
+def mock_stats_service():
+    """Create a mock StatsService."""
+    from unittest.mock import MagicMock, patch
+    from gefapi.services.stats_service import StatsService
+    
+    with patch.object(StatsService, '__init__', return_value=None):
+        service = StatsService()
+        
+        # Mock all methods
+        service.get_dashboard_stats = MagicMock()
+        service.get_execution_stats = MagicMock()
+        service.get_user_stats = MagicMock()
+        service.get_cache_info = MagicMock()
+        service.clear_cache = MagicMock()
+        service._get_summary_stats = MagicMock()
+        
+        yield service
+
+
+@pytest.fixture(scope='function')
+def sample_execution_data():
+    """Create sample execution data for testing."""
+    return [
+        {
+            'id': 'exec1',
+            'status': 'FINISHED',
+            'task': 'productivity',
+            'version': '2',
+            'start_date': '2025-08-08T10:00:00Z',
+            'end_date': '2025-08-08T10:45:00Z',
+            'user_id': 'user1',
+            'country': 'USA'
+        },
+        {
+            'id': 'exec2',
+            'status': 'FAILED',
+            'task': 'land-cover',
+            'version': '2',
+            'start_date': '2025-08-08T11:00:00Z',
+            'end_date': '2025-08-08T11:30:00Z',
+            'user_id': 'user2',
+            'country': 'Brazil'
+        }
+    ]
+
+
+@pytest.fixture(scope='function')
+def sample_user_stats_data():
+    """Create sample user data for stats testing."""
+    return [
+        {
+            'id': 'user1',
+            'email': 'user1@example.com',
+            'created_date': '2025-07-01T00:00:00Z',
+            'country': 'USA',
+            'role': 'USER'
+        },
+        {
+            'id': 'user2',
+            'email': 'user2@example.com',
+            'created_date': '2025-08-01T00:00:00Z',
+            'country': 'Brazil',
+            'role': 'USER'
+        }
+    ]
+
+
+# Test utilities for stats
+
+def create_cache_key(method_name: str, **kwargs) -> str:
+    """Helper function to create cache keys for testing."""
+    params = "_".join(f"{k}={v}" for k, v in sorted(kwargs.items()) if v is not None)
+    return f"stats_service:{method_name}:{params}" if params else f"stats_service:{method_name}"
+
+
+def assert_api_response_structure(response_data: dict, expected_keys=None):
+    """Assert standard API response structure."""
+    if expected_keys is None:
+        expected_keys = ['data']
+    
+    for key in expected_keys:
+        assert key in response_data, f"Expected key '{key}' in response"
+
+
+def assert_error_response_structure(response_data: dict):
+    """Assert error response structure."""
+    # Check for the actual API error format: {'detail': '...', 'status': 400}
+    assert 'detail' in response_data
+    assert 'status' in response_data
+    assert isinstance(response_data['detail'], str)
+    assert isinstance(response_data['status'], int)
+    assert response_data['status'] >= 400
