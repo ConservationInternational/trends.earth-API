@@ -30,7 +30,7 @@
 ### Quick Start Workflow
 
 #### 1. Environment Setup
-**ALWAYS create environment files before building:**
+**ALWAYS create environment files before building** (these files are gitignored):
 ```bash
 # Copy and customize environment configuration
 cp .env.example develop.env
@@ -268,9 +268,11 @@ gefapi/                 # Main application package
 - **Mock patterns**: Database and external service mocking
 
 ### Environment Configuration
-- **Environment files**: `develop.env`, `test.env`, `staging.env`, `prod.env`
+- **Environment files**: `develop.env`, `test.env`, `staging.env`, `prod.env` (gitignored)
 - **Configuration classes**: Base, development, staging, production configs
 - **Feature flags**: Rate limiting, debug mode, testing mode
+
+**Note**: Environment files (*.env) are gitignored and must be created from `.env.example` for each deployment.
 
 ## Key Commands Reference
 
