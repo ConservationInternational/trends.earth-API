@@ -66,23 +66,27 @@ class GEEService:
         """
         try:
             # Try to get service account JSON from environment - check both locations
-            service_account_json = (
-                SETTINGS.get("environment", {}).get("EE_SERVICE_ACCOUNT_JSON") 
-                or os.getenv("EE_SERVICE_ACCOUNT_JSON")
-            )
-            
+            service_account_json = SETTINGS.get("environment", {}).get(
+                "EE_SERVICE_ACCOUNT_JSON"
+            ) or os.getenv("EE_SERVICE_ACCOUNT_JSON")
+
             if not service_account_json:
                 logger.warning(
-                    "EE_SERVICE_ACCOUNT_JSON not configured in environment or settings, "
-                    "cannot get GEE access token"
+                    "EE_SERVICE_ACCOUNT_JSON not configured in environment or "
+                    "settings, cannot get GEE access token"
                 )
                 return None
 
             try:
                 # Handle both base64 encoded and direct JSON
-                if service_account_json.startswith('eyJ'):  # Base64 encoded JSON starts with 'eyJ'
+                if service_account_json.startswith(
+                    "eyJ"
+                ):  # Base64 encoded JSON starts with 'eyJ'
                     import base64
-                    decoded_json = base64.b64decode(service_account_json).decode('utf-8')
+
+                    decoded_json = base64.b64decode(service_account_json).decode(
+                        "utf-8"
+                    )
                     service_account_data = json.loads(decoded_json)
                 else:
                     service_account_data = json.loads(service_account_json)

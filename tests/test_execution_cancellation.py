@@ -1,6 +1,5 @@
 """Tests for execution cancellation functionality"""
 
-import datetime
 from unittest.mock import Mock, patch
 
 import pytest
@@ -76,7 +75,7 @@ class TestExecutionCancellation:
         assert result["success"] is False
         assert "Failed to get GEE access token" in result["error"]
 
-    @patch('gefapi.services.execution_service.celery_app')
+    @patch("gefapi.services.execution_service.celery_app")
     @patch("gefapi.services.execution_service.ExecutionLog")
     @patch.object(GEEService, "cancel_gee_tasks_from_execution")
     def test_cancel_execution_with_docker_and_gee(
@@ -103,7 +102,7 @@ class TestExecutionCancellation:
         mock_task_result.get.return_value = {
             "docker_service_stopped": True,
             "docker_container_stopped": False,
-            "errors": []
+            "errors": [],
         }
         mock_celery_app.send_task.return_value = mock_task_result
 
@@ -127,9 +126,7 @@ class TestExecutionCancellation:
 
         # Verify Celery task was called correctly
         mock_celery_app.send_task.assert_called_once_with(
-            "docker.cancel_execution",
-            args=["test-execution-id"],
-            queue="build"
+            "docker.cancel_execution", args=["test-execution-id"], queue="build"
         )
 
         # Verify task result was retrieved
@@ -178,7 +175,7 @@ class TestExecutionCancellation:
 class TestExecutionCancellationCeleryTasks:
     """Test execution cancellation with new Celery task architecture"""
 
-    @patch('gefapi.services.execution_service.celery_app')
+    @patch("gefapi.services.execution_service.celery_app")
     def test_cancel_execution_with_successful_celery_task(self, mock_celery_app):
         """Test cancellation with successful Celery Docker task"""
         from gefapi.models import Execution
@@ -194,7 +191,7 @@ class TestExecutionCancellationCeleryTasks:
         mock_task_result.get.return_value = {
             "docker_service_stopped": True,
             "docker_container_stopped": False,
-            "errors": []
+            "errors": [],
         }
         mock_celery_app.send_task.return_value = mock_task_result
 
@@ -204,12 +201,20 @@ class TestExecutionCancellationCeleryTasks:
 
         # Mock GEE cancellation
         with (
-            patch.object(ExecutionService, "get_execution", return_value=mock_execution),
-            patch("gefapi.services.execution_service.ExecutionLog") as mock_execution_log,
-            patch.object(GEEService, "cancel_gee_tasks_from_execution") as mock_gee_cancel,
-            patch("gefapi.services.execution_service.db") as mock_db,
+            patch.object(
+                ExecutionService, "get_execution", return_value=mock_execution
+            ),
+            patch(
+                "gefapi.services.execution_service.ExecutionLog"
+            ) as mock_execution_log,
+            patch.object(
+                GEEService, "cancel_gee_tasks_from_execution"
+            ) as mock_gee_cancel,
+            patch("gefapi.services.execution_service.db"),
         ):
-            mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = [mock_log]
+            mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = [
+                mock_log
+            ]
             mock_gee_cancel.return_value = [
                 {
                     "task_id": "6CIGR7EG2J45GJ2DN2J7X3WZ",
@@ -223,9 +228,7 @@ class TestExecutionCancellationCeleryTasks:
 
             # Verify Celery task was called with correct parameters
             mock_celery_app.send_task.assert_called_once_with(
-                "docker.cancel_execution",
-                args=["test-execution-id"],
-                queue="build"
+                "docker.cancel_execution", args=["test-execution-id"], queue="build"
             )
 
             # Verify task result was retrieved with timeout
@@ -242,7 +245,7 @@ class TestExecutionCancellationCeleryTasks:
             assert result["cancellation_details"]["docker_service_stopped"] is True
             assert result["cancellation_details"]["docker_container_stopped"] is False
 
-    @patch('gefapi.services.execution_service.celery_app')
+    @patch("gefapi.services.execution_service.celery_app")
     def test_cancel_execution_celery_task_timeout(self, mock_celery_app):
         """Test cancellation when Celery task times out"""
         from gefapi.models import Execution
@@ -259,10 +262,16 @@ class TestExecutionCancellationCeleryTasks:
         mock_celery_app.send_task.return_value = mock_task_result
 
         with (
-            patch.object(ExecutionService, "get_execution", return_value=mock_execution),
-            patch("gefapi.services.execution_service.ExecutionLog") as mock_execution_log,
-            patch.object(GEEService, "cancel_gee_tasks_from_execution") as mock_gee_cancel,
-            patch("gefapi.services.execution_service.db") as mock_db,
+            patch.object(
+                ExecutionService, "get_execution", return_value=mock_execution
+            ),
+            patch(
+                "gefapi.services.execution_service.ExecutionLog"
+            ) as mock_execution_log,
+            patch.object(
+                GEEService, "cancel_gee_tasks_from_execution"
+            ) as mock_gee_cancel,
+            patch("gefapi.services.execution_service.db"),
         ):
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = []
             mock_gee_cancel.return_value = []
@@ -276,9 +285,12 @@ class TestExecutionCancellationCeleryTasks:
             # Should have error in cancellation details
             assert "cancellation_details" in result
             assert len(result["cancellation_details"]["errors"]) > 0
-            assert "Docker cancellation task failed" in result["cancellation_details"]["errors"][0]
+            assert (
+                "Docker cancellation task failed"
+                in result["cancellation_details"]["errors"][0]
+            )
 
-    @patch('gefapi.services.execution_service.celery_app')
+    @patch("gefapi.services.execution_service.celery_app")
     def test_cancel_execution_docker_partial_failure(self, mock_celery_app):
         """Test cancellation with partial Docker cleanup failure"""
         from gefapi.models import Execution
@@ -294,15 +306,21 @@ class TestExecutionCancellationCeleryTasks:
         mock_task_result.get.return_value = {
             "docker_service_stopped": False,
             "docker_container_stopped": True,
-            "errors": ["Service not found", "Failed to remove service"]
+            "errors": ["Service not found", "Failed to remove service"],
         }
         mock_celery_app.send_task.return_value = mock_task_result
 
         with (
-            patch.object(ExecutionService, "get_execution", return_value=mock_execution),
-            patch("gefapi.services.execution_service.ExecutionLog") as mock_execution_log,
-            patch.object(GEEService, "cancel_gee_tasks_from_execution") as mock_gee_cancel,
-            patch("gefapi.services.execution_service.db") as mock_db,
+            patch.object(
+                ExecutionService, "get_execution", return_value=mock_execution
+            ),
+            patch(
+                "gefapi.services.execution_service.ExecutionLog"
+            ) as mock_execution_log,
+            patch.object(
+                GEEService, "cancel_gee_tasks_from_execution"
+            ) as mock_gee_cancel,
+            patch("gefapi.services.execution_service.db"),
         ):
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = []
             mock_gee_cancel.return_value = []
@@ -311,7 +329,7 @@ class TestExecutionCancellationCeleryTasks:
 
             # Should succeed with execution marked as cancelled
             assert mock_execution.status == "CANCELLED"
-            
+
             # Should have Docker errors in details
             details = result["cancellation_details"]
             assert details["docker_service_stopped"] is False
@@ -320,7 +338,7 @@ class TestExecutionCancellationCeleryTasks:
             assert "Service not found" in details["errors"]
             assert "Failed to remove service" in details["errors"]
 
-    @patch('gefapi.services.execution_service.celery_app')
+    @patch("gefapi.services.execution_service.celery_app")
     def test_cancel_execution_with_gee_and_docker_success(self, mock_celery_app):
         """Test comprehensive cancellation with both Docker and GEE tasks"""
         from gefapi.models import Execution
@@ -336,7 +354,7 @@ class TestExecutionCancellationCeleryTasks:
         mock_task_result.get.return_value = {
             "docker_service_stopped": True,
             "docker_container_stopped": True,
-            "errors": []
+            "errors": [],
         }
         mock_celery_app.send_task.return_value = mock_task_result
 
@@ -344,14 +362,20 @@ class TestExecutionCancellationCeleryTasks:
         mock_logs = [
             Mock(text="Starting GEE task ABCD1234EFGH5678IJKL9012"),
             Mock(text="Task XYZA9876BCDE5432FGHI1234 submitted"),
-            Mock(text="Regular log without task ID")
+            Mock(text="Regular log without task ID"),
         ]
 
         with (
-            patch.object(ExecutionService, "get_execution", return_value=mock_execution),
-            patch("gefapi.services.execution_service.ExecutionLog") as mock_execution_log,
-            patch.object(GEEService, "cancel_gee_tasks_from_execution") as mock_gee_cancel,
-            patch("gefapi.services.execution_service.db") as mock_db,
+            patch.object(
+                ExecutionService, "get_execution", return_value=mock_execution
+            ),
+            patch(
+                "gefapi.services.execution_service.ExecutionLog"
+            ) as mock_execution_log,
+            patch.object(
+                GEEService, "cancel_gee_tasks_from_execution"
+            ) as mock_gee_cancel,
+            patch("gefapi.services.execution_service.db"),
         ):
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = mock_logs
             mock_gee_cancel.return_value = [
@@ -366,14 +390,14 @@ class TestExecutionCancellationCeleryTasks:
                     "success": True,
                     "status": "CANCELLED",
                     "error": None,
-                }
+                },
             ]
 
             result = ExecutionService.cancel_execution("test-execution-id")
 
             # Verify comprehensive results
             assert mock_execution.status == "CANCELLED"
-            
+
             details = result["cancellation_details"]
             assert details["docker_service_stopped"] is True
             assert details["docker_container_stopped"] is True
@@ -388,7 +412,7 @@ class TestExecutionCancellationCeleryTasks:
             assert "Starting GEE task ABCD1234EFGH5678IJKL9012" in call_args
             assert "Task XYZA9876BCDE5432FGHI1234 submitted" in call_args
 
-    @patch('gefapi.services.execution_service.celery_app')
+    @patch("gefapi.services.execution_service.celery_app")
     def test_cancel_execution_logs_creation(self, mock_celery_app):
         """Test that cancellation creates appropriate execution logs"""
         from gefapi.models import Execution
@@ -404,14 +428,20 @@ class TestExecutionCancellationCeleryTasks:
         mock_task_result.get.return_value = {
             "docker_service_stopped": True,
             "docker_container_stopped": False,
-            "errors": []
+            "errors": [],
         }
         mock_celery_app.send_task.return_value = mock_task_result
 
         with (
-            patch.object(ExecutionService, "get_execution", return_value=mock_execution),
-            patch("gefapi.services.execution_service.ExecutionLog") as mock_execution_log,
-            patch.object(GEEService, "cancel_gee_tasks_from_execution") as mock_gee_cancel,
+            patch.object(
+                ExecutionService, "get_execution", return_value=mock_execution
+            ),
+            patch(
+                "gefapi.services.execution_service.ExecutionLog"
+            ) as mock_execution_log,
+            patch.object(
+                GEEService, "cancel_gee_tasks_from_execution"
+            ) as mock_gee_cancel,
             patch("gefapi.services.execution_service.db") as mock_db,
         ):
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = []
@@ -428,30 +458,37 @@ class TestExecutionCancellationCeleryTasks:
 
             # Verify log was created with correct information
             mock_db.session.add.assert_called()
-            
-            # Check the calls to add() 
+
+            # Check the calls to add()
             add_calls = mock_db.session.add.call_args_list
             assert len(add_calls) >= 1  # At least the log should be added
-            
+
             # Find the log creation call - it should be a Mock of ExecutionLog with the expected attributes
-            log_created = False
             for call in add_calls:
                 call_arg = call[0][0]  # First argument to add()
-                if hasattr(call_arg, 'text') and "cancelled by user" in str(call_arg.text).lower():
-                    log_created = True
+                if (
+                    hasattr(call_arg, "text")
+                    and "cancelled by user" in str(call_arg.text).lower()
+                ):
                     # Since ExecutionLog is mocked, we need to check the constructor call
                     break
-            
+
             # Alternatively, check if ExecutionLog constructor was called correctly
             assert mock_execution_log.called
             log_call_args = mock_execution_log.call_args
             if log_call_args:
                 # Check the keyword arguments passed to ExecutionLog constructor
                 kwargs = log_call_args[1] if len(log_call_args) > 1 else {}
-                text_arg = kwargs.get('text', '') or (log_call_args[0][0] if log_call_args[0] else '')
-                level_arg = kwargs.get('level', '') or (log_call_args[0][1] if len(log_call_args[0]) > 1 else '')
-                execution_id_arg = kwargs.get('execution_id', '') or (log_call_args[0][2] if len(log_call_args[0]) > 2 else '')
-                
+                text_arg = kwargs.get("text", "") or (
+                    log_call_args[0][0] if log_call_args[0] else ""
+                )
+                level_arg = kwargs.get("level", "") or (
+                    log_call_args[0][1] if len(log_call_args[0]) > 1 else ""
+                )
+                execution_id_arg = kwargs.get("execution_id", "") or (
+                    log_call_args[0][2] if len(log_call_args[0]) > 2 else ""
+                )
+
                 assert "cancelled by user" in str(text_arg).lower()
                 assert str(level_arg) == "INFO"
                 assert str(execution_id_arg) == mock_execution.id
@@ -461,7 +498,7 @@ class TestExecutionCancellationCeleryTasks:
         from gefapi.models import Execution
 
         invalid_states = ["FINISHED", "FAILED", "CANCELLED"]
-        
+
         for state in invalid_states:
             mock_execution = Mock(spec=Execution)
             mock_execution.id = f"test-{state.lower()}-execution"
@@ -469,7 +506,11 @@ class TestExecutionCancellationCeleryTasks:
             mock_execution.user_id = "test-user-id"
 
             with (
-                patch.object(ExecutionService, "get_execution", return_value=mock_execution),
-                pytest.raises(Exception, match=f"Cannot cancel execution in {state} state"),
+                patch.object(
+                    ExecutionService, "get_execution", return_value=mock_execution
+                ),
+                pytest.raises(
+                    Exception, match=f"Cannot cancel execution in {state} state"
+                ),
             ):
                 ExecutionService.cancel_execution(f"test-{state.lower()}-execution")

@@ -9,6 +9,7 @@ import rollbar
 
 from gefapi.config import SETTINGS
 from gefapi.utils.permissions import is_admin_or_higher
+from gefapi.utils.security_events import log_rate_limit_exceeded
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +169,8 @@ def get_admin_aware_key():
 
 def create_rate_limit_response(retry_after=None):
     """
-    Create a standardized rate limit exceeded response and send Rollbar notification
+    Create a standardized rate limit exceeded response and send security event
+    notification
     """
     # Gather information about the rate limited request
     user_info = None
@@ -192,6 +194,9 @@ def create_rate_limit_response(retry_after=None):
         logger.debug(
             f"Could not get current user info for rate limit notification: {e}"
         )
+
+    # Log security event
+    log_rate_limit_exceeded(limit_type=endpoint or "unknown_endpoint", user_id=user_id)
 
     # Send Rollbar notification about the rate limit
     try:

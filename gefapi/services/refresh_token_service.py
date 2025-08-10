@@ -140,6 +140,34 @@ class RefreshTokenService:
         return active_tokens
 
     @staticmethod
+    def invalidate_user_sessions(user_id, current_session_token=None):
+        """Invalidate all sessions except current session"""
+        logger.info(f"[SERVICE]: Invalidating user sessions for user {user_id}")
+
+        refresh_tokens = RefreshToken.query.filter_by(
+            user_id=user_id, is_revoked=False
+        ).all()
+
+        revoked_count = 0
+        for token in refresh_tokens:
+            if current_session_token and token.token == current_session_token:
+                continue  # Keep current session
+            token.revoke()
+            revoked_count += 1
+
+        try:
+            db.session.commit()
+            logger.info(
+                f"[SERVICE]: Invalidated {revoked_count} user sessions for "
+                f"user {user_id}"
+            )
+            return revoked_count
+        except Exception as error:
+            db.session.rollback()
+            logger.error(f"[SERVICE]: Error invalidating user sessions: {error}")
+            raise error
+
+    @staticmethod
     def cleanup_expired_tokens():
         """Clean up expired refresh tokens (should be run periodically)"""
         logger.info("[SERVICE]: Cleaning up expired refresh tokens")
