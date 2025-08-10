@@ -11,6 +11,7 @@ from flask_jwt_extended import current_user, jwt_required
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.stats_service import StatsService
 from gefapi.utils.permissions import is_superadmin
+from gefapi.utils.security_events import log_admin_action, log_security_event
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +33,27 @@ def get_dashboard_stats():
     """
     # Only SUPERADMIN users can access dashboard stats
     if not is_superadmin(current_user):
+        log_security_event(
+            "UNAUTHORIZED_ACCESS",
+            user_id=str(current_user.id),
+            user_email=current_user.email,
+            details={
+                "attempted_endpoint": "/stats/dashboard",
+                "reason": "insufficient_privileges",
+            },
+            level="warning",
+        )
         return error(
             status=403, detail="SUPERADMIN role required for dashboard statistics"
         )
+
+    # Log admin action for audit trail
+    log_admin_action(
+        admin_user_id=str(current_user.id),
+        admin_email=current_user.email,
+        action="accessed_dashboard_stats",
+        target_user_id=None,
+    )
 
     try:
         # Parse query parameters
@@ -58,7 +77,10 @@ def get_dashboard_stats():
         if invalid_sections:
             return error(
                 status=400,
-                detail=f"Invalid sections: {', '.join(invalid_sections)}. Valid sections: {', '.join(valid_sections)}",
+                detail=(
+                    f"Invalid sections: {', '.join(invalid_sections)}. "
+                    f"Valid sections: {', '.join(valid_sections)}"
+                ),
             )
 
         # Get statistics from service
@@ -89,9 +111,27 @@ def get_execution_stats():
         JSON response with execution statistics
     """
     if not is_superadmin(current_user):
+        log_security_event(
+            "UNAUTHORIZED_ACCESS",
+            user_id=str(current_user.id),
+            user_email=current_user.email,
+            details={
+                "attempted_endpoint": "/stats/executions",
+                "reason": "insufficient_privileges",
+            },
+            level="warning",
+        )
         return error(
             status=403, detail="SUPERADMIN role required for execution statistics"
         )
+
+    # Log admin action for audit trail
+    log_admin_action(
+        admin_user_id=str(current_user.id),
+        admin_email=current_user.email,
+        action="accessed_execution_stats",
+        target_user_id=None,
+    )
 
     try:
         # Parse query parameters
@@ -120,7 +160,9 @@ def get_execution_stats():
             if status not in valid_statuses:
                 return error(
                     status=400,
-                    detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
+                    detail=(
+                        f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+                    ),
                 )
 
         # Get statistics from service
@@ -152,7 +194,34 @@ def get_user_stats():
         JSON response with user statistics
     """
     if not is_superadmin(current_user):
+        log_security_event(
+            "UNAUTHORIZED_ACCESS",
+            user_id=str(current_user.id),
+            user_email=current_user.email,
+            details={
+                "attempted_endpoint": "/stats/users",
+                "reason": "insufficient_privileges",
+            },
+            level="warning",
+        )
         return error(status=403, detail="SUPERADMIN role required for user statistics")
+
+    # Log admin action for audit trail - this includes PII access
+    log_admin_action(
+        admin_user_id=str(current_user.id),
+        admin_email=current_user.email,
+        action="accessed_user_stats",
+        target_user_id=None,
+    )
+
+    # Log data export event since this includes user information
+    log_security_event(
+        "DATA_EXPORT",
+        user_id=str(current_user.id),
+        user_email=current_user.email,
+        details={"data_type": "user_statistics", "endpoint": "/stats/users"},
+        level="info",
+    )
 
     try:
         # Parse query parameters
@@ -196,6 +265,16 @@ def get_stats_health():
     Returns basic counts to verify the stats service is working.
     """
     if not is_superadmin(current_user):
+        log_security_event(
+            "UNAUTHORIZED_ACCESS",
+            user_id=str(current_user.id),
+            user_email=current_user.email,
+            details={
+                "attempted_endpoint": "/stats/health",
+                "reason": "insufficient_privileges",
+            },
+            level="warning",
+        )
         return error(status=403, detail="SUPERADMIN role required")
 
     try:
@@ -227,7 +306,25 @@ def get_cache_info():
     Shows cached keys, TTL information, and cache status.
     """
     if not is_superadmin(current_user):
+        log_security_event(
+            "UNAUTHORIZED_ACCESS",
+            user_id=str(current_user.id),
+            user_email=current_user.email,
+            details={
+                "attempted_endpoint": "/stats/cache",
+                "reason": "insufficient_privileges",
+            },
+            level="warning",
+        )
         return error(status=403, detail="SUPERADMIN role required")
+
+    # Log admin action
+    log_admin_action(
+        admin_user_id=str(current_user.id),
+        admin_email=current_user.email,
+        action="accessed_cache_info",
+        target_user_id=None,
+    )
 
     try:
         cache_info = StatsService.get_cache_info()
@@ -248,11 +345,60 @@ def clear_cache():
     - pattern: Optional pattern to match cache keys (e.g., 'summary', 'trends')
     """
     if not is_superadmin(current_user):
+        log_security_event(
+            "UNAUTHORIZED_ACCESS",
+            user_id=str(current_user.id),
+            user_email=current_user.email,
+            details={
+                "attempted_endpoint": "/stats/cache",
+                "method": "DELETE",
+                "reason": "insufficient_privileges",
+            },
+            level="warning",
+        )
         return error(status=403, detail="SUPERADMIN role required")
 
-    try:
-        pattern = request.args.get("pattern")
+    pattern = request.args.get("pattern")
 
+    # Validate pattern to prevent malicious cache clearing
+    if pattern:
+        allowed_patterns = [
+            "summary",
+            "trends",
+            "geographic",
+            "tasks",
+            "executions",
+            "users",
+            "activity",
+        ]
+        if pattern not in allowed_patterns:
+            log_security_event(
+                "SUSPICIOUS_ACTIVITY",
+                user_id=str(current_user.id),
+                user_email=current_user.email,
+                details={
+                    "action": "invalid_cache_pattern",
+                    "pattern": pattern,
+                    "endpoint": "/stats/cache",
+                },
+                level="warning",
+            )
+            return error(
+                status=400,
+                detail=(
+                    f"Invalid pattern. Allowed patterns: {', '.join(allowed_patterns)}"
+                ),
+            )
+
+    # Log admin action
+    log_admin_action(
+        admin_user_id=str(current_user.id),
+        admin_email=current_user.email,
+        action="cleared_stats_cache",
+        target_user_id=None,
+    )
+
+    try:
         success = StatsService.clear_cache(pattern)
 
         if success:

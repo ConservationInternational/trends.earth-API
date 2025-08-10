@@ -14,7 +14,10 @@ from gefapi.config import SETTINGS
 from gefapi.errors import AuthError, EmailError, UserDuplicated, UserNotFound
 from gefapi.models import User
 from gefapi.services import EmailService
-from gefapi.utils.security_events import log_authentication_event, log_password_event, log_admin_action
+from gefapi.utils.security_events import (
+    log_authentication_event,
+    log_password_event,
+)
 
 ROLES = SETTINGS.get("ROLES")
 
@@ -209,16 +212,25 @@ class UserService:
                 f"[SERVICE]: Password for user {user.email} changed successfully"
             )
             # Log security event
-            log_password_event("PASSWORD_CHANGE", str(user.id), user.email, admin_action=False)
-            
+            log_password_event(
+                "PASSWORD_CHANGE", str(user.id), user.email, admin_action=False
+            )
+
             # Invalidate all other sessions for security after password change
             from gefapi.services.refresh_token_service import RefreshTokenService
+
             try:
                 revoked_count = RefreshTokenService.invalidate_user_sessions(user.id)
-                logger.info(f"[SERVICE]: Invalidated {revoked_count} sessions after password change for {user.email}")
+                logger.info(
+                    f"[SERVICE]: Invalidated {revoked_count} sessions after "
+                    f"password change for {user.email}"
+                )
             except Exception as e:
-                logger.warning(f"[SERVICE]: Failed to invalidate sessions after password change: {e}")
-                
+                logger.warning(
+                    f"[SERVICE]: Failed to invalidate sessions after "
+                    f"password change: {e}"
+                )
+
         except Exception as e:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error changing password for {user.email}: {e}")
@@ -239,10 +251,13 @@ class UserService:
                 f"by admin"
             )
             # Log security event
-            log_password_event("PASSWORD_CHANGE", str(user.id), user.email, admin_action=True)
-            
+            log_password_event(
+                "PASSWORD_CHANGE", str(user.id), user.email, admin_action=True
+            )
+
             # Invalidate all user sessions for security
             from gefapi.services.refresh_token_service import RefreshTokenService
+
             try:
                 revoked_count = RefreshTokenService.invalidate_user_sessions(user.id)
                 logger.info(
@@ -250,9 +265,12 @@ class UserService:
                     f"after admin password change"
                 )
             except Exception as session_error:
-                logger.warning(f"[SERVICE]: Failed to invalidate sessions for {user.email}: {session_error}")
+                logger.warning(
+                    f"[SERVICE]: Failed to invalidate sessions for "
+                    f"{user.email}: {session_error}"
+                )
                 # Don't fail the password change if session invalidation fails
-                
+
         except Exception as e:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error changing password for {user.email}: {e}")
@@ -348,21 +366,21 @@ class UserService:
     def authenticate_user(email, password):
         logger.info(f"[AUTH]: Authentication attempt for {email}")
         user = User.query.filter_by(email=email).first()
-        
+
         if not user:
             logger.warning(f"[AUTH]: Failed login - user not found: {email}")
             log_authentication_event(False, email, "user_not_found")
             return None
-            
+
         if not user.check_password(password):
             logger.warning(f"[AUTH]: Failed login - invalid password: {email}")
             log_authentication_event(False, email, "invalid_password")
             return None
-            
+
         # Successful authentication
-        #logger.info(f"[AUTH]: Successful login for user {email}")
-        #log_authentication_event(True, email)
-        
+        # logger.info(f"[AUTH]: Successful login for user {email}")
+        # log_authentication_event(True, email)
+
         #  to serialize id with jwt
         user.id = user.id.hex
         return user

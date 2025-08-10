@@ -248,7 +248,7 @@ class TestStatsIntegration:
                 "/api/v1/stats/dashboard", headers=auth_headers_superadmin
             )
 
-        first_request_time = time.time() - start_time
+        # Verify first response
         assert response1.status_code == 200
 
         # Subsequent requests - cache hits (should be faster)
@@ -264,7 +264,7 @@ class TestStatsIntegration:
 
         # Cache hits should generally be faster than cache miss
         # (though in tests this might not always be measurable)
-        avg_cached_time = sum(request_times) / len(request_times)
+        # avg_cached_time = sum(request_times) / len(request_times)
 
         # At minimum, verify all requests succeeded
         assert all(time >= 0 for time in request_times)

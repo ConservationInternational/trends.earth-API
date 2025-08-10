@@ -72,8 +72,8 @@ class GEEService:
 
             if not service_account_json:
                 logger.warning(
-                    "EE_SERVICE_ACCOUNT_JSON not configured in environment or settings, "
-                    "cannot get GEE access token"
+                    "EE_SERVICE_ACCOUNT_JSON not configured in environment or "
+                    "settings, cannot get GEE access token"
                 )
                 return None
 

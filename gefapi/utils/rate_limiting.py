@@ -169,7 +169,8 @@ def get_admin_aware_key():
 
 def create_rate_limit_response(retry_after=None):
     """
-    Create a standardized rate limit exceeded response and send security event notification
+    Create a standardized rate limit exceeded response and send security event
+    notification
     """
     # Gather information about the rate limited request
     user_info = None
@@ -195,10 +196,7 @@ def create_rate_limit_response(retry_after=None):
         )
 
     # Log security event
-    log_rate_limit_exceeded(
-        limit_type=endpoint or "unknown_endpoint",
-        user_id=user_id
-    )
+    log_rate_limit_exceeded(limit_type=endpoint or "unknown_endpoint", user_id=user_id)
 
     # Send Rollbar notification about the rate limit
     try:

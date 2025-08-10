@@ -431,11 +431,11 @@ class TestStatsServiceIntegration:
 
         # Test performance difference
         start_time = time.time()
-        db_result = slow_db_query()
+        slow_db_query()
         db_time = time.time() - start_time
 
         start_time = time.time()
-        cache_result = fast_cache_retrieval()
+        fast_cache_retrieval()
         cache_time = time.time() - start_time
 
         # Verify cache is significantly faster

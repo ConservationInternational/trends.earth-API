@@ -470,7 +470,8 @@ class ExecutionService:
                     raise ImportError("Celery app not available")
 
                 logger.info(
-                    f"[SERVICE]: Dispatching Docker cancellation task for execution {execution.id}"
+                    f"[SERVICE]: Dispatching Docker cancellation task for "
+                    f"execution {execution.id}"
                 )
                 # Send task to build queue where Docker access is available
                 task_result = celery_app.send_task(
@@ -492,7 +493,8 @@ class ExecutionService:
                 cancellation_results["errors"].extend(docker_results.get("errors", []))
 
                 logger.info(
-                    f"[SERVICE]: Docker cancellation completed for execution {execution.id}"
+                    f"[SERVICE]: Docker cancellation completed for "
+                    f"execution {execution.id}"
                 )
 
             except Exception as docker_error:

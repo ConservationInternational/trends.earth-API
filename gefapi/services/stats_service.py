@@ -5,7 +5,7 @@ Provides comprehensive statistics for executions, users, and system metrics.
 
 from datetime import datetime, timedelta
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from sqlalchemy import desc, func
 
@@ -63,8 +63,8 @@ class StatsService:
 
     @staticmethod
     def get_dashboard_stats(
-        period: str = "all", include: List[str] = None
-    ) -> Dict[str, Any]:
+        period: str = "all", include: Optional[list[str]] = None
+    ) -> dict[str, Any]:
         """
         Get comprehensive dashboard statistics.
 
@@ -113,7 +113,7 @@ class StatsService:
         group_by: str = "day",
         task_type: Optional[str] = None,
         status: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get detailed execution statistics and trends.
 
@@ -158,7 +158,7 @@ class StatsService:
         period: str = "last_year",
         group_by: str = "month",
         country: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get user statistics and geographical distribution.
 
@@ -213,7 +213,7 @@ class StatsService:
         return filters.get(period)
 
     @staticmethod
-    def _get_summary_stats() -> Dict[str, Any]:
+    def _get_summary_stats() -> dict[str, Any]:
         """Get summary statistics for different time periods."""
         cache_key = StatsService._get_cache_key("_get_summary_stats")
 
@@ -259,7 +259,7 @@ class StatsService:
         return StatsService._get_from_cache_or_execute(cache_key, execute_summary)
 
     @staticmethod
-    def _get_trends_data(period: str) -> Dict[str, Any]:
+    def _get_trends_data(period: str) -> dict[str, Any]:
         """Get trend data for jobs over time."""
         cache_key = StatsService._get_cache_key("_get_trends_data", period=period)
 
@@ -337,7 +337,7 @@ class StatsService:
         return StatsService._get_from_cache_or_execute(cache_key, execute_trends)
 
     @staticmethod
-    def _get_geographic_data(period: str) -> Dict[str, Any]:
+    def _get_geographic_data(period: str) -> dict[str, Any]:
         """Get geographic distribution of users."""
         cache_key = StatsService._get_cache_key("_get_geographic_data", period=period)
 
@@ -376,7 +376,7 @@ class StatsService:
         return StatsService._get_from_cache_or_execute(cache_key, execute_geographic)
 
     @staticmethod
-    def _get_task_stats(period: str) -> Dict[str, Any]:
+    def _get_task_stats(period: str) -> dict[str, Any]:
         """Get task statistics."""
         cutoff_date = StatsService._get_time_filter(period)
 
@@ -458,7 +458,7 @@ class StatsService:
     @staticmethod
     def _get_execution_time_series(
         period: str, group_by: str, task_type: Optional[str], status: Optional[str]
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get execution time series data."""
         cutoff_date = StatsService._get_time_filter(period)
 
@@ -521,7 +521,7 @@ class StatsService:
         return sorted(time_series.values(), key=lambda x: x["timestamp"] or "")
 
     @staticmethod
-    def _get_top_users(period: str, task_type: Optional[str]) -> List[Dict[str, Any]]:
+    def _get_top_users(period: str, task_type: Optional[str]) -> list[dict[str, Any]]:
         """Get top users by execution count."""
         cutoff_date = StatsService._get_time_filter(period)
 
@@ -572,7 +572,7 @@ class StatsService:
 
             result.append(
                 {
-                    "user_id": row.id,
+                    "user_id": str(row.id),  # Convert to string for consistency
                     "email": row.email,
                     "execution_count": row.execution_count,
                     "success_rate": round(success_rate, 1),
@@ -586,7 +586,7 @@ class StatsService:
         return result
 
     @staticmethod
-    def _get_task_performance(period: str) -> List[Dict[str, Any]]:
+    def _get_task_performance(period: str) -> list[dict[str, Any]]:
         """Get task performance metrics."""
         cutoff_date = StatsService._get_time_filter(period)
 
@@ -634,7 +634,7 @@ class StatsService:
     @staticmethod
     def _get_registration_trends(
         period: str, group_by: str, country: Optional[str]
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get user registration trends."""
         cutoff_date = StatsService._get_time_filter(period)
 
@@ -675,7 +675,7 @@ class StatsService:
         return result
 
     @staticmethod
-    def _get_activity_stats() -> Dict[str, Any]:
+    def _get_activity_stats() -> dict[str, Any]:
         """Get user activity statistics."""
         now = datetime.utcnow()
 
@@ -774,7 +774,8 @@ class StatsService:
                 if keys:
                     deleted_count = redis_cache.client.delete(*keys)
                     logger.info(
-                        f"Cleared {deleted_count} cache keys matching pattern: {cache_pattern}"
+                        f"Cleared {deleted_count} cache keys matching pattern: "
+                        f"{cache_pattern}"
                     )
                     return True
                 logger.info(f"No cache keys found matching pattern: {cache_pattern}")
@@ -787,7 +788,7 @@ class StatsService:
         return False
 
     @staticmethod
-    def get_cache_info() -> Dict[str, Any]:
+    def get_cache_info() -> dict[str, Any]:
         """
         Get information about cached stats data.
 

@@ -352,7 +352,7 @@ class TestDockerServiceTaskIntegration:
             patch(
                 "gefapi.services.gee_service.GEEService.cancel_gee_tasks_from_execution"
             ) as mock_gee_cancel,
-            patch("gefapi.services.execution_service.db") as mock_db,
+            patch("gefapi.services.execution_service.db"),
         ):
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = []
             mock_gee_cancel.return_value = []

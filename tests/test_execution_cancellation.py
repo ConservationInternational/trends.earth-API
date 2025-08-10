@@ -210,7 +210,7 @@ class TestExecutionCancellationCeleryTasks:
             patch.object(
                 GEEService, "cancel_gee_tasks_from_execution"
             ) as mock_gee_cancel,
-            patch("gefapi.services.execution_service.db") as mock_db,
+            patch("gefapi.services.execution_service.db"),
         ):
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = [
                 mock_log
@@ -271,7 +271,7 @@ class TestExecutionCancellationCeleryTasks:
             patch.object(
                 GEEService, "cancel_gee_tasks_from_execution"
             ) as mock_gee_cancel,
-            patch("gefapi.services.execution_service.db") as mock_db,
+            patch("gefapi.services.execution_service.db"),
         ):
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = []
             mock_gee_cancel.return_value = []
@@ -320,7 +320,7 @@ class TestExecutionCancellationCeleryTasks:
             patch.object(
                 GEEService, "cancel_gee_tasks_from_execution"
             ) as mock_gee_cancel,
-            patch("gefapi.services.execution_service.db") as mock_db,
+            patch("gefapi.services.execution_service.db"),
         ):
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = []
             mock_gee_cancel.return_value = []
@@ -375,7 +375,7 @@ class TestExecutionCancellationCeleryTasks:
             patch.object(
                 GEEService, "cancel_gee_tasks_from_execution"
             ) as mock_gee_cancel,
-            patch("gefapi.services.execution_service.db") as mock_db,
+            patch("gefapi.services.execution_service.db"),
         ):
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = mock_logs
             mock_gee_cancel.return_value = [
@@ -464,14 +464,12 @@ class TestExecutionCancellationCeleryTasks:
             assert len(add_calls) >= 1  # At least the log should be added
 
             # Find the log creation call - it should be a Mock of ExecutionLog with the expected attributes
-            log_created = False
             for call in add_calls:
                 call_arg = call[0][0]  # First argument to add()
                 if (
                     hasattr(call_arg, "text")
                     and "cancelled by user" in str(call_arg.text).lower()
                 ):
-                    log_created = True
                     # Since ExecutionLog is mocked, we need to check the constructor call
                     break
 

@@ -158,7 +158,8 @@ class RefreshTokenService:
         try:
             db.session.commit()
             logger.info(
-                f"[SERVICE]: Invalidated {revoked_count} user sessions for user {user_id}"
+                f"[SERVICE]: Invalidated {revoked_count} user sessions for "
+                f"user {user_id}"
             )
             return revoked_count
         except Exception as error:
