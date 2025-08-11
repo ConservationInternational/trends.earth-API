@@ -52,9 +52,111 @@ class GEEService:
                     # Validate that the match looks like a valid GEE task ID
                     if len(match) == 24 and match.isalnum() and match.isupper():
                         task_ids.add(match)
-                        logger.debug(f"Found GEE task ID: {match}")
 
         return list(task_ids)
+
+    @staticmethod
+    def diagnose_gee_token_issue() -> dict[str, Any]:
+        """
+        Diagnose common issues with GEE token generation.
+
+        Returns:
+            Dictionary with diagnostic information
+        """
+        diagnosis = {
+            "environment_variable_present": False,
+            "settings_configured": False,
+            "json_parseable": False,
+            "required_fields_present": False,
+            "google_libs_available": False,
+            "issues": [],
+            "recommendations": [],
+        }
+
+        # Check environment variable
+        service_account_json = SETTINGS.get("environment", {}).get(
+            "EE_SERVICE_ACCOUNT_JSON"
+        ) or os.getenv("EE_SERVICE_ACCOUNT_JSON")
+
+        if not service_account_json:
+            diagnosis["issues"].append(
+                "EE_SERVICE_ACCOUNT_JSON not found in environment or settings"
+            )
+            diagnosis["recommendations"].append(
+                "Set EE_SERVICE_ACCOUNT_JSON environment variable with "
+                "base64-encoded service account JSON"
+            )
+            return diagnosis
+
+        diagnosis["environment_variable_present"] = True
+        diagnosis["settings_configured"] = bool(
+            SETTINGS.get("environment", {}).get("EE_SERVICE_ACCOUNT_JSON")
+        )
+
+        # Check JSON parsing
+        try:
+            # Use the same robust base64 detection as the main method
+            is_base64_encoded = False
+            try:
+                if not service_account_json.strip().startswith(("{", "[")):
+                    import base64
+
+                    test_decode = base64.b64decode(service_account_json).decode("utf-8")
+                    if test_decode.strip().startswith(("{", "[")):
+                        is_base64_encoded = True
+            except (ValueError, TypeError):
+                # If base64 decoding fails, treat as direct JSON
+                pass
+
+            if is_base64_encoded:
+                import base64
+
+                decoded_json = base64.b64decode(service_account_json).decode("utf-8")
+                service_account_data = json.loads(decoded_json)
+            else:
+                service_account_data = json.loads(service_account_json)
+
+            diagnosis["json_parseable"] = True
+
+            # Check required fields
+            required_fields = ["type", "project_id", "private_key", "client_email"]
+            missing_fields = [
+                field for field in required_fields if field not in service_account_data
+            ]
+
+            if missing_fields:
+                diagnosis["issues"].append(
+                    f"Service account JSON missing required fields: {missing_fields}"
+                )
+                diagnosis["recommendations"].append(
+                    "Ensure service account JSON contains all required fields"
+                )
+            else:
+                diagnosis["required_fields_present"] = True
+
+        except Exception as e:
+            diagnosis["issues"].append(f"Failed to parse service account JSON: {e}")
+            diagnosis["recommendations"].append(
+                "Check that EE_SERVICE_ACCOUNT_JSON is valid base64-encoded JSON"
+            )
+
+        # Check Google auth libraries
+        try:
+            import importlib.util
+
+            if importlib.util.find_spec(
+                "google.auth.transport.requests"
+            ) and importlib.util.find_spec("google.oauth2.service_account"):
+                diagnosis["google_libs_available"] = True
+            else:
+                raise ImportError("Required Google auth modules not found")
+        except ImportError as e:
+            diagnosis["issues"].append(f"Google auth libraries not available: {e}")
+            diagnosis["recommendations"].append(
+                "Ensure google-auth and google-auth-oauthlib packages are installed"
+            )
+
+        return diagnosis
 
     @staticmethod
     def get_gee_service_account_token() -> Optional[str]:
@@ -71,17 +173,33 @@ class GEEService:
             ) or os.getenv("EE_SERVICE_ACCOUNT_JSON")
 
             if not service_account_json:
-                logger.warning(
+                logger.error(
                     "EE_SERVICE_ACCOUNT_JSON not configured in environment or "
-                    "settings, cannot get GEE access token"
+                    "settings, cannot get GEE access token. Check environment "
+                    "variables."
                 )
                 return None
 
             try:
                 # Handle both base64 encoded and direct JSON
-                if service_account_json.startswith(
-                    "eyJ"
-                ):  # Base64 encoded JSON starts with 'eyJ'
+                is_base64_encoded = False
+                try:
+                    # Check if it looks like base64 and doesn't start with '{' or '['
+                    if not service_account_json.strip().startswith(("{", "[")):
+                        # Try to decode as base64 to see if it's valid
+                        import base64
+
+                        test_decode = base64.b64decode(service_account_json).decode(
+                            "utf-8"
+                        )
+                        # If decoded content looks like JSON, it's base64 encoded
+                        if test_decode.strip().startswith(("{", "[")):
+                            is_base64_encoded = True
+                except (ValueError, TypeError, UnicodeDecodeError):
+                    # If base64 decoding fails, treat as direct JSON
+                    logger.debug("Service account data is not base64 encoded")
+
+                if is_base64_encoded:
                     import base64
 
                     decoded_json = base64.b64decode(service_account_json).decode(
@@ -90,31 +208,59 @@ class GEEService:
                     service_account_data = json.loads(decoded_json)
                 else:
                     service_account_data = json.loads(service_account_json)
+
+                # Validate required fields
+                required_fields = ["type", "project_id", "private_key", "client_email"]
+                missing_fields = [
+                    field
+                    for field in required_fields
+                    if field not in service_account_data
+                ]
+                if missing_fields:
+                    logger.error(
+                        f"Service account JSON missing required fields: "
+                        f"{missing_fields}"
+                    )
+                    return None
+
             except (json.JSONDecodeError, ValueError) as e:
                 logger.error(f"Failed to parse EE_SERVICE_ACCOUNT_JSON: {e}")
+                return None
+            except Exception as e:
+                logger.error(f"Unexpected error parsing service account JSON: {e}")
                 return None
 
             # Use Google's OAuth 2.0 service account flow
             try:
                 import google.auth.transport.requests
                 import google.oauth2.service_account
-            except ImportError:
-                logger.warning(
-                    "Google auth libraries not available for GEE token generation"
+            except ImportError as e:
+                logger.error(
+                    f"Google auth libraries not available for GEE token generation: {e}"
                 )
                 return None
 
             # Create credentials from service account info
-            credentials = (
-                google.oauth2.service_account.Credentials.from_service_account_info(
-                    service_account_data,
-                    scopes=["https://www.googleapis.com/auth/earthengine"],
+            try:
+                credentials = (
+                    google.oauth2.service_account.Credentials.from_service_account_info(
+                        service_account_data,
+                        scopes=["https://www.googleapis.com/auth/earthengine"],
+                    )
                 )
-            )
+            except Exception as e:
+                logger.error(f"Failed to create service account credentials: {e}")
+                rollbar.report_exc_info()
+                return None
 
             # Refresh the token
-            request = google.auth.transport.requests.Request()
-            credentials.refresh(request)
+            try:
+                request = google.auth.transport.requests.Request()
+                credentials.refresh(request)
+            except Exception as e:
+                logger.error(f"Failed to refresh service account token: {e}")
+                rollbar.report_exc_info()
+                return None
 
             logger.info("Successfully obtained GEE service account token")
             return credentials.token
@@ -255,9 +401,28 @@ class GEEService:
         # Get access token once for all cancellations
         access_token = GEEService.get_gee_service_account_token()
         if not access_token:
-            logger.warning(
-                "Could not get GEE access token, skipping task cancellations"
+            logger.error(
+                "Could not get GEE access token, skipping task cancellations. "
+                "Running diagnostics..."
             )
+
+            # Run diagnostics to identify the issue
+            try:
+                diagnosis = GEEService.diagnose_gee_token_issue()
+                if diagnosis["issues"]:
+                    logger.error(
+                        f"GEE token issues identified: {'; '.join(diagnosis['issues'])}"
+                    )
+                    logger.info(
+                        f"Recommendations: {'; '.join(diagnosis['recommendations'])}"
+                    )
+                else:
+                    logger.error(
+                        "No specific issues identified in GEE token generation"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to run GEE token diagnostics: {e}")
+
             return [
                 {
                     "task_id": task_id,
