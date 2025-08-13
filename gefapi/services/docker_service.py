@@ -189,27 +189,81 @@ class DockerService:
 
     @staticmethod
     def push(script_id, tag_image):
-        """Push image to private docker registry"""
+        """
+        Push image to private docker registry with retry on connection errors.
+
+        Logs are saved after push completes.
+        """
+        import http.client
+        import time
+
+        import urllib3
+
         logger.debug(f"Pushing image with tag {tag_image}")
-        pushed = False
-        try:
-            client = get_docker_client()
-            for line in client.images.push(
-                REGISTRY_URL + "/" + tag_image, stream=True, decode=True
-            ):
-                DockerService.save_build_log(script_id=script_id, line=line)
-                if "aux" in line and pushed:
-                    return True, line["aux"]
-                if "status" in line and line["status"] == "Pushed":
-                    pushed = True
+        max_retries = 4
+        base_delay = 2  # seconds
+        attempt = 0
+        last_error = None
+        output_lines = []
 
-            # If we get here, the build failed
-            raise Exception
+        while attempt < max_retries:
+            pushed = False
+            output_lines.clear()
+            try:
+                client = get_docker_client()
+                push_stream = client.images.push(
+                    REGISTRY_URL + "/" + tag_image, stream=True, decode=True
+                )
+                result_aux = None
+                for line in push_stream:
+                    output_lines.append(line)
+                    if "aux" in line and pushed:
+                        result_aux = line["aux"]
+                    if "status" in line and line["status"] == "Pushed":
+                        pushed = True
 
-        except Exception as error:
-            logger.error(error)
-            rollbar.report_exc_info()
-            return False, error
+                # Save all logs after push attempt
+                for log_line in output_lines:
+                    DockerService.save_build_log(script_id=script_id, line=log_line)
+
+                if pushed and result_aux:
+                    return True, result_aux
+
+                # If we get here, the build failed
+                raise Exception("Image push did not complete successfully.")
+
+            except (
+                docker.errors.APIError,
+                urllib3.exceptions.ProtocolError,
+                http.client.IncompleteRead,
+            ) as error:
+                last_error = error
+                logger.warning(f"Push attempt {attempt + 1} failed: {error}")
+                # Save logs for this failed attempt
+                for log_line in output_lines:
+                    DockerService.save_build_log(script_id=script_id, line=log_line)
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2**attempt)
+                    logger.info(
+                        f"Retrying push in {delay} seconds "
+                        f"(attempt {attempt + 2}/{max_retries})..."
+                    )
+                    time.sleep(delay)
+                attempt += 1
+            except Exception as error:
+                # Save logs for this failed attempt
+                for log_line in output_lines:
+                    DockerService.save_build_log(script_id=script_id, line=log_line)
+                logger.error(error)
+                rollbar.report_exc_info()
+                return False, error
+
+        logger.error(f"Image push failed after {max_retries} attempts: {last_error}")
+        # Save logs for the final failed attempt
+        for log_line in output_lines:
+            DockerService.save_build_log(script_id=script_id, line=log_line)
+        rollbar.report_exc_info()
+        return False, last_error
 
     @staticmethod
     def build(
