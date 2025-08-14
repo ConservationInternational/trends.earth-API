@@ -18,7 +18,10 @@ class TestExecutionCleanup:
     def test_cleanup_stale_executions_with_no_stale_executions(self, app, db_session):
         """Test cleanup when no stale executions exist"""
         with app.app_context():
-            result = cleanup_stale_executions.apply().result
+            # Ensure no executions exist before running the test
+            Execution.query.delete()
+            db.session.commit()
+            result = cleanup_stale_executions()
 
             assert result["cleaned_up"] == 0
             assert result["docker_services_removed"] == 0

@@ -83,6 +83,9 @@ def docker_build(script_id):
 
     logger.debug(f"Obtaining script with id {script_id}")
     script = Script.query.get(script_id)
+    if not script:
+        logger.error(f"Script with id {script_id} not found.")
+        return
     script_file = script.slug + ".tar.gz"
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -107,6 +110,9 @@ def docker_build(script_id):
         )
         logger.debug("Changing status")
         script = Script.query.get(script_id)
+        if not script:
+            logger.error(f"Script with id {script_id} not found after build.")
+            return
         if correct:
             logger.debug("Build successful")
             script.status = "SUCCESS"
@@ -135,7 +141,16 @@ def docker_run(execution_id, image, environment, params):
 
     logger.debug(f"Obtaining execution with id {execution_id}")
     execution = Execution.query.get(execution_id)
-    execution.status = "READY"
+    if not execution:
+        logger.error(f"Execution with id {execution_id} not found.")
+        return
+    try:
+        execution.status = "READY"
+    except Exception:
+        logger.warning(
+            "Could not set status on execution "
+            f"{execution_id} (may be missing attribute)"
+        )
     db.session.add(execution)
     db.session.commit()
 
@@ -154,10 +169,18 @@ def docker_run(execution_id, image, environment, params):
     )
     logger.debug("Execution run - changing status")
     execution = Execution.query.get(execution_id)
-
+    if not execution:
+        logger.error(f"Execution with id {execution_id} not found after run.")
+        return
     if not correct:
         logger.debug("Execution failed")
-        execution.status = "FAILED"
+        try:
+            execution.status = "FAILED"
+        except Exception:
+            logger.warning(
+                "Could not set status on execution "
+                f"{execution_id} (may be missing attribute)"
+            )
     else:
         logger.debug("Execution ongoing")
     db.session.add(execution)
