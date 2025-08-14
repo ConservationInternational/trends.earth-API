@@ -206,36 +206,61 @@ class DockerService:
         last_error = None
         output_lines = []
 
+        if not REGISTRY_URL:
+            logger.error("REGISTRY_URL is not configured.")
+            return False, Exception("REGISTRY_URL is not configured.")
         while attempt < max_retries:
             pushed = False
             output_lines.clear()
+            blob_unknown_error = False
             try:
                 client = get_docker_client()
-                push_stream = client.images.push(
-                    REGISTRY_URL + "/" + tag_image, stream=True, decode=True
-                )
+                if client is None:
+                    raise Exception("Docker client is not available.")
+                push_tag = f"{REGISTRY_URL}/{tag_image}"
+                push_stream = client.images.push(push_tag, stream=True, decode=True)
                 result_aux = None
                 for line in push_stream:
+                    # Only process if line is a dict
+                    if not isinstance(line, dict):
+                        continue
                     output_lines.append(line)
-                    if "aux" in line and pushed:
+                    # Detect 'blob unknown' errors in push logs
+                    error_val = (
+                        str(line.get("error", "")).lower() if line.get("error") else ""
+                    )
+                    error_detail_val = (
+                        str(line.get("errorDetail", "")).lower()
+                        if line.get("errorDetail")
+                        else ""
+                    )
+                    if (
+                        "blob unknown" in error_val
+                        or "blob unknown" in error_detail_val
+                    ):
+                        blob_unknown_error = True
+                    if line.get("aux") and pushed:
                         result_aux = line["aux"]
-                    if "status" in line and line["status"] == "Pushed":
+                    if line.get("status") == "Pushed":
                         pushed = True
 
                 # Save all logs after push attempt
                 for log_line in output_lines:
                     DockerService.save_build_log(script_id=script_id, line=log_line)
 
-                if pushed and result_aux:
+                if pushed and result_aux and not blob_unknown_error:
                     return True, result_aux
 
                 # If we get here, the build failed
+                if blob_unknown_error:
+                    raise RuntimeError("Blob unknown error detected during push.")
                 raise Exception("Image push did not complete successfully.")
 
             except (
-                docker.errors.APIError,
+                docker_errors.APIError,
                 urllib3.exceptions.ProtocolError,
                 http.client.IncompleteRead,
+                RuntimeError,  # Retry on blob unknown
             ) as error:
                 last_error = error
                 logger.warning(f"Push attempt {attempt + 1} failed: {error}")
@@ -276,6 +301,9 @@ class DockerService:
         """Build image and push to private docker registry"""
 
         logger.info(f"Building new image in path {path} with tag {tag_image}")
+        if not REGISTRY_URL:
+            logger.error("REGISTRY_URL is not configured.")
+            return False, Exception("REGISTRY_URL is not configured.")
         try:
             logger.debug("[SERVICE]: Copying dockerfile")
             dockerfile = os.path.join(
@@ -284,12 +312,16 @@ class DockerService:
             )
             copy(dockerfile, os.path.join(path, "Dockerfile"))
 
-            logger.debug(f"[SERVICE]: tag is {REGISTRY_URL + '/' + tag_image}")
+            tag_full = f"{REGISTRY_URL}/{tag_image}"
+            logger.debug(f"[SERVICE]: tag is {tag_full}")
             client = get_docker_client()
+            if client is None:
+                logger.error("Docker client is not available.")
+                return False, Exception("Docker client is not available.")
             image, logs = client.images.build(
                 path=path,
                 rm=True,
-                tag=REGISTRY_URL + "/" + tag_image,
+                tag=tag_full,
                 forcerm=True,
                 pull=True,
                 nocache=True,
@@ -300,7 +332,10 @@ class DockerService:
             )
 
             for line in logs:
-                if "errorDetail" in line:
+                # Only process if line is a dict
+                if not isinstance(line, dict):
+                    continue
+                if "errorDetail" in line and line["errorDetail"]:
                     return False, line["errorDetail"]
                 DockerService.save_build_log(script_id=script_id, line=line)
 
@@ -309,13 +344,11 @@ class DockerService:
 
             # Remove the image from the local Docker daemon after push
             try:
-                client.images.remove(image=REGISTRY_URL + "/" + tag_image, force=True)
-                logger.info(
-                    f"Removed local image {REGISTRY_URL + '/' + tag_image} after push."
-                )
+                client.images.remove(image=tag_full, force=True)
+                logger.info(f"Removed local image {tag_full} after push.")
             except Exception as remove_error:
                 logger.warning(
-                    f"Failed to remove local image {REGISTRY_URL + '/' + tag_image}: {remove_error}"
+                    f"Failed to remove local image {tag_full}: {remove_error}"
                 )
 
             return push_result
