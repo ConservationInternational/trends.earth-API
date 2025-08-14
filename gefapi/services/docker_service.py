@@ -304,11 +304,24 @@ class DockerService:
                     return False, line["errorDetail"]
                 DockerService.save_build_log(script_id=script_id, line=line)
 
-            return DockerService.push(script_id=script_id, tag_image=tag_image)
+            # Push the image
+            push_result = DockerService.push(script_id=script_id, tag_image=tag_image)
+
+            # Remove the image from the local Docker daemon after push
+            try:
+                client.images.remove(image=REGISTRY_URL + "/" + tag_image, force=True)
+                logger.info(
+                    f"Removed local image {REGISTRY_URL + '/' + tag_image} after push."
+                )
+            except Exception as remove_error:
+                logger.warning(
+                    f"Failed to remove local image {REGISTRY_URL + '/' + tag_image}: {remove_error}"
+                )
+
+            return push_result
 
         except docker_errors.APIError as error:
             logger.error(error)
-
             return False, error
 
         except Exception as error:
