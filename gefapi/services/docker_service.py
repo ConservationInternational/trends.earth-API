@@ -51,7 +51,7 @@ def get_docker_client():
                 # Configure Docker client with extended timeouts for push operations
                 docker_client = docker.DockerClient(
                     base_url=DOCKER_HOST,
-                    timeout=300  # 5 minutes timeout for large operations
+                    timeout=300,  # 5 minutes timeout for large operations
                 )
                 docker_client.ping()
             else:
@@ -233,7 +233,7 @@ class DockerService:
     @staticmethod
     def push(script_id, tag_image):
         """
-        Push image to private docker registry with retry mechanism for connection errors.
+        Push image to private docker registry with retry mechanism.
 
         Retry logic with exponential backoff and better error handling.
         """
@@ -252,7 +252,7 @@ class DockerService:
         if not REGISTRY_URL:
             logger.error("REGISTRY_URL is not configured.")
             return False, Exception("REGISTRY_URL is not configured.")
-        
+
         while attempt < max_retries:
             pushed = False
             output_lines.clear()
@@ -261,24 +261,22 @@ class DockerService:
                 client = get_docker_client()
                 if client is None:
                     raise Exception("Docker client is not available.")
-                
+
                 push_tag = f"{REGISTRY_URL}/{tag_image}"
-                logger.debug(f"Attempting push {attempt + 1}/{max_retries} for {push_tag}")
-                
-                # Configure push with streaming and decode
-                push_stream = client.images.push(
-                    push_tag, 
-                    stream=True, 
-                    decode=True
+                logger.debug(
+                    f"Attempting push {attempt + 1}/{max_retries} for {push_tag}"
                 )
-                
+
+                # Configure push with streaming and decode
+                push_stream = client.images.push(push_tag, stream=True, decode=True)
+
                 result_aux = None
                 for line in push_stream:
                     # Only process if line is a dict
                     if not isinstance(line, dict):
                         continue
                     output_lines.append(line)
-                    
+
                     # Detect 'blob unknown' errors in push logs
                     error_val = (
                         str(line.get("error", "")).lower() if line.get("error") else ""
@@ -303,7 +301,9 @@ class DockerService:
                     DockerService.save_build_log(script_id=script_id, line=log_line)
 
                 if pushed and result_aux and not blob_unknown_error:
-                    logger.info(f"Successfully pushed {push_tag} on attempt {attempt + 1}")
+                    logger.info(
+                        f"Successfully pushed {push_tag} on attempt {attempt + 1}"
+                    )
                     return True, result_aux
 
                 # If we get here, the push failed
@@ -326,10 +326,10 @@ class DockerService:
                 # Save logs for this failed attempt
                 for log_line in output_lines:
                     DockerService.save_build_log(script_id=script_id, line=log_line)
-                
+
                 if attempt < max_retries - 1:
                     # Exponential backoff with jitter
-                    delay = min(base_delay * (2 ** attempt), 60)  # Cap at 60 seconds
+                    delay = min(base_delay * (2**attempt), 60)  # Cap at 60 seconds
                     logger.info(
                         f"Retrying push in {delay} seconds "
                         f"(attempt {attempt + 2}/{max_retries})..."
