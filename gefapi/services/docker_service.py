@@ -76,16 +76,17 @@ def docker_build(script_id):
             logger.warning(
                 f"Docker not available, skipping build for script {script_id}"
             )
-            return
+            return None
     except Exception as e:
         logger.error(f"Docker not available for build: {e}")
-        return
+        return None
 
     logger.debug(f"Obtaining script with id {script_id}")
     script = Script.query.get(script_id)
     if not script:
         logger.error(f"Script with id {script_id} not found.")
-        return
+        ScriptLog(text="Build failed: script not found.", script_id=script_id)
+        return {"success": False, "error": "Script not found"}
     script_file = script.slug + ".tar.gz"
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -100,6 +101,9 @@ def docker_build(script_id):
         script.status = "BUILDING"
         db.session.add(script)
         db.session.commit()
+        logger.info(f"[STATUS] Script {script_id} status set to BUILDING")
+        ScriptLog(text="Build started.", script_id=script_id)
+        db.session.commit()
         logger.debug("Building...")
         correct, log = DockerService.build(
             script_id=script_id,
@@ -112,15 +116,27 @@ def docker_build(script_id):
         script = Script.query.get(script_id)
         if not script:
             logger.error(f"Script with id {script_id} not found after build.")
-            return
+            ScriptLog(
+                text="Build failed: script not found after build.", script_id=script_id
+            )
+            db.session.commit()
+            return {"success": False, "error": "Script not found after build"}
         if correct:
-            logger.debug("Build successful")
+            logger.info(f"[STATUS] Script {script_id} build SUCCESS")
             script.status = "SUCCESS"
-        else:
-            logger.debug("Build failed")
-            script.status = "FAIL"
+            ScriptLog(text="Build successful.", script_id=script_id)
+            db.session.add(script)
+            db.session.commit()
+            return {"success": True}
+        logger.error(f"[STATUS] Script {script_id} build FAIL: {log}")
+        script.status = "FAIL"
+        # Save error reason to ScriptLog and script object
+        error_msg = str(log)
+        script.build_error = error_msg if hasattr(script, "build_error") else None
+        ScriptLog(text=f"Build failed: {error_msg}", script_id=script_id)
         db.session.add(script)
         db.session.commit()
+        return {"success": False, "error": error_msg}
 
 
 @celery_app.task()

@@ -52,6 +52,8 @@ class Script(db.Model):
     memory_limit = db.Column(db.BigInteger(), default=int(1e9))
     environment = db.Column(db.Text(), default="trends.earth-environment")
     environment_version = db.Column(db.Text(), default="0.1.6")
+    # Optional build error field for reporting build failures
+    build_error = db.Column(db.Text(), default=None)
 
     def __init__(
         self,
@@ -257,6 +259,9 @@ class Script(db.Model):
                 script["restricted"] = self.restricted or False
                 script["allowed_roles"] = self.get_allowed_roles()
                 script["allowed_users"] = self.get_allowed_users()
+
+        if "build_error" in include:
+            script["build_error"] = self.build_error
 
         # Remove excluded fields
         for field in exclude:
