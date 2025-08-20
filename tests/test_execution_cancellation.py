@@ -29,51 +29,80 @@ class TestExecutionCancellation:
         assert "6CIGR7EG2J45GJ2DN2J7X3WZ" in task_ids
         assert "YBKKBHM2V63JYBVIPCCRY7A2" in task_ids
 
-    @patch("gefapi.services.gee_service.requests.get")
-    @patch("gefapi.services.gee_service.requests.post")
-    def test_cancel_gee_task_success(self, mock_post, mock_get):
+    @patch("gefapi.services.gee_service.GEEService._initialize_ee")
+    @patch("builtins.__import__")
+    def test_cancel_gee_task_success(self, mock_import, mock_init_ee):
         """Test successful GEE task cancellation"""
-        # Mock successful status check
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"metadata": {"state": "RUNNING"}}
+        # Mock successful EE initialization
+        mock_init_ee.return_value = True
 
-        # Mock successful cancellation
-        mock_post.return_value.status_code = 200
+        # Create a mock Earth Engine module
+        mock_ee = Mock()
+        mock_ee.data.getOperation.return_value = {
+            "done": False,
+            "metadata": {"state": "RUNNING"},
+        }
+        mock_ee.data.cancelOperation.return_value = None
 
-        with patch.object(
-            GEEService, "get_gee_service_account_token", return_value="mock_token"
-        ):
-            result = GEEService.cancel_gee_task("6CIGR7EG2J45GJ2DN2J7X3WZ")
+        # Mock the import to return our mock ee module
+        def side_effect(name, *args, **kwargs):
+            if name == "ee":
+                return mock_ee
+            # For all other imports, use the real import
+            return __import__(name, *args, **kwargs)
+
+        mock_import.side_effect = side_effect
+
+        result = GEEService.cancel_gee_task("6CIGR7EG2J45GJ2DN2J7X3WZ")
 
         assert result["success"] is True
         assert result["task_id"] == "6CIGR7EG2J45GJ2DN2J7X3WZ"
         assert result["status"] == "CANCELLED"
+        mock_ee.data.getOperation.assert_called_once()
+        mock_ee.data.cancelOperation.assert_called_once()
 
-    @patch("gefapi.services.gee_service.requests.get")
-    def test_cancel_gee_task_already_completed(self, mock_get):
+    @patch("gefapi.services.gee_service.GEEService._initialize_ee")
+    @patch("builtins.__import__")
+    def test_cancel_gee_task_already_completed(self, mock_import, mock_init_ee):
         """Test GEE task cancellation when task is already completed"""
-        # Mock status check showing task already completed
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"metadata": {"state": "SUCCEEDED"}}
+        # Mock successful EE initialization
+        mock_init_ee.return_value = True
 
-        with patch.object(
-            GEEService, "get_gee_service_account_token", return_value="mock_token"
-        ):
-            result = GEEService.cancel_gee_task("6CIGR7EG2J45GJ2DN2J7X3WZ")
+        # Create a mock Earth Engine module
+        mock_ee = Mock()
+        mock_ee.data.getOperation.return_value = {
+            "done": True,
+            "metadata": {"state": "SUCCEEDED"},
+        }
+
+        # Mock the import to return our mock ee module
+        def side_effect(name, *args, **kwargs):
+            if name == "ee":
+                return mock_ee
+            # For all other imports, use the real import
+            return __import__(name, *args, **kwargs)
+
+        mock_import.side_effect = side_effect
+
+        result = GEEService.cancel_gee_task("6CIGR7EG2J45GJ2DN2J7X3WZ")
 
         assert result["success"] is True
         assert result["status"] == "SUCCEEDED"
         assert "already in SUCCEEDED state" in result["error"]
+        mock_ee.data.getOperation.assert_called_once()
+        # Should not attempt to cancel if already completed
+        mock_ee.data.cancelOperation.assert_not_called()
 
-    def test_cancel_gee_task_no_token(self):
-        """Test GEE task cancellation when no access token is available"""
-        with patch.object(
-            GEEService, "get_gee_service_account_token", return_value=None
-        ):
-            result = GEEService.cancel_gee_task("6CIGR7EG2J45GJ2DN2J7X3WZ")
+    @patch("gefapi.services.gee_service.GEEService._initialize_ee")
+    def test_cancel_gee_task_initialization_failed(self, mock_init_ee):
+        """Test GEE task cancellation when Earth Engine initialization fails"""
+        # Mock failed EE initialization
+        mock_init_ee.return_value = False
+
+        result = GEEService.cancel_gee_task("6CIGR7EG2J45GJ2DN2J7X3WZ")
 
         assert result["success"] is False
-        assert "Failed to get GEE access token" in result["error"]
+        assert "Failed to initialize Google Earth Engine" in result["error"]
 
     @patch("gefapi.services.execution_service.celery_app")
     @patch("gefapi.services.execution_service.ExecutionLog")
