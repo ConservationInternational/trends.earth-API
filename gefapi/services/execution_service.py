@@ -254,8 +254,21 @@ class ExecutionService:
             total = query.count()
             executions = query.offset((page - 1) * per_page).limit(per_page).all()
         else:
-            executions = query.all()
+            # Apply a reasonable default limit when pagination is not requested
+            # to prevent timeouts with users who have large numbers of executions
+            default_limit = 1000
+            logger.warning(
+                f"[SERVICE]: No pagination requested, applying default "
+                f"limit of {default_limit} executions"
+            )
+            executions = query.limit(default_limit).all()
             total = len(executions)
+            # If we hit the limit, log a warning that there may be more results
+            if len(executions) == default_limit:
+                logger.warning(
+                    f"[SERVICE]: Retrieved {default_limit} executions (limit reached). "
+                    "Consider using pagination for complete results."
+                )
 
         return executions, total
 

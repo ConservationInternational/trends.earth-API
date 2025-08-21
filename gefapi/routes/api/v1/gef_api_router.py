@@ -460,6 +460,7 @@ def get_user_executions():
     - `filter`: Search/filter executions by script name, status, or other attributes
     - `sort`: Sort field (prefix with '-' for descending, e.g., '-created_at',
       '-updated_at')
+    - `updated_at`: Filter executions updated after specific timestamp (ISO 8601)
     - `page`: Page number for pagination (triggers pagination when provided)
     - `per_page`: Items per page (1-100, default: 20)
 
@@ -533,6 +534,13 @@ def get_user_executions():
     filter_param = request.args.get("filter", None)
     sort = request.args.get("sort", None)
 
+    # Add support for updated_at filtering
+    updated_at = request.args.get("updated_at", None)
+    if updated_at:
+        import dateutil.parser
+
+        updated_at = dateutil.parser.parse(updated_at)
+
     # Pagination parameters
     page_param = request.args.get("page", None)
     per_page_param = request.args.get("per_page", None)
@@ -556,7 +564,7 @@ def get_user_executions():
         executions, total = ExecutionService.get_executions(
             user=current_user,
             target_user_id=None,  # None means get current user's executions
-            updated_at=None,
+            updated_at=updated_at,
             status=None,
             page=page,
             per_page=per_page,
