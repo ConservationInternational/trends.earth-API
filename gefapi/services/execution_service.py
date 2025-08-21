@@ -95,7 +95,9 @@ class ExecutionService:
         if status:
             query = query.filter(func.lower(Execution.status) == status.lower())
         if updated_at:
-            query = query.filter(Execution.end_date >= updated_at)
+            # Filter by start_date since that's when executions begin
+            # and is more reliable than end_date for ongoing executions
+            query = query.filter(Execution.start_date >= updated_at)
 
         # Apply SQL-style filter_param if present
         if filter_param:

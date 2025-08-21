@@ -54,7 +54,52 @@ logger = logging.getLogger()
 @validate_file
 def create_script():
     """
-    Create a new script
+    Create a new script by uploading a script file.
+
+    **Authentication**: JWT token required
+    **Authorization**: Admin or Superadmin access required
+    **Content-Type**: multipart/form-data (file upload)
+
+    **Form Data**:
+    - `file`: Script file to upload
+      - Supported formats: Python scripts (.py), ZIP archives
+      - Must contain valid script configuration
+      - File size limits apply (configured server-side)
+
+    **Script Requirements**:
+    - Must include proper script metadata/configuration
+    - Python scripts should follow trends.earth script structure
+    - ZIP archives should contain main script file and dependencies
+
+    **Success Response Schema**:
+    ```json
+    {
+      "data": {
+        "id": "script-123",
+        "slug": "my-new-script",
+        "name": "New Analysis Script",
+        "description": "Performs geospatial analysis",
+        "status": "UPLOADED",
+        "created_at": "2025-01-15T10:30:00Z",
+        "updated_at": "2025-01-15T10:30:00Z",
+        "user_id": "admin-456",
+        "cpu": 1,
+        "memory": 2048,
+        "logs": false
+      }
+    }
+    ```
+
+    **Script Status After Creation**:
+    - `UPLOADED`: Script successfully uploaded and validated
+    - Further publishing required before execution is possible
+
+    **Error Responses**:
+    - `400 Bad Request`: Invalid file format, duplicate script, or validation failed
+    - `401 Unauthorized`: JWT token required
+    - `403 Forbidden`: Admin access required
+    - `413 Payload Too Large`: File size exceeds limits
+    - `500 Internal Server Error`: Script creation failed
     """
     logger.info("[ROUTER]: Creating a script")
 
@@ -460,7 +505,7 @@ def get_user_executions():
     - `filter`: Search/filter executions by script name, status, or other attributes
     - `sort`: Sort field (prefix with '-' for descending, e.g., '-created_at',
       '-updated_at')
-    - `updated_at`: Filter executions updated after specific timestamp (ISO 8601)
+    - `updated_at`: Filter executions started after specific timestamp (ISO 8601)
     - `page`: Page number for pagination (triggers pagination when provided)
     - `per_page`: Items per page (1-100, default: 20)
 
@@ -518,9 +563,25 @@ def get_user_executions():
     - `?sort=-updated_at` - Sort by last update descending (most recent first)
     - `?sort=status` - Sort by execution status
 
+    **Timestamp Filtering**:
+    - `?updated_at=2025-01-15T10:30:00Z` - Find executions started after date
+    - `updated_at` parameter accepts ISO 8601 format
+    - Returns executions that started after the specified timestamp
+    - Useful for incremental synchronization and monitoring recent activity
+
+    **Pagination Examples**:
+    - `?page=1&per_page=50` - Get first 50 executions with pagination
+    - `?page=2&per_page=20` - Get second page with 20 executions per page
+    - **Performance Note**: Without pagination, results are limited to 1000 executions
+
     **Field Control Examples**:
-    - `?include=logs,script_info` - Include execution logs and script details
+    - `?include=script,logs` - Include script details and execution logs
+    - `?include=script_name,user_name` - Include script and user names
     - `?exclude=params,results` - Exclude verbose parameter and result data
+
+    **Combined Query Examples**:
+        - `?updated_at=2025-08-01&include=script&page=1&per_page=20`
+    - `?filter=vegetation&sort=-created_at&exclude=params`
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
@@ -605,7 +666,7 @@ def get_executions():
 
     **Query Parameters**:
     - `user_id`: Filter executions by specific user ID (admin-only feature)
-    - `updated_at`: Filter executions updated after specific timestamp (ISO 8601)
+    - `updated_at`: Filter executions started after specific timestamp (ISO 8601)
     - `status`: Filter by execution status (PENDING, RUNNING, SUCCESS, FAILED,
       CANCELLED)
     - `include`: Comma-separated list of additional fields to include
@@ -674,7 +735,7 @@ def get_executions():
 
     **Timestamp Filtering**:
     - `updated_at` parameter accepts ISO 8601 format: `2025-01-15T10:30:00Z`
-    - Returns executions updated after the specified timestamp
+    - Returns executions that started after the specified timestamp
     - Useful for incremental synchronization and monitoring
 
     **Error Responses**:
@@ -746,7 +807,56 @@ def get_executions():
 @endpoints.route("/execution/<execution>", strict_slashes=False, methods=["GET"])
 @jwt_required()
 def get_execution(execution):
-    """Get an execution"""
+    """
+    Retrieve a specific execution by ID.
+
+    **Authentication**: JWT token required
+    **Access**: Users can only view their own executions (or admin can view any)
+
+    **Path Parameters**:
+    - `execution`: Execution ID (UUID format)
+
+    **Query Parameters**:
+    - `include`: Comma-separated list of additional fields to include
+      - Available: `script`, `script_name`, `user_name`, `user_email`, `logs`
+    - `exclude`: Comma-separated list of fields to exclude
+      - Available: `params`, `results`
+
+    **Response Schema**:
+    ```json
+    {
+      "data": {
+        "id": "abc123-def456",
+        "script_id": "vegetation-analysis",
+        "status": "SUCCESS",
+        "params": {
+          "region": "africa",
+          "year_start": 2020,
+          "year_end": 2023
+        },
+        "results": {
+          "output_file": "vegetation_change.tif",
+          "summary": "Analysis completed successfully"
+        },
+        "user_id": "user-789",
+        "start_date": "2025-01-15T10:30:00Z",
+        "end_date": "2025-01-15T11:45:00Z",
+        "progress": 100
+      }
+    }
+    ```
+
+    **Field Control Examples**:
+    - `?include=script` - Include full script details
+    - `?include=script_name,user_name` - Include script and user names only
+    - `?exclude=params,results` - Exclude large data fields
+
+    **Error Responses**:
+    - `401 Unauthorized`: JWT token required
+    - `403 Forbidden`: Cannot access execution (not yours and not admin)
+    - `404 Not Found`: Execution does not exist
+    - `500 Internal Server Error`: Server error
+    """
     logger.info("[ROUTER]: Getting execution: " + execution)
     include = request.args.get("include")
     include = include.split(",") if include else []
@@ -767,7 +877,58 @@ def get_execution(execution):
 @jwt_required()
 @validate_execution_update
 def update_execution(execution):
-    """Update an execution"""
+    """
+    Update an execution's properties (admin only).
+
+    **Authentication**: JWT token required
+    **Authorization**: Admin level access required
+    **Access**: Only admin users can update execution properties
+
+    **Path Parameters**:
+    - `execution`: Execution ID (UUID format)
+
+    **Request Body**:
+    ```json
+    {
+      "status": "CANCELLED",
+      "progress": 100,
+      "results": {
+        "reason": "User requested cancellation"
+      }
+    }
+    ```
+
+    **Updatable Fields**:
+    - `status`: Execution status (PENDING, RUNNING, SUCCESS, FAILED, CANCELLED)
+    - `progress`: Progress percentage (0-100)
+    - `results`: Results data (JSON object)
+    - `end_date`: End timestamp (ISO 8601 format)
+
+    **Response Schema**:
+    ```json
+    {
+      "data": {
+        "id": "abc123-def456",
+        "script_id": "vegetation-analysis",
+        "status": "CANCELLED",
+        "progress": 100,
+        "user_id": "user-789",
+        "start_date": "2025-01-15T10:30:00Z",
+        "end_date": "2025-01-15T10:35:00Z",
+        "results": {
+          "reason": "User requested cancellation"
+        }
+      }
+    }
+    ```
+
+    **Error Responses**:
+    - `401 Unauthorized`: JWT token required
+    - `403 Forbidden`: Admin access required
+    - `404 Not Found`: Execution does not exist
+    - `422 Unprocessable Entity`: Invalid request data
+    - `500 Internal Server Error`: Server error
+    """
     logger.info("[ROUTER]: Updating execution " + execution)
     body = request.get_json()
     user = current_user
@@ -952,7 +1113,64 @@ def cancel_execution(execution):
 
 @endpoints.route("/execution/<execution>/log", strict_slashes=False, methods=["GET"])
 def get_execution_logs(execution):
-    """Get the exectuion logs"""
+    """
+    Retrieve logs for a specific execution.
+
+    **Authentication**: Not required (public endpoint)
+    **Access**: Anyone can view execution logs for monitoring purposes
+
+    **Path Parameters**:
+    - `execution`: Execution ID (UUID format)
+
+    **Query Parameters**:
+    - `start`: Start timestamp for log filtering (ISO 8601 format)
+    - `last-id`: Last log ID for pagination/incremental updates
+
+    **Response Schema**:
+    ```json
+    {
+      "data": [
+        {
+          "id": "log-123",
+          "execution_id": "abc123-def456",
+          "timestamp": "2025-01-15T10:30:15Z",
+          "level": "INFO",
+          "message": "Processing started for region: africa",
+          "details": {
+            "step": "initialization",
+            "progress": 5
+          }
+        },
+        {
+          "id": "log-124",
+          "execution_id": "abc123-def456",
+          "timestamp": "2025-01-15T10:30:45Z",
+          "level": "INFO",
+          "message": "Analysis 25% complete",
+          "details": {
+            "step": "processing",
+            "progress": 25
+          }
+        }
+      ]
+    }
+    ```
+
+    **Usage Examples**:
+    - `?start=2025-01-15T10:30:00Z` - Get logs after specific timestamp
+    - `?last-id=log-120` - Get logs after specific log ID (pagination)
+    - `?start=2025-01-15T10:30:00Z&last-id=log-120` - Combined filtering
+
+    **Log Levels**:
+    - `DEBUG`: Detailed diagnostic information
+    - `INFO`: General information about execution progress
+    - `WARNING`: Warning messages about potential issues
+    - `ERROR`: Error messages about failures
+
+    **Error Responses**:
+    - `404 Not Found`: Execution does not exist
+    - `500 Internal Server Error`: Server error
+    """
     logger.info(f"[ROUTER]: Getting execution logs of execution {execution} ")
     try:
         start = request.args.get("start", None)
@@ -1304,7 +1522,38 @@ def get_user(user):
 @endpoints.route("/user/me", strict_slashes=False, methods=["GET"])
 @jwt_required()
 def get_me():
-    """Get me"""
+    """
+    Get current authenticated user's profile information.
+
+    **Authentication**: JWT token required
+    **Access**: Returns current user's own profile data
+
+    **Response Schema**:
+    ```json
+    {
+      "data": {
+        "id": "user-123",
+        "name": "John Doe",
+        "email": "john.doe@example.com",
+        "role": "USER",
+        "created_at": "2025-01-15T10:30:00Z",
+        "updated_at": "2025-01-15T11:45:00Z",
+        "institution": "Conservation International",
+        "country": "United States",
+        "is_active": true
+      }
+    }
+    ```
+
+    **User Roles**:
+    - `USER`: Regular user with basic permissions
+    - `MANAGER`: Manager with elevated permissions
+    - `ADMIN`: Administrator with full system access
+    - `SUPERADMIN`: Super administrator with unrestricted access
+
+    **Error Responses**:
+    - `401 Unauthorized`: JWT token required or invalid
+    """
     logger.info("[ROUTER]: Getting my user")
     user = current_user
     return jsonify(data=user.serialize()), 200
