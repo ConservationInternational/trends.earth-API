@@ -555,7 +555,8 @@ class ExecutionService:
                                 # Don't add permission errors to main
                                 # error list to avoid noise
                             else:
-                                # Add all other errors (including "not found") to errors list
+                                # Add all other errors (including "not found")
+                                # to errors list
                                 if "not found" in error_msg.lower():
                                     logger.info(
                                         f"[SERVICE]: GEE task {gee_result['task_id']} "
