@@ -51,7 +51,7 @@ def get_docker_client():
                 # Configure Docker client with extended timeouts for push operations
                 docker_client = docker.DockerClient(
                     base_url=DOCKER_HOST,
-                    timeout=300,  # 5 minutes timeout for large operations
+                    timeout=300,
                 )
                 docker_client.ping()
             else:
@@ -238,11 +238,26 @@ class DockerService:
         Retry logic with exponential backoff and better error handling.
         """
         import http.client
+        import socket
         import time
 
         import urllib3
 
-        logger.debug(f"Pushing image with tag {tag_image}")
+        # Log node information for debugging
+        hostname = socket.gethostname()
+        logger.debug(f"Pushing image with tag {tag_image} from node {hostname}")
+        
+        # Check Docker Swarm node info if available
+        try:
+            client = get_docker_client()
+            if client:
+                swarm_info = client.info().get('Swarm', {})
+                node_id = swarm_info.get('NodeID', 'unknown')
+                is_manager = swarm_info.get('ControlAvailable', False)
+                logger.info(f"Docker Swarm node info - ID: {node_id}, Manager: {is_manager}, Hostname: {hostname}")
+        except Exception as e:
+            logger.warning(f"Could not get Docker Swarm info: {e}")
+        
         max_retries = 4
         base_delay = 3
         attempt = 0
@@ -264,8 +279,32 @@ class DockerService:
 
                 push_tag = f"{REGISTRY_URL}/{tag_image}"
                 logger.debug(
-                    f"Attempting push {attempt + 1}/{max_retries} for {push_tag}"
+                    f"Attempting push {attempt + 1}/{max_retries} for {push_tag} from node {hostname}"
                 )
+
+                # Test registry connectivity before push attempt
+                if attempt == 0:  # Only test on first attempt
+                    try:
+                        # Try to ping the registry by attempting a simple pull of a minimal image
+                        # This helps identify connectivity issues early
+                        registry_host = REGISTRY_URL.split(':')[0] if ':' in REGISTRY_URL else REGISTRY_URL
+                        logger.debug(f"Testing connectivity to registry {registry_host}")
+                        
+                        # Test basic TCP connectivity to registry
+                        import socket
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock.settimeout(10)  # 10 second timeout
+                        registry_port = int(REGISTRY_URL.split(':')[1]) if ':' in REGISTRY_URL else 5000
+                        result = sock.connect_ex((registry_host, registry_port))
+                        sock.close()
+                        
+                        if result != 0:
+                            logger.warning(f"Registry connectivity test failed - cannot connect to {registry_host}:{registry_port}")
+                        else:
+                            logger.debug(f"Registry connectivity test passed for {registry_host}:{registry_port}")
+                            
+                    except Exception as conn_test_error:
+                        logger.warning(f"Registry connectivity test failed: {conn_test_error}")
 
                 # Configure push with streaming and decode
                 push_stream = client.images.push(push_tag, stream=True, decode=True)
