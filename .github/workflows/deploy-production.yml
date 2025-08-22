@@ -174,60 +174,51 @@ jobs:
           # Deploy with Docker Swarm
           echo "📦 Deploying services..."
           
-          # Attempt to remove existing stack but continue even if it fails due to network conflicts
-          echo "🔄 Ensuring clean deployment environment..."
-          if docker stack ls --format "{{.Name}}" | grep -q "trends-earth-prod"; then
-            echo "Removing existing stack trends-earth-prod..."
-            docker stack rm trends-earth-prod || {
-              echo "⚠️ Stack removal failed (likely due to active execution services using networks)"
-              echo "Continuing with deployment - this is expected when executions are running"
-            }
+          # Check if execution services are running that would prevent clean stack removal
+          active_executions=$(docker service ls --filter "name=execution-" --format "{{.Name}}" | wc -l)
+          if [ $active_executions -gt 0 ]; then
+            echo "⚠️ Found $active_executions active execution services - using rolling update instead of stack removal"
+            echo "Active executions:"
+            docker service ls --filter "name=execution-" --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"
+            
+            # Use docker stack deploy which will perform rolling updates without removing networks
+            echo "🔄 Performing rolling update deployment..."
+            docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
+            
           else
-            echo "No existing stack found - proceeding with fresh deployment"
-          fi
-          
-          # Wait for all services to be completely removed
-          echo "⏳ Waiting for stack cleanup to complete..."
-          timeout=60
-          while [ $timeout -gt 0 ]; do
-            if ! docker service ls --format "{{.Name}}" | grep -q "trends-earth-prod"; then
-              echo "✅ Stack cleanup completed"
-              break
-            fi
-            echo "⏳ Waiting for services to stop... ($timeout seconds remaining)"
-            sleep 5
-            timeout=$((timeout - 5))
-          done
-          
-          # Additional cleanup - remove any lingering containers
-          echo "🧹 Cleaning up any remaining containers..."
-          docker ps -a --filter "name=trends-earth-prod" --format "{{.Names}}" | xargs -r docker rm -f || true
-          
-          # Remove any existing networks to ensure clean state (but preserve active execution network)
-          echo "🌐 Cleaning up overlay networks..."
-          if docker network ls --format "{{.Name}}" | grep -q "trends-earth-prod_backend"; then
-            echo "Removing existing network trends-earth-prod_backend..."
-            # Force remove network even if it has active endpoints
-            docker network rm trends-earth-prod_backend --force || true
-            echo "✅ Backend network cleanup completed"
-            sleep 3
-          fi
-          
-          # Handle execution network more carefully - check if executions are running
-          if docker network ls --format "{{.Name}}" | grep -q "trends-earth-prod_execution"; then
-            echo "Checking execution network for active services..."
-            # Check if there are any execution services still running
-            active_executions=$(docker service ls --filter "name=execution-" --format "{{.Name}}" | wc -l)
-            if [ $active_executions -gt 0 ]; then
-              echo "⚠️ Found $active_executions active execution services - preserving execution network"
-              echo "Active executions:"
-              docker service ls --filter "name=execution-" --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"
-            else
-              echo "No active executions found - removing execution network..."
+            echo "No active executions found - can perform clean stack removal"
+            # Safe to remove and redeploy stack
+            if docker stack ls --format "{{.Name}}" | grep -q "trends-earth-prod"; then
+              echo "Removing existing stack trends-earth-prod..."
+              docker stack rm trends-earth-prod
+              
+              # Wait for complete cleanup
+              echo "⏳ Waiting for stack cleanup to complete..."
+              timeout=60
+              while [ $timeout -gt 0 ]; do
+                if ! docker service ls --format "{{.Name}}" | grep -q "trends-earth-prod"; then
+                  echo "✅ Stack cleanup completed"
+                  break
+                fi
+                echo "⏳ Waiting for services to stop... ($timeout seconds remaining)"
+                sleep 5
+                timeout=$((timeout - 5))
+              done
+              
+              # Additional cleanup - remove any lingering containers
+              echo "🧹 Cleaning up any remaining containers..."
+              docker ps -a --filter "name=trends-earth-prod" --format "{{.Names}}" | xargs -r docker rm -f || true
+              
+              # Remove networks since no executions are running
+              echo "🌐 Cleaning up networks..."
+              docker network rm trends-earth-prod_backend --force || true
               docker network rm trends-earth-prod_execution --force || true
-              echo "✅ Execution network cleanup completed"
               sleep 3
             fi
+            
+            # Deploy fresh stack
+            echo "🚀 Deploying fresh stack..."
+            docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
           fi
           
           # Ensure we're using the latest compose file
@@ -236,10 +227,6 @@ jobs:
             echo "❌ Compose file not found: ${{ env.COMPOSE_FILE }}"
             exit 1
           fi
-          
-          # Deploy fresh stack (will create networks if they don't exist, reuse if they do)
-          echo "🚀 Deploying stack (will reuse existing networks if present)..."
-          docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
           
           # Wait for services to be ready
           echo "⏳ Waiting for services to be ready..."
