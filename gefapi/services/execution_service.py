@@ -554,16 +554,18 @@ class ExecutionService:
                                 )
                                 # Don't add permission errors to main
                                 # error list to avoid noise
-                            elif "not found" in error_msg.lower():
-                                logger.info(
-                                    f"[SERVICE]: GEE task {gee_result['task_id']} "
-                                    f"not found - may have already completed"
-                                )
                             else:
-                                logger.warning(
-                                    f"[SERVICE]: Failed to cancel GEE task "
-                                    f"{gee_result['task_id']}: {error_msg}"
-                                )
+                                # Add all other errors (including "not found") to errors list
+                                if "not found" in error_msg.lower():
+                                    logger.info(
+                                        f"[SERVICE]: GEE task {gee_result['task_id']} "
+                                        f"not found - may have already completed"
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"[SERVICE]: Failed to cancel GEE task "
+                                        f"{gee_result['task_id']}: {error_msg}"
+                                    )
                                 cancellation_results["errors"].append(
                                     f"GEE task {gee_result['task_id']}: {error_msg}"
                                 )

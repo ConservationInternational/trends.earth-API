@@ -29,10 +29,14 @@ class TestExecutionCancellation:
         assert "6CIGR7EG2J45GJ2DN2J7X3WZ" in task_ids
         assert "YBKKBHM2V63JYBVIPCCRY7A2" in task_ids
 
+    @patch("gefapi.services.gee_service.SETTINGS")
     @patch("gefapi.services.gee_service.GEEService._initialize_ee")
     @patch("builtins.__import__")
-    def test_cancel_gee_task_success(self, mock_import, mock_init_ee):
+    def test_cancel_gee_task_success(self, mock_import, mock_init_ee, mock_settings):
         """Test successful GEE task cancellation"""
+        # Mock SETTINGS to provide GOOGLE_PROJECT_ID
+        mock_settings.get.return_value = {"GOOGLE_PROJECT_ID": "test-project"}
+
         # Mock successful EE initialization
         mock_init_ee.return_value = True
 
@@ -61,10 +65,16 @@ class TestExecutionCancellation:
         mock_ee.data.getOperation.assert_called_once()
         mock_ee.data.cancelOperation.assert_called_once()
 
+    @patch("gefapi.services.gee_service.SETTINGS")
     @patch("gefapi.services.gee_service.GEEService._initialize_ee")
     @patch("builtins.__import__")
-    def test_cancel_gee_task_already_completed(self, mock_import, mock_init_ee):
+    def test_cancel_gee_task_already_completed(
+        self, mock_import, mock_init_ee, mock_settings
+    ):
         """Test GEE task cancellation when task is already completed"""
+        # Mock SETTINGS to provide GOOGLE_PROJECT_ID
+        mock_settings.get.return_value = {"GOOGLE_PROJECT_ID": "test-project"}
+
         # Mock successful EE initialization
         mock_init_ee.return_value = True
 
