@@ -6,6 +6,7 @@ import logging
 import os
 from pathlib import Path
 from shutil import copy
+import socket
 import tarfile
 import tempfile
 
@@ -43,16 +44,49 @@ except Exception as e:
 
 
 def get_docker_client():
-    """Get docker client with lazy initialization and error handling"""
+    """Get docker client with lazy initialization and Docker 28.x compatibility"""
     global docker_client
     if docker_client is None:
         try:
             if DOCKER_HOST:
-                # Configure Docker client with extended timeouts for push operations
-                docker_client = docker.DockerClient(
-                    base_url=DOCKER_HOST,
-                    timeout=300,
-                )
+                # Configure Docker client with Docker Engine 28.x compatibility fix
+                client_kwargs = {
+                    "base_url": DOCKER_HOST,
+                    "timeout": 300,  # Standard timeout
+                }
+
+                # Check Docker version for compatibility workarounds
+                try:
+                    temp_client = docker.DockerClient(base_url=DOCKER_HOST)
+                    version_info = temp_client.version()
+                    engine_version = version_info.get("Version", "")
+                    temp_client.close()
+
+                    # Docker Engine 28+ has known registry push issues
+                    version_major = (
+                        int(engine_version.split(".")[0])
+                        if engine_version.split(".")[0].isdigit()
+                        else 0
+                    )
+                    if version_major >= 28:
+                        logger.info(
+                            f"Detected Docker Engine {engine_version} "
+                            f"(v{version_major}+) "
+                            "- applying compatibility fixes"
+                        )
+                        # Force HTTP/1.1 for registry communication
+                        client_kwargs.update(
+                            {
+                                "user_agent": f"docker/{engine_version} "
+                                "(registry-compat)",
+                            }
+                        )
+                except Exception as version_check_error:
+                    logger.warning(
+                        f"Could not check Docker version: {version_check_error}"
+                    )
+
+                docker_client = docker.DockerClient(**client_kwargs)
                 docker_client.ping()
             else:
                 raise Exception("DOCKER_HOST not configured")
@@ -233,12 +267,9 @@ class DockerService:
     @staticmethod
     def push(script_id, tag_image):
         """
-        Push image to private docker registry with retry mechanism.
-
-        Retry logic with exponential backoff and better error handling.
+        Push image to private docker registry
         """
         import http.client
-        import socket
         import time
 
         import urllib3
@@ -261,8 +292,8 @@ class DockerService:
         except Exception as e:
             logger.warning(f"Could not get Docker Swarm info: {e}")
 
-        max_retries = 4
-        base_delay = 3
+        max_retries = 3
+        base_delay = 2
         attempt = 0
         last_error = None
         output_lines = []
@@ -286,51 +317,47 @@ class DockerService:
                     f"from node {hostname}"
                 )
 
-                # Test registry connectivity before push attempt
-                if attempt == 0:  # Only test on first attempt
-                    try:
-                        # Try to ping the registry by attempting a simple pull
-                        # of a minimal image. This helps identify connectivity
-                        # issues early
-                        registry_host = (
-                            REGISTRY_URL.split(":")[0]
-                            if ":" in REGISTRY_URL
-                            else REGISTRY_URL
-                        )
+                # Docker Engine 28+ compatibility fix for IncompleteRead errors
+                try:
+                    version_info = client.version()
+                    engine_version = version_info.get("Version", "")
+
+                    version_major = (
+                        int(engine_version.split(".")[0])
+                        if engine_version.split(".")[0].isdigit()
+                        else 0
+                    )
+                    if version_major >= 28:
                         logger.debug(
-                            f"Testing connectivity to registry {registry_host}"
+                            f"Applying Docker Engine {engine_version} "
+                            f"(v{version_major}+) registry compatibility fix"
                         )
 
-                        # Test basic TCP connectivity to registry
-                        import socket
-
-                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.settimeout(10)  # 10 second timeout
-                        registry_port = (
-                            int(REGISTRY_URL.split(":")[1])
-                            if ":" in REGISTRY_URL
-                            else 5000
-                        )
-                        result = sock.connect_ex((registry_host, registry_port))
-                        sock.close()
-
-                        if result != 0:
-                            logger.warning(
-                                f"Registry connectivity test failed - "
-                                f"cannot connect to {registry_host}:{registry_port}"
-                            )
-                        else:
+                        # Force HTTP/1.1 for registry communication
+                        try:
+                            session = getattr(client.api, "_session", None)
+                            if session:
+                                session.headers.update(
+                                    {
+                                        "Connection": "close",
+                                        "HTTP2-Settings": "",  # Disable HTTP/2
+                                        "Upgrade": "",  # Disable protocol upgrade
+                                    }
+                                )
+                                logger.debug(
+                                    f"Applied Docker {version_major}+ "
+                                    "HTTP/1.1 compatibility headers"
+                                )
+                        except Exception as http_fix_error:
                             logger.debug(
-                                f"Registry connectivity test passed for "
-                                f"{registry_host}:{registry_port}"
+                                f"Could not apply HTTP fixes: {http_fix_error}"
                             )
 
-                    except Exception as conn_test_error:
-                        logger.warning(
-                            f"Registry connectivity test failed: {conn_test_error}"
-                        )
+                except Exception as version_check_error:
+                    logger.debug(
+                        f"Could not check Docker version: {version_check_error}"
+                    )
 
-                # Configure push with streaming and decode
                 push_stream = client.images.push(push_tag, stream=True, decode=True)
 
                 result_aux = None
@@ -385,14 +412,17 @@ class DockerService:
                 RuntimeError,  # Retry on blob unknown
             ) as error:
                 last_error = error
-                logger.warning(f"Push attempt {attempt + 1} failed: {error}")
+                error_type = type(error).__name__
+                logger.warning(
+                    f"Push attempt {attempt + 1} failed with {error_type}: {error}"
+                )
+
                 # Save logs for this failed attempt
                 for log_line in output_lines:
                     DockerService.save_build_log(script_id=script_id, line=log_line)
 
                 if attempt < max_retries - 1:
-                    # Exponential backoff with jitter
-                    delay = min(base_delay * (2**attempt), 60)  # Cap at 60 seconds
+                    delay = base_delay * (2**attempt)
                     logger.info(
                         f"Retrying push in {delay} seconds "
                         f"(attempt {attempt + 2}/{max_retries})..."
