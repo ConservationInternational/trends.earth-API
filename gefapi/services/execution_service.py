@@ -535,7 +535,7 @@ class ExecutionService:
                     gee_results = GEEService.cancel_gee_tasks_from_execution(log_texts)
                     cancellation_results["gee_tasks_cancelled"] = gee_results
 
-                    # Log GEE cancellation results
+                    # Log GEE cancellation results with better error categorization
                     for gee_result in gee_results:
                         if gee_result["success"]:
                             logger.info(
@@ -543,14 +543,30 @@ class ExecutionService:
                                 f"{gee_result['task_id']}"
                             )
                         else:
-                            logger.warning(
-                                f"[SERVICE]: Failed to cancel GEE task "
-                                f"{gee_result['task_id']}: {gee_result['error']}"
-                            )
-                            cancellation_results["errors"].append(
-                                f"GEE task {gee_result['task_id']}: "
-                                f"{gee_result['error']}"
-                            )
+                            # Categorize error types for better logging
+                            error_msg = gee_result.get("error", "Unknown error")
+                            if "permission" in error_msg.lower():
+                                logger.warning(
+                                    f"[SERVICE]: Permission denied for GEE task "
+                                    f"{gee_result['task_id']} - service account may "
+                                    "lack earthengine.operations.get/cancel "
+                                    "permissions"
+                                )
+                                # Don't add permission errors to main
+                                # error list to avoid noise
+                            elif "not found" in error_msg.lower():
+                                logger.info(
+                                    f"[SERVICE]: GEE task {gee_result['task_id']} "
+                                    f"not found - may have already completed"
+                                )
+                            else:
+                                logger.warning(
+                                    f"[SERVICE]: Failed to cancel GEE task "
+                                    f"{gee_result['task_id']}: {error_msg}"
+                                )
+                                cancellation_results["errors"].append(
+                                    f"GEE task {gee_result['task_id']}: {error_msg}"
+                                )
                 else:
                     logger.info("[SERVICE]: No logs found to scan for GEE task IDs")
             except Exception as gee_error:
