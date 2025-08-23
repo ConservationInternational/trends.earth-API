@@ -12,6 +12,7 @@ import tempfile
 
 import docker
 from docker import errors as docker_errors
+from docker import types as docker_types
 import rollbar
 
 from gefapi import celery as celery_app  # Rename to avoid mypy confusion
@@ -25,39 +26,79 @@ DOCKER_HOST = SETTINGS.get("DOCKER_HOST")
 
 logger = logging.getLogger()
 
-# Initialize docker client with error handling
-docker_client = None
-try:
+
+def _candidate_docker_hosts() -> list[str]:
+    """Return candidate base_urls to try for connecting to the Docker daemon."""
+    candidates: list[str] = []
+
     if DOCKER_HOST:
-        docker_client = docker.DockerClient(base_url=DOCKER_HOST)
-        # Test the connection
-        docker_client.ping()
-    else:
+        candidates.append(DOCKER_HOST)
+
+    # Common defaults inside containers
+    candidates.extend(
+        [
+            "unix://var/run/docker.sock",  # standard socket path
+            "unix://tmp/docker.sock",  # fallback if mounted to /tmp
+        ]
+    )
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique_candidates = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            unique_candidates.append(c)
+    return unique_candidates
+
+
+# Initialize docker client with error handling and fallbacks
+docker_client = None
+_active_docker_host: str | None = None
+try:
+    for base_url in _candidate_docker_hosts():
+        try:
+            temp_client = docker.DockerClient(base_url=base_url)
+            temp_client.ping()
+            docker_client = temp_client
+            _active_docker_host = base_url
+            logger.info(f"Connected to Docker daemon via {base_url}")
+            break
+        except Exception as conn_err:
+            logger.debug(f"Docker connection failed for {base_url}: {conn_err}")
+    if docker_client is None:
         logger.warning(
-            "DOCKER_HOST not configured, Docker functionality will be disabled"
+            "Docker daemon not reachable. Ensure the Docker socket is mounted and\n"
+            "DOCKER_HOST is set correctly (e.g., unix://var/run/docker.sock)."
         )
 except Exception as e:
     logger.warning(
-        f"Failed to connect to Docker: {e}. Docker functionality will be disabled"
+        f"Failed to initialize Docker client: {e}. "
+        "Docker functionality will be disabled"
     )
     docker_client = None
 
 
 def get_docker_client():
-    """Get docker client with lazy initialization and Docker 28.x compatibility"""
-    global docker_client
+    """Get docker client with lazy initialization and Docker 28.x compatibility.
+
+    Tries multiple base_urls for robustness when running in Swarm with a mounted
+    Unix socket.
+    """
+    global docker_client, _active_docker_host
     if docker_client is None:
-        try:
-            if DOCKER_HOST:
+        last_error: Exception | None = None
+        for base_url in _candidate_docker_hosts():
+            try:
                 # Configure Docker client with Docker Engine 28.x compatibility fix
                 client_kwargs = {
-                    "base_url": DOCKER_HOST,
+                    "base_url": base_url,
                     "timeout": 300,  # Standard timeout
                 }
 
                 # Check Docker version for compatibility workarounds
                 try:
-                    temp_client = docker.DockerClient(base_url=DOCKER_HOST)
+                    temp_client = docker.DockerClient(base_url=base_url)
                     version_info = temp_client.version()
                     engine_version = version_info.get("Version", "")
                     temp_client.close()
@@ -71,8 +112,7 @@ def get_docker_client():
                     if version_major >= 28:
                         logger.info(
                             f"Detected Docker Engine {engine_version} "
-                            f"(v{version_major}+) "
-                            "- applying compatibility fixes"
+                            f"(v{version_major}+) - applying compatibility fixes"
                         )
                         # Force HTTP/1.1 for registry communication
                         client_kwargs.update(
@@ -82,23 +122,30 @@ def get_docker_client():
                             }
                         )
                 except Exception as version_check_error:
-                    logger.warning(
-                        f"Could not check Docker version: {version_check_error}"
+                    logger.debug(
+                        "Could not check Docker version on "
+                        f"{base_url}: {version_check_error}"
                     )
 
-                docker_client = docker.DockerClient(**client_kwargs)
-                docker_client.ping()
-            else:
-                raise Exception("DOCKER_HOST not configured")
-        except Exception as e:
-            logger.error(f"Failed to connect to Docker: {e}")
+                candidate = docker.DockerClient(**client_kwargs)
+                candidate.ping()
+                docker_client = candidate
+                _active_docker_host = base_url
+                logger.info(f"Connected to Docker daemon via {base_url}")
+                break
+            except Exception as e:
+                last_error = e
+                logger.debug(f"Docker connection failed for {base_url}: {e}")
+
+        if docker_client is None:
+            logger.error(f"Failed to connect to Docker: {last_error}")
             # In development environment, we might not always have Docker available
             if SETTINGS.get("ENVIRONMENT") == "dev":
                 logger.warning(
                     "Running in development mode - Docker functionality disabled"
                 )
                 return None
-            raise
+            raise last_error if last_error else Exception("Docker not available")
     return docker_client
 
 
@@ -536,7 +583,9 @@ class DockerService:
                 for item in environment.items():
                     env.append(f"{item[0]}={item[1]}")
 
-                script = Script.query.get(Execution.query.get(execution_id).script_id)
+                # Resolve execution and script safely
+                exec_obj = Execution.query.get(execution_id)
+                script = Script.query.get(exec_obj.script_id) if exec_obj else None
 
                 client = get_docker_client()
 
@@ -547,10 +596,14 @@ class DockerService:
                     execution_network = None
                     current_env = os.getenv("ENVIRONMENT", "prod")
 
+                    # Ensure client is available
+                    if client is None:
+                        raise Exception("Docker client is not available")
+
                     # Find the execution network for this environment
                     all_networks = client.networks.list()
                     for network in all_networks:
-                        network_name = network.name
+                        network_name = str(network.name)
 
                         # For Docker Compose (only in development environment)
                         if current_env == "dev" and network_name == "execution":
@@ -578,11 +631,11 @@ class DockerService:
                             f"network {execution_network.name}"
                         )
                     else:
-                        raise docker.errors.NotFound(
+                        raise docker_errors.NotFound(
                             f"No execution network found for environment: {current_env}"
                         )
 
-                except docker.errors.NotFound:
+                except docker_errors.NotFound:
                     logger.warning(
                         f"Execution network not found for environment "
                         f"{os.getenv('ENVIRONMENT', 'prod')}, execution "
@@ -591,28 +644,46 @@ class DockerService:
                 except Exception as e:
                     logger.warning(f"Failed to autodetect execution network: {e}")
 
-                client.services.create(
-                    image=f"{REGISTRY_URL}/{image}",
-                    command="./entrypoint.sh",
-                    env=env,
-                    name="execution-" + str(execution_id),
-                    labels={
+                # Ensure Docker client is available (helps static analysis)
+                if client is None:
+                    raise Exception("Docker client is not available")
+
+                create_kwargs = {
+                    "image": f"{REGISTRY_URL}/{image}",
+                    "command": "./entrypoint.sh",
+                    "env": env,
+                    "name": "execution-" + str(execution_id),
+                    "labels": {
                         "execution.id": str(execution_id),
-                        "execution.script_id": str(script.id),
                         "service.type": "execution",
                         "managed.by": "trends.earth-api",
                     },
-                    networks=networks,
-                    resources=docker.types.Resources(
+                    "networks": networks,
+                    "restart_policy": docker_types.RestartPolicy(
+                        condition="on-failure", delay=60, max_attempts=2, window=7200
+                    ),
+                }
+
+                # Include script-specific labels/resources if available
+                if script and getattr(script, "id", None):
+                    create_kwargs["labels"]["execution.script_id"] = str(script.id)
+                if script and all(
+                    getattr(script, attr, None) is not None
+                    for attr in (
+                        "cpu_reservation",
+                        "cpu_limit",
+                        "memory_reservation",
+                        "memory_limit",
+                    )
+                ):
+                    create_kwargs["resources"] = docker_types.Resources(
                         cpu_reservation=script.cpu_reservation,
                         cpu_limit=script.cpu_limit,
                         mem_reservation=script.memory_reservation,
                         mem_limit=script.memory_limit,
-                    ),
-                    restart_policy=docker.types.RestartPolicy(
-                        condition="on-failure", delay=60, max_attempts=2, window=7200
-                    ),
-                )
+                    )
+
+                client.services.create(**create_kwargs)
             else:
                 logger.info(
                     "Creating container (running in "
@@ -621,6 +692,8 @@ class DockerService:
                     f"execution-{str(execution_id)})",
                 )
                 client = get_docker_client()
+                if client is None:
+                    raise Exception("Docker client is not available")
                 client.containers.run(
                     image=f"{REGISTRY_URL}/{image}",
                     command="./entrypoint.sh",
