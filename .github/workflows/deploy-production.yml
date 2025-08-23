@@ -183,12 +183,7 @@ jobs:
             
             # Use docker stack deploy which will perform rolling updates without removing networks
             echo "🔄 Performing rolling update deployment..."
-            # Pre-process compose file to ensure reliable environment variable substitution
-            docker compose -f ${{ env.COMPOSE_FILE }} config > docker-compose.resolved.yml
-            # Fix formatting issues for docker stack deploy compatibility
-            sed -i 's/cpus: \([0-9.]*\)/cpus: "\1"/g' docker-compose.resolved.yml
-            sed -i 's/memory: \([0-9]*\)/memory: "\1"/g' docker-compose.resolved.yml
-            docker stack deploy -c docker-compose.resolved.yml --with-registry-auth trends-earth-prod
+            docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
             
           else
             echo "No active executions found - can perform clean stack removal"
@@ -223,12 +218,7 @@ jobs:
             
             # Deploy fresh stack
             echo "🚀 Deploying fresh stack..."
-            # Pre-process compose file to ensure reliable environment variable substitution
-            docker compose -f ${{ env.COMPOSE_FILE }} config > docker-compose.resolved.yml
-            # Fix formatting issues for docker stack deploy compatibility
-            sed -i 's/cpus: \([0-9.]*\)/cpus: "\1"/g' docker-compose.resolved.yml
-            sed -i 's/memory: \([0-9]*\)/memory: "\1"/g' docker-compose.resolved.yml
-            docker stack deploy -c docker-compose.resolved.yml --with-registry-auth trends-earth-prod
+            docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
           fi
           
           # Ensure we're using the latest compose file
