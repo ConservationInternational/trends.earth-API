@@ -240,6 +240,30 @@ jobs:
             # Deploy fresh stack
             echo "⏳ Short wait to allow Swarm to finalize network teardown..."
             sleep 5
+            # Remove stale backend network if it still exists (no executions running now)
+            if docker network ls --format '{{.Name}}' | grep -Fx 'trends-earth-prod_backend' >/dev/null 2>&1; then
+              echo "🧹 Removing stale backend network trends-earth-prod_backend if unused..."
+              attached=$(docker network inspect trends-earth-prod_backend --format '{{ (index . 0).Containers }}' 2>/dev/null | grep -v 'map\[\]' || true)
+              if [ -z "$attached" ]; then
+                docker network rm trends-earth-prod_backend || true
+                # brief settle time
+                sleep 2
+              else
+                echo "⚠️  Backend network has attached containers; skipping removal"
+              fi
+            fi
+
+            # Remove stale execution network if it still exists (safe because no executions are running)
+            if docker network ls --format '{{.Name}}' | grep -Fx 'trends-earth-prod_execution' >/dev/null 2>&1; then
+              echo "🧹 Removing stale execution network trends-earth-prod_execution if unused..."
+              attached=$(docker network inspect trends-earth-prod_execution --format '{{ (index . 0).Containers }}' 2>/dev/null | grep -v 'map\[\]' || true)
+              if [ -z "$attached" ]; then
+                docker network rm trends-earth-prod_execution || true
+                sleep 2
+              else
+                echo "⚠️  Execution network has attached containers; skipping removal"
+              fi
+            fi
             echo "🚀 Deploying fresh stack..."
             attempts=0
             until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod; do
