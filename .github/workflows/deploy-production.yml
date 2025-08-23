@@ -272,22 +272,22 @@ jobs:
               # Additional cleanup - remove any lingering containers
               echo "🧹 Cleaning up any remaining containers..."
               docker ps -a --filter "name=trends-earth-prod" --format "{{.Names}}" | xargs -r docker rm -f || true
-              
-                # Remove lingering stack-scoped networks if they exist and are unused
-                for net in trends-earth-prod_backend trends-earth-prod_execution; do
-                  if docker network ls --format '{{.Name}}' | grep -Fx "$net" >/dev/null 2>&1; then
-                    attached=$(docker network inspect "$net" --format '{{ (index . 0).Containers }}' 2>/dev/null | grep -v 'map\[\]' || true)
-                    if [ -z "$attached" ]; then
-                      echo "🧹 Removing lingering network $net..."
-                      docker network rm "$net" || true
-                    else
-                      echo "⚠️  Skipping removal of $net; containers are still attached"
-                    fi
-                  fi
-                done
-
-                # Networks will be recreated by docker stack deploy per compose
             fi
+            
+            # Always attempt to remove lingering stack-scoped networks (safe because no active executions)
+            for net in trends-earth-prod_backend trends-earth-prod_execution; do
+              if docker network ls --format '{{.Name}}' | grep -Fx "$net" >/dev/null 2>&1; then
+                attached=$(docker network inspect "$net" --format '{{ (index . 0).Containers }}' 2>/dev/null | grep -v 'map\[\]' || true)
+                if [ -z "$attached" ]; then
+                  echo "🧹 Removing lingering network $net..."
+                  docker network rm "$net" || true
+                else
+                  echo "⚠️  Skipping removal of $net; containers are still attached"
+                fi
+              fi
+            done
+            
+            # Networks will be recreated by docker stack deploy per compose
             
             # Deploy fresh stack
             echo "🚀 Deploying fresh stack..."
