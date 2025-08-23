@@ -55,13 +55,13 @@ class TestExecutionCancellation:
         mock_ee.data.cancelOperation.return_value = None
 
         # Mock the import to return our mock ee module
-        def side_effect(name, *args, **kwargs):
+        def import_side_effect(name, *args, **kwargs):
             if name == "ee":
                 return mock_ee
             # For all other imports, use the real import
             return __import__(name, *args, **kwargs)
 
-        mock_import.side_effect = side_effect
+        mock_import.side_effect = import_side_effect
 
         result = GEEService.cancel_gee_task("6CIGR7EG2J45GJ2DN2J7X3WZ")
 
@@ -98,13 +98,13 @@ class TestExecutionCancellation:
         }
 
         # Mock the import to return our mock ee module
-        def side_effect(name, *args, **kwargs):
+        def import_side_effect(name, *args, **kwargs):
             if name == "ee":
                 return mock_ee
             # For all other imports, use the real import
             return __import__(name, *args, **kwargs)
 
-        mock_import.side_effect = side_effect
+        mock_import.side_effect = import_side_effect
 
         result = GEEService.cancel_gee_task("6CIGR7EG2J45GJ2DN2J7X3WZ")
 
