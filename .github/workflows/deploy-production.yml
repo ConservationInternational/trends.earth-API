@@ -163,64 +163,9 @@ jobs:
             exit 1
           fi
           
-          # ----------------------------------------------------------------------------
-          # Network utilities: Ensure overlay networks exist and are healthy (driver/IPAM)
-          # ----------------------------------------------------------------------------
-          ensure_overlay_network() {
-            # $1=name, $2=desired_subnet, $3=fallback_subnet
-            local name="$1"; local subnet="$2"; local fb="$3"
-            local exists drv ipam attached
-            exists=$(docker network ls --format '{{.Name}}' | grep -Fx "$name" || true)
-            if [ -n "$exists" ]; then
-              drv=$(docker network inspect "$name" --format '{{ (index . 0).Driver }}' 2>/dev/null || echo "")
-              ipam=$(docker network inspect "$name" --format '{{ (index . 0).IPAM.Config }}' 2>/dev/null || echo "")
-              if [ "$drv" = "overlay" ] && [ -n "$ipam" ] && [ "$ipam" != "<no value>" ]; then
-                echo "✅ Network $name is a healthy overlay"
-                return 0
-              fi
-              echo "⚠️  Network $name exists but is misconfigured (driver='$drv')."
-              attached=$(docker network inspect "$name" --format '{{ (index . 0).Containers }}' 2>/dev/null | grep -v 'map\[\]' || true)
-              if [ -n "$attached" ]; then
-                echo "❌ Cannot recreate $name while containers are attached. Abort for safety."
-                return 2
-              fi
-              docker network rm "$name" || true
-              sleep 1
-            fi
-            echo "🌐 Creating overlay network $name with subnet $subnet"
-            if docker network create --driver overlay --attachable --subnet "$subnet" "$name" >/dev/null 2>&1; then
-              drv=$(docker network inspect "$name" --format '{{ (index . 0).Driver }}' 2>/dev/null || echo "")
-              ipam=$(docker network inspect "$name" --format '{{ (index . 0).IPAM.Config }}' 2>/dev/null || echo "")
-              if [ "$drv" = "overlay" ] && [ -n "$ipam" ] && [ "$ipam" != "<no value>" ]; then
-                echo "✅ Created overlay network $name ($subnet)"
-                return 0
-              fi
-              echo "⚠️  Network $name created but invalid driver/IPAM; recreating with fallback"
-              docker network rm "$name" || true; sleep 1
-            else
-              echo "⚠️  Failed to create $name with $subnet; trying fallback $fb"
-            fi
-            if [ -n "$fb" ]; then
-              if docker network create --driver overlay --attachable --subnet "$fb" "$name" >/dev/null 2>&1; then
-                drv=$(docker network inspect "$name" --format '{{ (index . 0).Driver }}' 2>/dev/null || echo "")
-                ipam=$(docker network inspect "$name" --format '{{ (index . 0).IPAM.Config }}' 2>/dev/null || echo "")
-                if [ "$drv" = "overlay" ] && [ -n "$ipam" ] && [ "$ipam" != "<no value>" ]; then
-                  echo "✅ Created overlay network $name ($fb)"
-                  return 0
-                fi
-              fi
-            fi
-            echo "❌ Failed to ensure overlay network $name"
-            return 1
-          }
-
-          # Load and export critical environment variables from prod.env
-          # These are required for Docker network creation
-          export DOCKER_SUBNET=$(grep "^DOCKER_SUBNET=" prod.env | cut -d'=' -f2 || echo "10.10.0.0/16")
-          export EXECUTION_SUBNET=$(grep "^EXECUTION_SUBNET=" prod.env | cut -d'=' -f2 || echo "10.11.0.0/24")
-          # Fallback ranges unlikely to collide with common VPCs
-          export FALLBACK_DOCKER_SUBNET="10.12.0.0/16"
-          export FALLBACK_EXECUTION_SUBNET="10.13.0.0/24"
+          # No custom network management: rely on docker stack deploy per compose.
+          # We only preserve the execution network by avoiding stack removal when
+          # active execution services are present.
           
           # Set version information for health checks
           export GIT_COMMIT_SHA="${{ github.sha }}"
@@ -230,8 +175,6 @@ jobs:
           # Verify environment variables are set correctly
           echo "📋 Environment variables:"
           echo "  DOCKER_REGISTRY: $DOCKER_REGISTRY"
-          echo "  DOCKER_SUBNET: $DOCKER_SUBNET"
-          echo "  EXECUTION_SUBNET: $EXECUTION_SUBNET"
           echo "  GIT_COMMIT_SHA: $GIT_COMMIT_SHA"
           echo "  GIT_BRANCH: $GIT_BRANCH"
           
@@ -240,16 +183,17 @@ jobs:
           echo "📦 Deploying services..."
           
           # Check if execution services are running that would prevent clean stack removal
-          active_executions=$(docker service ls --filter "name=execution-" --format "{{.Name}}" | wc -l)
+          # Preserve execution network by avoiding stack removal if execution services are running
+          active_executions=$(docker service ls --filter "label=service.type=execution" --format "{{.Name}}" | wc -l)
+          if [ "$active_executions" -eq 0 ]; then
+            # Fallback detection by name pattern if labels are missing
+            active_executions=$(docker service ls --filter "name=execution-" --format "{{.Name}}" | wc -l)
+          fi
           if [ $active_executions -gt 0 ]; then
             echo "⚠️ Found $active_executions active execution services - using rolling update instead of stack removal"
             echo "Active executions:"
             docker service ls --filter "name=execution-" --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"
             
-            echo "🌐 Ensuring required overlay networks exist before deployment..."
-            ensure_overlay_network "trends-earth-prod_backend" "$DOCKER_SUBNET" "$FALLBACK_DOCKER_SUBNET" || exit 1
-            ensure_overlay_network "trends-earth-prod_execution" "$EXECUTION_SUBNET" "$FALLBACK_EXECUTION_SUBNET" || exit 1
-
             echo "🔄 Performing rolling update deployment..."
             docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
             
@@ -284,11 +228,6 @@ jobs:
             # a transient deleted state, resulting in "network not found" errors.
             # Networks will be created/updated automatically by docker stack deploy.
             
-            # Pre-create networks to avoid race conditions on first service creation
-            echo "🌐 Ensuring required overlay networks exist before fresh deploy..."
-            ensure_overlay_network "trends-earth-prod_backend" "$DOCKER_SUBNET" "$FALLBACK_DOCKER_SUBNET" || exit 1
-            ensure_overlay_network "trends-earth-prod_execution" "$EXECUTION_SUBNET" "$FALLBACK_EXECUTION_SUBNET" || exit 1
-
             # Deploy fresh stack
             echo "🚀 Deploying fresh stack..."
             docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
