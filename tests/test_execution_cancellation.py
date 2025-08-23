@@ -34,6 +34,7 @@ class TestExecutionCancellation:
     @patch("builtins.__import__")
     def test_cancel_gee_task_success(self, mock_import, mock_init_ee, mock_settings):
         """Test successful GEE task cancellation"""
+
         # Mock SETTINGS to provide GOOGLE_PROJECT_ID
         # Configure the mock to handle SETTINGS.get("environment", {})
         def side_effect(key, default=None):
@@ -78,6 +79,7 @@ class TestExecutionCancellation:
         self, mock_import, mock_init_ee, mock_settings
     ):
         """Test GEE task cancellation when task is already completed"""
+
         # Mock SETTINGS to provide GOOGLE_PROJECT_ID
         # Configure the mock to handle SETTINGS.get("environment", {})
         def side_effect(key, default=None):
