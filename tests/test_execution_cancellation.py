@@ -40,7 +40,7 @@ class TestExecutionCancellation:
             if key == "environment":
                 return {"GOOGLE_PROJECT_ID": "test-project"}
             return default
-        
+
         mock_settings.get.side_effect = side_effect
 
         # Mock successful EE initialization
@@ -84,7 +84,7 @@ class TestExecutionCancellation:
             if key == "environment":
                 return {"GOOGLE_PROJECT_ID": "test-project"}
             return default
-        
+
         mock_settings.get.side_effect = side_effect
 
         # Mock successful EE initialization
