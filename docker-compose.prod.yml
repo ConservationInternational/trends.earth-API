@@ -211,4 +211,4 @@ networks:
     attachable: true
     ipam:
       config:
-        - subnet: ${EXECUTION_SUBNET:-10.10.1.0/24}
+        - subnet: ${EXECUTION_SUBNET:-10.11.0.0/24}
