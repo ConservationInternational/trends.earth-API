@@ -195,7 +195,16 @@ jobs:
             docker service ls --filter "name=execution-" --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"
             
             echo "🔄 Performing rolling update deployment..."
-            docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
+            attempts=0
+            until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod; do
+              attempts=$((attempts+1))
+              if [ "$attempts" -ge 3 ]; then
+                echo "❌ Stack deploy failed after $attempts attempts"
+                exit 1
+              fi
+              echo "⏳ Stack deploy failed, retrying in 5s (attempt $attempts/3)..."
+              sleep 5
+            done
             
           else
             echo "No active executions found - can perform clean stack removal"
@@ -231,18 +240,17 @@ jobs:
             # Deploy fresh stack
             echo "⏳ Short wait to allow Swarm to finalize network teardown..."
             sleep 5
-            echo "🌐 Ensuring backend network exists to avoid swarm race conditions..."
-            if ! docker network ls --format '{{.Name}}' | grep -Fx 'trends-earth-prod_backend' >/dev/null 2>&1; then
-              echo "Creating overlay network trends-earth-prod_backend (no explicit subnet)"
-              docker network create --driver overlay --attachable trends-earth-prod_backend || true
-              # Give Docker a brief moment to finalize network creation
-              sleep 2
-            else
-              echo "Backend network already present"
-            fi
-
             echo "🚀 Deploying fresh stack..."
-            docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
+            attempts=0
+            until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod; do
+              attempts=$((attempts+1))
+              if [ "$attempts" -ge 3 ]; then
+                echo "❌ Stack deploy failed after $attempts attempts"
+                exit 1
+              fi
+              echo "⏳ Stack deploy failed, retrying in 5s (attempt $attempts/3)..."
+              sleep 5
+            done
           fi
           
           # Ensure we're using the latest compose file
