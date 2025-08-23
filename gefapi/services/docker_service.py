@@ -9,6 +9,7 @@ from shutil import copy
 import socket
 import tarfile
 import tempfile
+from urllib.parse import urlparse
 
 import docker
 from docker import errors as docker_errors
@@ -147,6 +148,109 @@ def get_docker_client():
                 return None
             raise last_error if last_error else Exception("Docker not available")
     return docker_client
+
+
+def _parse_registry_host_port(registry: str) -> tuple[str, int | None]:
+    """Parse REGISTRY_URL into (host, port).
+
+    Accepts forms like:
+    - 172.40.1.52:5000
+    - http://172.40.1.52:5000
+    - https://registry.local:443
+    - registry.local (no port -> None)
+    """
+    if not registry:
+        return "", None
+
+    # If scheme missing, urlparse treats it as path; prepend dummy scheme
+    parsed = urlparse(registry if "://" in registry else f"dummy://{registry}")
+    host = parsed.hostname or ""
+    port = parsed.port
+    return host, port
+
+
+def _registry_preflight(registry: str) -> tuple[bool, str]:
+    """Quick TCP + HTTP GET /v2/ connectivity probe for the registry.
+
+    Returns (ok, message). Any non-fatal but informative message is returned
+    for logging, especially useful when the daemon->registry path is broken.
+    """
+    import http.client as _http_client
+
+    host, port = _parse_registry_host_port(registry)
+    if not host:
+        return False, "REGISTRY_URL has no host"
+
+    # Default port for HTTP(S) if not provided; many internal registries use 5000
+    port = port or 5000
+
+    # TCP reachability
+    try:
+        with socket.create_connection((host, port), timeout=5):
+            pass
+    except Exception as e:
+        return (
+            False,
+            f"TCP connect to {host}:{port} failed: {type(e).__name__}: {e}",
+        )
+
+    # HTTP /v2/ reachability (no auth expected; 200 or 401 both indicate a registry)
+    try:
+        conn = _http_client.HTTPConnection(host, port, timeout=5)
+        conn.request("GET", "/v2/")
+        resp = conn.getresponse()
+        status = resp.status
+        resp.read()  # drain
+        conn.close()
+        if status in (200, 401):
+            return True, f"Registry responded to /v2/ with {status}"
+        return False, f"Registry /v2/ unexpected status: {status}"
+    except Exception as e:
+        return (
+            False,
+            f"HTTP probe to http://{host}:{port}/v2/ failed: {type(e).__name__}: {e}",
+        )
+
+
+def _registry_manifest_exists(registry: str, repo: str, reference: str) -> tuple[bool, str]:
+    """HEAD the manifest to confirm it exists in the registry.
+
+    Returns (exists, message).
+    """
+    import http.client as _http_client
+
+    host, port = _parse_registry_host_port(registry)
+    if not host:
+        return False, "REGISTRY_URL has no host"
+    port = port or 5000
+
+    path = f"/v2/{repo}/manifests/{reference}"
+    try:
+        conn = _http_client.HTTPConnection(host, port, timeout=10)
+        headers = {
+            "Accept": (
+                "application/vnd.docker.distribution.manifest.v2+json, "
+                "application/vnd.docker.distribution.manifest.v1+json, "
+                "application/vnd.oci.image.manifest.v1+json"
+            )
+        }
+        conn.request("HEAD", path, headers=headers)
+        resp = conn.getresponse()
+        status = resp.status
+        resp.read()
+        conn.close()
+        if status == 200:
+            return True, f"Manifest {repo}:{reference} exists"
+        return False, f"Manifest HEAD returned {status} for {repo}:{reference}"
+    except Exception as e:
+        return False, f"Manifest HEAD failed: {type(e).__name__}: {e}"
+
+def _split_repo_ref(tag_image: str) -> tuple[str, str]:
+    """Split a name[:tag] into (repo, reference). Defaults to latest."""
+    if ":" in tag_image:
+        repo, ref = tag_image.rsplit(":", 1)
+        return repo, ref or "latest"
+    return tag_image, "latest"
 
 
 @celery_app.task()
@@ -349,6 +453,18 @@ class DockerService:
             logger.error("REGISTRY_URL is not configured.")
             return False, Exception("REGISTRY_URL is not configured.")
 
+        # Fast preflight to provide immediate diagnostics before attempting push
+        ok, msg = _registry_preflight(REGISTRY_URL)
+        if not ok:
+            logger.warning(
+                "Registry preflight failed for %s: %s. The Docker daemon pushes images; "
+                "ensure this node can reach the registry and that it is configured as insecure if using HTTP.",
+                REGISTRY_URL,
+                msg,
+            )
+        else:
+            logger.info("Registry preflight: %s", msg)
+
         while attempt < max_retries:
             pushed = False
             output_lines.clear()
@@ -408,6 +524,8 @@ class DockerService:
                 push_stream = client.images.push(push_tag, stream=True, decode=True)
 
                 result_aux = None
+                saw_digest = False
+                saw_already = False
                 for line in push_stream:
                     # Only process if line is a dict
                     if not isinstance(line, dict):
@@ -428,20 +546,35 @@ class DockerService:
                         or "blob unknown" in error_detail_val
                     ):
                         blob_unknown_error = True
-                    if line.get("aux") and pushed:
+                    if line.get("aux"):
                         result_aux = line["aux"]
-                    if line.get("status") == "Pushed":
+                        try:
+                            digest_val = result_aux.get("Digest") or result_aux.get("digest")
+                            if digest_val:
+                                saw_digest = True
+                        except Exception:
+                            pass
+
+                    status_text = str(line.get("status", ""))
+                    if status_text == "Pushed":
                         pushed = True
+                    # Common benign statuses on no-op pushes
+                    st_lower = status_text.lower()
+                    if "already exists" in st_lower or "mounted from" in st_lower:
+                        saw_already = True
+                    if "digest:" in st_lower:
+                        saw_digest = True
 
                 # Save all logs after push attempt
                 for log_line in output_lines:
                     DockerService.save_build_log(script_id=script_id, line=log_line)
 
-                if pushed and result_aux and not blob_unknown_error:
+                if (pushed or saw_digest) and not blob_unknown_error:
                     logger.info(
                         f"Successfully pushed {push_tag} on attempt {attempt + 1}"
                     )
-                    return True, result_aux
+                    return True, result_aux or {"result": "ok"}
+
 
                 # If we get here, the push failed
                 if blob_unknown_error:
@@ -463,6 +596,22 @@ class DockerService:
                 logger.warning(
                     f"Push attempt {attempt + 1} failed with {error_type}: {error}"
                 )
+
+                # Provide actionable guidance for common registry/daemon issues
+                from urllib3.exceptions import ProtocolError as _Urllib3ProtocolError  # type: ignore
+                import http.client as _http_client
+
+                if isinstance(error, (_Urllib3ProtocolError, _http_client.IncompleteRead)):
+                    # Note: docker-py talks to the local daemon; the daemon then pushes to the registry.
+                    # Client-side HTTP header tweaks don't affect daemon->registry traffic.
+                    logger.info(
+                        "Hint: IncompleteRead/ProtocolError during push usually means the Docker daemon's "
+                        "connection to the registry was closed early (proxy/HTTP2/insecure-registry). Ensure: "
+                        "1) /etc/docker/daemon.json includes 'insecure-registries': ['%s'], and Docker is restarted; "
+                        "2) Any proxy in front of the registry uses HTTP/1.1 (disable HTTP/2) and has generous timeouts; "
+                        "3) The registry is reachable from this node and not behind a firewall/NAT closing idle connections.",
+                        REGISTRY_URL,
+                    )
 
                 # Save logs for this failed attempt
                 for log_line in output_lines:
