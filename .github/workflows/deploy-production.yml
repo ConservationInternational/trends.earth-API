@@ -91,10 +91,7 @@ jobs:
           
           # Create simplified Docker config without auth for production
           echo "🔐 Creating Docker config for production..."
-          cat > $HOME/.docker/config.json <<-DOCKERCONFIG
-          {
-            "insecure-registries": ["${{ env.REGISTRY }}"]
-          }
+            # Do not touch the execution network to avoid interrupting running executions
           DOCKERCONFIG
           echo "✅ Docker config created successfully"
           
@@ -105,7 +102,7 @@ jobs:
           REGISTRY="${{ env.REGISTRY }}"
           IMAGE_NAME="${{ env.IMAGE_NAME }}"
           BRANCH_NAME="${{ github.ref_name }}"
-          SHORT_SHA="${{ github.sha }}"
+            # echo "  EXECUTION_SUBNET: (unchanged)"
           SHORT_SHA="${SHORT_SHA:0:7}"
           
           BUILT_TAGS="$REGISTRY/$IMAGE_NAME:$BRANCH_NAME
@@ -153,10 +150,64 @@ jobs:
           
           export DOCKER_REGISTRY="${{ secrets.DOCKER_REGISTRY }}"
           
+          # ----------------------------------------------------------------------------
+          # Network utilities: Ensure overlay networks exist and are healthy (driver/IPAM)
+          # ----------------------------------------------------------------------------
+          ensure_overlay_network() {
+            # $1=name, $2=desired_subnet, $3=fallback_subnet
+            local name="$1"; local subnet="$2"; local fb="$3"
+            local exists drv ipam attached
+            exists=$(docker network ls --format '{{.Name}}' | grep -Fx "$name" || true)
+            if [ -n "$exists" ]; then
+              drv=$(docker network inspect "$name" --format '{{ (index . 0).Driver }}' 2>/dev/null || echo "")
+              ipam=$(docker network inspect "$name" --format '{{ (index . 0).IPAM.Config }}' 2>/dev/null || echo "")
+              if [ "$drv" = "overlay" ] && [ -n "$ipam" ] && [ "$ipam" != "<no value>" ]; then
+                echo "✅ Network $name is a healthy overlay"
+                return 0
+              fi
+              echo "⚠️  Network $name exists but is misconfigured (driver='$drv')."
+              attached=$(docker network inspect "$name" --format '{{ (index . 0).Containers }}' 2>/dev/null | grep -v 'map\[\]' || true)
+              if [ -n "$attached" ]; then
+                echo "❌ Cannot recreate $name while containers are attached. Abort for safety."
+                return 2
+              fi
+              docker network rm "$name" || true
+              sleep 1
+            fi
+            echo "🌐 Creating overlay network $name with subnet $subnet"
+            if docker network create --driver overlay --attachable --subnet "$subnet" "$name" >/dev/null 2>&1; then
+              drv=$(docker network inspect "$name" --format '{{ (index . 0).Driver }}' 2>/dev/null || echo "")
+              ipam=$(docker network inspect "$name" --format '{{ (index . 0).IPAM.Config }}' 2>/dev/null || echo "")
+              if [ "$drv" = "overlay" ] && [ -n "$ipam" ] && [ "$ipam" != "<no value>" ]; then
+                echo "✅ Created overlay network $name ($subnet)"
+                return 0
+              fi
+              echo "⚠️  Network $name created but invalid driver/IPAM; recreating with fallback"
+              docker network rm "$name" || true; sleep 1
+            else
+              echo "⚠️  Failed to create $name with $subnet; trying fallback $fb"
+            fi
+            if [ -n "$fb" ]; then
+              if docker network create --driver overlay --attachable --subnet "$fb" "$name" >/dev/null 2>&1; then
+                drv=$(docker network inspect "$name" --format '{{ (index . 0).Driver }}' 2>/dev/null || echo "")
+                ipam=$(docker network inspect "$name" --format '{{ (index . 0).IPAM.Config }}' 2>/dev/null || echo "")
+                if [ "$drv" = "overlay" ] && [ -n "$ipam" ] && [ "$ipam" != "<no value>" ]; then
+                  echo "✅ Created overlay network $name ($fb)"
+                  return 0
+                fi
+              fi
+            fi
+            echo "❌ Failed to ensure overlay network $name"
+            return 1
+          }
+
           # Load and export critical environment variables from prod.env
           # These are required for Docker network creation
           export DOCKER_SUBNET=$(grep "^DOCKER_SUBNET=" prod.env | cut -d'=' -f2 || echo "10.10.0.0/16")
           export EXECUTION_SUBNET=$(grep "^EXECUTION_SUBNET=" prod.env | cut -d'=' -f2 || echo "10.11.0.0/24")
+          # Fallback ranges unlikely to collide with common VPCs
+          export FALLBACK_DOCKER_SUBNET="10.12.0.0/16"
+          export FALLBACK_EXECUTION_SUBNET="10.13.0.0/24"
           
           # Set version information for health checks
           export GIT_COMMIT_SHA="${{ github.sha }}"
@@ -171,7 +222,8 @@ jobs:
           echo "  GIT_COMMIT_SHA: $GIT_COMMIT_SHA"
           echo "  GIT_BRANCH: $GIT_BRANCH"
           
-          # Deploy with Docker Swarm
+          # Compose will create overlay networks as defined in docker-compose.prod.yml
+
           echo "📦 Deploying services..."
           
           # Check if execution services are running that would prevent clean stack removal
@@ -181,7 +233,6 @@ jobs:
             echo "Active executions:"
             docker service ls --filter "name=execution-" --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"
             
-            # Use docker stack deploy which will perform rolling updates without removing networks
             echo "🔄 Performing rolling update deployment..."
             docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
             
@@ -209,11 +260,7 @@ jobs:
               echo "🧹 Cleaning up any remaining containers..."
               docker ps -a --filter "name=trends-earth-prod" --format "{{.Names}}" | xargs -r docker rm -f || true
               
-              # Remove networks since no executions are running
-              echo "🌐 Cleaning up networks..."
-              docker network rm trends-earth-prod_backend --force || true
-              docker network rm trends-earth-prod_execution --force || true
-              sleep 3
+              # Networks will be recreated by docker stack deploy per compose
             fi
             
             # Deploy fresh stack

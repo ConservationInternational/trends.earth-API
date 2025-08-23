@@ -4,6 +4,8 @@ services:
     command: migrate
     environment:
       PORT: 3000
+  GIT_BRANCH: ${GIT_BRANCH:-unknown}
+  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
     env_file:
       - prod.env
     networks:
@@ -20,13 +22,15 @@ services:
     environment:
       PORT: 3000
       GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
-      GIT_BRANCH: ${GIT_BRANCH:-unknown}
-      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
-    ports:
-      - target: 3000
-        published: 3001
+  GIT_BRANCH: ${GIT_BRANCH:-unknown}
+  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
     env_file:
       - prod.env
+    ports:
+      - published: 3001
+        target: 3000
+        protocol: tcp
+        mode: ingress
     networks:
       - backend
       - execution
@@ -61,6 +65,8 @@ services:
     environment:
       PORT: 3000
       CELERY_WORKER_QUEUES: default
+  GIT_BRANCH: ${GIT_BRANCH:-unknown}
+  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
     env_file:
       - prod.env
     networks:
@@ -93,6 +99,8 @@ services:
     command: beat
     environment:
       PORT: 3000
+  GIT_BRANCH: ${GIT_BRANCH:-unknown}
+  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
     env_file:
       - prod.env
     networks:
@@ -128,6 +136,8 @@ services:
       PORT: 3000
       # Only handle build tasks that require Docker socket access
       CELERY_WORKER_QUEUES: build
+  GIT_BRANCH: ${GIT_BRANCH:-unknown}
+  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
     env_file:
       - prod.env
     volumes:
@@ -165,8 +175,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - target: 6379
     volumes:
       # Persistent Redis data storage - retains data across deployments
       - redis_prod_data:/data
@@ -204,11 +212,13 @@ networks:
     driver: overlay
     attachable: true
     ipam:
+      driver: default
       config:
         - subnet: ${DOCKER_SUBNET:-10.10.0.0/16}
   execution:
     driver: overlay
     attachable: true
     ipam:
+      driver: default
       config:
-        - subnet: ${EXECUTION_SUBNET:-10.10.1.0/24}
+        - subnet: ${EXECUTION_SUBNET:-10.11.0.0/24}
