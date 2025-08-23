@@ -246,6 +246,10 @@ jobs:
             echo "Active executions:"
             docker service ls --filter "name=execution-" --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"
             
+            echo "🌐 Ensuring required overlay networks exist before deployment..."
+            ensure_overlay_network "trends-earth-prod_backend" "$DOCKER_SUBNET" "$FALLBACK_DOCKER_SUBNET" || exit 1
+            ensure_overlay_network "trends-earth-prod_execution" "$EXECUTION_SUBNET" "$FALLBACK_EXECUTION_SUBNET" || exit 1
+
             echo "🔄 Performing rolling update deployment..."
             docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
             
@@ -280,6 +284,11 @@ jobs:
             # a transient deleted state, resulting in "network not found" errors.
             # Networks will be created/updated automatically by docker stack deploy.
             
+            # Pre-create networks to avoid race conditions on first service creation
+            echo "🌐 Ensuring required overlay networks exist before fresh deploy..."
+            ensure_overlay_network "trends-earth-prod_backend" "$DOCKER_SUBNET" "$FALLBACK_DOCKER_SUBNET" || exit 1
+            ensure_overlay_network "trends-earth-prod_execution" "$EXECUTION_SUBNET" "$FALLBACK_EXECUTION_SUBNET" || exit 1
+
             # Deploy fresh stack
             echo "🚀 Deploying fresh stack..."
             docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod

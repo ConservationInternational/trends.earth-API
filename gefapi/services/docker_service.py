@@ -212,7 +212,9 @@ def _registry_preflight(registry: str) -> tuple[bool, str]:
         )
 
 
-def _registry_manifest_exists(registry: str, repo: str, reference: str) -> tuple[bool, str]:
+def _registry_manifest_exists(
+    registry: str, repo: str, reference: str
+) -> tuple[bool, str]:
     """HEAD the manifest to confirm it exists in the registry.
 
     Returns (exists, message).
@@ -244,6 +246,7 @@ def _registry_manifest_exists(registry: str, repo: str, reference: str) -> tuple
         return False, f"Manifest HEAD returned {status} for {repo}:{reference}"
     except Exception as e:
         return False, f"Manifest HEAD failed: {type(e).__name__}: {e}"
+
 
 def _split_repo_ref(tag_image: str) -> tuple[str, str]:
     """Split a name[:tag] into (repo, reference). Defaults to latest."""
@@ -549,7 +552,9 @@ class DockerService:
                     if line.get("aux"):
                         result_aux = line["aux"]
                         try:
-                            digest_val = result_aux.get("Digest") or result_aux.get("digest")
+                            digest_val = result_aux.get("Digest") or result_aux.get(
+                                "digest"
+                            )
                             if digest_val:
                                 saw_digest = True
                         except Exception:
@@ -575,7 +580,6 @@ class DockerService:
                     )
                     return True, result_aux or {"result": "ok"}
 
-
                 # If we get here, the push failed
                 if blob_unknown_error:
                     raise RuntimeError("Blob unknown error detected during push.")
@@ -598,10 +602,15 @@ class DockerService:
                 )
 
                 # Provide actionable guidance for common registry/daemon issues
-                from urllib3.exceptions import ProtocolError as _Urllib3ProtocolError  # type: ignore
                 import http.client as _http_client
 
-                if isinstance(error, (_Urllib3ProtocolError, _http_client.IncompleteRead)):
+                from urllib3.exceptions import (
+                    ProtocolError as _Urllib3ProtocolError,  # type: ignore
+                )
+
+                if isinstance(
+                    error, (_Urllib3ProtocolError, _http_client.IncompleteRead)
+                ):
                     # Note: docker-py talks to the local daemon; the daemon then pushes to the registry.
                     # Client-side HTTP header tweaks don't affect daemon->registry traffic.
                     logger.info(
