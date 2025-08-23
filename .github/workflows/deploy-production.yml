@@ -229,6 +229,18 @@ jobs:
             # Networks will be created/updated automatically by docker stack deploy.
             
             # Deploy fresh stack
+            echo "⏳ Short wait to allow Swarm to finalize network teardown..."
+            sleep 5
+            echo "🌐 Ensuring backend network exists to avoid swarm race conditions..."
+            if ! docker network ls --format '{{.Name}}' | grep -Fx 'trends-earth-prod_backend' >/dev/null 2>&1; then
+              echo "Creating overlay network trends-earth-prod_backend (no explicit subnet)"
+              docker network create --driver overlay --attachable trends-earth-prod_backend || true
+              # Give Docker a brief moment to finalize network creation
+              sleep 2
+            else
+              echo "Backend network already present"
+            fi
+
             echo "🚀 Deploying fresh stack..."
             docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
           fi
