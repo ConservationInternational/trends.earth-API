@@ -183,7 +183,9 @@ jobs:
             
             # Use docker stack deploy which will perform rolling updates without removing networks
             echo "🔄 Performing rolling update deployment..."
-            docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
+            # Pre-process compose file to ensure reliable environment variable substitution
+            docker compose -f ${{ env.COMPOSE_FILE }} config > docker-compose.resolved.yml
+            docker stack deploy -c docker-compose.resolved.yml --with-registry-auth trends-earth-prod
             
           else
             echo "No active executions found - can perform clean stack removal"
@@ -218,7 +220,9 @@ jobs:
             
             # Deploy fresh stack
             echo "🚀 Deploying fresh stack..."
-            docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod
+            # Pre-process compose file to ensure reliable environment variable substitution
+            docker compose -f ${{ env.COMPOSE_FILE }} config > docker-compose.resolved.yml
+            docker stack deploy -c docker-compose.resolved.yml --with-registry-auth trends-earth-prod
           fi
           
           # Ensure we're using the latest compose file
