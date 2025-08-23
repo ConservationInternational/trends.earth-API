@@ -460,8 +460,11 @@ class DockerService:
         ok, msg = _registry_preflight(REGISTRY_URL)
         if not ok:
             logger.warning(
-                "Registry preflight failed for %s: %s. The Docker daemon pushes images; "
-                "ensure this node can reach the registry and that it is configured as insecure if using HTTP.",
+                (
+                    "Registry preflight failed for %s: %s. "
+                    "Ensure this node can reach the registry and that it is "
+                    "configured as insecure if using HTTP."
+                ),
                 REGISTRY_URL,
                 msg,
             )
@@ -528,7 +531,6 @@ class DockerService:
 
                 result_aux = None
                 saw_digest = False
-                saw_already = False
                 for line in push_stream:
                     # Only process if line is a dict
                     if not isinstance(line, dict):
@@ -557,16 +559,16 @@ class DockerService:
                             )
                             if digest_val:
                                 saw_digest = True
-                        except Exception:
-                            pass
+                        except Exception as aux_err:
+                            logger.debug(
+                                "Failed to parse aux digest during push: %s", aux_err
+                            )
 
                     status_text = str(line.get("status", ""))
                     if status_text == "Pushed":
                         pushed = True
-                    # Common benign statuses on no-op pushes
+                    # Detect digest in textual status lines
                     st_lower = status_text.lower()
-                    if "already exists" in st_lower or "mounted from" in st_lower:
-                        saw_already = True
                     if "digest:" in st_lower:
                         saw_digest = True
 
@@ -611,14 +613,18 @@ class DockerService:
                 if isinstance(
                     error, (_Urllib3ProtocolError, _http_client.IncompleteRead)
                 ):
-                    # Note: docker-py talks to the local daemon; the daemon then pushes to the registry.
-                    # Client-side HTTP header tweaks don't affect daemon->registry traffic.
+                    # Note: docker-py talks to the local daemon; the daemon then
+                    # pushes to the registry. Client-side HTTP tweaks don't affect
+                    # daemon->registry traffic.
                     logger.info(
-                        "Hint: IncompleteRead/ProtocolError during push usually means the Docker daemon's "
-                        "connection to the registry was closed early (proxy/HTTP2/insecure-registry). Ensure: "
-                        "1) /etc/docker/daemon.json includes 'insecure-registries': ['%s'], and Docker is restarted; "
-                        "2) Any proxy in front of the registry uses HTTP/1.1 (disable HTTP/2) and has generous timeouts; "
-                        "3) The registry is reachable from this node and not behind a firewall/NAT closing idle connections.",
+                        (
+                            "Hint: IncompleteRead/ProtocolError: daemon->registry link "
+                            "likely closed early (proxy/HTTP2/insecure-registry). "
+                            "Ensure: 1) daemon.json has insecure-registries ['%s'] and "
+                            "Docker restarted; 2) any proxy uses HTTP/1.1 with "
+                            "generous timeouts; 3) registry reachable (no "
+                            "firewall/NAT idle-close)."
+                        ),
                         REGISTRY_URL,
                     )
 
