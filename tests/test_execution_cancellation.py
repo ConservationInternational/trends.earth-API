@@ -35,7 +35,13 @@ class TestExecutionCancellation:
     def test_cancel_gee_task_success(self, mock_import, mock_init_ee, mock_settings):
         """Test successful GEE task cancellation"""
         # Mock SETTINGS to provide GOOGLE_PROJECT_ID
-        mock_settings.get.return_value = {"GOOGLE_PROJECT_ID": "test-project"}
+        # Configure the mock to handle SETTINGS.get("environment", {})
+        def side_effect(key, default=None):
+            if key == "environment":
+                return {"GOOGLE_PROJECT_ID": "test-project"}
+            return default
+        
+        mock_settings.get.side_effect = side_effect
 
         # Mock successful EE initialization
         mock_init_ee.return_value = True
@@ -73,7 +79,13 @@ class TestExecutionCancellation:
     ):
         """Test GEE task cancellation when task is already completed"""
         # Mock SETTINGS to provide GOOGLE_PROJECT_ID
-        mock_settings.get.return_value = {"GOOGLE_PROJECT_ID": "test-project"}
+        # Configure the mock to handle SETTINGS.get("environment", {})
+        def side_effect(key, default=None):
+            if key == "environment":
+                return {"GOOGLE_PROJECT_ID": "test-project"}
+            return default
+        
+        mock_settings.get.side_effect = side_effect
 
         # Mock successful EE initialization
         mock_init_ee.return_value = True
