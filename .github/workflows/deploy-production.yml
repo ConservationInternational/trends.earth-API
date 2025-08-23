@@ -152,6 +152,16 @@ jobs:
           cd ${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}
           
           export DOCKER_REGISTRY="${{ secrets.DOCKER_REGISTRY }}"
+
+          # Validate compose file syntax before deploying (avoid printing full config)
+          echo "🧪 Validating compose file syntax..."
+          if docker compose -f ${{ env.COMPOSE_FILE }} config >/dev/null 2>&1; then
+            echo "✅ Compose file is valid"
+          else
+            echo "❌ Compose validation failed; showing first lines of error:"
+            docker compose -f ${{ env.COMPOSE_FILE }} config 2>&1 | head -n 50
+            exit 1
+          fi
           
           # ----------------------------------------------------------------------------
           # Network utilities: Ensure overlay networks exist and are healthy (driver/IPAM)

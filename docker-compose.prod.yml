@@ -4,15 +4,16 @@ services:
     command: migrate
     environment:
       PORT: 3000
-  GIT_BRANCH: ${GIT_BRANCH:-unknown}
-  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
     env_file:
       - prod.env
     networks:
       - backend
     deploy:
       placement:
-        constraints: [node.role == manager]
+        constraints:
+          - node.role == manager
       restart_policy:
         condition: on-failure
 
@@ -22,8 +23,8 @@ services:
     environment:
       PORT: 3000
       GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
-  GIT_BRANCH: ${GIT_BRANCH:-unknown}
-  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
     env_file:
       - prod.env
     ports:
@@ -65,8 +66,8 @@ services:
     environment:
       PORT: 3000
       CELERY_WORKER_QUEUES: default
-  GIT_BRANCH: ${GIT_BRANCH:-unknown}
-  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
     env_file:
       - prod.env
     networks:
@@ -99,8 +100,8 @@ services:
     command: beat
     environment:
       PORT: 3000
-  GIT_BRANCH: ${GIT_BRANCH:-unknown}
-  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
     env_file:
       - prod.env
     networks:
@@ -136,8 +137,8 @@ services:
       PORT: 3000
       # Only handle build tasks that require Docker socket access
       CELERY_WORKER_QUEUES: build
-  GIT_BRANCH: ${GIT_BRANCH:-unknown}
-  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
     env_file:
       - prod.env
     volumes:
@@ -147,7 +148,8 @@ services:
     deploy:
       replicas: 1
       placement:
-        constraints: [node.role == manager]  # Run on manager nodes with Docker socket
+        constraints:
+          - node.role == manager  # Run on manager nodes with Docker socket
       resources:
         reservations:
           cpus: "0.5"
@@ -182,7 +184,8 @@ services:
       - backend
     deploy:
       placement:
-        constraints: [node.role == manager]
+        constraints:
+          - node.role == manager
       resources:
         reservations:
           cpus: "0.25"
