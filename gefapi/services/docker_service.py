@@ -248,6 +248,63 @@ def _registry_manifest_exists(
         return False, f"Manifest HEAD failed: {type(e).__name__}: {e}"
 
 
+def _registry_get_manifest_digest(
+    registry: str, repo: str, reference: str
+) -> tuple[bool, str | None, str | None, str]:
+    """HEAD the manifest and return (exists, digest, last_modified, message).
+
+    - exists: True if HTTP 200
+    - digest: Value of Docker-Content-Digest header when present
+    - last_modified: Value of Last-Modified header when present
+    - message: Human-readable status message
+
+    Uses HEAD to avoid transferring the full manifest body; falls back to
+    returning headers only. This function is tolerant to HTTP/registry quirks
+    and never raises; errors are reported via (False, None, None, msg).
+    """
+    import http.client as _http_client
+
+    host, port = _parse_registry_host_port(registry)
+    if not host:
+        return False, None, None, "REGISTRY_URL has no host"
+    port = port or 5000
+
+    path = f"/v2/{repo}/manifests/{reference}"
+    try:
+        conn = _http_client.HTTPConnection(host, port, timeout=10)
+        headers = {
+            "Accept": (
+                "application/vnd.docker.distribution.manifest.v2+json, "
+                "application/vnd.docker.distribution.manifest.v1+json, "
+                "application/vnd.oci.image.manifest.v1+json"
+            )
+        }
+        conn.request("HEAD", path, headers=headers)
+        resp = conn.getresponse()
+        status = resp.status
+        # Read & close to free the socket
+        resp.read()
+        # http.client doesn't expose headers as a dict directly in type hints,
+        # but mapping access via .get works in practice
+        digest = resp.getheader("Docker-Content-Digest")
+        last_mod = resp.getheader("Last-Modified")
+        conn.close()
+        if status == 200:
+            msg = (
+                f"Manifest {repo}:{reference} exists (digest={digest}, "
+                f"last_modified={last_mod})"
+            )
+            return True, digest, last_mod, msg
+        return (
+            False,
+            None,
+            None,
+            f"Manifest HEAD returned {status} for {repo}:{reference}",
+        )
+    except Exception as e:
+        return False, None, None, f"Manifest HEAD failed: {type(e).__name__}: {e}"
+
+
 def _split_repo_ref(tag_image: str) -> tuple[str, str]:
     """Split a name[:tag] into (repo, reference). Defaults to latest."""
     if ":" in tag_image:
@@ -471,6 +528,22 @@ class DockerService:
         else:
             logger.info("Registry preflight: %s", msg)
 
+        # Capture pre-push manifest state to detect tag updates even if the
+        # streaming push logs are ambiguous or truncated.
+        repo_name, reference = _split_repo_ref(tag_image)
+        pre_exists, pre_digest, pre_last_mod, pre_msg = _registry_get_manifest_digest(
+            REGISTRY_URL, repo_name, reference
+        )
+        if pre_exists:
+            logger.info(
+                "Pre-push manifest state: %s (digest=%s, last_modified=%s)",
+                pre_msg,
+                pre_digest,
+                pre_last_mod,
+            )
+        else:
+            logger.info("Pre-push manifest state: %s", pre_msg)
+
         while attempt < max_retries:
             pushed = False
             output_lines.clear()
@@ -585,6 +658,27 @@ class DockerService:
                 # If we get here, the push failed
                 if blob_unknown_error:
                     raise RuntimeError("Blob unknown error detected during push.")
+                # Before raising, perform a post-push manifest verification in
+                # case the daemon finished the push even though the stream was
+                # truncated or lacked explicit success lines.
+                post_exists, post_digest, post_last_mod, post_msg = (
+                    _registry_get_manifest_digest(REGISTRY_URL, repo_name, reference)
+                )
+                if post_exists and (not pre_exists or post_digest != pre_digest):
+                    logger.info(
+                        (
+                            "Registry verification: %s; treating push as success "
+                            "(updated digest: %s -> %s, last_modified=%s)"
+                        ),
+                        post_msg,
+                        pre_digest,
+                        post_digest,
+                        post_last_mod,
+                    )
+                    # Save any collected logs for observability
+                    for log_line in output_lines:
+                        DockerService.save_build_log(script_id=script_id, line=log_line)
+                    return True, {"digest": post_digest, "verified": True}
                 raise Exception("Image push did not complete successfully.")
 
             except (
@@ -632,6 +726,36 @@ class DockerService:
                 for log_line in output_lines:
                     DockerService.save_build_log(script_id=script_id, line=log_line)
 
+                # If this was a transport-level interruption, check the
+                # registry to see if the manifest was actually created/updated.
+                import http.client as _http_client
+
+                from urllib3.exceptions import (
+                    ProtocolError as _Urllib3ProtocolError,  # type: ignore
+                )
+
+                if isinstance(
+                    error, (_Urllib3ProtocolError, _http_client.IncompleteRead)
+                ):
+                    post_exists, post_digest, post_last_mod, post_msg = (
+                        _registry_get_manifest_digest(
+                            REGISTRY_URL, repo_name, reference
+                        )
+                    )
+                    if post_exists and (not pre_exists or post_digest != pre_digest):
+                        logger.info(
+                            (
+                                "Registry verification after error: %s; treating push "
+                                "as success (updated digest: %s -> %s, "
+                                "last_modified=%s)"
+                            ),
+                            post_msg,
+                            pre_digest,
+                            post_digest,
+                            post_last_mod,
+                        )
+                        return True, {"digest": post_digest, "verified": True}
+
                 if attempt < max_retries - 1:
                     delay = base_delay * (2**attempt)
                     logger.info(
@@ -647,6 +771,28 @@ class DockerService:
                 logger.error(f"Unexpected error during push: {error}")
                 rollbar.report_exc_info()
                 return False, error
+
+        # Final verification before giving up: check if registry has the new
+        # manifest digest compared to pre-push state.
+        try:
+            post_exists, post_digest, post_last_mod, post_msg = (
+                _registry_get_manifest_digest(REGISTRY_URL, repo_name, reference)
+            )
+            if post_exists and (not pre_exists or post_digest != pre_digest):
+                logger.info(
+                    (
+                        "Final registry verification: %s; treating push as success "
+                        "despite client errors (updated digest: %s -> %s, "
+                        "last_modified=%s)"
+                    ),
+                    post_msg,
+                    pre_digest,
+                    post_digest,
+                    post_last_mod,
+                )
+                return True, {"digest": post_digest, "verified": True}
+        except Exception as _ver_err:
+            logger.debug(f"Final registry verification failed: {_ver_err}")
 
         logger.error(f"Image push failed after {max_retries} attempts: {last_error}")
         # Save logs for the final failed attempt
