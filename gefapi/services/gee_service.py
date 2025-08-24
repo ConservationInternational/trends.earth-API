@@ -166,23 +166,52 @@ class GEEService:
 
             import ee  # type: ignore
 
-            # Get the project ID
-            project_id = SETTINGS.get("environment", {}).get("GOOGLE_PROJECT_ID")
+            # Get the project ID (prefer config, fall back to environment)
+            project_id = (
+                SETTINGS.get("environment", {}).get("GOOGLE_PROJECT_ID")
+                or os.getenv("GOOGLE_PROJECT_ID")
+            )
 
-            if not project_id:
-                result["error"] = "GOOGLE_PROJECT_ID not configured"
-                logger.error("GOOGLE_PROJECT_ID not set in environment configuration")
-                return result
+            # Build candidate operation names
+            operation_candidates = []
+            if project_id:
+                operation_candidates.append(
+                    f"projects/{project_id}/operations/{task_id}"
+                )
+            else:
+                logger.warning(
+                    "GOOGLE_PROJECT_ID not set; attempting cancellation without project prefix"
+                )
+            # Always include a fallback to the unqualified operation path
+            operation_candidates.append(f"operations/{task_id}")
 
-            # Construct the operation name (task name)
-            operation_name = f"projects/{project_id}/operations/{task_id}"
+            # We'll use the first operation name that responds without raising
+            operation_name = None
 
             try:
                 # Get task status first
-                logger.info(
-                    f"Checking GEE task status for {task_id} in project {project_id}"
-                )
-                task_info = ee.data.getOperation(operation_name)  # type: ignore
+                # Try candidates until one succeeds
+                last_error = None
+                task_info = None
+                for candidate in operation_candidates:
+                    try:
+                        logger.info(
+                            f"Checking GEE task status for {task_id} using operation '{candidate}'"
+                        )
+                        task_info = ee.data.getOperation(candidate)  # type: ignore
+                        operation_name = candidate
+                        break
+                    except Exception as e:
+                        last_error = e
+                        logger.debug(
+                            f"Operation check failed for '{candidate}': {e}. Trying next candidate..."
+                        )
+                        continue
+
+                if task_info is None:
+                    raise last_error or Exception(
+                        "Failed to query task status with available operation names"
+                    )
 
                 if task_info:
                     # Extract status from the operation
@@ -209,9 +238,27 @@ class GEEService:
 
                 # Attempt to cancel the task
                 logger.info(
-                    f"Attempting to cancel GEE task {task_id} in project {project_id}"
+                    f"Attempting to cancel GEE task {task_id} using operation '{operation_name}'"
                 )
-                ee.data.cancelOperation(operation_name)  # type: ignore
+                # If we haven't set a working operation name yet, try candidates now
+                if not operation_name:
+                    for candidate in operation_candidates:
+                        try:
+                            ee.data.cancelOperation(candidate)  # type: ignore
+                            operation_name = candidate
+                            break
+                        except Exception as e:
+                            logger.debug(
+                                f"Cancel attempt failed for '{candidate}': {e}. Trying next candidate..."
+                            )
+                            continue
+
+                    if not operation_name:
+                        raise Exception(
+                            "Failed to cancel task with available operation names"
+                        )
+                else:
+                    ee.data.cancelOperation(operation_name)  # type: ignore
 
                 result["success"] = True
                 result["status"] = "CANCELLED"
