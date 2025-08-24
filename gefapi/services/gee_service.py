@@ -179,10 +179,8 @@ class GEEService:
                 )
             else:
                 logger.warning(
-
-                        "GOOGLE_PROJECT_ID not set; attempting cancellation without "
-                        "project prefix"
-
+                    "GOOGLE_PROJECT_ID not set; attempting cancellation without "
+                    "project prefix"
                 )
             # Always include a fallback to the unqualified operation path
             operation_candidates.append(f"operations/{task_id}")
@@ -198,9 +196,7 @@ class GEEService:
                 for candidate in operation_candidates:
                     try:
                         logger.info(
-                            (
-                                "Checking GEE task status for %s using operation '%s'"
-                            ),
+                            ("Checking GEE task status for %s using operation '%s'"),
                             task_id,
                             candidate,
                         )
@@ -249,9 +245,7 @@ class GEEService:
 
                 # Attempt to cancel the task
                 logger.info(
-                    (
-                        "Attempting to cancel GEE task %s using operation '%s'"
-                    ),
+                    ("Attempting to cancel GEE task %s using operation '%s'"),
                     task_id,
                     operation_name,
                 )
