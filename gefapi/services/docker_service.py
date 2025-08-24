@@ -596,7 +596,9 @@ class DockerService:
                         f"Could not check Docker version: {version_check_error}"
                     )
 
-                push_stream = client.images.push(push_tag, stream=True, decode=True)
+                push_stream = client.images.push(
+                    push_tag, stream=True, decode=True, auth_config={}
+                )
 
                 result_aux = None
                 saw_digest = False
