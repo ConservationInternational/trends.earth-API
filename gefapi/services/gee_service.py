@@ -91,7 +91,7 @@ class GEEService:
             try:
                 # Initialize Earth Engine with service account
                 service_account_email = service_account_data["client_email"]
-                credentials = ee.ServiceAccountCredentials(
+                credentials = ee.ServiceAccountCredentials(  # type: ignore[attr-defined]
                     service_account_email, temp_key_path
                 )  # type: ignore
                 ee.Initialize(credentials)  # type: ignore
@@ -167,10 +167,9 @@ class GEEService:
             import ee  # type: ignore
 
             # Get the project ID (prefer config, fall back to environment)
-            project_id = (
-                SETTINGS.get("environment", {}).get("GOOGLE_PROJECT_ID")
-                or os.getenv("GOOGLE_PROJECT_ID")
-            )
+            project_id = SETTINGS.get("environment", {}).get(
+                "GOOGLE_PROJECT_ID"
+            ) or os.getenv("GOOGLE_PROJECT_ID")
 
             # Build candidate operation names
             operation_candidates = []
@@ -180,7 +179,10 @@ class GEEService:
                 )
             else:
                 logger.warning(
-                    "GOOGLE_PROJECT_ID not set; attempting cancellation without project prefix"
+
+                        "GOOGLE_PROJECT_ID not set; attempting cancellation without "
+                        "project prefix"
+
                 )
             # Always include a fallback to the unqualified operation path
             operation_candidates.append(f"operations/{task_id}")
@@ -196,7 +198,11 @@ class GEEService:
                 for candidate in operation_candidates:
                     try:
                         logger.info(
-                            f"Checking GEE task status for {task_id} using operation '{candidate}'"
+                            (
+                                "Checking GEE task status for %s using operation '%s'"
+                            ),
+                            task_id,
+                            candidate,
                         )
                         task_info = ee.data.getOperation(candidate)  # type: ignore
                         operation_name = candidate
@@ -204,7 +210,12 @@ class GEEService:
                     except Exception as e:
                         last_error = e
                         logger.debug(
-                            f"Operation check failed for '{candidate}': {e}. Trying next candidate..."
+                            (
+                                "Operation check failed for '%s': %s. "
+                                "Trying next candidate..."
+                            ),
+                            candidate,
+                            e,
                         )
                         continue
 
@@ -238,7 +249,11 @@ class GEEService:
 
                 # Attempt to cancel the task
                 logger.info(
-                    f"Attempting to cancel GEE task {task_id} using operation '{operation_name}'"
+                    (
+                        "Attempting to cancel GEE task %s using operation '%s'"
+                    ),
+                    task_id,
+                    operation_name,
                 )
                 # If we haven't set a working operation name yet, try candidates now
                 if not operation_name:
@@ -249,7 +264,12 @@ class GEEService:
                             break
                         except Exception as e:
                             logger.debug(
-                                f"Cancel attempt failed for '{candidate}': {e}. Trying next candidate..."
+                                (
+                                    "Cancel attempt failed for '%s': %s. Trying next "
+                                    "candidate..."
+                                ),
+                                candidate,
+                                e,
                             )
                             continue
 

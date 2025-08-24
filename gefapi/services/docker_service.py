@@ -535,12 +535,8 @@ class DockerService:
             REGISTRY_URL, repo_name, reference
         )
         if pre_exists:
-            logger.info(
-                "Pre-push manifest state: %s (digest=%s, last_modified=%s)",
-                pre_msg,
-                pre_digest,
-                pre_last_mod,
-            )
+            # pre_msg already includes digest/last_modified details
+            logger.info("Pre-push manifest state: %s", pre_msg)
         else:
             logger.info("Pre-push manifest state: %s", pre_msg)
 
@@ -665,20 +661,50 @@ class DockerService:
                     _registry_get_manifest_digest(REGISTRY_URL, repo_name, reference)
                 )
                 if post_exists and (not pre_exists or post_digest != pre_digest):
-                    logger.info(
-                        (
-                            "Registry verification: %s; treating push as success "
-                            "(updated digest: %s -> %s, last_modified=%s)"
-                        ),
-                        post_msg,
-                        pre_digest,
-                        post_digest,
-                        post_last_mod,
-                    )
+                    if not pre_exists:
+                        logger.info(
+                            (
+                                "Registry verification: %s; treating push as success "
+                                "(created new manifest: %s)"
+                            ),
+                            post_msg,
+                            post_digest,
+                        )
+                    else:
+                        logger.info(
+                            (
+                                "Registry verification: %s; treating push as success "
+                                "(updated digest: %s -> %s, last_modified=%s)"
+                            ),
+                            post_msg,
+                            pre_digest,
+                            post_digest,
+                            post_last_mod,
+                        )
                     # Save any collected logs for observability
                     for log_line in output_lines:
                         DockerService.save_build_log(script_id=script_id, line=log_line)
                     return True, {"digest": post_digest, "verified": True}
+                if post_exists and post_digest == pre_digest:
+                    logger.warning(
+                        (
+                            "Registry verification: %s; manifest digest unchanged "
+                            "(%s). Treating push as failure per policy."
+                        ),
+                        post_msg,
+                        post_digest,
+                    )
+                else:
+                    # Post-push verification did not find a manifest; log details
+                    logger.info(
+                        (
+                            "Registry verification: %s; manifest not present after "
+                            "push attempt (pre_exists=%s, pre_digest=%s)"
+                        ),
+                        post_msg,
+                        pre_exists,
+                        pre_digest,
+                    )
                 raise Exception("Image push did not complete successfully.")
 
             except (
@@ -743,18 +769,49 @@ class DockerService:
                         )
                     )
                     if post_exists and (not pre_exists or post_digest != pre_digest):
-                        logger.info(
+                        if not pre_exists:
+                            logger.info(
+                                (
+                                    "Registry verification after error: %s; treating "
+                                    "push as success (created manifest: %s)"
+                                ),
+                                post_msg,
+                                post_digest,
+                            )
+                        else:
+                            logger.info(
+                                (
+                                    "Registry verification after error: %s; treating "
+                                    "push as success (updated digest: %s -> %s, "
+                                    "last_modified=%s)"
+                                ),
+                                post_msg,
+                                pre_digest,
+                                post_digest,
+                                post_last_mod,
+                            )
+                        return True, {"digest": post_digest, "verified": True}
+                    if post_exists and post_digest == pre_digest:
+                        logger.warning(
                             (
-                                "Registry verification after error: %s; treating push "
-                                "as success (updated digest: %s -> %s, "
-                                "last_modified=%s)"
+                                "Registry verification after error: %s; manifest "
+                                "digest unchanged (%s). Treating push as failure per "
+                                "policy."
                             ),
                             post_msg,
-                            pre_digest,
                             post_digest,
-                            post_last_mod,
                         )
-                        return True, {"digest": post_digest, "verified": True}
+                    else:
+                        logger.info(
+                            (
+                                "Registry verification after error: %s; manifest not "
+                                "present (pre_exists=%s, pre_digest=%s). Will retry if "
+                                "attempts remain."
+                            ),
+                            post_msg,
+                            pre_exists,
+                            pre_digest,
+                        )
 
                 if attempt < max_retries - 1:
                     delay = base_delay * (2**attempt)
@@ -779,18 +836,45 @@ class DockerService:
                 _registry_get_manifest_digest(REGISTRY_URL, repo_name, reference)
             )
             if post_exists and (not pre_exists or post_digest != pre_digest):
-                logger.info(
+                if not pre_exists:
+                    logger.info(
+                        (
+                            "Final registry verification: %s; treating push as "
+                            "success despite client errors (created manifest: %s)"
+                        ),
+                        post_msg,
+                        post_digest,
+                    )
+                else:
+                    logger.info(
+                        (
+                            "Final registry verification: %s; treating push as "
+                            "success despite client errors (updated digest: %s -> %s, "
+                            "last_modified=%s)"
+                        ),
+                        post_msg,
+                        pre_digest,
+                        post_digest,
+                        post_last_mod,
+                    )
+                return True, {"digest": post_digest, "verified": True}
+            if post_exists and post_digest == pre_digest:
+                logger.warning(
                     (
-                        "Final registry verification: %s; treating push as success "
-                        "despite client errors (updated digest: %s -> %s, "
-                        "last_modified=%s)"
+                        "Final registry verification: %s; manifest digest unchanged "
+                        "(%s). Treating push as failure per policy."
                     ),
                     post_msg,
-                    pre_digest,
                     post_digest,
-                    post_last_mod,
                 )
-                return True, {"digest": post_digest, "verified": True}
+            else:
+                logger.info(
+                    (
+                        "Final registry verification: %s; manifest not found. "
+                        "Failing push."
+                    ),
+                    post_msg,
+                )
         except Exception as _ver_err:
             logger.debug(f"Final registry verification failed: {_ver_err}")
 
@@ -850,7 +934,7 @@ class DockerService:
                     return False, line["errorDetail"]
                 DockerService.save_build_log(script_id=script_id, line=line)
 
-            # Push the image
+            # Push the image (defaults to ':latest' if no tag provided)
             push_result = DockerService.push(script_id=script_id, tag_image=tag_image)
 
             # Remove the image from the local Docker daemon after push
