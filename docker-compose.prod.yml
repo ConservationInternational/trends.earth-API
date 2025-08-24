@@ -36,6 +36,7 @@ services:
       - backend
       - execution
     deploy:
+      replicas: 2
       resources:
         reservations:
           cpus: "0.25"
@@ -146,7 +147,7 @@ services:
     networks:
       - backend
     deploy:
-      replicas: 1
+      replicas: 2
       placement:
         constraints:
           - node.role == manager  # Run on manager nodes with Docker socket
