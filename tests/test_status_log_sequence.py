@@ -1,9 +1,9 @@
 """Test status log sequence management to prevent ID conflicts."""
 
-import pytest
-from unittest.mock import patch, MagicMock
-from gefapi.models.status_log import StatusLog
+from unittest.mock import MagicMock, patch
+
 from gefapi import db
+from gefapi.models.status_log import StatusLog
 
 
 class TestStatusLogSequence:
@@ -22,10 +22,10 @@ class TestStatusLogSequence:
                 users_count=100,
                 scripts_count=50,
             )
-            
+
             db.session.add(status_log)
             db.session.commit()
-            
+
             assert status_log.id is not None
             assert status_log.executions_active == 1
             assert status_log.executions_ready == 2
@@ -54,14 +54,14 @@ class TestStatusLogSequence:
                 )
                 db.session.add(status_log)
                 status_logs.append(status_log)
-            
+
             db.session.commit()
-            
+
             # Verify IDs are sequential
             for i, status_log in enumerate(status_logs):
                 assert status_log.id is not None
                 if i > 0:
-                    assert status_log.id > status_logs[i-1].id
+                    assert status_log.id > status_logs[i - 1].id
 
     def test_status_log_serialization(self, app):
         """Test status log serialization."""
@@ -76,12 +76,12 @@ class TestStatusLogSequence:
                 users_count=200,
                 scripts_count=75,
             )
-            
+
             db.session.add(status_log)
             db.session.commit()
-            
+
             serialized = status_log.serialize()
-            
+
             assert "id" in serialized
             assert "timestamp" in serialized
             assert serialized["executions_active"] == 10
@@ -93,24 +93,23 @@ class TestStatusLogSequence:
             assert serialized["users_count"] == 200
             assert serialized["scripts_count"] == 75
 
-    @patch('gefapi.tasks.status_monitoring.db.session')
+    @patch("gefapi.tasks.status_monitoring.db.session")
     def test_sequence_advance_on_duplicate_key(self, mock_session):
         """Test sequence advancement when duplicate key error occurs."""
-        from gefapi.tasks.status_monitoring import collect_system_status
-        
+
         # Mock the duplicate key error on first attempt, success on second
         mock_session.add.return_value = None
         mock_session.commit.side_effect = [
             Exception("duplicate key value violates unique constraint"),
-            None  # Success on second attempt
+            None,  # Success on second attempt
         ]
         mock_session.rollback.return_value = None
-        
+
         # Mock the sequence advancement queries
         mock_result = MagicMock()
         mock_result.fetchone.return_value = [1000]  # Mock max ID
         mock_session.execute.return_value = mock_result
-        
+
         # This test would require more complex mocking to fully simulate
         # the retry logic, but we've established the pattern exists
         assert True  # Basic test that the function exists and is importable
@@ -119,10 +118,10 @@ class TestStatusLogSequence:
         """Test status log model with default values."""
         with app.app_context():
             status_log = StatusLog()
-            
+
             db.session.add(status_log)
             db.session.commit()
-            
+
             assert status_log.id is not None
             assert status_log.executions_active == 0
             assert status_log.executions_ready == 0
