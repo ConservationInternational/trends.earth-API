@@ -1,6 +1,7 @@
 """STATUS MONITORING TASKS"""
 
 import contextlib
+import datetime
 import logging
 
 from celery import Task
@@ -364,6 +365,24 @@ def collect_system_status(self):
                   error_fallback)
     """
     logger.info("[TASK]: Starting system status collection")
+    
+    # Check if deployment is in progress to avoid race conditions
+    import os
+    deployment_lock_file = "/tmp/staging-deployment.lock"
+    if os.path.exists(deployment_lock_file):
+        logger.info("[TASK]: Deployment in progress, skipping status collection to avoid race conditions")
+        return {
+            "message": "Status collection skipped due to deployment in progress",
+            "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+            "docker_swarm": {
+                "error": "Skipped during deployment",
+                "nodes": [],
+                "total_nodes": 0,
+                "total_managers": 0,
+                "total_workers": 0,
+                "swarm_active": False,
+            }
+        }
 
     # Import here to get the app instance
     from gefapi import app
@@ -489,32 +508,62 @@ def collect_system_status(self):
                     },
                 }
 
-            # Create status log entry
+            # Create status log entry with retry logic for potential ID conflicts
             logger.info("[TASK]: Creating status log entry")
-            status_log = StatusLog(
-                executions_active=executions_active,
-                executions_ready=executions_ready,
-                executions_running=executions_running,
-                executions_finished=executions_finished,
-                executions_failed=executions_failed,
-                executions_count=executions_count,
-                users_count=users_count,
-                scripts_count=scripts_count,
-            )
+            max_retries = 3
+            retry_delay = 1
+            
+            for attempt in range(max_retries):
+                try:
+                    status_log = StatusLog(
+                        executions_active=executions_active,
+                        executions_ready=executions_ready,
+                        executions_running=executions_running,
+                        executions_finished=executions_finished,
+                        executions_failed=executions_failed,
+                        executions_count=executions_count,
+                        users_count=users_count,
+                        scripts_count=scripts_count,
+                    )
 
-            logger.info("[DB]: Adding status log to database")
-            db.session.add(status_log)
-            db.session.commit()
+                    logger.info(f"[DB]: Adding status log to database (attempt {attempt + 1}/{max_retries})")
+                    db.session.add(status_log)
+                    db.session.commit()
 
-            logger.info(
-                f"[TASK]: Status log created successfully with ID {status_log.id} "
-                f"at {status_log.timestamp}"
-            )
-            # Return serialized data for task result with Docker Swarm info
-            result = status_log.serialize()
-            result["docker_swarm"] = swarm_info
-            logger.info(f"[TASK]: Task completed successfully, returning: {result}")
-            return result
+                    logger.info(
+                        f"[TASK]: Status log created successfully with ID {status_log.id} "
+                        f"at {status_log.timestamp}"
+                    )
+                    # Return serialized data for task result with Docker Swarm info
+                    result = status_log.serialize()
+                    result["docker_swarm"] = swarm_info
+                    logger.info(f"[TASK]: Task completed successfully, returning: {result}")
+                    return result
+                    
+                except Exception as db_error:
+                    db.session.rollback()
+                    
+                    # Check if it's a duplicate key error
+                    if "duplicate key" in str(db_error).lower() or "unique constraint" in str(db_error).lower():
+                        if attempt < max_retries - 1:
+                            logger.warning(
+                                f"[TASK]: Duplicate key error on attempt {attempt + 1}, "
+                                f"retrying in {retry_delay} seconds: {db_error}"
+                            )
+                            import time
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                            continue
+                        else:
+                            logger.error(
+                                f"[TASK]: Failed to create status log after {max_retries} attempts "
+                                f"due to persistent duplicate key errors: {db_error}"
+                            )
+                            raise db_error
+                    else:
+                        # For non-duplicate key errors, don't retry
+                        logger.error(f"[TASK]: Database error creating status log: {db_error}")
+                        raise db_error
 
         except Exception as error:
             logger.error(f"[TASK]: Error collecting system status: {str(error)}")
