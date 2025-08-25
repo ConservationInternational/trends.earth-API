@@ -429,8 +429,10 @@ class StagingEnvironmentSetup:
             logger.info("Clearing existing status logs from staging...")
             staging_cursor.execute("DELETE FROM status_log")
 
-            # Reset the sequence to start from 1
-            staging_cursor.execute("SELECT setval('status_log_id_seq', 1, false)")
+            # Reset the sequence to start from a high value to avoid conflicts
+            # Use a large starting value to prevent conflicts with any existing data
+            staging_cursor.execute("SELECT setval('status_log_id_seq', 100000, false)")
+            logger.info("Reset status_log sequence to start from 100000 to avoid conflicts")
 
             # Calculate date one month ago
             one_month_ago = datetime.now() - timedelta(days=30)
@@ -483,15 +485,20 @@ class StagingEnvironmentSetup:
             staging_cursor.execute("SELECT MAX(id) FROM status_log")
             max_id = staging_cursor.fetchone()[0]
             if max_id:
-                # Set sequence to start from max_id + 1000 to provide buffer
-                next_val = max_id + 1000
+                # Set sequence to start from max_id + 10000 to provide large buffer
+                # This prevents conflicts with concurrent status monitoring tasks
+                next_val = max_id + 10000
                 staging_cursor.execute(
                     f"SELECT setval('status_log_id_seq', {next_val}, false)"
                 )
                 logger.info(
                     f"Reset status_log sequence to start from {next_val} "
-                    f"to avoid future conflicts"
+                    f"to avoid future conflicts (buffer: 10000)"
                 )
+            else:
+                # If no logs were imported, ensure sequence starts from a safe high value
+                staging_cursor.execute("SELECT setval('status_log_id_seq', 100000, false)")
+                logger.info("No status logs imported, sequence remains at 100000")
 
             staging_conn.commit()
             logger.info(
