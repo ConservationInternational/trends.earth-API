@@ -503,6 +503,22 @@ jobs:
           }'
         
         echo "✅ Rollbar deployment notification sent successfully"
+        
+    - name: Cleanup deployment lock
+      if: always()
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ steps.ssh-port.outputs.port }}
+        script: |
+          # Remove deployment lock file
+          LOCK_FILE="/tmp/staging-deployment.lock"
+          if [ -f "$LOCK_FILE" ]; then
+            rm -f "$LOCK_FILE"
+            echo "🔓 Deployment lock released"
+          fi
 
     - name: Cleanup security group access
       if: always()
@@ -520,19 +536,3 @@ jobs:
         else
           echo "No runner IP found to remove from security group"
         fi
-
-    - name: Cleanup deployment lock
-      if: always()
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.STAGING_HOST }}
-        username: ${{ secrets.STAGING_USERNAME }}
-        key: ${{ secrets.STAGING_SSH_KEY }}
-        port: ${{ steps.ssh-port.outputs.port }}
-        script: |
-          # Remove deployment lock file
-          LOCK_FILE="/tmp/staging-deployment.lock"
-          if [ -f "$LOCK_FILE" ]; then
-            rm -f "$LOCK_FILE"
-            echo "🔓 Deployment lock released"
-          fi
