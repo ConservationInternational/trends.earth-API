@@ -562,8 +562,25 @@ def collect_system_status(self):
                                 f"[TASK]: Duplicate key error attempt {attempt + 1}, "
                                 f"retrying: {db_error}"
                             )
+                            # On duplicate key error, advance the sequence to avoid conflicts
+                            try:
+                                max_id_result = db.session.execute(
+                                    db.text("SELECT MAX(id) FROM status_log")
+                                ).fetchone()
+                                if max_id_result and max_id_result[0]:
+                                    next_seq_val = max_id_result[0] + 100
+                                    db.session.execute(
+                                        db.text(f"SELECT setval('status_log_id_seq', {next_seq_val}, false)")
+                                    )
+                                    db.session.commit()
+                                    logger.info(
+                                        f"[TASK]: Advanced sequence to {next_seq_val} to avoid conflicts"
+                                    )
+                            except Exception as seq_error:
+                                logger.warning(f"[TASK]: Failed to advance sequence: {seq_error}")
+                                db.session.rollback()
+                            
                             import time
-
                             time.sleep(retry_delay)
                             retry_delay *= 2  # Exponential backoff
                             continue
