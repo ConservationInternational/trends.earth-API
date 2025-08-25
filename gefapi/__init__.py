@@ -59,7 +59,7 @@ handler.setLevel(logging.INFO)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
-rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENV"))
+rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENVIRONMENT"))
 with app.app_context():
     got_request_exception.connect(rollbar.contrib.flask.report_exception, app)
 
