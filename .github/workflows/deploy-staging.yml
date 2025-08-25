@@ -60,6 +60,35 @@ jobs:
         PORT=$(echo "$PORT" | tr -d '[:space:]')
         echo "port=$PORT" >> $GITHUB_OUTPUT
 
+    - name: Check for concurrent deployments
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ steps.ssh-port.outputs.port }}
+        script: |
+          set -e
+          
+          LOCK_FILE="/tmp/staging-deployment.lock"
+          
+          # Check if a deployment is already in progress
+          if [ -f "$LOCK_FILE" ]; then
+            LOCK_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
+            if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
+              echo "❌ Another deployment is already in progress (PID: $LOCK_PID)"
+              echo "Please wait for the current deployment to complete before starting a new one"
+              exit 1
+            else
+              echo "🧹 Removing stale lock file"
+              rm -f "$LOCK_FILE"
+            fi
+          fi
+          
+          # Create lock file with current process ID
+          echo $$ > "$LOCK_FILE"
+          echo "🔒 Deployment lock acquired"
+
     - name: Build and push image on staging server
       uses: appleboy/ssh-action@v1.0.0
       with:
@@ -491,3 +520,19 @@ jobs:
         else
           echo "No runner IP found to remove from security group"
         fi
+
+    - name: Cleanup deployment lock
+      if: always()
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ steps.ssh-port.outputs.port }}
+        script: |
+          # Remove deployment lock file
+          LOCK_FILE="/tmp/staging-deployment.lock"
+          if [ -f "$LOCK_FILE" ]; then
+            rm -f "$LOCK_FILE"
+            echo "🔓 Deployment lock released"
+          fi

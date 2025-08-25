@@ -4,11 +4,13 @@ services:
     command: migrate
     environment:
       PORT: 3000
+      ENVIRONMENT: staging
     env_file:
       - staging.env
     networks:
       - backend
     deploy:
+      replicas: 1
       placement:
         constraints: [node.role == manager]
       restart_policy:
@@ -22,6 +24,7 @@ services:
     command: start
     environment:
       PORT: 3000
+      ENVIRONMENT: staging
       GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
       GIT_BRANCH: ${GIT_BRANCH:-unknown}
       DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-staging}
@@ -44,6 +47,7 @@ services:
     command: worker
     environment:
       PORT: 3000
+      ENVIRONMENT: staging
       # Only handle execution tasks, not build tasks
       CELERY_WORKER_QUEUES: default
     env_file:
@@ -61,6 +65,7 @@ services:
     command: beat
     environment:
       PORT: 3000
+      ENVIRONMENT: staging
     env_file:
       - staging.env
     networks:
@@ -77,6 +82,7 @@ services:
     user: root
     environment:
       PORT: 3000
+      ENVIRONMENT: staging
       # Only handle build tasks that require Docker socket access
       CELERY_WORKER_QUEUES: build
     env_file:

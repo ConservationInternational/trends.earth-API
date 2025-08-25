@@ -219,6 +219,15 @@ class StagingEnvironmentSetup:
 
             prod_cursor = prod_conn.cursor()
             staging_cursor = staging_conn.cursor()
+            
+            # Acquire advisory lock to prevent concurrent imports
+            # Use a unique ID for staging script import operations
+            STAGING_IMPORT_LOCK_ID = 12345
+            logger.info("Acquiring advisory lock for staging import...")
+            staging_cursor.execute("SELECT pg_advisory_lock(%s)", (STAGING_IMPORT_LOCK_ID,))
+            
+            # Begin transaction for atomic script import
+            staging_conn.autocommit = False
 
             # Clear existing scripts to avoid conflicts
             logger.info("Clearing existing scripts from staging...")
@@ -248,7 +257,7 @@ class StagingEnvironmentSetup:
                 try:
                     old_script_id = script[0]
 
-                    # Insert script without ID to get new sequential ID
+                    # Insert script with conflict resolution for slug uniqueness
                     staging_cursor.execute(
                         """
                         INSERT INTO script (name, slug, description, created_at,
@@ -258,6 +267,19 @@ class StagingEnvironmentSetup:
                                           environment, environment_version)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                                 %s, %s)
+                        ON CONFLICT (slug) DO UPDATE SET
+                            name = EXCLUDED.name,
+                            description = EXCLUDED.description,
+                            updated_at = EXCLUDED.updated_at,
+                            user_id = EXCLUDED.user_id,
+                            status = EXCLUDED.status,
+                            public = EXCLUDED.public,
+                            cpu_reservation = EXCLUDED.cpu_reservation,
+                            cpu_limit = EXCLUDED.cpu_limit,
+                            memory_reservation = EXCLUDED.memory_reservation,
+                            memory_limit = EXCLUDED.memory_limit,
+                            environment = EXCLUDED.environment,
+                            environment_version = EXCLUDED.environment_version
                         RETURNING id
                     """,
                         (
@@ -286,7 +308,12 @@ class StagingEnvironmentSetup:
                         logger.info(f"Imported {imported_count} scripts so far...")
 
                 except psycopg2.Error as e:
-                    logger.warning(f"Failed to import script {script[0]}: {e}")
+                    logger.warning(f"Failed to import script {script[0]} with slug '{script[2]}': {e}")
+                    # If it's an integrity error, log more details
+                    if "unique constraint" in str(e).lower() or "duplicate key" in str(e).lower():
+                        logger.error(f"Duplicate script slug detected: {script[2]} - this indicates a race condition")
+                        # Continue with other scripts rather than failing completely
+                        continue
 
             # Set sequence to start from a safe value after the imported scripts
             staging_cursor.execute("SELECT MAX(id) FROM script")
@@ -316,6 +343,13 @@ class StagingEnvironmentSetup:
             staging_conn.rollback()
             return {}
         finally:
+            if staging_cursor:
+                # Release advisory lock
+                try:
+                    staging_cursor.execute("SELECT pg_advisory_unlock(%s)", (12345,))
+                    logger.info("Released advisory lock for staging import")
+                except psycopg2.Error:
+                    pass  # Lock might already be released
             if prod_cursor:
                 prod_cursor.close()
             if staging_cursor:
@@ -346,9 +380,21 @@ class StagingEnvironmentSetup:
             prod_conn.close()
             return
 
+        prod_cursor = None
+        staging_cursor = None
+
         try:
             prod_cursor = prod_conn.cursor()
             staging_cursor = staging_conn.cursor()
+            
+            # Acquire advisory lock to prevent concurrent status log insertions
+            # Use a unique ID for staging status log import operations
+            STAGING_STATUS_IMPORT_LOCK_ID = 54321
+            logger.info("Acquiring advisory lock for staging status log import...")
+            staging_cursor.execute("SELECT pg_advisory_lock(%s)", (STAGING_STATUS_IMPORT_LOCK_ID,))
+            
+            # Begin transaction for atomic status log import
+            staging_conn.autocommit = False
 
             # Check if status_log table exists in both databases
             prod_cursor.execute(
@@ -384,7 +430,7 @@ class StagingEnvironmentSetup:
             staging_cursor.execute("DELETE FROM status_log")
 
             # Reset the sequence to start from 1
-            staging_cursor.execute("ALTER SEQUENCE status_log_id_seq RESTART WITH 1")
+            staging_cursor.execute("SELECT setval('status_log_id_seq', 1, false)")
 
             # Calculate date one month ago
             one_month_ago = datetime.now() - timedelta(days=30)
@@ -421,20 +467,30 @@ class StagingEnvironmentSetup:
                         log,
                     )
                     imported_count += 1
+
+                    if imported_count % 100 == 0:
+                        logger.info(f"Imported {imported_count} status logs so far...")
+
                 except psycopg2.Error as e:
                     logger.warning(f"Failed to import status log: {e}")
+                    # If it's an integrity error, log more details
+                    if "unique constraint" in str(e).lower() or "duplicate key" in str(e).lower():
+                        logger.error(f"Duplicate status log key detected - this indicates a race condition")
+                        # Continue with other logs rather than failing completely
+                        continue
 
-            # Update the sequence to start from a safe value after the imported logs
+            # Set sequence to start from a safe value after the imported logs
             staging_cursor.execute("SELECT MAX(id) FROM status_log")
             max_id = staging_cursor.fetchone()[0]
             if max_id:
                 # Set sequence to start from max_id + 1000 to provide buffer
                 next_val = max_id + 1000
                 staging_cursor.execute(
-                    f"ALTER SEQUENCE status_log_id_seq RESTART WITH {next_val}"
+                    f"SELECT setval('status_log_id_seq', {next_val}, false)"
                 )
                 logger.info(
-                    f"Reset sequence to start from {next_val} to avoid future conflicts"
+                    f"Reset status_log sequence to start from {next_val} "
+                    f"to avoid future conflicts"
                 )
 
             staging_conn.commit()
@@ -447,6 +503,13 @@ class StagingEnvironmentSetup:
             logger.error(f"Error copying status logs: {e}")
             staging_conn.rollback()
         finally:
+            if staging_cursor:
+                # Release advisory lock
+                try:
+                    staging_cursor.execute("SELECT pg_advisory_unlock(%s)", (54321,))
+                    logger.info("Released advisory lock for staging status log import")
+                except psycopg2.Error:
+                    pass  # Lock might already be released
             if prod_cursor:
                 prod_cursor.close()
             if staging_cursor:

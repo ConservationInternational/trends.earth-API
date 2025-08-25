@@ -102,7 +102,7 @@ docker compose -f docker-compose.develop.yml run --rm test
 pip install poetry
 poetry install --with dev
 
-# Run Ruff linting (ALWAYS passes on this codebase)
+# Run Ruff linting (MUST complete without any errors)
 poetry run ruff check gefapi/ tests/
 poetry run ruff format --check gefapi/ tests/
 
@@ -112,6 +112,8 @@ poetry run ruff format gefapi/ tests/
 # Run comprehensive linting with all rules
 poetry run ruff check gefapi/ tests/ --select=E,W,F,UP,B,SIM,I,N,S,C4,PIE,T20,RET,TCH
 ```
+
+**Important**: `ruff format` and `ruff check` must complete without any errors before submitting code changes.
 
 ### Container Commands and Services
 
@@ -255,6 +257,7 @@ gefapi/                 # Main application package
 - **Import sorting**: isort-compatible with known first-party packages
 - **Error handling**: Comprehensive exception handling with proper logging
 - **Security**: Bandit security scanning, input validation
+- **Quality requirements**: `ruff format` and `ruff check` must complete without any errors
 
 ### Database Patterns
 - **SQLAlchemy ORM**: Declarative models in `gefapi/models/`
