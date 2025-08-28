@@ -274,8 +274,7 @@ Required inputs:
 - **Reason**: Explanation for the rollback (required)
 - **Services**: Which services to rollback - `all` (default) or comma-separated list: `api,worker,beat,docker,redis`
 - **Rollback Method** (choose ONE):
-  - **Automatic**: Leave both image and commit fields blank (uses Docker service rollback history)
-  - **Rollback to image**: Specific image tag to rollback to (e.g., "master-abc1234", "v2.0.0")
+  - **Automatic**: Leave commit field blank (uses Docker service rollback history)
   - **Rollback to commit**: Specific commit SHA to rollback to (e.g., "abc123456789" - minimum 7 characters)
 
 Process:
@@ -295,18 +294,13 @@ Process:
 # Go to: Actions → Rollback Production Deployment → Run workflow
 # Services: all
 # Reason: "Health check failures after deployment"
-# (Leave both image and commit fields blank)
+# (Leave commit field blank)
 
 # Rollback specific services only
 # Services: api,worker  
 # Reason: "API performance issues"
 
-# Rollback to specific image tag
-# Services: all
-# Rollback to image: master-abc1234
-# Reason: "Revert to known good version"
-
-# Rollback to specific commit SHA (✨ NEW)
+# Rollback to specific commit SHA
 # Services: all
 # Rollback to commit: abc123456789
 # Reason: "Revert to commit before bug introduction"
@@ -379,8 +373,7 @@ The recommended way to perform production rollbacks is using the GitHub Actions 
    - **Reason**: Required explanation for the rollback
    - **Services**: Choose "all" or specific services (e.g., "api,worker")
    - **Rollback Method** (choose ONE):
-     - Leave both fields blank for automatic rollback to previous version
-     - **Rollback to image**: Specific image tag (e.g., "master-abc1234")
+     - Leave commit field blank for automatic rollback to previous version
      - **Rollback to commit**: Specific commit SHA (e.g., "abc123456789")
 4. **Monitor Progress**: Watch the workflow execution for real-time updates
 
@@ -412,17 +405,11 @@ docker service inspect trends-earth-prod_api --format='{{json .UpdateStatus}}'
 # If UpdateStatus is null, check the service spec for current image
 docker service inspect trends-earth-prod_api --format='{{.Spec.TaskTemplate.ContainerSpec.Image}}'
 
-# List all available image tags in registry (if accessible)
-docker image ls | grep trendsearth-api
-
 # Check service version history (shows recent tasks)
 docker service ps trends-earth-prod_api --format "table {{.Name}}\t{{.Image}}\t{{.CurrentState}}\t{{.Error}}" --no-trunc
 
-# Rollback to specific image version (replace with desired tag)
-docker service update --image registry.company.com:5000/trendsearth-api:previous-tag trends-earth-prod_api
-
-# Alternative: Rollback to previous version (if update history exists)
-docker service rollback trends-earth-prod_manager
+# Rollback to previous version (if update history exists)
+docker service rollback trends-earth-prod_api
 ```
 
 #### Rollback Configuration
