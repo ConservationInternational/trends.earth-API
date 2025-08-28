@@ -2,6 +2,12 @@
 
 This guide walks you through setting up automated deployment for the Trends.Earth API using GitHub Actions and Docker Swarm.
 
+## Quick Links
+
+- **[Rollback Guide](ROLLBACK-GUIDE.md)** - How to rollback production deployments
+- **[GitHub Secrets Configuration](github-secrets.md)** - Setting up deployment credentials
+- **[Deployment Scripts Reference](../scripts/deployment/README.md)** - Manual deployment scripts
+
 ## Overview
 
 The deployment system uses:
