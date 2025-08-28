@@ -1,0 +1,357 @@
+name: Rollback Production Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: 'Services to rollback (comma-separated: api,worker,beat,docker,redis or "all")'
+        required: false
+        default: 'all'
+        type: string
+      rollback_to_image:
+        description: 'Specific image tag to rollback to (optional, uses service rollback if not specified)'
+        required: false
+        default: ''
+        type: string
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
+  IMAGE_NAME: trendsearth-api
+  COMPOSE_FILE: docker-compose.prod.yml
+
+jobs:
+  rollback-production:
+    name: Rollback Production Services
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+    - name: Get runner IP and update security group
+      id: security-group
+      run: |
+        # Get the public IP of the GitHub Actions runner
+        RUNNER_IP=$(curl -s https://checkip.amazonaws.com)
+        echo "Runner IP: $RUNNER_IP"
+        echo "runner-ip=$RUNNER_IP" >> $GITHUB_OUTPUT
+        
+        # Add SSH access rule for the runner IP
+        echo "Adding SSH access for runner IP $RUNNER_IP to security group ${{ secrets.PROD_SECURITY_GROUP_ID }}"
+        aws ec2 authorize-security-group-ingress \
+          --group-id "${{ secrets.PROD_SECURITY_GROUP_ID }}" \
+          --protocol tcp \
+          --port 22 \
+          --cidr "${RUNNER_IP}/32" || true
+        
+        echo "Security group rule added successfully"
+
+    - name: Set SSH port variable
+      id: ssh-port
+      run: |
+        # Trim whitespace and newlines from the port
+        PORT="${{ secrets.PROD_SSH_PORT || 22 }}"
+        PORT=$(echo "$PORT" | tr -d '[:space:]')
+        echo "port=$PORT" >> $GITHUB_OUTPUT
+
+    - name: Validate services input
+      id: validate-services
+      run: |
+        SERVICES="${{ github.event.inputs.services }}"
+        VALID_SERVICES="api worker beat docker redis"
+        
+        echo "Requested services: $SERVICES"
+        
+        if [ "$SERVICES" = "all" ]; then
+          SERVICES_TO_ROLLBACK="$VALID_SERVICES"
+        else
+          # Validate each service in the comma-separated list
+          SERVICES_TO_ROLLBACK=""
+          IFS=',' read -ra SERVICE_ARRAY <<< "$SERVICES"
+          for service in "${SERVICE_ARRAY[@]}"; do
+            service=$(echo "$service" | tr -d '[:space:]')
+            if echo "$VALID_SERVICES" | grep -q "$service"; then
+              SERVICES_TO_ROLLBACK="$SERVICES_TO_ROLLBACK $service"
+            else
+              echo "❌ Invalid service: $service"
+              echo "Valid services are: $VALID_SERVICES"
+              exit 1
+            fi
+          done
+        fi
+        
+        echo "Services to rollback: $SERVICES_TO_ROLLBACK"
+        echo "services-to-rollback=$SERVICES_TO_ROLLBACK" >> $GITHUB_OUTPUT
+
+    - name: Perform production rollback
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PROD_HOST }}
+        username: ${{ secrets.PROD_USERNAME }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        port: ${{ steps.ssh-port.outputs.port }}
+        script: |
+          set -e
+          
+          echo "🔄 Starting production rollback..."
+          echo "Reason: ${{ github.event.inputs.reason }}"
+          echo "Requested by: ${{ github.actor }}"
+          echo "Services to rollback: ${{ steps.validate-services.outputs.services-to-rollback }}"
+          
+          # Navigate to application directory
+          cd ${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}
+          
+          # Check current service status
+          echo "📊 Current service status before rollback:"
+          docker service ls --filter "name=trends-earth-prod"
+          
+          SERVICES_TO_ROLLBACK="${{ steps.validate-services.outputs.services-to-rollback }}"
+          ROLLBACK_TO_IMAGE="${{ github.event.inputs.rollback_to_image }}"
+          
+          # Perform rollback for each service
+          for service in $SERVICES_TO_ROLLBACK; do
+            SERVICE_NAME="trends-earth-prod_$service"
+            
+            echo "🔄 Rolling back service: $SERVICE_NAME"
+            
+            # Check if service exists
+            if ! docker service ls --format "{{.Name}}" | grep -q "^$SERVICE_NAME$"; then
+              echo "⚠️ Service $SERVICE_NAME not found, skipping..."
+              continue
+            fi
+            
+            if [ -n "$ROLLBACK_TO_IMAGE" ]; then
+              # Rollback to specific image
+              FULL_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$ROLLBACK_TO_IMAGE"
+              echo "📦 Rolling back $SERVICE_NAME to specific image: $FULL_IMAGE"
+              
+              # Update service to use specific image
+              if docker service update --image "$FULL_IMAGE" "$SERVICE_NAME"; then
+                echo "✅ Successfully updated $SERVICE_NAME to image $FULL_IMAGE"
+              else
+                echo "❌ Failed to update $SERVICE_NAME to image $FULL_IMAGE"
+                exit 1
+              fi
+            else
+              # Use Docker Swarm's built-in rollback functionality
+              echo "⏪ Rolling back $SERVICE_NAME to previous version"
+              
+              # Check if service has update history for rollback
+              UPDATE_STATUS=$(docker service inspect "$SERVICE_NAME" --format='{{.UpdateStatus}}' 2>/dev/null || echo "null")
+              
+              if [ "$UPDATE_STATUS" = "null" ] || [ -z "$UPDATE_STATUS" ]; then
+                echo "⚠️ No update history found for $SERVICE_NAME, cannot perform automatic rollback"
+                echo "🔍 Current service details:"
+                docker service inspect "$SERVICE_NAME" --format='{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+                continue
+              fi
+              
+              if docker service rollback "$SERVICE_NAME"; then
+                echo "✅ Successfully rolled back $SERVICE_NAME"
+              else
+                echo "❌ Failed to rollback $SERVICE_NAME"
+                # Continue with other services rather than failing completely
+                continue
+              fi
+            fi
+            
+            # Wait for service to stabilize
+            echo "⏳ Waiting for $SERVICE_NAME to stabilize..."
+            sleep 10
+          done
+          
+          # Wait for all services to be ready after rollback
+          echo "⏳ Waiting for all services to be ready after rollback..."
+          
+          max_wait=120
+          wait_time=0
+          
+          while [ $wait_time -lt $max_wait ]; do
+            # Check if all services have desired replicas running
+            pending_services=$(docker service ls --filter "name=trends-earth-prod" --format "table {{.Name}}\t{{.Replicas}}" | grep -v "1/1\|0/1" | wc -l)
+            
+            # Account for migrate service which runs once and exits (expected to be 0/1)
+            if [ $pending_services -le 2 ]; then  # Header line and possibly migrate service
+              echo "✅ All services are running after rollback"
+              break
+            fi
+            
+            echo "⏳ Waiting for services to be ready... ($wait_time/$max_wait seconds)"
+            docker service ls --filter "name=trends-earth-prod"
+            sleep 10
+            wait_time=$((wait_time + 10))
+          done
+          
+          if [ $wait_time -ge $max_wait ]; then
+            echo "⚠️ Some services may not be fully ready after $max_wait seconds"
+          fi
+          
+          # Final service status
+          echo "📊 Final service status after rollback:"
+          docker service ls --filter "name=trends-earth-prod"
+          
+          echo "🎉 Production rollback completed!"
+
+    - name: Verify rollback health
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PROD_HOST }}
+        username: ${{ secrets.PROD_USERNAME }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        port: ${{ steps.ssh-port.outputs.port }}
+        script: |
+          set -e
+          
+          echo "🏥 Performing health check after rollback..."
+          
+          # Navigate to application directory
+          cd ${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}
+          
+          max_attempts=20
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "⏳ Health check attempt $attempt/$max_attempts..."
+            
+            # First check if port is listening
+            if ! nc -z 127.0.0.1 3001 2>/dev/null; then
+              echo "⚠️ Port 3001 is not listening yet"
+            else
+              echo "✅ Port 3001 is listening"
+            fi
+            
+            # Perform health check request
+            health_response=$(curl -f -s -w "HTTP_CODE:%{http_code}" http://127.0.0.1:3001/api-health 2>&1)
+            curl_exit_code=$?
+            
+            if [ $curl_exit_code -eq 0 ]; then
+              echo "✅ Health check passed after rollback"
+              echo "Response: $health_response"
+              break
+            else
+              echo "⏳ Health check failed with exit code $curl_exit_code"
+              echo "Response: $health_response"
+            fi
+            
+            sleep 15
+            attempt=$((attempt + 1))
+          done
+          
+          if [ $attempt -gt $max_attempts ]; then
+            echo "❌ Health check failed after rollback - $max_attempts attempts"
+            echo "🔍 Debugging information:"
+            echo "  - All running containers:"
+            docker ps --filter "name=trends-earth-prod"
+            echo "  - API service details:"
+            docker service inspect trends-earth-prod_api --format="{{json .Spec.TaskTemplate.ContainerSpec}}" || echo "Service not found"
+            echo "  - Recent API service logs:"
+            docker service logs --tail 50 trends-earth-prod_api || echo "No logs available"
+            exit 1
+          fi
+          
+          echo "🎉 Rollback health verification completed successfully!"
+
+    - name: Run basic integration tests after rollback
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PROD_HOST }}
+        username: ${{ secrets.PROD_USERNAME }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        port: ${{ steps.ssh-port.outputs.port }}
+        script: |
+          set -e
+          
+          echo "🧪 Running basic integration tests after rollback..."
+          
+          # Navigate to application directory
+          cd ${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}
+          
+          # Test API health endpoint
+          echo "⏳ Testing health endpoint..."
+          if curl -f -s http://127.0.0.1:3001/api-health >/dev/null 2>&1; then
+            echo "✅ Health endpoint working"
+          else
+            echo "❌ Health endpoint failed"
+            exit 1
+          fi
+          
+          # Test API documentation endpoint
+          echo "⏳ Testing API documentation endpoint..."
+          if curl -f -s http://127.0.0.1:3001/api/docs/ >/dev/null 2>&1; then
+            echo "✅ API documentation endpoint working"
+          else
+            echo "❌ API documentation endpoint failed"
+            exit 1
+          fi
+          
+          # Test basic API functionality
+          echo "⏳ Testing basic API functionality..."
+          api_response=$(curl -s -w "HTTP_CODE:%{http_code}" http://127.0.0.1:3001/api/v1/user/me 2>&1)
+          echo "🔍 API response: $api_response"
+          
+          if echo "$api_response" | grep -q "HTTP_CODE:200\|HTTP_CODE:401\|HTTP_CODE:403"; then
+            echo "✅ API responding correctly after rollback"
+          else
+            echo "❌ API not responding correctly: $api_response"
+            echo "🔍 Testing alternative endpoint for basic connectivity..."
+            swagger_response=$(curl -s -w "HTTP_CODE:%{http_code}" http://127.0.0.1:3001/swagger.json 2>&1)
+            echo "🔍 Swagger response: $swagger_response"
+            if echo "$swagger_response" | grep -q "HTTP_CODE:200"; then
+              echo "✅ API is responding (swagger endpoint working)"
+            else
+              echo "❌ API completely unresponsive after rollback"
+              exit 1
+            fi
+          fi
+          
+          echo "✅ All basic integration tests passed after rollback"
+
+    - name: Notify Rollbar of rollback
+      if: success()
+      run: |
+        echo "🔔 Notifying Rollbar of rollback..."
+        
+        # Get rollback information
+        ENVIRONMENT="production"
+        REVISION="${{ github.sha }}"
+        LOCAL_USERNAME="${{ github.actor }}"
+        COMMENT="ROLLBACK: ${{ github.event.inputs.reason }} - Services: ${{ github.event.inputs.services }} - Triggered by: ${{ github.actor }}"
+        
+        # Send rollback notification to Rollbar
+        curl -X POST 'https://api.rollbar.com/api/1/deploy/' \
+          -H 'Content-Type: application/json' \
+          -d '{
+            "access_token": "${{ secrets.ROLLBAR_SERVER_ACCESS_TOKEN }}",
+            "environment": "'"$ENVIRONMENT"'",
+            "revision": "'"$REVISION"'",
+            "local_username": "'"$LOCAL_USERNAME"'",
+            "comment": "'"$COMMENT"'"
+          }'
+        
+        echo "✅ Rollbar rollback notification sent successfully"
+
+    - name: Cleanup security group access
+      if: always()
+      run: |
+        # Remove the SSH access rule for the runner IP
+        RUNNER_IP="${{ steps.security-group.outputs.runner-ip }}"
+        if [ -n "$RUNNER_IP" ]; then
+          echo "Removing SSH access for runner IP $RUNNER_IP from security group ${{ secrets.PROD_SECURITY_GROUP_ID }}"
+          aws ec2 revoke-security-group-ingress \
+            --group-id "${{ secrets.PROD_SECURITY_GROUP_ID }}" \
+            --protocol tcp \
+            --port 22 \
+            --cidr "${RUNNER_IP}/32" || true
+          echo "Security group rule removed successfully"
+        else
+          echo "No runner IP found to remove from security group"
+        fi

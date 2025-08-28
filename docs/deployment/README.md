@@ -259,6 +259,44 @@ Process:
 7. Notify Rollbar of deployment
 8. Cleanup AWS security group rules
 
+### Production Rollback (`.github/workflows/rollback-production.yml`)
+
+Triggers on:
+- Manual workflow dispatch only
+
+Required inputs:
+- **Reason**: Explanation for the rollback (required)
+- **Services**: Which services to rollback - `all` (default) or comma-separated list: `api,worker,beat,docker,redis`
+- **Rollback to image**: Optional specific image tag to rollback to (uses service rollback history if not specified)
+
+Process:
+1. AWS security group setup (dynamic runner IP access)
+2. Validate rollback parameters and service names
+3. Connect to production server via SSH
+4. Perform Docker service rollbacks for specified services
+5. Wait for services to stabilize after rollback
+6. Run health checks to verify rollback success
+7. Run basic integration tests
+8. Notify Rollbar of rollback event
+9. Cleanup AWS security group rules
+
+**Usage Examples:**
+```bash
+# Rollback all services to previous version
+# Go to: Actions → Rollback Production Deployment → Run workflow
+# Services: all
+# Reason: "Health check failures after deployment"
+
+# Rollback specific services only
+# Services: api,worker
+# Reason: "API performance issues"
+
+# Rollback to specific image tag
+# Services: all
+# Rollback to image: master-abc1234
+# Reason: "Revert to known good version"
+```
+
 ## Monitoring and Troubleshooting
 
 ### Service Status
@@ -314,7 +352,27 @@ The production deployment includes automatic rollback capabilities:
 - **Service Failures**: Docker Swarm monitors services and can automatically rollback on failure (configured with `failure_action: rollback`)
 - **Update Monitoring**: Services are monitored for 60 seconds after updates with automatic rollback on failure
 
-#### Manual Rollback Options
+#### GitHub Actions Rollback (Recommended)
+
+**Automated Rollback via GitHub Actions:**
+The recommended way to perform production rollbacks is using the GitHub Actions workflow:
+
+1. **Go to GitHub Actions**: Navigate to the repository's Actions tab
+2. **Select Rollback Workflow**: Click "Rollback Production Deployment"
+3. **Run Workflow**: Click "Run workflow" and fill in:
+   - **Reason**: Required explanation for the rollback
+   - **Services**: Choose "all" or specific services (e.g., "api,worker")
+   - **Rollback to image**: Optional specific image tag (leaves blank for automatic rollback)
+4. **Monitor Progress**: Watch the workflow execution for real-time updates
+
+**Benefits of GitHub Actions Rollback:**
+- ✅ **Automated health checks** and validation after rollback
+- ✅ **Secure access** using existing AWS security groups and SSH keys
+- ✅ **Audit trail** with detailed logs and notifications
+- ✅ **Rollbar integration** for monitoring and alerting
+- ✅ **Consistent environment** using the same infrastructure as deployments
+
+#### Manual Rollback Options (Advanced)
 
 **Quick Manual Rollback:**
 ```bash
