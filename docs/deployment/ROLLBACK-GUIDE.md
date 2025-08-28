@@ -1,0 +1,149 @@
+# Production Rollback Quick Guide
+
+This document provides a quick reference for using the new production rollback GitHub Action.
+
+## When to Use Rollback
+
+Use the production rollback action when:
+- ❌ Health checks fail after deployment
+- ❌ Performance issues are detected in production
+- ❌ Critical bugs are discovered after deployment
+- ❌ Services are not responding correctly
+- ❌ Database migrations cause issues
+
+## How to Trigger Rollback
+
+1. **Navigate to GitHub Actions**
+   - Go to: `https://github.com/ConservationInternational/trends.earth-API/actions`
+
+2. **Select Rollback Workflow**
+   - Click on "Rollback Production Deployment"
+
+3. **Click "Run workflow"**
+   - Choose the `master` branch (or current production branch)
+
+4. **Fill in Required Fields:**
+   - **Reason** (required): Brief explanation of why you're rolling back
+     - Example: "Health check failures after v2.1.0 deployment"
+   - **Services** (optional, default: "all"): Which services to rollback
+     - "all" - Rollback all services (recommended)
+     - "api,worker" - Rollback specific services only
+     - Available services: api, worker, beat, docker, redis
+
+5. **Choose Rollback Method**:
+   
+   **Option A: Automatic Rollback** (recommended)
+   - Leave commit field blank
+   - Uses Docker Swarm's built-in rollback to previous version
+   
+   **Option B: Rollback to Specific Commit SHA**
+   - **Rollback to commit**: Git commit SHA to rollback to
+   - Example: "abc123456789" (minimum 7 characters)
+   - The workflow will checkout the commit and rebuild the application from that code
+
+6. **Monitor Progress**
+   - Watch the workflow execution in real-time
+   - Check logs for detailed progress information
+
+## Rollback Process
+
+The workflow will automatically:
+1. ✅ Set up secure AWS access for the GitHub runner
+2. ✅ Validate your inputs and service names
+3. ✅ Connect to production server securely via SSH
+4. ✅ For commit SHA rollbacks: checkout the specified commit and rebuild the application
+5. ✅ Perform Docker service rollbacks for specified services
+6. ✅ Wait for services to stabilize after rollback
+7. ✅ Run comprehensive health checks
+8. ✅ Test basic API functionality
+9. ✅ Notify Rollbar monitoring system
+10. ✅ Clean up AWS security access
+
+## Expected Timeline
+
+- **Total Duration**: 5-10 minutes
+- **Rollback Process**: 2-3 minutes
+- **Health Verification**: 3-5 minutes
+- **Integration Tests**: 1-2 minutes
+
+## Success Indicators
+
+✅ **Successful Rollback:**
+- All workflow steps complete with green checkmarks
+- Health checks pass (returns 200 status)
+- API endpoints respond correctly
+- Services show "1/1" replicas in Docker Swarm
+- Rollbar receives rollback notification
+
+## Troubleshooting
+
+❌ **If Rollback Fails:**
+1. Check the workflow logs for specific error messages
+2. Verify production server is accessible
+3. Check if services have rollback history available (for automatic rollbacks)
+4. For commit SHA rollbacks: verify the commit SHA exists in the git repository
+5. Consider manual rollback if automated rollback fails
+
+❌ **If Health Checks Fail After Rollback:**
+1. Check service logs: `docker service logs trends-earth-prod_api`
+2. Verify database connectivity
+3. Check for any infrastructure issues
+4. Consider rolling back to a different commit SHA
+5. Try automatic rollback if specific commit rollback failed
+
+❌ **Common Rollback Errors:**
+- **"Invalid commit SHA format"**: Ensure commit SHA is at least 7 alphanumeric characters
+- **"Commit not found in repository"**: The specified commit SHA doesn't exist in the git repository
+- **"No update history found"**: Service hasn't been updated recently, cannot use automatic rollback
+
+## Manual Fallback
+
+If the GitHub Action fails, you can perform manual rollback via SSH:
+
+```bash
+# Connect to production server
+ssh user@production-server
+
+# Navigate to application directory
+cd /opt/trends-earth-api
+
+# Option 1: Automatic rollback to previous version
+docker service rollback trends-earth-prod_api
+docker service rollback trends-earth-prod_worker
+docker service rollback trends-earth-prod_beat
+docker service rollback trends-earth-prod_docker
+docker service rollback trends-earth-prod_redis
+
+# Option 2: Rollback to specific commit SHA
+COMMIT_SHA="abc123456789"  # Replace with desired commit
+git fetch origin
+git reset --hard $COMMIT_SHA
+docker build -t $DOCKER_REGISTRY/trendsearth-api:rollback-${COMMIT_SHA:0:7} .
+docker push $DOCKER_REGISTRY/trendsearth-api:rollback-${COMMIT_SHA:0:7}
+docker service update --image $DOCKER_REGISTRY/trendsearth-api:rollback-${COMMIT_SHA:0:7} trends-earth-prod_api
+docker service update --image $DOCKER_REGISTRY/trendsearth-api:rollback-${COMMIT_SHA:0:7} trends-earth-prod_worker
+# Repeat for other services as needed
+
+# Check service status
+docker service ls --filter "name=trends-earth-prod"
+
+# Verify health
+curl http://localhost:3001/api-health
+```
+
+## Important Notes
+
+⚠️ **Security**: The rollback action uses the same security infrastructure as deployments (AWS security groups, SSH keys)
+
+⚠️ **Permissions**: Only users with `production` environment access can trigger rollbacks
+
+⚠️ **Audit Trail**: All rollback actions are logged in GitHub Actions and reported to Rollbar
+
+⚠️ **Data Safety**: Rollbacks only affect application code, not database data or persistent volumes
+
+## Contact
+
+For issues with the rollback process:
+1. Check the GitHub Actions logs first
+2. Review this guide for common solutions
+3. Contact the development team with specific error messages
