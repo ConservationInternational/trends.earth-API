@@ -113,7 +113,7 @@ jobs:
           exit 1
         fi
         
-        # Determine the final image tag to use
+        # Determine the rollback method
         if [ -n "$ROLLBACK_TO_COMMIT" ]; then
           # Validate commit SHA format (should be at least 7 characters, alphanumeric)
           if ! echo "$ROLLBACK_TO_COMMIT" | grep -qE '^[a-fA-F0-9]{7,}$'; then
@@ -122,15 +122,8 @@ jobs:
             exit 1
           fi
           
-          # Convert commit SHA to image tag format
-          # Images are tagged as: $REGISTRY/$IMAGE_NAME:$BRANCH_NAME-$SHORT_SHA
-          SHORT_SHA="${ROLLBACK_TO_COMMIT:0:7}"
-          BRANCH_NAME="master"  # Production deployments are from master branch
-          FINAL_IMAGE_TAG="$BRANCH_NAME-$SHORT_SHA"
-          
-          echo "✅ Converting commit SHA $ROLLBACK_TO_COMMIT to image tag: $FINAL_IMAGE_TAG"
+          echo "✅ Will rollback to commit SHA: $ROLLBACK_TO_COMMIT"
           echo "rollback-method=commit" >> $GITHUB_OUTPUT
-          echo "final-image-tag=$FINAL_IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "commit-sha=$ROLLBACK_TO_COMMIT" >> $GITHUB_OUTPUT
           
         elif [ -n "$ROLLBACK_TO_IMAGE" ]; then
@@ -139,9 +132,8 @@ jobs:
           echo "final-image-tag=$ROLLBACK_TO_IMAGE" >> $GITHUB_OUTPUT
           
         else
-          echo "✅ Using automatic service rollback (no specific image specified)"
+          echo "✅ Using automatic service rollback (no specific target specified)"
           echo "rollback-method=automatic" >> $GITHUB_OUTPUT
-          echo "final-image-tag=" >> $GITHUB_OUTPUT
         fi
 
     - name: Perform production rollback
@@ -162,7 +154,6 @@ jobs:
           
           if [ "${{ steps.rollback-target.outputs.rollback-method }}" = "commit" ]; then
             echo "Target commit SHA: ${{ steps.rollback-target.outputs.commit-sha }}"
-            echo "Target image tag: ${{ steps.rollback-target.outputs.final-image-tag }}"
           elif [ "${{ steps.rollback-target.outputs.rollback-method }}" = "image" ]; then
             echo "Target image tag: ${{ steps.rollback-target.outputs.final-image-tag }}"
           fi
@@ -176,7 +167,81 @@ jobs:
           
           SERVICES_TO_ROLLBACK="${{ steps.validate-services.outputs.services-to-rollback }}"
           ROLLBACK_METHOD="${{ steps.rollback-target.outputs.rollback-method }}"
-          FINAL_IMAGE_TAG="${{ steps.rollback-target.outputs.final-image-tag }}"
+          
+          # Handle commit SHA rollback by rebuilding from the specified commit
+          if [ "$ROLLBACK_METHOD" = "commit" ]; then
+            COMMIT_SHA="${{ steps.rollback-target.outputs.commit-sha }}"
+            echo "🔄 Rolling back to commit SHA: $COMMIT_SHA"
+            
+            # Fetch latest changes and checkout the specific commit
+            echo "📥 Fetching latest changes from repository..."
+            git fetch origin
+            
+            echo "📋 Current branch and commit:"
+            echo "  Branch: $(git branch --show-current)"
+            echo "  Current commit: $(git rev-parse HEAD)"
+            
+            # Verify the commit exists
+            if git rev-parse --verify "$COMMIT_SHA" >/dev/null 2>&1; then
+              echo "✅ Commit $COMMIT_SHA found in repository"
+            else
+              echo "❌ Commit $COMMIT_SHA not found in repository"
+              echo "🔍 Recent commits:"
+              git log --oneline -10
+              exit 1
+            fi
+            
+            # Checkout the specific commit
+            echo "🔄 Checking out commit $COMMIT_SHA..."
+            git reset --hard "$COMMIT_SHA"
+            
+            echo "✅ Successfully checked out commit: $(git rev-parse HEAD)"
+            echo "📋 Commit details:"
+            git log --oneline -1
+            
+            # Configure insecure registry on server if needed
+            echo "📋 Configuring insecure registry on server..."
+            sudo mkdir -p /etc/docker
+            if [ ! -f /etc/docker/daemon.json ] || ! grep -q "insecure-registries" /etc/docker/daemon.json; then
+              echo '{"insecure-registries":["${{ env.REGISTRY }}"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+              sudo systemctl restart docker
+              sleep 10
+            fi
+            
+            # Build new image from the rolled-back commit
+            echo "🔨 Building Docker image from commit $COMMIT_SHA..."
+            
+            REGISTRY="${{ env.REGISTRY }}"
+            IMAGE_NAME="${{ env.IMAGE_NAME }}"
+            SHORT_SHA="${COMMIT_SHA:0:7}"
+            ROLLBACK_TAG="rollback-$SHORT_SHA"
+            
+            BUILT_TAGS="$REGISTRY/$IMAGE_NAME:$ROLLBACK_TAG
+            $REGISTRY/$IMAGE_NAME:latest"
+            
+            # Build with the rollback tag
+            PRIMARY_TAG="$REGISTRY/$IMAGE_NAME:$ROLLBACK_TAG"
+            echo "Building with tag: $PRIMARY_TAG"
+            docker build -t "$PRIMARY_TAG" .
+            
+            # Tag with latest as well
+            docker tag "$PRIMARY_TAG" "$REGISTRY/$IMAGE_NAME:latest"
+            
+            # Push the images to local registry
+            echo "🚀 Pushing rollback images to local registry..."
+            echo "$BUILT_TAGS" | while IFS= read -r tag; do
+              if [ -n "$tag" ]; then
+                echo "Pushing: $tag"
+                docker push "$tag"
+              fi
+            done
+            
+            # Set the image tag for service updates
+            FINAL_IMAGE_TAG="$ROLLBACK_TAG"
+            
+          elif [ "$ROLLBACK_METHOD" = "image" ]; then
+            FINAL_IMAGE_TAG="${{ steps.rollback-target.outputs.final-image-tag }}"
+          fi
           
           # Perform rollback for each service
           for service in $SERVICES_TO_ROLLBACK; do
@@ -191,20 +256,23 @@ jobs:
             fi
             
             if [ "$ROLLBACK_METHOD" = "commit" ] || [ "$ROLLBACK_METHOD" = "image" ]; then
-              # Rollback to specific image (either from commit SHA or direct image tag)
+              # Rollback to specific image (either from commit SHA build or direct image tag)
               FULL_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$FINAL_IMAGE_TAG"
               echo "📦 Rolling back $SERVICE_NAME to image: $FULL_IMAGE"
               
-              # Verify the image exists in the registry before attempting rollback
-              echo "🔍 Verifying image exists in registry..."
-              if docker manifest inspect "$FULL_IMAGE" >/dev/null 2>&1; then
-                echo "✅ Image $FULL_IMAGE found in registry"
-              else
-                echo "❌ Image $FULL_IMAGE not found in registry"
-                echo "🔍 Available tags for ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:"
-                # Try to list available tags (this may not work with all registries)
-                docker image ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" --format "table {{.Tag}}\t{{.CreatedAt}}" | head -10 || echo "Could not list available tags"
-                exit 1
+              # For commit rollback, we just built the image so it should exist
+              # For image rollback, verify the image exists in the registry
+              if [ "$ROLLBACK_METHOD" = "image" ]; then
+                echo "🔍 Verifying image exists in registry..."
+                if docker manifest inspect "$FULL_IMAGE" >/dev/null 2>&1; then
+                  echo "✅ Image $FULL_IMAGE found in registry"
+                else
+                  echo "❌ Image $FULL_IMAGE not found in registry"
+                  echo "🔍 Available tags for ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:"
+                  # Try to list available tags (this may not work with all registries)
+                  docker image ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" --format "table {{.Tag}}\t{{.CreatedAt}}" | head -10 || echo "Could not list available tags"
+                  exit 1
+                fi
               fi
               
               # Update service to use specific image
@@ -401,7 +469,7 @@ jobs:
         # Build comment based on rollback method
         ROLLBACK_METHOD="${{ steps.rollback-target.outputs.rollback-method }}"
         if [ "$ROLLBACK_METHOD" = "commit" ]; then
-          COMMENT="ROLLBACK TO COMMIT: ${{ steps.rollback-target.outputs.commit-sha }} (${{ steps.rollback-target.outputs.final-image-tag }}) - Reason: ${{ github.event.inputs.reason }} - Services: ${{ github.event.inputs.services }} - Triggered by: ${{ github.actor }}"
+          COMMENT="ROLLBACK TO COMMIT: ${{ steps.rollback-target.outputs.commit-sha }} - Reason: ${{ github.event.inputs.reason }} - Services: ${{ github.event.inputs.services }} - Triggered by: ${{ github.actor }}"
         elif [ "$ROLLBACK_METHOD" = "image" ]; then
           COMMENT="ROLLBACK TO IMAGE: ${{ steps.rollback-target.outputs.final-image-tag }} - Reason: ${{ github.event.inputs.reason }} - Services: ${{ github.event.inputs.services }} - Triggered by: ${{ github.actor }}"
         else

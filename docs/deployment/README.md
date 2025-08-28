@@ -310,7 +310,7 @@ Process:
 # Services: all
 # Rollback to commit: abc123456789
 # Reason: "Revert to commit before bug introduction"
-# (Workflow automatically converts commit SHA to image tag: master-abc1234)
+# (Workflow checkouts the commit and rebuilds the application)
 ```
 
 ## Monitoring and Troubleshooting

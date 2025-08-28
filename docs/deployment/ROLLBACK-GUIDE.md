@@ -43,7 +43,7 @@ Use the production rollback action when:
    **Option C: Rollback to Specific Commit SHA** ✨ *New Feature*
    - **Rollback to commit**: Git commit SHA to rollback to
    - Example: "abc123456789" (minimum 7 characters)
-   - The workflow will automatically find the corresponding image tag
+   - The workflow will checkout the commit and rebuild the application from that code
    
    ⚠️ **Important**: Do not specify both image tag AND commit SHA - choose only one method
 
@@ -57,12 +57,13 @@ The workflow will automatically:
 1. ✅ Set up secure AWS access for the GitHub runner
 2. ✅ Validate your inputs and service names
 3. ✅ Connect to production server securely via SSH
-4. ✅ Perform Docker service rollbacks for specified services
-5. ✅ Wait for services to stabilize after rollback
-6. ✅ Run comprehensive health checks
-7. ✅ Test basic API functionality
-8. ✅ Notify Rollbar monitoring system
-9. ✅ Clean up AWS security access
+4. ✅ For commit SHA rollbacks: checkout the specified commit and rebuild the application
+5. ✅ Perform Docker service rollbacks for specified services
+6. ✅ Wait for services to stabilize after rollback
+7. ✅ Run comprehensive health checks
+8. ✅ Test basic API functionality
+9. ✅ Notify Rollbar monitoring system
+10. ✅ Clean up AWS security access
 
 ## Expected Timeline
 
@@ -86,7 +87,7 @@ The workflow will automatically:
 1. Check the workflow logs for specific error messages
 2. Verify production server is accessible
 3. Check if services have rollback history available (for automatic rollbacks)
-4. For commit SHA rollbacks: verify the commit SHA exists and an image was built for it
+4. For commit SHA rollbacks: verify the commit SHA exists in the git repository
 5. For image tag rollbacks: verify the image tag exists in the registry
 6. Consider manual rollback if automated rollback fails
 
@@ -99,9 +100,10 @@ The workflow will automatically:
 
 ❌ **Common Rollback Errors:**
 - **"Invalid commit SHA format"**: Ensure commit SHA is at least 7 alphanumeric characters
-- **"Image not found in registry"**: The specified image tag or commit doesn't have a built image
+- **"Commit not found in repository"**: The specified commit SHA doesn't exist in the git repository
 - **"Cannot specify both rollback methods"**: Choose only one: automatic, image tag, OR commit SHA
 - **"No update history found"**: Service hasn't been updated recently, cannot use automatic rollback
+- **"Image not found in registry"**: For image tag rollbacks, the specified image tag doesn't exist
 
 ## Manual Fallback
 
@@ -129,10 +131,12 @@ docker service update --image $DOCKER_REGISTRY/trendsearth-api:$IMAGE_TAG trends
 
 # Option 3: Rollback to specific commit SHA
 COMMIT_SHA="abc123456789"  # Replace with desired commit
-SHORT_SHA="${COMMIT_SHA:0:7}"
-IMAGE_TAG="master-$SHORT_SHA"
-docker service update --image $DOCKER_REGISTRY/trendsearth-api:$IMAGE_TAG trends-earth-prod_api
-docker service update --image $DOCKER_REGISTRY/trendsearth-api:$IMAGE_TAG trends-earth-prod_worker
+git fetch origin
+git reset --hard $COMMIT_SHA
+docker build -t $DOCKER_REGISTRY/trendsearth-api:rollback-${COMMIT_SHA:0:7} .
+docker push $DOCKER_REGISTRY/trendsearth-api:rollback-${COMMIT_SHA:0:7}
+docker service update --image $DOCKER_REGISTRY/trendsearth-api:rollback-${COMMIT_SHA:0:7} trends-earth-prod_api
+docker service update --image $DOCKER_REGISTRY/trendsearth-api:rollback-${COMMIT_SHA:0:7} trends-earth-prod_worker
 # Repeat for other services as needed
 
 # Check service status
