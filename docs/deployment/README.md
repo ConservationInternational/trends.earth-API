@@ -273,7 +273,10 @@ Triggers on:
 Required inputs:
 - **Reason**: Explanation for the rollback (required)
 - **Services**: Which services to rollback - `all` (default) or comma-separated list: `api,worker,beat,docker,redis`
-- **Rollback to image**: Optional specific image tag to rollback to (uses service rollback history if not specified)
+- **Rollback Method** (choose ONE):
+  - **Automatic**: Leave both image and commit fields blank (uses Docker service rollback history)
+  - **Rollback to image**: Specific image tag to rollback to (e.g., "master-abc1234", "v2.0.0")
+  - **Rollback to commit**: Specific commit SHA to rollback to (e.g., "abc123456789" - minimum 7 characters)
 
 Process:
 1. AWS security group setup (dynamic runner IP access)
@@ -288,19 +291,26 @@ Process:
 
 **Usage Examples:**
 ```bash
-# Rollback all services to previous version
+# Rollback all services to previous version (automatic)
 # Go to: Actions → Rollback Production Deployment → Run workflow
 # Services: all
 # Reason: "Health check failures after deployment"
+# (Leave both image and commit fields blank)
 
 # Rollback specific services only
-# Services: api,worker
+# Services: api,worker  
 # Reason: "API performance issues"
 
 # Rollback to specific image tag
 # Services: all
 # Rollback to image: master-abc1234
 # Reason: "Revert to known good version"
+
+# Rollback to specific commit SHA (✨ NEW)
+# Services: all
+# Rollback to commit: abc123456789
+# Reason: "Revert to commit before bug introduction"
+# (Workflow automatically converts commit SHA to image tag: master-abc1234)
 ```
 
 ## Monitoring and Troubleshooting
@@ -368,7 +378,10 @@ The recommended way to perform production rollbacks is using the GitHub Actions 
 3. **Run Workflow**: Click "Run workflow" and fill in:
    - **Reason**: Required explanation for the rollback
    - **Services**: Choose "all" or specific services (e.g., "api,worker")
-   - **Rollback to image**: Optional specific image tag (leaves blank for automatic rollback)
+   - **Rollback Method** (choose ONE):
+     - Leave both fields blank for automatic rollback to previous version
+     - **Rollback to image**: Specific image tag (e.g., "master-abc1234")
+     - **Rollback to commit**: Specific commit SHA (e.g., "abc123456789")
 4. **Monitor Progress**: Watch the workflow execution for real-time updates
 
 **Benefits of GitHub Actions Rollback:**

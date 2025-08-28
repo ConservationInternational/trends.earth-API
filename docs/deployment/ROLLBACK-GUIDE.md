@@ -29,11 +29,25 @@ Use the production rollback action when:
      - "all" - Rollback all services (recommended)
      - "api,worker" - Rollback specific services only
      - Available services: api, worker, beat, docker, redis
-   - **Rollback to image** (optional): Specific image tag to rollback to
-     - Leave blank for automatic rollback to previous version
-     - Example: "master-abc1234" for specific commit
 
-5. **Monitor Progress**
+5. **Choose Rollback Method** (pick ONE):
+   
+   **Option A: Automatic Rollback** (recommended)
+   - Leave both image and commit fields blank
+   - Uses Docker Swarm's built-in rollback to previous version
+   
+   **Option B: Rollback to Specific Image Tag**
+   - **Rollback to image**: Specific image tag to rollback to
+   - Example: "master-abc1234", "v2.0.0", "latest"
+   
+   **Option C: Rollback to Specific Commit SHA** ✨ *New Feature*
+   - **Rollback to commit**: Git commit SHA to rollback to
+   - Example: "abc123456789" (minimum 7 characters)
+   - The workflow will automatically find the corresponding image tag
+   
+   ⚠️ **Important**: Do not specify both image tag AND commit SHA - choose only one method
+
+6. **Monitor Progress**
    - Watch the workflow execution in real-time
    - Check logs for detailed progress information
 
@@ -71,14 +85,23 @@ The workflow will automatically:
 ❌ **If Rollback Fails:**
 1. Check the workflow logs for specific error messages
 2. Verify production server is accessible
-3. Check if services have rollback history available
-4. Consider manual rollback if automated rollback fails
+3. Check if services have rollback history available (for automatic rollbacks)
+4. For commit SHA rollbacks: verify the commit SHA exists and an image was built for it
+5. For image tag rollbacks: verify the image tag exists in the registry
+6. Consider manual rollback if automated rollback fails
 
 ❌ **If Health Checks Fail After Rollback:**
 1. Check service logs: `docker service logs trends-earth-prod_api`
 2. Verify database connectivity
 3. Check for any infrastructure issues
-4. Consider rolling back to a specific known-good image tag
+4. Consider rolling back to a different commit SHA or image tag
+5. Try automatic rollback if specific image/commit rollback failed
+
+❌ **Common Rollback Errors:**
+- **"Invalid commit SHA format"**: Ensure commit SHA is at least 7 alphanumeric characters
+- **"Image not found in registry"**: The specified image tag or commit doesn't have a built image
+- **"Cannot specify both rollback methods"**: Choose only one: automatic, image tag, OR commit SHA
+- **"No update history found"**: Service hasn't been updated recently, cannot use automatic rollback
 
 ## Manual Fallback
 
@@ -91,12 +114,26 @@ ssh user@production-server
 # Navigate to application directory
 cd /opt/trends-earth-api
 
-# Rollback individual services
+# Option 1: Automatic rollback to previous version
 docker service rollback trends-earth-prod_api
 docker service rollback trends-earth-prod_worker
 docker service rollback trends-earth-prod_beat
 docker service rollback trends-earth-prod_docker
 docker service rollback trends-earth-prod_redis
+
+# Option 2: Rollback to specific image tag
+IMAGE_TAG="master-abc1234"  # Replace with desired tag
+docker service update --image $DOCKER_REGISTRY/trendsearth-api:$IMAGE_TAG trends-earth-prod_api
+docker service update --image $DOCKER_REGISTRY/trendsearth-api:$IMAGE_TAG trends-earth-prod_worker
+# Repeat for other services as needed
+
+# Option 3: Rollback to specific commit SHA
+COMMIT_SHA="abc123456789"  # Replace with desired commit
+SHORT_SHA="${COMMIT_SHA:0:7}"
+IMAGE_TAG="master-$SHORT_SHA"
+docker service update --image $DOCKER_REGISTRY/trendsearth-api:$IMAGE_TAG trends-earth-prod_api
+docker service update --image $DOCKER_REGISTRY/trendsearth-api:$IMAGE_TAG trends-earth-prod_worker
+# Repeat for other services as needed
 
 # Check service status
 docker service ls --filter "name=trends-earth-prod"
