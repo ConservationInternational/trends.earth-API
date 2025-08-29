@@ -9,7 +9,7 @@ import rollbar
 from sqlalchemy import func
 
 from gefapi import db
-from gefapi.models import Execution, Script, StatusLog, User
+from gefapi.models import Execution, StatusLog
 from gefapi.services.docker_service import get_docker_client
 from gefapi.utils.redis_cache import get_redis_cache
 
@@ -460,20 +460,11 @@ def collect_system_status(self):
                 f"Failed: {executions_failed}"
             )
 
-            # Count total executions
-            logger.info("[TASK]: Querying total execution count")
-            executions_count = db.session.query(func.count(Execution.id)).scalar() or 0
+            # Count cancelled executions
+            logger.info("[TASK]: Querying cancelled execution count")
+            executions_cancelled = execution_status_map.get("CANCELLED", 0)
 
-            logger.info(f"[TASK]: Total executions count: {executions_count}")
-
-            # Count users and scripts
-            logger.info("[TASK]: Querying user and script counts")
-            users_count = db.session.query(func.count(User.id)).scalar() or 0
-            scripts_count = db.session.query(func.count(Script.id)).scalar() or 0
-
-            logger.info(
-                f"[TASK]: Counts - Users: {users_count}, Scripts: {scripts_count}"
-            )
+            logger.info(f"[TASK]: Cancelled executions count: {executions_cancelled}")
 
             # System metrics tracking removed - no longer collecting CPU/memory data
 
@@ -525,9 +516,7 @@ def collect_system_status(self):
                         executions_running=executions_running,
                         executions_finished=executions_finished,
                         executions_failed=executions_failed,
-                        executions_count=executions_count,
-                        users_count=users_count,
-                        scripts_count=scripts_count,
+                        executions_cancelled=executions_cancelled,
                     )
 
                     logger.info(
