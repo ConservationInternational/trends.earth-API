@@ -42,19 +42,19 @@ class TestStatusEndpoint:
             db.session.commit()
 
         response = client.get("/api/v1/status", headers=auth_headers_admin)
-        
+
         assert response.status_code == 200
         data = response.json
-        
+
         # Verify response structure
         assert "data" in data
         assert "page" in data
         assert "per_page" in data
         assert "total" in data
-        
+
         # Verify we have status log entries
         assert len(data["data"]) > 0
-        
+
         # Verify each entry has expected fields
         for entry in data["data"]:
             assert "id" in entry
@@ -83,22 +83,26 @@ class TestStatusEndpoint:
             db.session.commit()
 
         # Test pagination parameters
-        response = client.get("/api/v1/status?page=1&per_page=2", headers=auth_headers_admin)
-        
+        response = client.get(
+            "/api/v1/status?page=1&per_page=2", headers=auth_headers_admin
+        )
+
         assert response.status_code == 200
         data = response.json
-        
+
         assert data["page"] == 1
         assert data["per_page"] == 2
         assert len(data["data"]) <= 2
 
     def test_status_endpoint_sorting(self, client, auth_headers_admin):
         """Test status endpoint sorting"""
-        response = client.get("/api/v1/status?sort=-timestamp", headers=auth_headers_admin)
-        
+        response = client.get(
+            "/api/v1/status?sort=-timestamp", headers=auth_headers_admin
+        )
+
         assert response.status_code == 200
         data = response.json
-        
+
         # Verify sorting (newest first by default anyway)
         if len(data["data"]) > 1:
             timestamps = [entry["timestamp"] for entry in data["data"]]
@@ -123,10 +127,10 @@ class TestStatusService:
             )
             db.session.add(status_log)
             db.session.commit()
-            
+
             # Test service method
             logs, total = StatusService.get_status_logs()
-            
+
             assert total > 0
             assert len(logs) > 0
             assert logs[0].executions_cancelled == 2
@@ -146,10 +150,10 @@ class TestStatusService:
                 )
                 db.session.add(status_log)
             db.session.commit()
-            
+
             # Test pagination
             logs, total = StatusService.get_status_logs(page=1, per_page=2)
-            
+
             assert total >= 5
             assert len(logs) <= 2
 
@@ -158,7 +162,7 @@ class TestStatusService:
         with app.app_context():
             # Test with sorting parameter
             logs, total = StatusService.get_status_logs(sort="-timestamp")
-            
+
             # Should not error and return results ordered by timestamp desc
             assert isinstance(logs, list)
             assert isinstance(total, int)
