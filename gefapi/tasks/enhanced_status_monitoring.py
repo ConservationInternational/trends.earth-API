@@ -384,12 +384,16 @@ def collect_enhanced_system_status(self):
     """
     Collect enhanced system status including detailed Docker Swarm node information.
 
+    Note: This function no longer creates StatusLog entries as that functionality
+    has been replaced by event-driven logging that automatically creates StatusLog
+    entries when execution status changes.
+
     This task extends the original status collection with comprehensive swarm metrics
     that include actual resource usage based on Docker Swarm's task reservations
     rather than simple estimates.
 
     The task collects:
-    - Standard system metrics (executions, users, scripts, CPU/memory)
+    - Standard system metrics (executions by status)
     - Detailed Docker Swarm node information with actual resource usage
     - Available capacity calculations based on real resource reservations
     - Per-node resource utilization percentages
@@ -398,7 +402,6 @@ def collect_enhanced_system_status(self):
         dict: Enhanced status information with the following structure:
             {
                 # Standard status fields
-                "id": int,
                 "timestamp": str,  # ISO timestamp
                 "executions_active": int,
                 "executions_ready": int,
@@ -406,7 +409,7 @@ def collect_enhanced_system_status(self):
                 "executions_finished": int,
                 "executions_failed": int,
                 "executions_cancelled": int,
-                "executions_cancelled": int,
+                "deprecated_notice": str,  # Notice about StatusLog deprecation
 
                 # Enhanced Docker Swarm information
                 "docker_swarm": {
@@ -446,15 +449,16 @@ def collect_enhanced_system_status(self):
 
     Example Response:
         {
-            "id": 123,
             "timestamp": "2025-01-15T14:30:00Z",
             "executions_active": 15,
             "executions_ready": 5,
             "executions_running": 10,
             "executions_finished": 245,
             "executions_failed": 12,
-            "executions_cancelled": 272,
             "executions_cancelled": 12,
+            "deprecated_notice": (
+                "StatusLog creation deprecated - using event-driven logging"
+            ),
             "docker_swarm": {
                 "swarm_active": true,
                 "total_nodes": 3,
@@ -613,94 +617,34 @@ def collect_enhanced_system_status(self):
                 f"Workers: {swarm_info['total_workers']}"
             )
 
-            # Create status log entry with retry logic for potential ID conflicts
-            logger.info("[TASK]: Creating status log entry")
-            max_retries = 3
-            retry_delay = 1
+            # Note: StatusLog creation removed as it's now handled by
+            # event-driven logging that automatically creates StatusLog entries
+            # when execution status changes.
+            logger.info(
+                "[TASK]: Returning enhanced system status "
+                "(StatusLog creation deprecated)"
+            )
 
-            for attempt in range(max_retries):
-                try:
-                    status_log = StatusLog(
-                        executions_active=executions_active,
-                        executions_ready=executions_ready,
-                        executions_running=executions_running,
-                        executions_finished=executions_finished,
-                        executions_failed=executions_failed,
-                        executions_cancelled=executions_cancelled,
-                    )
+            import datetime
 
-                    logger.info(
-                        f"[DB]: Adding status log to database "
-                        f"(attempt {attempt + 1}/{max_retries})"
-                    )
-                    db.session.add(status_log)
-                    db.session.commit()
+            # Return enhanced data including swarm information without creating
+            # StatusLog
+            result = {
+                "executions_active": executions_active,
+                "executions_ready": executions_ready,
+                "executions_running": executions_running,
+                "executions_finished": executions_finished,
+                "executions_failed": executions_failed,
+                "executions_cancelled": executions_cancelled,
+                "docker_swarm": swarm_info,
+                "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+                "deprecated_notice": (
+                    "StatusLog creation deprecated - using event-driven logging"
+                ),
+            }
 
-                    logger.info(
-                        f"[TASK]: Status log created with ID {status_log.id} "
-                        f"at {status_log.timestamp}"
-                    )
-
-                    # Return enhanced data including swarm information
-                    result = status_log.serialize()
-                    result["docker_swarm"] = swarm_info
-
-                    logger.info("[TASK]: Enhanced task completed successfully")
-                    return result
-
-                except Exception as db_error:
-                    db.session.rollback()
-
-                    # Check if it's a duplicate key error
-                    if (
-                        "duplicate key" in str(db_error).lower()
-                        or "unique constraint" in str(db_error).lower()
-                    ):
-                        if attempt < max_retries - 1:
-                            logger.warning(
-                                f"[TASK]: Duplicate key error attempt {attempt + 1}, "
-                                f"retrying: {db_error}"
-                            )
-                            # On duplicate key error, advance the sequence to avoid
-                            # conflicts
-                            try:
-                                max_id_result = db.session.execute(
-                                    db.text("SELECT MAX(id) FROM status_log")
-                                ).fetchone()
-                                if max_id_result and max_id_result[0]:
-                                    next_seq_val = max_id_result[0] + 100
-                                    db.session.execute(
-                                        db.text(
-                                            f"SELECT setval('status_log_id_seq', "
-                                            f"{next_seq_val}, false)"
-                                        )
-                                    )
-                                    db.session.commit()
-                                    logger.info(
-                                        f"[TASK]: Advanced sequence to {next_seq_val} "
-                                        f"to avoid conflicts"
-                                    )
-                            except Exception as seq_error:
-                                logger.warning(
-                                    f"[TASK]: Failed to advance sequence: {seq_error}"
-                                )
-                                db.session.rollback()
-
-                            import time
-
-                            time.sleep(retry_delay)
-                            retry_delay *= 2  # Exponential backoff
-                            continue
-                        logger.error(
-                            f"[TASK]: Failed to create status log "
-                            f"after {max_retries} tries"
-                        )
-                        raise db_error
-                    # For non-duplicate key errors, don't retry
-                    logger.error(
-                        f"[TASK]: Database error creating status log: {db_error}"
-                    )
-                    raise db_error
+            logger.info("[TASK]: Enhanced task completed successfully")
+            return result
 
         except Exception as error:
             logger.error(
