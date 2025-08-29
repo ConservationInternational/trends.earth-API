@@ -1767,9 +1767,7 @@ def get_status_logs():
           "executions_running": 3,
           "executions_finished": 8,
           "executions_failed": 1,
-          "executions_count": 1250,
-          "users_count": 45,
-          "scripts_count": 32
+          "executions_cancelled": 0
         },
         {
           "id": 124,
@@ -1779,9 +1777,7 @@ def get_status_logs():
           "executions_running": 3,
           "executions_finished": 12,
           "executions_failed": 2,
-          "executions_count": 1265,
-          "users_count": 45,
-          "scripts_count": 32
+          "executions_cancelled": 1
         }
       ],
       "page": 1,
@@ -1796,17 +1792,16 @@ def get_status_logs():
     - `executions_active`: Number of active executions (RUNNING + PENDING)
     - `executions_ready`: Number of executions in READY state
     - `executions_running`: Number of currently running executions
-    - `executions_finished`: Executions completed since last status log
-    - `executions_failed`: Executions failed since last status log
-    - `executions_count`: Total number of executions in the system
-    - `users_count`: Total number of registered users
-    - `scripts_count`: Total number of uploaded scripts
+    - `executions_finished`: Number of executions that finished
+    - `executions_failed`: Number of executions that failed
+    - `executions_cancelled`: Number of executions that were cancelled
 
     **Monitoring Metrics**:
     - Track execution queue length and processing status
-    - Monitor system capacity and user activity
+    - Monitor execution completion and failure rates
     - Identify trends in script execution success/failure rates
     - System health indicators for capacity planning
+    - Event-driven status tracking provides real-time execution state
 
     **Date Filtering Examples**:
     - `?start_date=2025-01-15T00:00:00Z` - Logs from January 15th onwards
