@@ -63,20 +63,13 @@ def update_execution_status_with_logging(execution, new_status):
     """
     logger.info(f"[SERVICE]: Updating execution {execution.id} status to {new_status}")
     
-    # Update the execution status
+    # Store the old status before updating
     old_status = execution.status
-    execution.status = new_status
-    
-    # Update end_date and progress for terminal states
-    if new_status in ["FINISHED", "FAILED", "CANCELLED"]:
-        execution.end_date = datetime.datetime.utcnow()
-        execution.progress = 100
     
     try:
-        # Count current executions by status
+        # Count current executions by status BEFORE making the change
         logger.info("[SERVICE]: Counting executions by status for status log")
         
-        # Get current counts including the status change we're making
         status_counts = (
             db.session.query(
                 Execution.status,
@@ -86,7 +79,7 @@ def update_execution_status_with_logging(execution, new_status):
             .all()
         )
         
-        # Convert to dictionary and update with the current change
+        # Convert to dictionary and adjust for the status change we're making
         count_dict = {status: count for status, count in status_counts}
         
         # Adjust counts for the status change we're making
@@ -108,6 +101,14 @@ def update_execution_status_with_logging(execution, new_status):
             f"Finished: {executions_finished}, Failed: {executions_failed}, "
             f"Cancelled: {executions_cancelled}"
         )
+        
+        # Now update the execution status
+        execution.status = new_status
+        
+        # Update end_date and progress for terminal states
+        if new_status in ["FINISHED", "FAILED", "CANCELLED"]:
+            execution.end_date = datetime.datetime.utcnow()
+            execution.progress = 100
         
         # Create status log entry
         status_log = StatusLog(
