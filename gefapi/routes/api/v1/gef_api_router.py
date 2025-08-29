@@ -192,7 +192,8 @@ def get_scripts():
     - `?sort=status` - Sort by status
 
     **Field Control Examples**:
-    - `?include=execution_stats` - Include execution statistics
+    - `?include=logs` - Include execution logs
+    - `?include=user` - Include user information
     - `?exclude=description,logs` - Exclude verbose fields
 
     **Pagination Control**:
