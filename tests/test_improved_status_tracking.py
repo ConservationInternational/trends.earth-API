@@ -69,6 +69,8 @@ class TestImprovedStatusTracking:
                 email="test@example.com",
                 password="password123",
                 name="Test User",
+                country="Test Country",
+                institution="Test Institution",
                 role="USER",
             )
             db.session.add(user)
