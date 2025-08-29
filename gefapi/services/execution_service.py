@@ -49,91 +49,130 @@ def dict_to_query(params):
 def update_execution_status_with_logging(execution, new_status):
     """
     Helper function to update execution status and log to status_log table.
-    
+
     This function should be called whenever a script's status field changes.
-    It updates the execution status and creates a status_log entry with current
-    counts of all execution statuses.
-    
+    It updates the execution status and creates two status_log entries:
+    one before the change and one after the change to provide complete audit trail.
+
     Args:
         execution (Execution): The execution object to update
         new_status (str): The new status to set
-        
+
     Returns:
-        StatusLog: The created status log entry
+        tuple: (before_status_log, after_status_log) - The created status log entries
     """
     logger.info(f"[SERVICE]: Updating execution {execution.id} status to {new_status}")
-    
+
     # Store the old status before updating
     old_status = execution.status
-    
+
     try:
         # Count current executions by status BEFORE making the change
-        logger.info("[SERVICE]: Counting executions by status for status log")
-        
+        logger.info(
+            "[SERVICE]: Counting executions by status for status log (before change)"
+        )
+
         status_counts = (
-            db.session.query(
-                Execution.status,
-                func.count(Execution.id).label('count')
-            )
+            db.session.query(Execution.status, func.count(Execution.id).label("count"))
             .group_by(Execution.status)
             .all()
         )
-        
-        # Convert to dictionary and adjust for the status change we're making
-        count_dict = {status: count for status, count in status_counts}
-        
-        # Adjust counts for the status change we're making
-        if old_status in count_dict:
-            count_dict[old_status] = max(0, count_dict[old_status] - 1)
-        count_dict[new_status] = count_dict.get(new_status, 0) + 1
-        
-        # Map to the expected field names
-        executions_ready = count_dict.get("READY", 0)
-        executions_running = count_dict.get("RUNNING", 0) + count_dict.get("PENDING", 0)
-        executions_finished = count_dict.get("FINISHED", 0)
-        executions_failed = count_dict.get("FAILED", 0)
-        executions_cancelled = count_dict.get("CANCELLED", 0)
-        executions_active = executions_ready + executions_running
-        
+
+        # Convert to dictionary for before counts
+        before_count_dict = dict(status_counts)
+
+        # Map to the expected field names for BEFORE status log
+        before_executions_ready = before_count_dict.get("READY", 0)
+        before_executions_running = before_count_dict.get(
+            "RUNNING", 0
+        ) + before_count_dict.get("PENDING", 0)
+        before_executions_finished = before_count_dict.get("FINISHED", 0)
+        before_executions_failed = before_count_dict.get("FAILED", 0)
+        before_executions_cancelled = before_count_dict.get("CANCELLED", 0)
+        before_executions_active = before_executions_ready + before_executions_running
+
         logger.info(
-            f"[SERVICE]: Status counts - Active: {executions_active}, "
-            f"Ready: {executions_ready}, Running: {executions_running}, "
-            f"Finished: {executions_finished}, Failed: {executions_failed}, "
-            f"Cancelled: {executions_cancelled}"
+            f"[SERVICE]: Status counts BEFORE change - "
+            f"Active: {before_executions_active}, Ready: {before_executions_ready}, "
+            f"Running: {before_executions_running}, "
+            f"Finished: {before_executions_finished}, "
+            f"Failed: {before_executions_failed}, "
+            f"Cancelled: {before_executions_cancelled}"
         )
-        
-        # Now update the execution status
+
+        # Create status log entry for BEFORE the change
+        before_status_log = StatusLog(
+            executions_active=before_executions_active,
+            executions_ready=before_executions_ready,
+            executions_running=before_executions_running,
+            executions_finished=before_executions_finished,
+            executions_failed=before_executions_failed,
+            executions_cancelled=before_executions_cancelled,
+        )
+
+        # Now calculate counts AFTER the change
+        after_count_dict = before_count_dict.copy()
+
+        # Adjust counts for the status change we're making
+        if old_status in after_count_dict:
+            after_count_dict[old_status] = max(0, after_count_dict[old_status] - 1)
+        after_count_dict[new_status] = after_count_dict.get(new_status, 0) + 1
+
+        # Map to the expected field names for AFTER status log
+        after_executions_ready = after_count_dict.get("READY", 0)
+        after_executions_running = after_count_dict.get(
+            "RUNNING", 0
+        ) + after_count_dict.get("PENDING", 0)
+        after_executions_finished = after_count_dict.get("FINISHED", 0)
+        after_executions_failed = after_count_dict.get("FAILED", 0)
+        after_executions_cancelled = after_count_dict.get("CANCELLED", 0)
+        after_executions_active = after_executions_ready + after_executions_running
+
+        logger.info(
+            f"[SERVICE]: Status counts AFTER change - "
+            f"Active: {after_executions_active}, Ready: {after_executions_ready}, "
+            f"Running: {after_executions_running}, "
+            f"Finished: {after_executions_finished}, "
+            f"Failed: {after_executions_failed}, "
+            f"Cancelled: {after_executions_cancelled}"
+        )
+
+        # Update the execution status
         execution.status = new_status
-        
+
         # Update end_date and progress for terminal states
         if new_status in ["FINISHED", "FAILED", "CANCELLED"]:
             execution.end_date = datetime.datetime.utcnow()
             execution.progress = 100
-        
-        # Create status log entry
-        status_log = StatusLog(
-            executions_active=executions_active,
-            executions_ready=executions_ready,
-            executions_running=executions_running,
-            executions_finished=executions_finished,
-            executions_failed=executions_failed,
-            executions_cancelled=executions_cancelled,
+
+        # Create status log entry for AFTER the change
+        after_status_log = StatusLog(
+            executions_active=after_executions_active,
+            executions_ready=after_executions_ready,
+            executions_running=after_executions_running,
+            executions_finished=after_executions_finished,
+            executions_failed=after_executions_failed,
+            executions_cancelled=after_executions_cancelled,
         )
-        
-        # Save both execution and status log
+
+        # Save execution and both status logs
         db.session.add(execution)
-        db.session.add(status_log)
+        db.session.add(before_status_log)
+        db.session.add(after_status_log)
         db.session.commit()
-        
+
         logger.info(
-            f"[SERVICE]: Status log created with ID {status_log.id} "
-            f"for execution {execution.id} status change {old_status} -> {new_status}"
+            f"[SERVICE]: Status logs created with IDs {before_status_log.id} (before) "
+            f"and {after_status_log.id} (after) for execution {execution.id} "
+            f"status change {old_status} -> {new_status}"
         )
-        
-        return status_log
-        
+
+        return (before_status_log, after_status_log)
+
     except Exception as error:
-        logger.error(f"[SERVICE]: Error updating execution status with logging: {error}")
+        logger.error(
+            f"[SERVICE]: Error updating execution status with logging: {error}"
+        )
         db.session.rollback()
         rollbar.report_exc_info()
         raise error
@@ -451,7 +490,7 @@ class ExecutionService:
             raise ExecutionNotFound(
                 message="Execution with id " + execution_id + " does not exist"
             )
-        
+
         # Use the new helper function for status updates
         if status is not None:
             # Send notification email for terminal states
@@ -475,7 +514,7 @@ class ExecutionService:
                 except Exception:
                     rollbar.report_exc_info()
                     logger.info("Failed to send email - check email service")
-            
+
             # Update status with logging
             update_execution_status_with_logging(execution, status)
         else:
@@ -491,7 +530,7 @@ class ExecutionService:
             except Exception as error:
                 rollbar.report_exc_info()
                 raise error
-                
+
         return execution
 
     @staticmethod
@@ -715,10 +754,10 @@ class ExecutionService:
                 cancellation_log = ExecutionLog(
                     text=log_text, level="INFO", execution_id=execution.id
                 )
-                
+
                 # Use the helper function to update status and log
                 update_execution_status_with_logging(execution, "CANCELLED")
-                
+
                 # Add the cancellation log separately
                 db.session.add(cancellation_log)
                 db.session.commit()
