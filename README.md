@@ -19,7 +19,7 @@ This project belongs to the Trends.Earth project and implements the API used by 
 - **Poetry** - Dependency management and packaging
 - **Flask** - Web framework for API endpoints
 - **SQLAlchemy** - ORM for database operations (PostgreSQL)
-- **Celery** - Background task management with periodic tasks (system monitoring, stale execution cleanup, finished execution cleanup, old failed execution cleanup)
+- **Celery** - Background task management with periodic tasks (execution cleanup, finished execution cleanup, old failed execution cleanup)
 - **Docker** - Containerization for development and production
 - **Gunicorn** - WSGI server for production deployment
 - **Flask-Migrate** - Database migration management
@@ -40,22 +40,43 @@ This project belongs to the Trends.Earth project and implements the API used by 
    cd trends.earth-api
    ```
 
-2. **Configure Docker security (Linux/WSL):**
+2. **Set up environment files:**
    ```bash
-   # Set up secure Docker access for non-root containers
-   ./scripts/setup-docker-security.sh
+   # Copy and customize environment configuration (required - these files are gitignored)
+   cp .env.example develop.env
+   cp .env.example test.env
+   
+   # Optional: Configure Docker security for Linux/WSL users
+   # ./scripts/setup-docker-security.sh
    ```
 
-3. **Build and start services:**
+3. **Build and start development services:**
    ```bash
-   docker compose -f docker-compose.staging.yml build
-   docker compose -f docker-compose.staging.yml up
+   docker compose -f docker-compose.develop.yml build
+   docker compose -f docker-compose.develop.yml up
    ```
 
-4. **Stop services:**
+4. **Stop development services:**
    ```bash
-   docker compose -f docker-compose.staging.yml down
+   docker compose -f docker-compose.develop.yml down
    ```
+
+**For testing:**
+```bash
+# Linux/macOS - Run tests using the recommended script
+./run_tests.sh
+
+# Or run specific tests
+./run_tests.sh tests/test_smoke.py
+```
+
+```powershell
+# Windows PowerShell - Run tests using the PowerShell script
+.\run_tests.ps1
+
+# Or run specific tests
+.\run_tests.ps1 tests/test_smoke.py
+```
 
 ## Docker Services
 
@@ -74,7 +95,7 @@ The application is composed of several Docker services, each with a specific pur
   - Command: `./entrypoint.sh worker`
 
 - **`beat`** - Celery beat scheduler
-  - Manages periodic tasks (system monitoring every 2 minutes, execution cleanup every hour, finished execution cleanup daily, old failed execution cleanup daily)
+  - Manages periodic tasks (execution cleanup every hour, finished execution cleanup daily, old failed execution cleanup daily)
   - Command: `./entrypoint.sh beat`
 
 - **`migrate`** - Database migration service
@@ -87,7 +108,7 @@ The application is composed of several Docker services, each with a specific pur
 - **`postgres`** - PostgreSQL database (version 16)
   - Stores all application data
   - Default port: 5432
-  - Container name: `trendsearth-api-database` (development)
+  - Container name: `trendsearth-api-postgres` (development)
 
 - **`redis`** - Redis message broker
   - Handles Celery task queues
@@ -116,7 +137,7 @@ The application uses a multi-container architecture with specialized services:
 #### Core Application Containers
 - **API Container**: Flask application server with Gunicorn (production) or direct Flask (development)
 - **Worker Container**: Celery workers for background task processing
-- **Beat Container**: Celery beat scheduler for periodic tasks (monitoring, cleanup, maintenance)
+- **Beat Container**: Celery beat scheduler for periodic tasks (cleanup, maintenance)
 - **Migration Container**: Dedicated service for database schema migrations
 
 #### Infrastructure Containers
@@ -330,6 +351,43 @@ The interactive documentation allows you to:
   - No authentication required
   - Returns server status, timestamp, database connectivity, and API version
   - Used by load balancers and monitoring systems
+
+### Status Tracking and Monitoring
+
+The API provides advanced status tracking capabilities for monitoring execution states and system health.
+
+#### Status Endpoint
+- `GET /api/v1/status` - Retrieve execution status logs (Admin+ required)
+  - Returns paginated status log entries with execution counts by state
+  - Supports filtering by date range and sorting
+  - Provides real-time insights into system execution patterns
+
+**Status Log Fields:**
+- `executions_active`: Total active executions (RUNNING + PENDING)
+- `executions_ready`: Executions ready to run
+- `executions_running`: Currently executing scripts
+- `executions_finished`: Number of completed executions
+- `executions_failed`: Number of failed executions
+- `executions_cancelled`: Number of cancelled executions
+
+#### Event-Driven Status Tracking
+
+The system uses an **event-driven approach** for status tracking:
+- Status logs are created automatically when execution status changes
+- No periodic background tasks needed for status collection
+- Real-time tracking provides immediate insights into execution state changes
+- Each status change triggers a snapshot of current execution counts across all states
+
+**Key Benefits:**
+- **Real-time updates**: Status changes are logged immediately
+- **Reduced resource usage**: No periodic polling of database
+- **Event accuracy**: Each status change is captured precisely
+- **Historical tracking**: Complete audit trail of execution state transitions
+
+**Implementation:**
+- Helper function `update_execution_status_with_logging()` handles all status updates
+- Integrated into execution lifecycle (start, progress, completion, cancellation)
+- Automatic counting of executions by state for each status log entry
 
 ### Authentication
 
@@ -1119,20 +1177,81 @@ docker compose -f docker-compose.develop.yml run --rm api test
 
 #### Testing
 
+**Recommended Approach: Use the Test Script**
+
+**Linux/macOS (Bash):**
 ```bash
-# Recommended: Use the test script (handles service dependencies automatically)
+# Comprehensive test runner (handles service dependencies automatically)
 ./run_tests.sh
 
 # Run specific test files or patterns
 ./run_tests.sh tests/test_smoke.py
+./run_tests.sh tests/test_integration.py
 ./run_tests.sh -k "test_environment"
 
-# Alternative: Manual test execution
-docker compose -f docker-compose.develop.yml up -d database redis
+# Run with pytest options
+./run_tests.sh -v --no-cov tests/test_smoke.py
+./run_tests.sh -x  # Stop on first failure
+
+# Reset test database before running
+./run_tests.sh --reset-db
+```
+
+**Windows PowerShell:**
+```powershell
+# Comprehensive test runner (handles service dependencies automatically)
+.\run_tests.ps1
+
+# Run specific test files or patterns
+.\run_tests.ps1 tests/test_smoke.py
+.\run_tests.ps1 tests/test_integration.py
+.\run_tests.ps1 -TestArgs '-k "test_environment"'
+
+# Run with pytest options
+.\run_tests.ps1 -TestArgs '-v --no-cov tests/test_smoke.py'
+.\run_tests.ps1 -TestArgs '-x'  # Stop on first failure
+
+# Reset test database before running
+.\run_tests.ps1 -ResetDb
+```
+
+**Windows (PowerShell):**
+```powershell
+# Comprehensive test runner (handles service dependencies automatically)
+.\run_tests.ps1
+
+# Run specific test files or patterns
+.\run_tests.ps1 tests/test_smoke.py
+.\run_tests.ps1 tests/test_integration.py
+.\run_tests.ps1 -k "test_environment"
+
+# Run with pytest options
+.\run_tests.ps1 -v --no-cov tests/test_smoke.py
+.\run_tests.ps1 -x  # Stop on first failure
+
+# Reset test database before running
+.\run_tests.ps1 -ResetDb
+
+# Alternative: Use batch file wrapper
+.\run_tests.bat tests/test_smoke.py
+```
+
+**Alternative: Manual Test Execution**
+```bash
+# Start required services first
+docker compose -f docker-compose.develop.yml up -d postgres redis
+
+# Wait for services to be ready
+sleep 5
+
+# Run all tests via test service
 docker compose -f docker-compose.develop.yml run --rm test
 
 # Run tests with specific parameters
-docker compose -f docker-compose.develop.yml run --rm test pytest -v tests/
+docker compose -f docker-compose.develop.yml run --rm test python -m pytest -v tests/
+
+# Clean up when done
+docker compose -f docker-compose.develop.yml down
 ```
 
 ### Testing Infrastructure
@@ -1148,6 +1267,48 @@ The testing setup includes dedicated services and automated scripts:
 - **`run_tests.sh`**: Automated test runner that handles service orchestration
 - **Service Management**: Automatically starts dependencies, runs tests, and cleans up
 - **Flexible Testing**: Supports specific test files, patterns, and pytest arguments
+
+#### Test Script Features
+```bash
+# The run_tests.sh script provides several advantages:
+
+# 1. Automatic dependency management
+./run_tests.sh                    # Starts postgres/redis, runs tests, cleans up
+
+# 2. Test database management
+./run_tests.sh --reset-db         # Drops and recreates test database
+
+# 3. Flexible test execution
+./run_tests.sh tests/test_smoke.py                           # Specific file
+./run_tests.sh tests/test_integration.py::TestAPIIntegration # Specific class
+./run_tests.sh -v --no-cov tests/test_smoke.py              # With pytest options
+./run_tests.sh -x                                           # Stop on first failure
+```
+
+```powershell
+# The run_tests.ps1 script provides the same advantages on Windows:
+
+# 1. Automatic dependency management
+.\run_tests.ps1                    # Starts postgres/redis, runs tests, cleans up
+
+# 2. Test database management
+.\run_tests.ps1 -ResetDb           # Drops and recreates test database
+
+# 3. Flexible test execution
+.\run_tests.ps1 tests/test_smoke.py                             # Specific file
+.\run_tests.ps1 -TestArgs 'tests/test_integration.py::TestAPIIntegration' # Specific class
+.\run_tests.ps1 -TestArgs '-v --no-cov tests/test_smoke.py'     # With pytest options
+.\run_tests.ps1 -TestArgs '-x'                                  # Stop on first failure
+```
+
+```text
+# 4. Service lifecycle management (both scripts)
+# - Starts postgres and redis services
+# - Waits for services to be ready
+# - Creates test database if needed
+# - Runs tests with proper environment
+# - Stops services on completion
+```
 
 #### Test Environment Features
 - **Environment Isolation**: `TESTING=true` and `ENVIRONMENT=test` flags
@@ -1372,9 +1533,6 @@ The application uses Celery for background task processing and periodic maintena
 For development and debugging purposes, tasks can be executed manually:
 
 ```bash
-# Execute system status collection
-docker exec -it <container_name> celery -A gefapi.celery call gefapi.tasks.status_monitoring.collect_system_status
-
 # Execute stale execution cleanup
 docker exec -it <container_name> celery -A gefapi.celery call gefapi.tasks.execution_cleanup.cleanup_stale_executions
 
@@ -1394,10 +1552,6 @@ The Celery beat schedule is configured in `gefapi/celery.py`:
 
 ```python
 celery.conf.beat_schedule = {
-    "collect-system-status": {
-        "task": "gefapi.tasks.status_monitoring.collect_system_status",
-        "schedule": 120.0,  # Every 2 minutes
-    },
     "cleanup-stale-executions": {
         "task": "gefapi.tasks.execution_cleanup.cleanup_stale_executions", 
         "schedule": 3600.0,  # Every hour
@@ -1547,11 +1701,11 @@ ports:
 docker compose -f docker-compose.develop.yml ps
 
 # View database logs
-docker compose -f docker-compose.develop.yml logs database
+docker compose -f docker-compose.develop.yml logs postgres
 
 # Reset database
 docker compose -f docker-compose.develop.yml down -v
-docker compose -f docker-compose.develop.yml up database
+docker compose -f docker-compose.develop.yml up postgres
 ```
 
 #### Migration Failures
@@ -1572,13 +1726,13 @@ docker compose -f docker-compose.develop.yml up migrate
 #### Test Database Connection
 ```bash
 # Ensure test services are running
-docker compose -f docker-compose.develop.yml up -d database redis
+docker compose -f docker-compose.develop.yml up -d postgres redis
 
 # Check if test database exists
-docker compose -f docker-compose.develop.yml exec database psql -U root -d postgres -c "\l"
+docker compose -f docker-compose.develop.yml exec postgres psql -U trendsearth_develop -d trendsearth_develop_db -c "\l"
 
 # Create test database manually if needed
-docker compose -f docker-compose.develop.yml exec database psql -U root -d postgres -c "CREATE DATABASE gef_test;"
+docker compose -f docker-compose.develop.yml exec postgres psql -U trendsearth_develop -d trendsearth_develop_db -c "CREATE DATABASE gef_test;"
 ```
 
 #### Test Environment Variables
@@ -1588,6 +1742,37 @@ cat test.env
 
 # Check environment variables in test container
 docker compose -f docker-compose.develop.yml run --rm test env | grep -E "(DATABASE|REDIS|TESTING)"
+```
+
+#### Common Test Issues
+```bash
+# Reset test database completely (Linux/macOS)
+./run_tests.sh --reset-db
+
+# Check test service logs
+docker compose -f docker-compose.develop.yml logs test
+
+# Verify test service can connect to dependencies
+docker compose -f docker-compose.develop.yml run --rm test python -c "
+import psycopg2, redis
+print('Database connection: OK')
+print('Redis connection: OK')
+"
+```
+
+```powershell
+# Reset test database completely (Windows PowerShell)
+.\run_tests.ps1 -ResetDb
+
+# Check test service logs (same on all platforms)
+docker compose -f docker-compose.develop.yml logs test
+
+# Verify test service can connect to dependencies (same on all platforms)
+docker compose -f docker-compose.develop.yml run --rm test python -c "
+import psycopg2, redis
+print('Database connection: OK')
+print('Redis connection: OK')
+"
 ```
 
 ### Performance Issues
