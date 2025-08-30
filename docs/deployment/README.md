@@ -2,6 +2,12 @@
 
 This guide walks you through setting up automated deployment for the Trends.Earth API using GitHub Actions and Docker Swarm.
 
+## Quick Links
+
+- **[Rollback Guide](ROLLBACK-GUIDE.md)** - How to rollback production deployments
+- **[GitHub Secrets Configuration](github-secrets.md)** - Setting up deployment credentials
+- **[Deployment Scripts Reference](../scripts/deployment/README.md)** - Manual deployment scripts
+
 ## Overview
 
 The deployment system uses:
@@ -259,6 +265,48 @@ Process:
 7. Notify Rollbar of deployment
 8. Cleanup AWS security group rules
 
+### Production Rollback (`.github/workflows/rollback-production.yml`)
+
+Triggers on:
+- Manual workflow dispatch only
+
+Required inputs:
+- **Reason**: Explanation for the rollback (required)
+- **Services**: Which services to rollback - `all` (default) or comma-separated list: `api,worker,beat,docker,redis`
+- **Rollback Method** (choose ONE):
+  - **Automatic**: Leave commit field blank (uses Docker service rollback history)
+  - **Rollback to commit**: Specific commit SHA to rollback to (e.g., "abc123456789" - minimum 7 characters)
+
+Process:
+1. AWS security group setup (dynamic runner IP access)
+2. Validate rollback parameters and service names
+3. Connect to production server via SSH
+4. Perform Docker service rollbacks for specified services
+5. Wait for services to stabilize after rollback
+6. Run health checks to verify rollback success
+7. Run basic integration tests
+8. Notify Rollbar of rollback event
+9. Cleanup AWS security group rules
+
+**Usage Examples:**
+```bash
+# Rollback all services to previous version (automatic)
+# Go to: Actions → Rollback Production Deployment → Run workflow
+# Services: all
+# Reason: "Health check failures after deployment"
+# (Leave commit field blank)
+
+# Rollback specific services only
+# Services: api,worker  
+# Reason: "API performance issues"
+
+# Rollback to specific commit SHA
+# Services: all
+# Rollback to commit: abc123456789
+# Reason: "Revert to commit before bug introduction"
+# (Workflow checkouts the commit and rebuilds the application)
+```
+
 ## Monitoring and Troubleshooting
 
 ### Service Status
@@ -314,7 +362,29 @@ The production deployment includes automatic rollback capabilities:
 - **Service Failures**: Docker Swarm monitors services and can automatically rollback on failure (configured with `failure_action: rollback`)
 - **Update Monitoring**: Services are monitored for 60 seconds after updates with automatic rollback on failure
 
-#### Manual Rollback Options
+#### GitHub Actions Rollback (Recommended)
+
+**Automated Rollback via GitHub Actions:**
+The recommended way to perform production rollbacks is using the GitHub Actions workflow:
+
+1. **Go to GitHub Actions**: Navigate to the repository's Actions tab
+2. **Select Rollback Workflow**: Click "Rollback Production Deployment"
+3. **Run Workflow**: Click "Run workflow" and fill in:
+   - **Reason**: Required explanation for the rollback
+   - **Services**: Choose "all" or specific services (e.g., "api,worker")
+   - **Rollback Method** (choose ONE):
+     - Leave commit field blank for automatic rollback to previous version
+     - **Rollback to commit**: Specific commit SHA (e.g., "abc123456789")
+4. **Monitor Progress**: Watch the workflow execution for real-time updates
+
+**Benefits of GitHub Actions Rollback:**
+- ✅ **Automated health checks** and validation after rollback
+- ✅ **Secure access** using existing AWS security groups and SSH keys
+- ✅ **Audit trail** with detailed logs and notifications
+- ✅ **Rollbar integration** for monitoring and alerting
+- ✅ **Consistent environment** using the same infrastructure as deployments
+
+#### Manual Rollback Options (Advanced)
 
 **Quick Manual Rollback:**
 ```bash
@@ -335,17 +405,11 @@ docker service inspect trends-earth-prod_api --format='{{json .UpdateStatus}}'
 # If UpdateStatus is null, check the service spec for current image
 docker service inspect trends-earth-prod_api --format='{{.Spec.TaskTemplate.ContainerSpec.Image}}'
 
-# List all available image tags in registry (if accessible)
-docker image ls | grep trendsearth-api
-
 # Check service version history (shows recent tasks)
 docker service ps trends-earth-prod_api --format "table {{.Name}}\t{{.Image}}\t{{.CurrentState}}\t{{.Error}}" --no-trunc
 
-# Rollback to specific image version (replace with desired tag)
-docker service update --image registry.company.com:5000/trendsearth-api:previous-tag trends-earth-prod_api
-
-# Alternative: Rollback to previous version (if update history exists)
-docker service rollback trends-earth-prod_manager
+# Rollback to previous version (if update history exists)
+docker service rollback trends-earth-prod_api
 ```
 
 #### Rollback Configuration

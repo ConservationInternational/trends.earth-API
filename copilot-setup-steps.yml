@@ -1,0 +1,279 @@
+# =============================================================================
+# GitHub Copilot Agent Environment Setup
+# =============================================================================
+# This file configures the environment for GitHub Copilot's coding agent
+# to efficiently work with the Trends.Earth API repository.
+#
+# Following best practices from:
+# https://docs.github.com/en/enterprise-cloud@latest/copilot/how-tos/use-copilot-agents/coding-agent/customize-the-agent-environment#preinstalling-tools-or-dependencies-in-copilots-environment
+# =============================================================================
+
+version: 1
+setup_steps:
+  # =============================================================================
+  # SYSTEM DEPENDENCIES AND TOOLS
+  # =============================================================================
+  - name: Install system dependencies
+    run: |
+      # Update package lists and install essential build tools
+      sudo apt-get update
+      
+      # Install Docker dependencies and tools
+      sudo apt-get install -y \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        gnupg \
+        lsb-release \
+        jq \
+        git \
+        build-essential
+      
+      # Install Docker if not already present
+      if ! command -v docker &> /dev/null; then
+        # Add Docker's official GPG key
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+        
+        # Set up the stable repository
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        
+        # Install Docker Engine
+        sudo apt-get update
+        sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+      fi
+      
+      # Install Docker Compose if not already present
+      if ! command -v docker-compose &> /dev/null; then
+        # Install Docker Compose v2 (as docker-compose-plugin)
+        sudo apt-get install -y docker-compose-plugin
+        
+        # Create alias for backward compatibility
+        sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose || true
+      fi
+      
+      # Ensure Docker service is running
+      sudo systemctl start docker || true
+      sudo systemctl enable docker || true
+      
+      # Add current user to docker group (for rootless operation)
+      sudo usermod -aG docker $USER || true
+      
+      echo "✅ System dependencies installed successfully"
+
+  # =============================================================================
+  # PYTHON AND POETRY SETUP
+  # =============================================================================
+  - name: Install Python and Poetry
+    run: |
+      # Install Python 3.11+ if not available
+      if ! python3.11 --version &> /dev/null; then
+        # Add deadsnakes PPA for newer Python versions
+        sudo add-apt-repository -y ppa:deadsnakes/ppa
+        sudo apt-get update
+        sudo apt-get install -y python3.11 python3.11-venv python3.11-dev python3-pip
+      fi
+      
+      # Ensure pip is up to date
+      python3.11 -m pip install --upgrade pip
+      
+      # Install Poetry for dependency management
+      if ! command -v poetry &> /dev/null; then
+        curl -sSL https://install.python-poetry.org | python3.11 -
+        export PATH="$HOME/.local/bin:$PATH"
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+      fi
+      
+      # Verify installations
+      python3.11 --version
+      poetry --version
+      
+      echo "✅ Python and Poetry installed successfully"
+
+  # =============================================================================
+  # DOCKER IMAGES PRELOADING
+  # =============================================================================
+  - name: Pull essential Docker images
+    run: |
+      echo "🐳 Pulling Docker images for Trends.Earth API..."
+      
+      # Pull PostgreSQL database image (version 16 as used in docker-compose)
+      docker pull postgres:16
+      echo "✅ PostgreSQL 16 image pulled"
+      
+      # Pull Redis image for Celery message broker
+      docker pull redis:latest
+      echo "✅ Redis image pulled"
+      
+      # Pull Docker registry image for local script storage
+      docker pull registry:2.8.1
+      echo "✅ Docker registry 2.8.1 image pulled"
+      
+      # Pull Python Alpine base image used in Dockerfile
+      docker pull python:3.11-alpine
+      echo "✅ Python 3.11 Alpine image pulled"
+      
+      # Display pulled images
+      echo "📋 Docker images ready:"
+      docker images --filter "reference=postgres:16" --filter "reference=redis:latest" --filter "reference=registry:2.8.1" --filter "reference=python:3.11-alpine" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+
+  # =============================================================================
+  # ENVIRONMENT CONFIGURATION
+  # =============================================================================
+  - name: Set up environment files
+    run: |
+      echo "🔧 Setting up environment configuration..."
+      
+      # Create development environment file
+      if [ ! -f develop.env ]; then
+        cp .env.example develop.env
+        
+        # Configure minimal development environment
+        sed -i 's/ENVIRONMENT=dev/ENVIRONMENT=dev/' develop.env
+        sed -i 's/your_jwt_secret_key_here/dev-jwt-secret-key-change-in-production/' develop.env
+        sed -i 's/your_secret_key_here/dev-secret-key-change-in-production/' develop.env
+        sed -i 's|postgresql://user:password@host:5432/database|postgresql://trendsearth_develop:postgres@postgres:5432/trendsearth_develop_db|' develop.env
+        sed -i 's|redis://redis:6379/0|redis://redis:6379/0|' develop.env
+        sed -i 's/your_api_user/dev_user/' develop.env
+        sed -i 's/your_api_password/dev_password/' develop.env
+        sed -i 's|your_api_url|http://localhost:3000|' develop.env
+        
+        echo "✅ Created develop.env"
+      fi
+      
+      # Create test environment file
+      if [ ! -f test.env ]; then
+        cp .env.example test.env
+        
+        # Configure test environment
+        sed -i 's/ENVIRONMENT=dev/ENVIRONMENT=test/' test.env
+        sed -i 's/TESTING=false/TESTING=true/' test.env
+        sed -i 's/your_jwt_secret_key_here/test-jwt-secret-key-for-ci/' test.env
+        sed -i 's/your_secret_key_here/test-secret-key-for-ci/' test.env
+        sed -i 's|postgresql://user:password@host:5432/database|postgresql://trendsearth_develop:postgres@postgres:5432/gef_test|' test.env
+        sed -i 's|redis://redis:6379/0|redis://redis:6379/2|' test.env
+        sed -i 's|RATE_LIMIT_STORAGE_URI=redis://redis:6379/0|RATE_LIMIT_STORAGE_URI=memory://|' test.env
+        
+        echo "✅ Created test.env"
+      fi
+      
+      echo "📋 Environment files configured for development and testing"
+
+  # =============================================================================
+  # PROJECT DEPENDENCIES INSTALLATION
+  # =============================================================================
+  - name: Install project dependencies
+    run: |
+      echo "📦 Installing project dependencies with Poetry..."
+      
+      # Configure Poetry for this environment
+      export PATH="$HOME/.local/bin:$PATH"
+      poetry config virtualenvs.create true
+      poetry config virtualenvs.in-project true
+      
+      # Install all dependencies including dev dependencies
+      poetry install --no-interaction --no-ansi --with dev
+      
+      # Verify key packages are installed
+      poetry run python -c "import flask; print(f'✅ Flask {flask.__version__} installed')"
+      poetry run python -c "import pytest; print(f'✅ pytest {pytest.__version__} installed')"
+      poetry run python -c "import docker; print(f'✅ docker-py installed')"
+      poetry run python -c "import celery; print(f'✅ Celery installed')"
+      
+      echo "✅ Project dependencies installed successfully"
+
+  # =============================================================================
+  # DOCKER ENVIRONMENT BUILD
+  # =============================================================================
+  - name: Build Docker containers
+    run: |
+      echo "🔨 Building Docker containers for Trends.Earth API..."
+      
+      # Start with a fresh Docker environment
+      docker-compose -f docker-compose.develop.yml down -v 2>/dev/null || true
+      
+      # Build the main API container
+      docker-compose -f docker-compose.develop.yml build --no-cache
+      
+      # Verify the build was successful
+      if docker images | grep -q "trendsearth"; then
+        echo "✅ Docker containers built successfully"
+        docker images | grep "trendsearth" | head -5
+      else
+        echo "❌ Docker container build failed"
+        exit 1
+      fi
+
+  # =============================================================================
+  # VALIDATION AND TESTING
+  # =============================================================================
+  - name: Validate environment setup
+    run: |
+      echo "🔍 Validating environment setup..."
+      
+      # Test Docker Compose configuration
+      docker-compose -f docker-compose.develop.yml config > /dev/null
+      echo "✅ Docker Compose configuration is valid"
+      
+      # Test Poetry environment
+      export PATH="$HOME/.local/bin:$PATH"
+      poetry run python -c "import gefapi; print('✅ Application imports successfully')"
+      
+      # Test linting tools
+      poetry run ruff --version
+      echo "✅ Ruff linting tool is available"
+      
+      # Start services briefly to test connectivity
+      echo "🚀 Testing service startup..."
+      docker-compose -f docker-compose.develop.yml up -d postgres redis
+      
+      # Wait for services to be ready
+      sleep 10
+      
+      # Test database connectivity
+      docker-compose -f docker-compose.develop.yml exec -T postgres pg_isready -U trendsearth_develop -d trendsearth_develop_db
+      echo "✅ PostgreSQL service is ready"
+      
+      # Test Redis connectivity
+      docker-compose -f docker-compose.develop.yml exec -T redis redis-cli ping
+      echo "✅ Redis service is ready"
+      
+      # Clean up test services
+      docker-compose -f docker-compose.develop.yml down
+      
+      echo "🎉 Environment setup validation completed successfully!"
+
+  # =============================================================================
+  # ENVIRONMENT SUMMARY
+  # =============================================================================
+  - name: Display setup summary
+    run: |
+      echo ""
+      echo "==============================================================================="
+      echo "🎯 TRENDS.EARTH API COPILOT ENVIRONMENT READY"
+      echo "==============================================================================="
+      echo ""
+      echo "📋 INSTALLED TOOLS:"
+      echo "  • Docker $(docker --version | cut -d' ' -f3 | tr -d ',')"
+      echo "  • Docker Compose $(docker-compose --version | cut -d' ' -f3 | tr -d ',')"
+      echo "  • Python $(python3.11 --version | cut -d' ' -f2)"
+      echo "  • Poetry $(poetry --version | cut -d' ' -f3)"
+      echo ""
+      echo "🐳 DOCKER IMAGES READY:"
+      docker images --filter "reference=postgres:16" --filter "reference=redis:latest" --filter "reference=registry:2.8.1" --filter "reference=python:3.11-alpine" --format "  • {{.Repository}}:{{.Tag}} ({{.Size}})"
+      echo ""
+      echo "📁 ENVIRONMENT FILES:"
+      echo "  • develop.env (development configuration)"
+      echo "  • test.env (testing configuration)"
+      echo ""
+      echo "🚀 READY FOR DEVELOPMENT:"
+      echo "  • Build: docker-compose -f docker-compose.develop.yml build"
+      echo "  • Start: docker-compose -f docker-compose.develop.yml up"
+      echo "  • Test: ./run_tests.sh"
+      echo "  • Lint: poetry run ruff check gefapi/ tests/"
+      echo ""
+      echo "📚 API DOCUMENTATION:"
+      echo "  • Local API docs: http://localhost:3000/api/docs/"
+      echo "  • Health check: http://localhost:3000/api-health"
+      echo ""
+      echo "✨ The environment is fully configured for GitHub Copilot development!"
+      echo "==============================================================================="

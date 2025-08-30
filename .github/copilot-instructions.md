@@ -20,6 +20,46 @@
 - [Trends.Earth Core Environment](https://github.com/conservationinternational/trends.earth-Environment) - Execution environment
 - [Trends.Earth UI](https://github.com/conservationinternational/trends.earth-UI) - Web interface
 
+## Pre-installed Environment (GitHub Copilot Agents)
+
+**IMPORTANT**: If you are a GitHub Copilot agent, the development environment has been pre-configured via `copilot-setup-steps.yml`. The following dependencies and tools are **already installed** - do NOT attempt to reinstall them as this may cause firewall restrictions or conflicts:
+
+### Pre-installed System Dependencies
+- **Docker** (latest version with Docker Compose plugin)
+- **Python 3.11+** with pip and venv support
+- **Poetry** dependency manager (latest version)
+- **Build tools**: git, curl, jq, build-essential, ca-certificates
+
+### Pre-pulled Docker Images
+- `postgres:16` (database)
+- `redis:latest` (Celery message broker) 
+- `registry:2.8.1` (local Docker registry)
+- `python:3.11-alpine` (API base image)
+
+### Pre-configured Environment
+- **Environment files**: `develop.env` and `test.env` are auto-generated from `.env.example`
+- **Project dependencies**: All Poetry dependencies (including dev dependencies) are installed
+- **Docker containers**: All containers from `docker-compose.develop.yml` are pre-built
+- **Database**: PostgreSQL and Redis services are validated and ready
+
+### Ready-to-Use Commands
+Since the environment is pre-configured, you can immediately use:
+```bash
+# Start development environment (no build needed)
+docker-compose -f docker-compose.develop.yml up
+
+# Run tests (all dependencies ready)
+./run_tests.sh
+
+# Code linting (Poetry and tools ready)
+poetry run ruff check gefapi/ tests/
+
+# API documentation (services ready)
+# Available at: http://localhost:3000/api/docs/
+```
+
+**Do not run**: `poetry install`, `docker pull`, `pip install`, or system package installation commands. The environment is complete and ready for development.
+
 ## Build and Validation Instructions
 
 ### Prerequisites
