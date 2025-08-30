@@ -40,22 +40,35 @@ This project belongs to the Trends.Earth project and implements the API used by 
    cd trends.earth-api
    ```
 
-2. **Configure Docker security (Linux/WSL):**
+2. **Set up environment files:**
    ```bash
-   # Set up secure Docker access for non-root containers
-   ./scripts/setup-docker-security.sh
+   # Copy and customize environment configuration (required - these files are gitignored)
+   cp .env.example develop.env
+   cp .env.example test.env
+   
+   # Optional: Configure Docker security for Linux/WSL users
+   # ./scripts/setup-docker-security.sh
    ```
 
-3. **Build and start services:**
+3. **Build and start development services:**
    ```bash
-   docker compose -f docker-compose.staging.yml build
-   docker compose -f docker-compose.staging.yml up
+   docker compose -f docker-compose.develop.yml build
+   docker compose -f docker-compose.develop.yml up
    ```
 
-4. **Stop services:**
+4. **Stop development services:**
    ```bash
-   docker compose -f docker-compose.staging.yml down
+   docker compose -f docker-compose.develop.yml down
    ```
+
+**For testing:**
+```bash
+# Run tests using the recommended script
+./run_tests.sh
+
+# Or run specific tests
+./run_tests.sh tests/test_smoke.py
+```
 
 ## Docker Services
 
@@ -87,7 +100,7 @@ The application is composed of several Docker services, each with a specific pur
 - **`postgres`** - PostgreSQL database (version 16)
   - Stores all application data
   - Default port: 5432
-  - Container name: `trendsearth-api-database` (development)
+  - Container name: `trendsearth-api-postgres` (development)
 
 - **`redis`** - Redis message broker
   - Handles Celery task queues
@@ -1156,20 +1169,63 @@ docker compose -f docker-compose.develop.yml run --rm api test
 
 #### Testing
 
+**Recommended Approach: Use the Test Script**
+
+**Linux/macOS (Bash):**
 ```bash
-# Recommended: Use the test script (handles service dependencies automatically)
+# Comprehensive test runner (handles service dependencies automatically)
 ./run_tests.sh
 
 # Run specific test files or patterns
 ./run_tests.sh tests/test_smoke.py
+./run_tests.sh tests/test_integration.py
 ./run_tests.sh -k "test_environment"
 
-# Alternative: Manual test execution
-docker compose -f docker-compose.develop.yml up -d database redis
+# Run with pytest options
+./run_tests.sh -v --no-cov tests/test_smoke.py
+./run_tests.sh -x  # Stop on first failure
+
+# Reset test database before running
+./run_tests.sh --reset-db
+```
+
+**Windows (PowerShell):**
+```powershell
+# Comprehensive test runner (handles service dependencies automatically)
+.\run_tests.ps1
+
+# Run specific test files or patterns
+.\run_tests.ps1 tests/test_smoke.py
+.\run_tests.ps1 tests/test_integration.py
+.\run_tests.ps1 -k "test_environment"
+
+# Run with pytest options
+.\run_tests.ps1 -v --no-cov tests/test_smoke.py
+.\run_tests.ps1 -x  # Stop on first failure
+
+# Reset test database before running
+.\run_tests.ps1 -ResetDb
+
+# Alternative: Use batch file wrapper
+.\run_tests.bat tests/test_smoke.py
+```
+
+**Alternative: Manual Test Execution**
+```bash
+# Start required services first
+docker compose -f docker-compose.develop.yml up -d postgres redis
+
+# Wait for services to be ready
+sleep 5
+
+# Run all tests via test service
 docker compose -f docker-compose.develop.yml run --rm test
 
 # Run tests with specific parameters
-docker compose -f docker-compose.develop.yml run --rm test pytest -v tests/
+docker compose -f docker-compose.develop.yml run --rm test python -m pytest -v tests/
+
+# Clean up when done
+docker compose -f docker-compose.develop.yml down
 ```
 
 ### Testing Infrastructure
@@ -1185,6 +1241,30 @@ The testing setup includes dedicated services and automated scripts:
 - **`run_tests.sh`**: Automated test runner that handles service orchestration
 - **Service Management**: Automatically starts dependencies, runs tests, and cleans up
 - **Flexible Testing**: Supports specific test files, patterns, and pytest arguments
+
+#### Test Script Features
+```bash
+# The run_tests.sh script provides several advantages:
+
+# 1. Automatic dependency management
+./run_tests.sh                    # Starts postgres/redis, runs tests, cleans up
+
+# 2. Test database management
+./run_tests.sh --reset-db         # Drops and recreates test database
+
+# 3. Flexible test execution
+./run_tests.sh tests/test_smoke.py                           # Specific file
+./run_tests.sh tests/test_integration.py::TestAPIIntegration # Specific class
+./run_tests.sh -v --no-cov tests/test_smoke.py              # With pytest options
+./run_tests.sh -x                                           # Stop on first failure
+
+# 4. Service lifecycle management
+# - Starts postgres and redis services
+# - Waits for services to be ready
+# - Creates test database if needed
+# - Runs tests with proper environment
+# - Stops services on completion
+```
 
 #### Test Environment Features
 - **Environment Isolation**: `TESTING=true` and `ENVIRONMENT=test` flags
@@ -1577,11 +1657,11 @@ ports:
 docker compose -f docker-compose.develop.yml ps
 
 # View database logs
-docker compose -f docker-compose.develop.yml logs database
+docker compose -f docker-compose.develop.yml logs postgres
 
 # Reset database
 docker compose -f docker-compose.develop.yml down -v
-docker compose -f docker-compose.develop.yml up database
+docker compose -f docker-compose.develop.yml up postgres
 ```
 
 #### Migration Failures
@@ -1602,13 +1682,13 @@ docker compose -f docker-compose.develop.yml up migrate
 #### Test Database Connection
 ```bash
 # Ensure test services are running
-docker compose -f docker-compose.develop.yml up -d database redis
+docker compose -f docker-compose.develop.yml up -d postgres redis
 
 # Check if test database exists
-docker compose -f docker-compose.develop.yml exec database psql -U root -d postgres -c "\l"
+docker compose -f docker-compose.develop.yml exec postgres psql -U trendsearth_develop -d trendsearth_develop_db -c "\l"
 
 # Create test database manually if needed
-docker compose -f docker-compose.develop.yml exec database psql -U root -d postgres -c "CREATE DATABASE gef_test;"
+docker compose -f docker-compose.develop.yml exec postgres psql -U trendsearth_develop -d trendsearth_develop_db -c "CREATE DATABASE gef_test;"
 ```
 
 #### Test Environment Variables
@@ -1618,6 +1698,22 @@ cat test.env
 
 # Check environment variables in test container
 docker compose -f docker-compose.develop.yml run --rm test env | grep -E "(DATABASE|REDIS|TESTING)"
+```
+
+#### Common Test Issues
+```bash
+# Reset test database completely
+./run_tests.sh --reset-db
+
+# Check test service logs
+docker compose -f docker-compose.develop.yml logs test
+
+# Verify test service can connect to dependencies
+docker compose -f docker-compose.develop.yml run --rm test python -c "
+import psycopg2, redis
+print('Database connection: OK')
+print('Redis connection: OK')
+"
 ```
 
 ### Performance Issues
