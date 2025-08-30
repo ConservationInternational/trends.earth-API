@@ -64,6 +64,7 @@ class TestImprovedStatusTracking:
     def test_update_execution_status_with_logging_creates_status_log(self, app):
         """Test that updating execution status creates a status log entry"""
         import uuid
+
         with app.app_context():
             # Create test user with unique email
             user_uuid = uuid.uuid4()
@@ -112,6 +113,7 @@ class TestImprovedStatusTracking:
     def test_update_execution_status_with_logging_counts_executions(self, app):
         """Test that status log contains correct execution counts"""
         import uuid
+
         with app.app_context():
             # Clean up all data using TRUNCATE CASCADE to avoid foreign key issues
             # This will reset the database to a clean state for this test
@@ -206,6 +208,7 @@ class TestImprovedStatusTracking:
     def test_execution_service_update_uses_new_helper(self, mock_email, app):
         """Test that ExecutionService.update_execution uses the new helper function"""
         import uuid
+
         with app.app_context():
             # Create test user
             user = User(
@@ -257,6 +260,7 @@ class TestImprovedStatusTracking:
     def test_execution_cancel_uses_new_helper(self, app):
         """Test that execution cancellation uses the new helper function"""
         import uuid
+
         with app.app_context():
             # Create test user with unique email
             user_uuid = uuid.uuid4()
@@ -347,6 +351,7 @@ class TestImprovedStatusTracking:
     def test_helper_function_handles_terminal_states(self, app):
         """Test that the helper function properly handles terminal execution states"""
         import uuid
+
         with app.app_context():
             # Create test user with unique email
             user_uuid = uuid.uuid4()
@@ -402,6 +407,7 @@ class TestImprovedStatusTracking:
     def test_helper_function_error_handling(self, app):
         """Test that the helper function handles database errors properly"""
         import uuid
+
         with app.app_context():
             # Create test user with unique email
             user_uuid = uuid.uuid4()
