@@ -389,9 +389,7 @@ def sample_status_log(app):
             executions_running=3,
             executions_finished=100,
             executions_failed=5,
-            executions_count=500,
-            users_count=10,
-            scripts_count=25,
+            executions_cancelled=15,
         )
         db.session.add(status_log)
         db.session.commit()

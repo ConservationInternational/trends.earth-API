@@ -219,13 +219,15 @@ class StagingEnvironmentSetup:
 
             prod_cursor = prod_conn.cursor()
             staging_cursor = staging_conn.cursor()
-            
+
             # Acquire advisory lock to prevent concurrent imports
             # Use a unique ID for staging script import operations
-            STAGING_IMPORT_LOCK_ID = 12345
+            staging_import_lock_id = 12345
             logger.info("Acquiring advisory lock for staging import...")
-            staging_cursor.execute("SELECT pg_advisory_lock(%s)", (STAGING_IMPORT_LOCK_ID,))
-            
+            staging_cursor.execute(
+                "SELECT pg_advisory_lock(%s)", (staging_import_lock_id,)
+            )
+
             # Begin transaction for atomic script import
             staging_conn.autocommit = False
 
@@ -308,10 +310,19 @@ class StagingEnvironmentSetup:
                         logger.info(f"Imported {imported_count} scripts so far...")
 
                 except psycopg2.Error as e:
-                    logger.warning(f"Failed to import script {script[0]} with slug '{script[2]}': {e}")
+                    logger.warning(
+                        f"Failed to import script {script[0]} with slug "
+                        f"'{script[2]}': {e}"
+                    )
                     # If it's an integrity error, log more details
-                    if "unique constraint" in str(e).lower() or "duplicate key" in str(e).lower():
-                        logger.error(f"Duplicate script slug detected: {script[2]} - this indicates a race condition")
+                    if (
+                        "unique constraint" in str(e).lower()
+                        or "duplicate key" in str(e).lower()
+                    ):
+                        logger.error(
+                            f"Duplicate script slug detected: {script[2]} - "
+                            f"this indicates a race condition"
+                        )
                         # Continue with other scripts rather than failing completely
                         continue
 
@@ -386,13 +397,15 @@ class StagingEnvironmentSetup:
         try:
             prod_cursor = prod_conn.cursor()
             staging_cursor = staging_conn.cursor()
-            
+
             # Acquire advisory lock to prevent concurrent status log insertions
             # Use a unique ID for staging status log import operations
-            STAGING_STATUS_IMPORT_LOCK_ID = 54321
+            staging_status_import_lock_id = 54321
             logger.info("Acquiring advisory lock for staging status log import...")
-            staging_cursor.execute("SELECT pg_advisory_lock(%s)", (STAGING_STATUS_IMPORT_LOCK_ID,))
-            
+            staging_cursor.execute(
+                "SELECT pg_advisory_lock(%s)", (staging_status_import_lock_id,)
+            )
+
             # Begin transaction for atomic status log import
             staging_conn.autocommit = False
 
@@ -432,7 +445,9 @@ class StagingEnvironmentSetup:
             # Reset the sequence to start from a high value to avoid conflicts
             # Use a large starting value to prevent conflicts with any existing data
             staging_cursor.execute("SELECT setval('status_log_id_seq', 100000, false)")
-            logger.info("Reset status_log sequence to start from 100000 to avoid conflicts")
+            logger.info(
+                "Reset status_log sequence to start from 100000 to avoid conflicts"
+            )
 
             # Calculate date one month ago
             one_month_ago = datetime.now() - timedelta(days=30)
@@ -476,8 +491,14 @@ class StagingEnvironmentSetup:
                 except psycopg2.Error as e:
                     logger.warning(f"Failed to import status log: {e}")
                     # If it's an integrity error, log more details
-                    if "unique constraint" in str(e).lower() or "duplicate key" in str(e).lower():
-                        logger.error(f"Duplicate status log key detected - this indicates a race condition")
+                    if (
+                        "unique constraint" in str(e).lower()
+                        or "duplicate key" in str(e).lower()
+                    ):
+                        logger.error(
+                            "Duplicate status log key detected - "
+                            "this indicates a race condition"
+                        )
                         # Continue with other logs rather than failing completely
                         continue
 
@@ -496,8 +517,11 @@ class StagingEnvironmentSetup:
                     f"to avoid future conflicts (buffer: 10000)"
                 )
             else:
-                # If no logs were imported, ensure sequence starts from a safe high value
-                staging_cursor.execute("SELECT setval('status_log_id_seq', 100000, false)")
+                # If no logs were imported, ensure sequence starts from a safe
+                # high value
+                staging_cursor.execute(
+                    "SELECT setval('status_log_id_seq', 100000, false)"
+                )
                 logger.info("No status logs imported, sequence remains at 100000")
 
             staging_conn.commit()

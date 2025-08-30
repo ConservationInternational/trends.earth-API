@@ -30,7 +30,6 @@ def make_celery(app):
         "docker.get_service_logs": {"queue": "build"},
         "gefapi.tasks.status_monitoring.refresh_swarm_cache_task": {"queue": "build"},
         # Route all scheduled tasks to default queue to match worker configuration
-        "gefapi.tasks.status_monitoring.collect_system_status": {"queue": "default"},
         "gefapi.tasks.execution_cleanup.cleanup_stale_executions": {"queue": "default"},
         "gefapi.tasks.execution_cleanup.cleanup_finished_executions": {
             "queue": "default"
@@ -52,10 +51,6 @@ def make_celery(app):
 
     # Configure periodic tasks
     celery.conf.beat_schedule = {
-        "collect-system-status": {
-            "task": "gefapi.tasks.status_monitoring.collect_system_status",
-            "schedule": 120.0,  # Every 2 minutes (120 seconds)
-        },
         "refresh-swarm-cache": {
             "task": "gefapi.tasks.status_monitoring.refresh_swarm_cache_task",
             "schedule": 120.0,  # Every 2 minutes (120 seconds)

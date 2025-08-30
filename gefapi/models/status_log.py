@@ -23,11 +23,7 @@ class StatusLog(db.Model):
     executions_running = db.Column(db.Integer(), default=0)
     executions_finished = db.Column(db.Integer(), default=0)
     executions_failed = db.Column(db.Integer(), default=0)
-    executions_count = db.Column(db.Integer(), default=0)
-
-    # Other counts
-    users_count = db.Column(db.Integer(), default=0)
-    scripts_count = db.Column(db.Integer(), default=0)
+    executions_cancelled = db.Column(db.Integer(), default=0)
 
     def __init__(
         self,
@@ -36,18 +32,14 @@ class StatusLog(db.Model):
         executions_running=0,
         executions_finished=0,
         executions_failed=0,
-        executions_count=0,
-        users_count=0,
-        scripts_count=0,
+        executions_cancelled=0,
     ):
         self.executions_active = executions_active
         self.executions_ready = executions_ready
         self.executions_running = executions_running
         self.executions_finished = executions_finished
         self.executions_failed = executions_failed
-        self.executions_count = executions_count
-        self.users_count = users_count
-        self.scripts_count = scripts_count
+        self.executions_cancelled = executions_cancelled
 
     def __repr__(self):
         return f"<StatusLog {self.id!r}>"
@@ -62,7 +54,5 @@ class StatusLog(db.Model):
             "executions_running": self.executions_running,
             "executions_finished": self.executions_finished,
             "executions_failed": self.executions_failed,
-            "executions_count": self.executions_count,
-            "users_count": self.users_count,
-            "scripts_count": self.scripts_count,
+            "executions_cancelled": self.executions_cancelled,
         }

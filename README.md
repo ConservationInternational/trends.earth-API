@@ -19,7 +19,7 @@ This project belongs to the Trends.Earth project and implements the API used by 
 - **Poetry** - Dependency management and packaging
 - **Flask** - Web framework for API endpoints
 - **SQLAlchemy** - ORM for database operations (PostgreSQL)
-- **Celery** - Background task management with periodic tasks (system monitoring, stale execution cleanup, finished execution cleanup, old failed execution cleanup)
+- **Celery** - Background task management with periodic tasks (execution cleanup, finished execution cleanup, old failed execution cleanup)
 - **Docker** - Containerization for development and production
 - **Gunicorn** - WSGI server for production deployment
 - **Flask-Migrate** - Database migration management
@@ -74,7 +74,7 @@ The application is composed of several Docker services, each with a specific pur
   - Command: `./entrypoint.sh worker`
 
 - **`beat`** - Celery beat scheduler
-  - Manages periodic tasks (system monitoring every 2 minutes, execution cleanup every hour, finished execution cleanup daily, old failed execution cleanup daily)
+  - Manages periodic tasks (execution cleanup every hour, finished execution cleanup daily, old failed execution cleanup daily)
   - Command: `./entrypoint.sh beat`
 
 - **`migrate`** - Database migration service
@@ -116,7 +116,7 @@ The application uses a multi-container architecture with specialized services:
 #### Core Application Containers
 - **API Container**: Flask application server with Gunicorn (production) or direct Flask (development)
 - **Worker Container**: Celery workers for background task processing
-- **Beat Container**: Celery beat scheduler for periodic tasks (monitoring, cleanup, maintenance)
+- **Beat Container**: Celery beat scheduler for periodic tasks (cleanup, maintenance)
 - **Migration Container**: Dedicated service for database schema migrations
 
 #### Infrastructure Containers
@@ -330,6 +330,43 @@ The interactive documentation allows you to:
   - No authentication required
   - Returns server status, timestamp, database connectivity, and API version
   - Used by load balancers and monitoring systems
+
+### Status Tracking and Monitoring
+
+The API provides advanced status tracking capabilities for monitoring execution states and system health.
+
+#### Status Endpoint
+- `GET /api/v1/status` - Retrieve execution status logs (Admin+ required)
+  - Returns paginated status log entries with execution counts by state
+  - Supports filtering by date range and sorting
+  - Provides real-time insights into system execution patterns
+
+**Status Log Fields:**
+- `executions_active`: Total active executions (RUNNING + PENDING)
+- `executions_ready`: Executions ready to run
+- `executions_running`: Currently executing scripts
+- `executions_finished`: Number of completed executions
+- `executions_failed`: Number of failed executions
+- `executions_cancelled`: Number of cancelled executions
+
+#### Event-Driven Status Tracking
+
+The system uses an **event-driven approach** for status tracking:
+- Status logs are created automatically when execution status changes
+- No periodic background tasks needed for status collection
+- Real-time tracking provides immediate insights into execution state changes
+- Each status change triggers a snapshot of current execution counts across all states
+
+**Key Benefits:**
+- **Real-time updates**: Status changes are logged immediately
+- **Reduced resource usage**: No periodic polling of database
+- **Event accuracy**: Each status change is captured precisely
+- **Historical tracking**: Complete audit trail of execution state transitions
+
+**Implementation:**
+- Helper function `update_execution_status_with_logging()` handles all status updates
+- Integrated into execution lifecycle (start, progress, completion, cancellation)
+- Automatic counting of executions by state for each status log entry
 
 ### Authentication
 
@@ -1372,9 +1409,6 @@ The application uses Celery for background task processing and periodic maintena
 For development and debugging purposes, tasks can be executed manually:
 
 ```bash
-# Execute system status collection
-docker exec -it <container_name> celery -A gefapi.celery call gefapi.tasks.status_monitoring.collect_system_status
-
 # Execute stale execution cleanup
 docker exec -it <container_name> celery -A gefapi.celery call gefapi.tasks.execution_cleanup.cleanup_stale_executions
 
@@ -1394,10 +1428,6 @@ The Celery beat schedule is configured in `gefapi/celery.py`:
 
 ```python
 celery.conf.beat_schedule = {
-    "collect-system-status": {
-        "task": "gefapi.tasks.status_monitoring.collect_system_status",
-        "schedule": 120.0,  # Every 2 minutes
-    },
     "cleanup-stale-executions": {
         "task": "gefapi.tasks.execution_cleanup.cleanup_stale_executions", 
         "schedule": 3600.0,  # Every hour
