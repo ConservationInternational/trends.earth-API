@@ -66,7 +66,7 @@ class TestImprovedStatusTracking:
         with app.app_context():
             # Create test user
             user = User(
-                email="test@example.com",
+                email="test1@example.com",
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -78,7 +78,7 @@ class TestImprovedStatusTracking:
             # Create test script
             script = Script(
                 name="Test Script",
-                slug="test-script",
+                slug="test-script-1",
                 user_id=user.id,
             )
             script.status = "SUCCESS"
@@ -111,7 +111,7 @@ class TestImprovedStatusTracking:
         with app.app_context():
             # Create test user
             user = User(
-                email="test@example.com",
+                email="test2@example.com",
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -123,7 +123,7 @@ class TestImprovedStatusTracking:
             # Create test script
             script = Script(
                 name="Test Script",
-                slug="test-script",
+                slug="test-script-2",
                 user_id=user.id,
             )
             script.status = "SUCCESS"
@@ -188,7 +188,7 @@ class TestImprovedStatusTracking:
         with app.app_context():
             # Create test user
             user = User(
-                email="test@example.com",
+                email="test3@example.com",
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -200,7 +200,7 @@ class TestImprovedStatusTracking:
             # Create test script
             script = Script(
                 name="Test Script",
-                slug="test-script",
+                slug="test-script-3",
                 user_id=user.id,
             )
             script.status = "SUCCESS"
@@ -235,7 +235,7 @@ class TestImprovedStatusTracking:
         with app.app_context():
             # Create test user
             user = User(
-                email="test@example.com",
+                email="test4@example.com",
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -247,7 +247,7 @@ class TestImprovedStatusTracking:
             # Create test script
             script = Script(
                 name="Test Script",
-                slug="test-script",
+                slug="test-script-4",
                 user_id=user.id,
             )
             script.status = "SUCCESS"
@@ -322,7 +322,7 @@ class TestImprovedStatusTracking:
         with app.app_context():
             # Create test user
             user = User(
-                email="test@example.com",
+                email="test5@example.com",
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -334,7 +334,7 @@ class TestImprovedStatusTracking:
             # Create test script
             script = Script(
                 name="Test Script",
-                slug="test-script",
+                slug="test-script-5",
                 user_id=user.id,
             )
             script.status = "SUCCESS"
@@ -374,7 +374,7 @@ class TestImprovedStatusTracking:
         with app.app_context():
             # Create test user
             user = User(
-                email="test@example.com",
+                email="test6@example.com",
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -386,7 +386,7 @@ class TestImprovedStatusTracking:
             # Create test script
             script = Script(
                 name="Test Script",
-                slug="test-script",
+                slug="test-script-6",
                 user_id=user.id,
             )
             script.status = "SUCCESS"
