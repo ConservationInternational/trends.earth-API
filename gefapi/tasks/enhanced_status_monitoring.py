@@ -2,8 +2,6 @@
 
 import logging
 
-import rollbar
-
 from gefapi.services.docker_service import get_docker_client
 
 logger = logging.getLogger(__name__)
@@ -360,6 +358,3 @@ def _get_docker_swarm_info():
             "total_workers": 0,
             "swarm_active": False,
         }
-
-
-
