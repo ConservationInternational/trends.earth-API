@@ -63,11 +63,19 @@ This project belongs to the Trends.Earth project and implements the API used by 
 
 **For testing:**
 ```bash
-# Run tests using the recommended script
+# Linux/macOS - Run tests using the recommended script
 ./run_tests.sh
 
 # Or run specific tests
 ./run_tests.sh tests/test_smoke.py
+```
+
+```powershell
+# Windows PowerShell - Run tests using the PowerShell script
+.\run_tests.ps1
+
+# Or run specific tests
+.\run_tests.ps1 tests/test_smoke.py
 ```
 
 ## Docker Services
@@ -1189,6 +1197,24 @@ docker compose -f docker-compose.develop.yml run --rm api test
 ./run_tests.sh --reset-db
 ```
 
+**Windows PowerShell:**
+```powershell
+# Comprehensive test runner (handles service dependencies automatically)
+.\run_tests.ps1
+
+# Run specific test files or patterns
+.\run_tests.ps1 tests/test_smoke.py
+.\run_tests.ps1 tests/test_integration.py
+.\run_tests.ps1 -TestArgs '-k "test_environment"'
+
+# Run with pytest options
+.\run_tests.ps1 -TestArgs '-v --no-cov tests/test_smoke.py'
+.\run_tests.ps1 -TestArgs '-x'  # Stop on first failure
+
+# Reset test database before running
+.\run_tests.ps1 -ResetDb
+```
+
 **Windows (PowerShell):**
 ```powershell
 # Comprehensive test runner (handles service dependencies automatically)
@@ -1257,8 +1283,26 @@ The testing setup includes dedicated services and automated scripts:
 ./run_tests.sh tests/test_integration.py::TestAPIIntegration # Specific class
 ./run_tests.sh -v --no-cov tests/test_smoke.py              # With pytest options
 ./run_tests.sh -x                                           # Stop on first failure
+```
 
-# 4. Service lifecycle management
+```powershell
+# The run_tests.ps1 script provides the same advantages on Windows:
+
+# 1. Automatic dependency management
+.\run_tests.ps1                    # Starts postgres/redis, runs tests, cleans up
+
+# 2. Test database management
+.\run_tests.ps1 -ResetDb           # Drops and recreates test database
+
+# 3. Flexible test execution
+.\run_tests.ps1 tests/test_smoke.py                             # Specific file
+.\run_tests.ps1 -TestArgs 'tests/test_integration.py::TestAPIIntegration' # Specific class
+.\run_tests.ps1 -TestArgs '-v --no-cov tests/test_smoke.py'     # With pytest options
+.\run_tests.ps1 -TestArgs '-x'                                  # Stop on first failure
+```
+
+```text
+# 4. Service lifecycle management (both scripts)
 # - Starts postgres and redis services
 # - Waits for services to be ready
 # - Creates test database if needed
@@ -1702,13 +1746,28 @@ docker compose -f docker-compose.develop.yml run --rm test env | grep -E "(DATAB
 
 #### Common Test Issues
 ```bash
-# Reset test database completely
+# Reset test database completely (Linux/macOS)
 ./run_tests.sh --reset-db
 
 # Check test service logs
 docker compose -f docker-compose.develop.yml logs test
 
 # Verify test service can connect to dependencies
+docker compose -f docker-compose.develop.yml run --rm test python -c "
+import psycopg2, redis
+print('Database connection: OK')
+print('Redis connection: OK')
+"
+```
+
+```powershell
+# Reset test database completely (Windows PowerShell)
+.\run_tests.ps1 -ResetDb
+
+# Check test service logs (same on all platforms)
+docker compose -f docker-compose.develop.yml logs test
+
+# Verify test service can connect to dependencies (same on all platforms)
 docker compose -f docker-compose.develop.yml run --rm test python -c "
 import psycopg2, redis
 print('Database connection: OK')

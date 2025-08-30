@@ -87,9 +87,7 @@ def update_execution_status_with_logging(
 
         # Map to the expected field names for BEFORE status log
         before_executions_ready = before_count_dict.get("READY", 0)
-        before_executions_running = before_count_dict.get(
-            "RUNNING", 0
-        ) + before_count_dict.get("PENDING", 0)
+        before_executions_running = before_count_dict.get("RUNNING", 0)  # Only RUNNING
         before_executions_finished = before_count_dict.get("FINISHED", 0)
         before_executions_failed = before_count_dict.get("FAILED", 0)
         before_executions_cancelled = before_count_dict.get("CANCELLED", 0)
@@ -114,14 +112,6 @@ def update_execution_status_with_logging(
             executions_cancelled=before_executions_cancelled,
         )
 
-        # Update the execution status first
-        execution.status = new_status
-
-        # Update end_date and progress for terminal states
-        if new_status in ["FINISHED", "FAILED", "CANCELLED"]:
-            execution.end_date = datetime.datetime.utcnow()
-            execution.progress = 100
-
         # Now calculate the AFTER counts by adjusting from the before counts
         # This is more reliable than querying again since we control the change
         after_count_dict = before_count_dict.copy()
@@ -141,11 +131,17 @@ def update_execution_status_with_logging(
         # Add to the new status count
         after_count_dict[new_status] = after_count_dict.get(new_status, 0) + 1
 
+        # Update the execution status after calculating the counts
+        execution.status = new_status
+
+        # Update end_date and progress for terminal states
+        if new_status in ["FINISHED", "FAILED", "CANCELLED"]:
+            execution.end_date = datetime.datetime.utcnow()
+            execution.progress = 100
+
         # Map to the expected field names for AFTER status log
         after_executions_ready = after_count_dict.get("READY", 0)
-        after_executions_running = after_count_dict.get(
-            "RUNNING", 0
-        ) + after_count_dict.get("PENDING", 0)
+        after_executions_running = after_count_dict.get("RUNNING", 0)  # Only RUNNING
         after_executions_finished = after_count_dict.get("FINISHED", 0)
         after_executions_failed = after_count_dict.get("FAILED", 0)
         after_executions_cancelled = after_count_dict.get("CANCELLED", 0)
