@@ -80,8 +80,8 @@ class TestImprovedStatusTracking:
                 name="Test Script",
                 slug="test-script",
                 user_id=user.id,
-                status="SUCCESS",
             )
+            script.status = "SUCCESS"
             db.session.add(script)
 
             # Create test execution
@@ -114,6 +114,8 @@ class TestImprovedStatusTracking:
                 email="test@example.com",
                 password="password123",
                 name="Test User",
+                country="Test Country",
+                institution="Test Institution",
                 role="USER",
             )
             db.session.add(user)
@@ -123,8 +125,8 @@ class TestImprovedStatusTracking:
                 name="Test Script",
                 slug="test-script",
                 user_id=user.id,
-                status="SUCCESS",
             )
+            script.status = "SUCCESS"
             db.session.add(script)
 
             # Create multiple executions with different statuses
@@ -189,6 +191,8 @@ class TestImprovedStatusTracking:
                 email="test@example.com",
                 password="password123",
                 name="Test User",
+                country="Test Country",
+                institution="Test Institution",
                 role="USER",
             )
             db.session.add(user)
@@ -198,8 +202,8 @@ class TestImprovedStatusTracking:
                 name="Test Script",
                 slug="test-script",
                 user_id=user.id,
-                status="SUCCESS",
             )
+            script.status = "SUCCESS"
             db.session.add(script)
 
             # Create test execution
@@ -234,6 +238,8 @@ class TestImprovedStatusTracking:
                 email="test@example.com",
                 password="password123",
                 name="Test User",
+                country="Test Country",
+                institution="Test Institution",
                 role="USER",
             )
             db.session.add(user)
@@ -243,8 +249,8 @@ class TestImprovedStatusTracking:
                 name="Test Script",
                 slug="test-script",
                 user_id=user.id,
-                status="SUCCESS",
             )
+            script.status = "SUCCESS"
             db.session.add(script)
 
             # Create test execution
@@ -319,6 +325,8 @@ class TestImprovedStatusTracking:
                 email="test@example.com",
                 password="password123",
                 name="Test User",
+                country="Test Country",
+                institution="Test Institution",
                 role="USER",
             )
             db.session.add(user)
@@ -328,8 +336,8 @@ class TestImprovedStatusTracking:
                 name="Test Script",
                 slug="test-script",
                 user_id=user.id,
-                status="SUCCESS",
             )
+            script.status = "SUCCESS"
             db.session.add(script)
 
             # Create test execution
@@ -369,6 +377,8 @@ class TestImprovedStatusTracking:
                 email="test@example.com",
                 password="password123",
                 name="Test User",
+                country="Test Country",
+                institution="Test Institution",
                 role="USER",
             )
             db.session.add(user)
@@ -378,8 +388,8 @@ class TestImprovedStatusTracking:
                 name="Test Script",
                 slug="test-script",
                 user_id=user.id,
-                status="SUCCESS",
             )
+            script.status = "SUCCESS"
             db.session.add(script)
 
             # Create test execution
