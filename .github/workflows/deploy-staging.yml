@@ -265,8 +265,26 @@ jobs:
             exit 1
           fi
           
-          # Deploy stack - this will perform rolling updates automatically
-          echo "🚀 Deploying stack with rolling updates..."
+          # Stop and remove any existing stack to prevent race conditions
+          echo "🛑 Stopping existing stack to prevent update conflicts..."
+          if docker stack ls --format "{{.Name}}" | grep -q "trends-earth-staging"; then
+            echo "Removing existing stack trends-earth-staging..."
+            docker stack rm trends-earth-staging
+            
+            # Wait for stack to be completely removed
+            echo "⏳ Waiting for stack removal to complete..."
+            while docker stack ls --format "{{.Name}}" | grep -q "trends-earth-staging"; do
+              echo "  Still removing services..."
+              sleep 5
+            done
+            
+            # Wait for networks to be cleaned up
+            sleep 10
+            echo "✅ Stack removal completed"
+          fi
+          
+          # Deploy fresh stack - this avoids race conditions from updates
+          echo "🚀 Deploying fresh stack..."
           docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-staging
           
           # Wait for rolling update to complete

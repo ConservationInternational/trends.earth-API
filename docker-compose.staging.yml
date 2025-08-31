@@ -18,6 +18,11 @@ services:
         delay: 10s
         max_attempts: 3
         window: 60s
+      # Ensure only one migrate service runs at a time
+      update_config:
+        parallelism: 1
+        delay: 30s
+        order: stop-first
 
   api:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
@@ -41,6 +46,11 @@ services:
         reservations:
           cpus: "0.1"
           memory: 100M
+      # Update configuration to prevent race conditions
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
 
   worker:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
@@ -59,6 +69,10 @@ services:
         reservations:
           cpus: "0.1"
           memory: 100M
+      # Update configuration to prevent race conditions
+      update_config:
+        parallelism: 1
+        delay: 10s
 
   beat:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
@@ -75,6 +89,10 @@ services:
         reservations:
           cpus: "0.1"
           memory: 100M
+      # Update configuration to prevent race conditions
+      update_config:
+        parallelism: 1
+        delay: 10s
 
   docker:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
@@ -99,6 +117,10 @@ services:
         reservations:
           cpus: "0.5"
           memory: 800M
+      # Update configuration to prevent race conditions
+      update_config:
+        parallelism: 1
+        delay: 10s
 
   postgres:
     image: postgres:16
