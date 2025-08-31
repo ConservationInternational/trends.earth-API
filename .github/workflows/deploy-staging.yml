@@ -265,9 +265,72 @@ jobs:
             exit 1
           fi
           
-          # Deploy stack - this will perform rolling updates automatically
-          echo "🚀 Deploying stack with rolling updates..."
-          docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-staging
+          # Deploy services using production-inspired approach
+          echo "📦 Deploying services..."
+          
+          # Check if execution services are running that would prevent clean stack removal
+          # For staging, we're less concerned about preserving executions but still check for safety
+          active_executions=$(docker service ls --filter "label=service.type=execution" --format "{{.Name}}" | wc -l)
+          if [ "$active_executions" -eq 0 ]; then
+            # Fallback detection by name pattern if labels are missing
+            active_executions=$(docker service ls --filter "name=execution-" --format "{{.Name}}" | wc -l)
+          fi
+          
+          if [ $active_executions -gt 0 ]; then
+            echo "⚠️ Found $active_executions active execution services - using rolling update instead of stack removal"
+            echo "Active executions:"
+            docker service ls --filter "name=execution-" --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"
+            
+            echo "🔄 Performing rolling update deployment..."
+            attempts=0
+            until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-staging; do
+              attempts=$((attempts+1))
+              if [ "$attempts" -ge 3 ]; then
+                echo "❌ Stack deploy failed after $attempts attempts"
+                exit 1
+              fi
+              echo "⏳ Stack deploy failed, retrying in 5s (attempt $attempts/3)..."
+              sleep 5
+            done
+            
+          else
+            echo "No active executions found - performing clean stack deployment"
+            # Safe to remove and redeploy stack for staging
+            if docker stack ls --format "{{.Name}}" | grep -q "trends-earth-staging"; then
+              echo "Removing existing stack trends-earth-staging..."
+              docker stack rm trends-earth-staging
+              
+              # Wait for complete cleanup
+              echo "⏳ Waiting for stack cleanup to complete..."
+              timeout=60
+              while [ $timeout -gt 0 ]; do
+                if ! docker service ls --format "{{.Name}}" | grep -q "trends-earth-staging"; then
+                  echo "✅ Stack cleanup completed"
+                  break
+                fi
+                echo "⏳ Waiting for services to stop... ($timeout seconds remaining)"
+                sleep 5
+                timeout=$((timeout - 5))
+              done
+              
+              # Wait for networks to be cleaned up
+              sleep 10
+              echo "✅ Stack removal completed"
+            fi
+            
+            # Deploy fresh stack
+            echo "🚀 Deploying fresh stack..."
+            attempts=0
+            until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-staging; do
+              attempts=$((attempts+1))
+              if [ "$attempts" -ge 3 ]; then
+                echo "❌ Stack deploy failed after $attempts attempts"
+                exit 1
+              fi
+              echo "⏳ Stack deploy failed, retrying in 5s (attempt $attempts/3)..."
+              sleep 5
+            done
+          fi
           
           # Wait for rolling update to complete
           echo "⏳ Waiting for rolling update to complete..."

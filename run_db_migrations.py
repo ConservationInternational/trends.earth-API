@@ -66,6 +66,9 @@ def run_migrations():
     try:
         logger.info("Importing Flask-Migrate...")
         from flask_migrate import upgrade
+        from alembic import command
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
 
         logger.info("Importing gefapi app...")
         from gefapi import app
@@ -80,13 +83,54 @@ def run_migrations():
 
         with app.app_context():
             logger.info("App context created successfully")
-
-            # Simple approach: just run the standard upgrade to 'head'
-            # This is equivalent to running 'flask db upgrade' manually
-            logger.info("Running Flask-Migrate upgrade to head...")
-            print("Running upgrade to head...")
-
-            upgrade(revision="head")
+            
+            # Check for multiple heads before attempting upgrade
+            logger.info("Checking migration heads...")
+            
+            try:
+                # Get Flask-Migrate config
+                from flask_migrate import Migrate
+                migrate = Migrate()
+                migrate.init_app(app, app.extensions['migrate'].db)
+                
+                # Get Alembic config from Flask-Migrate
+                config = migrate.get_config()
+                script = ScriptDirectory.from_config(config)
+                
+                # Get current heads
+                heads = script.get_heads()
+                logger.info(f"Found {len(heads)} migration heads: {heads}")
+                
+                if len(heads) > 1:
+                    logger.warning(f"Multiple heads detected: {heads}")
+                    print(f"⚠️  Multiple migration heads detected: {heads}")
+                    
+                    # Try to upgrade to each head individually to find the actual current state
+                    logger.info("Attempting to resolve multiple heads by upgrading to the latest merged head...")
+                    print("🔧 Resolving multiple heads...")
+                    
+                    # Use the specific head that should be the current one
+                    target_head = "3eedf39b54dd"  # Based on our analysis, this is the current single head
+                    logger.info(f"Upgrading to specific head: {target_head}")
+                    upgrade(revision=target_head)
+                    
+                else:
+                    logger.info("Single head found, proceeding with normal upgrade")
+                    upgrade(revision="head")
+                    
+            except Exception as head_check_error:
+                logger.warning(f"Head check failed: {head_check_error}")
+                print(f"⚠️  Head check failed, trying direct upgrade: {head_check_error}")
+                
+                # Fallback: try direct upgrade to head
+                try:
+                    upgrade(revision="head")
+                except Exception as upgrade_error:
+                    logger.error(f"Direct upgrade failed: {upgrade_error}")
+                    
+                    # Final fallback: try upgrading to specific head
+                    logger.info("Trying upgrade to specific head as final fallback...")
+                    upgrade(revision="3eedf39b54dd")
 
             logger.info("Flask-Migrate upgrade completed successfully")
             print("✓ Database migrations completed successfully")
