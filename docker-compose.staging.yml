@@ -5,6 +5,8 @@ services:
     environment:
       PORT: 3000
       ENVIRONMENT: staging
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-staging}
     env_file:
       - staging.env
     networks:
@@ -18,11 +20,18 @@ services:
         delay: 10s
         max_attempts: 3
         window: 60s
-      # Ensure only one migrate service runs at a time
+      # Ensure only one migrate service runs at a time to prevent migration conflicts
       update_config:
         parallelism: 1
         delay: 30s
+        failure_action: rollback
+        monitor: 60s
         order: stop-first
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        failure_action: pause
+        monitor: 60s
 
   api:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
@@ -36,21 +45,38 @@ services:
     ports:
       - target: 3000
         published: 3002
+        protocol: tcp
+        mode: ingress
     env_file:
       - staging.env
     networks:
       - backend
       - execution
     deploy:
+      replicas: 1
       resources:
         reservations:
           cpus: "0.1"
           memory: 100M
-      # Update configuration to prevent race conditions
+      # Rolling update configuration to prevent race conditions
       update_config:
         parallelism: 1
         delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
         order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        failure_action: pause
+        monitor: 60s
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
 
   worker:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
@@ -60,19 +86,35 @@ services:
       ENVIRONMENT: staging
       # Only handle execution tasks, not build tasks
       CELERY_WORKER_QUEUES: default
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-staging}
     env_file:
       - staging.env
     networks:
       - backend
     deploy:
+      replicas: 1
       resources:
         reservations:
           cpus: "0.1"
           memory: 100M
-      # Update configuration to prevent race conditions
+      # Rolling update configuration to prevent race conditions
       update_config:
         parallelism: 1
         delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        failure_action: pause
+        monitor: 60s
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
 
   beat:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
@@ -80,19 +122,35 @@ services:
     environment:
       PORT: 3000
       ENVIRONMENT: staging
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-staging}
     env_file:
       - staging.env
     networks:
       - backend
     deploy:
+      replicas: 1
       resources:
         reservations:
           cpus: "0.1"
           memory: 100M
-      # Update configuration to prevent race conditions
+      # Rolling update configuration to prevent race conditions
       update_config:
         parallelism: 1
         delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        failure_action: pause
+        monitor: 60s
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
 
   docker:
     image: ${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging
@@ -103,6 +161,8 @@ services:
       ENVIRONMENT: staging
       # Only handle build tasks that require Docker socket access
       CELERY_WORKER_QUEUES: build
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-staging}
     env_file:
       - staging.env
     volumes:
@@ -117,10 +177,26 @@ services:
         reservations:
           cpus: "0.5"
           memory: 800M
-      # Update configuration to prevent race conditions
+        limits:
+          cpus: "1.0"
+          memory: 1G
+      # Rolling update configuration for builder
       update_config:
         parallelism: 1
         delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.5
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        failure_action: pause
+        monitor: 60s
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
 
   postgres:
     image: postgres:16
@@ -131,15 +207,37 @@ services:
     ports:
       - target: 5432
         published: 5433
+        protocol: tcp
+        mode: ingress
     volumes:
       - postgres_staging_data:/var/lib/postgresql/data
     networks:
       - backend
     deploy:
+      placement:
+        constraints:
+          - node.role == manager
       resources:
         reservations:
           cpus: "0.1"
           memory: 200M
+      # Rolling update configuration for database
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        failure_action: pause
+        monitor: 60s
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
 
   redis:
     image: redis:7-alpine
@@ -183,11 +281,13 @@ networks:
     driver: overlay
     attachable: true
     ipam:
+      driver: default
       config:
         - subnet: ${DOCKER_SUBNET:-10.1.0.0/16}
   execution:
     driver: overlay
     attachable: true
     ipam:
+      driver: default
       config:
         - subnet: ${EXECUTION_SUBNET:-10.1.1.0/24}
