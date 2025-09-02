@@ -30,6 +30,45 @@ jobs:
     environment: production
     
     steps:
+    - name: Validate required secrets
+      run: |
+        echo "🔍 Validating required secrets and environment variables..."
+        
+        # Check for required secrets
+        if [ -z "${{ secrets.DOCKER_REGISTRY }}" ]; then
+          echo "❌ Error: DOCKER_REGISTRY secret is not set"
+          echo "Please configure the DOCKER_REGISTRY secret in repository settings"
+          exit 1
+        fi
+        
+        if [ -z "${{ secrets.PROD_HOST }}" ]; then
+          echo "❌ Error: PROD_HOST secret is not set"
+          exit 1
+        fi
+        
+        if [ -z "${{ secrets.PROD_USERNAME }}" ]; then
+          echo "❌ Error: PROD_USERNAME secret is not set"
+          exit 1
+        fi
+        
+        if [ -z "${{ secrets.PROD_SSH_KEY }}" ]; then
+          echo "❌ Error: PROD_SSH_KEY secret is not set"
+          exit 1
+        fi
+        
+        # Validate registry format
+        REGISTRY="${{ secrets.DOCKER_REGISTRY }}"
+        echo "✅ DOCKER_REGISTRY is set to: $REGISTRY"
+        
+        # Basic validation of registry format (should contain : for host:port)
+        if ! echo "$REGISTRY" | grep -q ":"; then
+          echo "❌ Error: DOCKER_REGISTRY appears to have invalid format: $REGISTRY"
+          echo "Expected format: hostname:port (e.g., registry.example.com:5000)"
+          exit 1
+        fi
+        
+        echo "✅ All required secrets are properly configured"
+
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
