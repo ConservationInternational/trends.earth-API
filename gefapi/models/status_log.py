@@ -18,7 +18,7 @@ class StatusLog(db.Model):
     )
 
     # Execution counts
-    executions_active = db.Column(db.Integer(), default=0)
+    executions_pending = db.Column(db.Integer(), default=0)
     executions_ready = db.Column(db.Integer(), default=0)
     executions_running = db.Column(db.Integer(), default=0)
     executions_finished = db.Column(db.Integer(), default=0)
@@ -27,14 +27,14 @@ class StatusLog(db.Model):
 
     def __init__(
         self,
-        executions_active=0,
+        executions_pending=0,
         executions_ready=0,
         executions_running=0,
         executions_finished=0,
         executions_failed=0,
         executions_cancelled=0,
     ):
-        self.executions_active = executions_active
+        self.executions_pending = executions_pending
         self.executions_ready = executions_ready
         self.executions_running = executions_running
         self.executions_finished = executions_finished
@@ -49,7 +49,7 @@ class StatusLog(db.Model):
         return {
             "id": self.id,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "executions_active": self.executions_active,
+            "executions_pending": self.executions_pending,
             "executions_ready": self.executions_ready,
             "executions_running": self.executions_running,
             "executions_finished": self.executions_finished,

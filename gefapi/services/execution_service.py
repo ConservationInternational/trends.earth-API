@@ -86,16 +86,16 @@ def update_execution_status_with_logging(
         before_count_dict = dict(status_counts)
 
         # Map to the expected field names for BEFORE status log
+        before_executions_pending = before_count_dict.get("PENDING", 0)
         before_executions_ready = before_count_dict.get("READY", 0)
-        before_executions_running = before_count_dict.get("RUNNING", 0)  # Only RUNNING
+        before_executions_running = before_count_dict.get("RUNNING", 0)
         before_executions_finished = before_count_dict.get("FINISHED", 0)
         before_executions_failed = before_count_dict.get("FAILED", 0)
         before_executions_cancelled = before_count_dict.get("CANCELLED", 0)
-        before_executions_active = before_executions_ready + before_executions_running
 
         logger.info(
             f"[SERVICE]: Status counts BEFORE change - "
-            f"Active: {before_executions_active}, Ready: {before_executions_ready}, "
+            f"Pending: {before_executions_pending}, Ready: {before_executions_ready}, "
             f"Running: {before_executions_running}, "
             f"Finished: {before_executions_finished}, "
             f"Failed: {before_executions_failed}, "
@@ -104,7 +104,7 @@ def update_execution_status_with_logging(
 
         # Create status log entry for BEFORE the change
         before_status_log = StatusLog(
-            executions_active=before_executions_active,
+            executions_pending=before_executions_pending,
             executions_ready=before_executions_ready,
             executions_running=before_executions_running,
             executions_finished=before_executions_finished,
@@ -140,16 +140,16 @@ def update_execution_status_with_logging(
             execution.progress = 100
 
         # Map to the expected field names for AFTER status log
+        after_executions_pending = after_count_dict.get("PENDING", 0)
         after_executions_ready = after_count_dict.get("READY", 0)
-        after_executions_running = after_count_dict.get("RUNNING", 0)  # Only RUNNING
+        after_executions_running = after_count_dict.get("RUNNING", 0)
         after_executions_finished = after_count_dict.get("FINISHED", 0)
         after_executions_failed = after_count_dict.get("FAILED", 0)
         after_executions_cancelled = after_count_dict.get("CANCELLED", 0)
-        after_executions_active = after_executions_ready + after_executions_running
 
         logger.info(
             f"[SERVICE]: Status counts AFTER change - "
-            f"Active: {after_executions_active}, Ready: {after_executions_ready}, "
+            f"Pending: {after_executions_pending}, Ready: {after_executions_ready}, "
             f"Running: {after_executions_running}, "
             f"Finished: {after_executions_finished}, "
             f"Failed: {after_executions_failed}, "
@@ -158,7 +158,7 @@ def update_execution_status_with_logging(
 
         # Create status log entry for AFTER the change
         after_status_log = StatusLog(
-            executions_active=after_executions_active,
+            executions_pending=after_executions_pending,
             executions_ready=after_executions_ready,
             executions_running=after_executions_running,
             executions_finished=after_executions_finished,

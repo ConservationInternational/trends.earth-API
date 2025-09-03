@@ -363,7 +363,7 @@ The API provides advanced status tracking capabilities for monitoring execution 
   - Provides real-time insights into system execution patterns
 
 **Status Log Fields:**
-- `executions_active`: Total active executions (RUNNING + PENDING)
+- `executions_pending`: Executions queued to start (PENDING state)
 - `executions_ready`: Executions ready to run
 - `executions_running`: Currently executing scripts
 - `executions_finished`: Number of completed executions

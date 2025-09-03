@@ -1763,7 +1763,7 @@ def get_status_logs():
         {
           "id": 123,
           "timestamp": "2025-01-15T10:30:00Z",
-          "executions_active": 5,
+          "executions_pending": 2,
           "executions_ready": 2,
           "executions_running": 3,
           "executions_finished": 8,
@@ -1773,7 +1773,7 @@ def get_status_logs():
         {
           "id": 124,
           "timestamp": "2025-01-15T10:35:00Z",
-          "executions_active": 8,
+          "executions_pending": 3,
           "executions_ready": 5,
           "executions_running": 3,
           "executions_finished": 12,
@@ -1790,7 +1790,7 @@ def get_status_logs():
     **Status Log Fields**:
     - `id`: Unique identifier for the status log entry
     - `timestamp`: When the status was recorded (ISO 8601 format)
-    - `executions_active`: Number of active executions (RUNNING + PENDING)
+    - `executions_pending`: Number of executions queued to start (PENDING state)
     - `executions_ready`: Number of executions in READY state
     - `executions_running`: Number of currently running executions
     - `executions_finished`: Number of executions that finished
