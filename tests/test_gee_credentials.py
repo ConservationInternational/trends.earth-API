@@ -10,10 +10,10 @@ from gefapi.models.user import User
 from gefapi.services.gee_service import GEEService
 
 # Ensure test environment has required variables
-os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-encryption')
-os.environ.setdefault('JWT_SECRET_KEY', 'test-jwt-secret-key')
-os.environ.setdefault('EE_SERVICE_ACCOUNT_JSON', 'test-service-account-json')
-os.environ.setdefault('GOOGLE_PROJECT_ID', 'test-project-id')
+os.environ.setdefault("SECRET_KEY", "test-secret-key-for-encryption")
+os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret-key")
+os.environ.setdefault("EE_SERVICE_ACCOUNT_JSON", "test-service-account-json")
+os.environ.setdefault("GOOGLE_PROJECT_ID", "test-project-id")
 
 
 @pytest.fixture
@@ -27,6 +27,7 @@ def user_with_token(app, regular_user):
     """Fixture providing user and authentication token"""
     with app.app_context():
         from flask_jwt_extended import create_access_token
+
         token = create_access_token(identity=regular_user.id)
         return regular_user, token
 
@@ -43,7 +44,7 @@ def admin_user_with_token(app):
             name="Admin User",
             country="Test Country",
             institution="Test Institution",
-            role="ADMIN"
+            role="ADMIN",
         )
         db.session.add(admin_user)
         db.session.commit()
@@ -64,7 +65,7 @@ def superadmin_user_with_token(app):
             name="Superadmin User",
             country="Test Country",
             institution="Test Institution",
-            role="SUPERADMIN"
+            role="SUPERADMIN",
         )
         db.session.add(superadmin_user)
         db.session.commit()
@@ -84,7 +85,7 @@ class TestUserGEECredentials:
                 password="password123",
                 name="Test User",
                 country="Test Country",
-                institution="Test Institution"
+                institution="Test Institution",
             )
             # Don't persist to database for this simple test
             assert not user.has_gee_credentials()
@@ -99,7 +100,7 @@ class TestUserGEECredentials:
                 password="password123",
                 name="Test User",
                 country="Test Country",
-                institution="Test Institution"
+                institution="Test Institution",
             )
 
             # Set OAuth credentials
@@ -108,7 +109,7 @@ class TestUserGEECredentials:
             user.set_gee_oauth_credentials(access_token, refresh_token)
 
             assert user.has_gee_credentials()
-            assert user.gee_credentials_type == 'oauth'
+            assert user.gee_credentials_type == "oauth"
             assert user.gee_credentials_created_at is not None
 
             # Get OAuth credentials
@@ -124,7 +125,7 @@ class TestUserGEECredentials:
                 password="password123",
                 name="Test User",
                 country="Test Country",
-                institution="Test Institution"
+                institution="Test Institution",
             )
 
             # Set service account credentials
@@ -136,12 +137,12 @@ class TestUserGEECredentials:
                 "client_email": "test@test.iam.gserviceaccount.com",
                 "client_id": "12345",
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token"
+                "token_uri": "https://oauth2.googleapis.com/token",
             }
             user.set_gee_service_account(service_account_key)
 
             assert user.has_gee_credentials()
-            assert user.gee_credentials_type == 'service_account'
+            assert user.gee_credentials_type == "service_account"
             assert user.gee_credentials_created_at is not None
 
             # Get service account credentials
@@ -156,7 +157,7 @@ class TestUserGEECredentials:
                 password="password123",
                 name="Test User",
                 country="Test Country",
-                institution="Test Institution"
+                institution="Test Institution",
             )
 
             # Set credentials first
@@ -177,7 +178,7 @@ class TestUserGEECredentials:
                 password="password123",
                 name="Test User",
                 country="Test Country",
-                institution="Test Institution"
+                institution="Test Institution",
             )
 
             # Set OAuth credentials
@@ -199,7 +200,7 @@ class TestUserGEECredentials:
                 password="password123",
                 name="Test User",
                 country="Test Country",
-                institution="Test Institution"
+                institution="Test Institution",
             )
             db.session.add(user)
             db.session.commit()
@@ -229,7 +230,7 @@ class TestGEEService:
             "client_email": "test@test.iam.gserviceaccount.com",
             "client_id": "12345",
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token"
+            "token_uri": "https://oauth2.googleapis.com/token",
         }
 
         assert GEEService.validate_service_account_key(valid_key)
@@ -254,12 +255,12 @@ class TestGEEService:
             "client_email": "test@test.iam.gserviceaccount.com",
             "client_id": "12345",
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token"
+            "token_uri": "https://oauth2.googleapis.com/token",
         }
 
         assert not GEEService.validate_service_account_key(invalid_key)
 
-    @patch('gefapi.services.gee_service.ee')
+    @patch("gefapi.services.gee_service.ee")
     def test_initialize_ee_with_user_oauth(self, mock_ee, app_with_db):
         """Test initializing GEE with user OAuth credentials"""
         with app_with_db.app_context():
@@ -268,7 +269,7 @@ class TestGEEService:
                 password="password123",
                 name="Test User",
                 country="Test Country",
-                institution="Test Institution"
+                institution="Test Institution",
             )
             user.set_gee_oauth_credentials("access_token", "refresh_token")
             db.session.add(user)
@@ -280,7 +281,7 @@ class TestGEEService:
             result = GEEService._initialize_ee(user)
             assert result is True
 
-    @patch('gefapi.services.gee_service.ee')
+    @patch("gefapi.services.gee_service.ee")
     def test_initialize_ee_with_user_service_account(self, mock_ee, app_with_db):
         """Test initializing GEE with user service account"""
         with app_with_db.app_context():
@@ -289,7 +290,7 @@ class TestGEEService:
                 password="password123",
                 name="Test User",
                 country="Test Country",
-                institution="Test Institution"
+                institution="Test Institution",
             )
             service_account_key = {
                 "type": "service_account",
@@ -299,7 +300,7 @@ class TestGEEService:
                 "client_email": "test@test.iam.gserviceaccount.com",
                 "client_id": "12345",
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token"
+                "token_uri": "https://oauth2.googleapis.com/token",
             }
             user.set_gee_service_account(service_account_key)
             db.session.add(user)
@@ -311,7 +312,7 @@ class TestGEEService:
             result = GEEService._initialize_ee(user)
             assert result is True
 
-    @patch('gefapi.services.gee_service.ee')
+    @patch("gefapi.services.gee_service.ee")
     def test_cancel_gee_task_with_user(self, mock_ee, app_with_db):
         """Test canceling GEE task with user credentials"""
         with app_with_db.app_context():
@@ -320,7 +321,7 @@ class TestGEEService:
                 password="password123",
                 name="Test User",
                 country="Test Country",
-                institution="Test Institution"
+                institution="Test Institution",
             )
             user.set_gee_oauth_credentials("access_token", "refresh_token")
             db.session.add(user)
@@ -345,7 +346,7 @@ class TestGEECredentialsAPI:
 
         response = client.get(
             "/api/v1/user/me/gee-credentials",
-            headers={"Authorization": f"Bearer {token}"}
+            headers={"Authorization": f"Bearer {token}"},
         )
 
         assert response.status_code == 200
@@ -365,7 +366,7 @@ class TestGEECredentialsAPI:
 
         response = client.get(
             "/api/v1/user/me/gee-credentials",
-            headers={"Authorization": f"Bearer {token}"}
+            headers={"Authorization": f"Bearer {token}"},
         )
 
         assert response.status_code == 200
@@ -385,13 +386,13 @@ class TestGEECredentialsAPI:
             "client_email": "test@test.iam.gserviceaccount.com",
             "client_id": "12345",
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token"
+            "token_uri": "https://oauth2.googleapis.com/token",
         }
 
         response = client.post(
             "/api/v1/user/me/gee-service-account",
             headers={"Authorization": f"Bearer {token}"},
-            json={"service_account_key": service_account_key}
+            json={"service_account_key": service_account_key},
         )
 
         assert response.status_code == 200
@@ -404,13 +405,13 @@ class TestGEECredentialsAPI:
 
         invalid_key = {
             "type": "user_account",  # Wrong type
-            "project_id": "test_project"
+            "project_id": "test_project",
         }
 
         response = client.post(
             "/api/v1/user/me/gee-service-account",
             headers={"Authorization": f"Bearer {token}"},
-            json={"service_account_key": invalid_key}
+            json={"service_account_key": invalid_key},
         )
 
         assert response.status_code == 400
@@ -429,7 +430,7 @@ class TestGEECredentialsAPI:
 
         response = client.delete(
             "/api/v1/user/me/gee-credentials",
-            headers={"Authorization": f"Bearer {token}"}
+            headers={"Authorization": f"Bearer {token}"},
         )
 
         assert response.status_code == 200
@@ -442,18 +443,21 @@ class TestGEECredentialsAPI:
 
         response = client.delete(
             "/api/v1/user/me/gee-credentials",
-            headers={"Authorization": f"Bearer {token}"}
+            headers={"Authorization": f"Bearer {token}"},
         )
 
         assert response.status_code == 404
         data = response.get_json()
         assert "No GEE credentials found" in data["detail"]
 
-    @patch.dict(os.environ, {
-        'GOOGLE_OAUTH_CLIENT_ID': 'test_client_id',
-        'GOOGLE_OAUTH_CLIENT_SECRET': 'test_client_secret'
-    })
-    @patch('google_auth_oauthlib.flow.Flow')
+    @patch.dict(
+        os.environ,
+        {
+            "GOOGLE_OAUTH_CLIENT_ID": "test_client_id",
+            "GOOGLE_OAUTH_CLIENT_SECRET": "test_client_secret",
+        },
+    )
+    @patch("google_auth_oauthlib.flow.Flow")
     def test_initiate_oauth_flow(self, mock_flow, client, user_with_token):
         """Test initiating OAuth flow"""
         user, token = user_with_token
@@ -461,13 +465,14 @@ class TestGEECredentialsAPI:
         # Mock the Flow
         mock_flow_instance = Mock()
         mock_flow_instance.authorization_url.return_value = (
-            "https://accounts.google.com/oauth2/auth?...", "test_state"
+            "https://accounts.google.com/oauth2/auth?...",
+            "test_state",
         )
         mock_flow.from_client_config.return_value = mock_flow_instance
 
         response = client.post(
             "/api/v1/user/me/gee-oauth/initiate",
-            headers={"Authorization": f"Bearer {token}"}
+            headers={"Authorization": f"Bearer {token}"},
         )
 
         assert response.status_code == 200
@@ -483,7 +488,7 @@ class TestGEECredentialsAPI:
         with patch.dict(os.environ, {}, clear=True):
             response = client.post(
                 "/api/v1/user/me/gee-oauth/initiate",
-                headers={"Authorization": f"Bearer {token}"}
+                headers={"Authorization": f"Bearer {token}"},
             )
 
         assert response.status_code == 500
@@ -496,7 +501,7 @@ class TestGEECredentialsAPI:
             "/api/v1/user/me/gee-credentials",
             "/api/v1/user/me/gee-oauth/initiate",
             "/api/v1/user/me/gee-service-account",
-            "/api/v1/user/me/gee-credentials/test"
+            "/api/v1/user/me/gee-credentials/test",
         ]
 
         for endpoint in endpoints:
@@ -516,7 +521,7 @@ class TestAdminGEECredentialsAPI:
 
         response = client.get(
             f"/api/v1/user/{target_user.id}/gee-credentials",
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 200
@@ -541,7 +546,7 @@ class TestAdminGEECredentialsAPI:
 
         response = client.get(
             f"/api/v1/user/{target_user.id}/gee-credentials",
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 200
@@ -565,13 +570,13 @@ class TestAdminGEECredentialsAPI:
             "client_email": "test@test.iam.gserviceaccount.com",
             "client_id": "12345",
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token"
+            "token_uri": "https://oauth2.googleapis.com/token",
         }
 
         response = client.post(
             f"/api/v1/user/{target_user.id}/gee-service-account",
             headers={"Authorization": f"Bearer {admin_token}"},
-            json={"service_account_key": service_account_key}
+            json={"service_account_key": service_account_key},
         )
 
         assert response.status_code == 200
@@ -588,13 +593,13 @@ class TestAdminGEECredentialsAPI:
 
         invalid_key = {
             "type": "user_account",  # Wrong type
-            "project_id": "test_project"
+            "project_id": "test_project",
         }
 
         response = client.post(
             f"/api/v1/user/{target_user.id}/gee-service-account",
             headers={"Authorization": f"Bearer {admin_token}"},
-            json={"service_account_key": invalid_key}
+            json={"service_account_key": invalid_key},
         )
 
         assert response.status_code == 400
@@ -616,7 +621,7 @@ class TestAdminGEECredentialsAPI:
 
         response = client.delete(
             f"/api/v1/user/{target_user.id}/gee-credentials",
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 200
@@ -633,16 +638,21 @@ class TestAdminGEECredentialsAPI:
 
         response = client.delete(
             f"/api/v1/user/{target_user.id}/gee-credentials",
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 404
         data = response.get_json()
         assert "No GEE credentials found for user" in data["detail"]
 
-    @patch('gefapi.services.gee_service.GEEService._initialize_ee')
+    @patch("gefapi.services.gee_service.GEEService._initialize_ee")
     def test_admin_test_user_gee_credentials_valid(
-        self, mock_initialize, client, admin_user_with_token, user_with_token, app_with_db
+        self,
+        mock_initialize,
+        client,
+        admin_user_with_token,
+        user_with_token,
+        app_with_db,
     ):
         """Test admin testing another user's valid GEE credentials"""
         admin_user, admin_token = admin_user_with_token
@@ -659,7 +669,7 @@ class TestAdminGEECredentialsAPI:
 
         response = client.post(
             f"/api/v1/user/{target_user.id}/gee-credentials/test",
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 200
@@ -667,9 +677,14 @@ class TestAdminGEECredentialsAPI:
         assert "are valid and working" in data["message"]
         assert target_user.email in data["message"]
 
-    @patch('gefapi.services.gee_service.GEEService._initialize_ee')
+    @patch("gefapi.services.gee_service.GEEService._initialize_ee")
     def test_admin_test_user_gee_credentials_invalid(
-        self, mock_initialize, client, admin_user_with_token, user_with_token, app_with_db
+        self,
+        mock_initialize,
+        client,
+        admin_user_with_token,
+        user_with_token,
+        app_with_db,
     ):
         """Test admin testing another user's invalid GEE credentials"""
         admin_user, admin_token = admin_user_with_token
@@ -686,7 +701,7 @@ class TestAdminGEECredentialsAPI:
 
         response = client.post(
             f"/api/v1/user/{target_user.id}/gee-credentials/test",
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 400
@@ -703,16 +718,14 @@ class TestAdminGEECredentialsAPI:
 
         response = client.post(
             f"/api/v1/user/{target_user.id}/gee-credentials/test",
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 400
         data = response.get_json()
         assert "No GEE credentials configured for user" in data["detail"]
 
-    def test_admin_endpoints_user_not_found(
-        self, client, admin_user_with_token
-    ):
+    def test_admin_endpoints_user_not_found(self, client, admin_user_with_token):
         """Test admin endpoints with non-existent user ID"""
         admin_user, admin_token = admin_user_with_token
         non_existent_id = "12345678-1234-1234-1234-123456789012"
@@ -725,21 +738,31 @@ class TestAdminGEECredentialsAPI:
         ]
 
         for method, endpoint in endpoints:
-            json_data = {"service_account_key": {}} if method == "POST" and "service-account" in endpoint else None
+            json_data = (
+                {"service_account_key": {}}
+                if method == "POST" and "service-account" in endpoint
+                else None
+            )
             if method == "GET":
-                response = client.get(endpoint, headers={"Authorization": f"Bearer {admin_token}"})
+                response = client.get(
+                    endpoint, headers={"Authorization": f"Bearer {admin_token}"}
+                )
             elif method == "POST":
-                response = client.post(endpoint, headers={"Authorization": f"Bearer {admin_token}"}, json=json_data)
+                response = client.post(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {admin_token}"},
+                    json=json_data,
+                )
             elif method == "DELETE":
-                response = client.delete(endpoint, headers={"Authorization": f"Bearer {admin_token}"})
+                response = client.delete(
+                    endpoint, headers={"Authorization": f"Bearer {admin_token}"}
+                )
 
             assert response.status_code == 404
             data = response.get_json()
             assert "User not found" in data["detail"]
 
-    def test_regular_user_cannot_access_admin_endpoints(
-        self, client, user_with_token
-    ):
+    def test_regular_user_cannot_access_admin_endpoints(self, client, user_with_token):
         """Test that regular users cannot access admin endpoints"""
         user, token = user_with_token
         target_user_id = user.id  # Try to access their own account via admin endpoints
@@ -752,13 +775,25 @@ class TestAdminGEECredentialsAPI:
         ]
 
         for method, endpoint in endpoints:
-            json_data = {"service_account_key": {}} if method == "POST" and "service-account" in endpoint else None
+            json_data = (
+                {"service_account_key": {}}
+                if method == "POST" and "service-account" in endpoint
+                else None
+            )
             if method == "GET":
-                response = client.get(endpoint, headers={"Authorization": f"Bearer {token}"})
+                response = client.get(
+                    endpoint, headers={"Authorization": f"Bearer {token}"}
+                )
             elif method == "POST":
-                response = client.post(endpoint, headers={"Authorization": f"Bearer {token}"}, json=json_data)
+                response = client.post(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {token}"},
+                    json=json_data,
+                )
             elif method == "DELETE":
-                response = client.delete(endpoint, headers={"Authorization": f"Bearer {token}"})
+                response = client.delete(
+                    endpoint, headers={"Authorization": f"Bearer {token}"}
+                )
 
             assert response.status_code == 403
             data = response.get_json()
@@ -773,7 +808,7 @@ class TestAdminGEECredentialsAPI:
 
         response = client.get(
             f"/api/v1/user/{target_user.id}/gee-credentials",
-            headers={"Authorization": f"Bearer {superadmin_token}"}
+            headers={"Authorization": f"Bearer {superadmin_token}"},
         )
 
         assert response.status_code == 200

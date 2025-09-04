@@ -27,14 +27,17 @@ def get_user_gee_credentials():
         if not user:
             return error(status=404, detail="User not found")
 
-        return jsonify({
-            "data": {
-                "has_credentials": user.has_gee_credentials(),
-                "credentials_type": user.gee_credentials_type,
-                "created_at": user.gee_credentials_created_at.isoformat()
-                if user.gee_credentials_created_at else None
+        return jsonify(
+            {
+                "data": {
+                    "has_credentials": user.has_gee_credentials(),
+                    "credentials_type": user.gee_credentials_type,
+                    "created_at": user.gee_credentials_created_at.isoformat()
+                    if user.gee_credentials_created_at
+                    else None,
+                }
             }
-        })
+        )
 
     except Exception as e:
         logger.error(f"Error getting GEE credentials status: {e}")
@@ -60,30 +63,27 @@ def initiate_gee_oauth():
                 "client_secret": os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:3000/api/v1/user/me/gee-oauth/callback")]
+                "redirect_uris": [
+                    os.getenv(
+                        "GOOGLE_OAUTH_REDIRECT_URI",
+                        "http://localhost:3000/api/v1/user/me/gee-oauth/callback",
+                    )
+                ],
             }
         }
 
         # Create OAuth flow
         flow = Flow.from_client_config(
-            oauth_config,
-            scopes=["https://www.googleapis.com/auth/earthengine"]
+            oauth_config, scopes=["https://www.googleapis.com/auth/earthengine"]
         )
         flow.redirect_uri = oauth_config["web"]["redirect_uris"][0]
 
         # Generate authorization URL
         auth_url, state = flow.authorization_url(
-            access_type="offline",
-            include_granted_scopes="true",
-            prompt="consent"
+            access_type="offline", include_granted_scopes="true", prompt="consent"
         )
 
-        return jsonify({
-            "data": {
-                "auth_url": auth_url,
-                "state": state
-            }
-        })
+        return jsonify({"data": {"auth_url": auth_url, "state": state}})
 
     except Exception as e:
         logger.error(f"Error initiating OAuth flow: {e}")
@@ -122,14 +122,19 @@ def handle_gee_oauth_callback():
                 "client_secret": os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:3000/api/v1/user/me/gee-oauth/callback")]
+                "redirect_uris": [
+                    os.getenv(
+                        "GOOGLE_OAUTH_REDIRECT_URI",
+                        "http://localhost:3000/api/v1/user/me/gee-oauth/callback",
+                    )
+                ],
             }
         }
 
         flow = Flow.from_client_config(
             oauth_config,
             scopes=["https://www.googleapis.com/auth/earthengine"],
-            state=json_data["state"]
+            state=json_data["state"],
         )
         flow.redirect_uri = oauth_config["web"]["redirect_uris"][0]
 
@@ -140,8 +145,7 @@ def handle_gee_oauth_callback():
 
         # Store credentials
         user.set_gee_oauth_credentials(
-            access_token=credentials.token,
-            refresh_token=credentials.refresh_token
+            access_token=credentials.token, refresh_token=credentials.refresh_token
         )
 
         db.session.commit()
@@ -196,9 +200,9 @@ def upload_gee_service_account():
 
         logger.info(f"Successfully stored GEE service account for user {user.email}")
 
-        return jsonify({
-            "message": "GEE service account credentials saved successfully"
-        })
+        return jsonify(
+            {"message": "GEE service account credentials saved successfully"}
+        )
 
     except Exception as e:
         logger.error(f"Error uploading service account: {e}")
@@ -278,16 +282,19 @@ def get_user_gee_credentials_admin(user_id):
         if not user:
             return error(status=404, detail="User not found")
 
-        return jsonify({
-            "data": {
-                "user_id": user.id,
-                "user_email": user.email,
-                "has_credentials": user.has_gee_credentials(),
-                "credentials_type": user.gee_credentials_type,
-                "created_at": user.gee_credentials_created_at.isoformat()
-                if user.gee_credentials_created_at else None
+        return jsonify(
+            {
+                "data": {
+                    "user_id": user.id,
+                    "user_email": user.email,
+                    "has_credentials": user.has_gee_credentials(),
+                    "credentials_type": user.gee_credentials_type,
+                    "created_at": user.gee_credentials_created_at.isoformat()
+                    if user.gee_credentials_created_at
+                    else None,
+                }
             }
-        })
+        )
 
     except Exception as e:
         logger.error(f"Error getting user GEE credentials status: {e}")
@@ -340,9 +347,9 @@ def upload_user_gee_service_account_admin(user_id):
             f"Admin {current_user.email} set GEE service account for user {user.email}"
         )
 
-        return jsonify({
-            "message": f"GEE service account credentials saved for user {user.email}"
-        })
+        return jsonify(
+            {"message": f"GEE service account credentials saved for user {user.email}"}
+        )
 
     except Exception as e:
         logger.error(f"Error uploading service account for user {user_id}: {e}")
@@ -376,9 +383,7 @@ def delete_user_gee_credentials_admin(user_id):
             f"Admin {current_user.email} deleted GEE credentials for user {user.email}"
         )
 
-        return jsonify({
-            "message": f"GEE credentials deleted for user {user.email}"
-        })
+        return jsonify({"message": f"GEE credentials deleted for user {user.email}"})
 
     except Exception as e:
         logger.error(f"Error deleting GEE credentials for user {user_id}: {e}")
@@ -406,14 +411,16 @@ def test_user_gee_credentials_admin(user_id):
 
         # Test credentials by initializing GEE
         if GEEService._initialize_ee(user):
-            return jsonify({
-                "message": (
-                    f"GEE credentials for user {user.email} are valid and working"
-                )
-            })
+            return jsonify(
+                {
+                    "message": (
+                        f"GEE credentials for user {user.email} are valid and working"
+                    )
+                }
+            )
         return error(
             status=400,
-            detail=f"GEE credentials for user {user.email} are invalid or expired"
+            detail=f"GEE credentials for user {user.email} are invalid or expired",
         )
 
     except Exception as e:

@@ -155,11 +155,11 @@ class User(db.Model):
     @staticmethod
     def _get_encryption_key() -> bytes:
         """Get encryption key for GEE credentials"""
-        key = os.getenv('GEE_ENCRYPTION_KEY') or os.getenv(
-            'SECRET_KEY', 'default-key-change-in-production'
+        key = os.getenv("GEE_ENCRYPTION_KEY") or os.getenv(
+            "SECRET_KEY", "default-key-change-in-production"
         )
         # Ensure key is 32 bytes for Fernet
-        key_bytes = key.encode('utf-8')[:32].ljust(32, b'0')
+        key_bytes = key.encode("utf-8")[:32].ljust(32, b"0")
         return base64.urlsafe_b64encode(key_bytes)
 
     def _encrypt_gee_data(self, data: str) -> str:
@@ -167,8 +167,8 @@ class User(db.Model):
         if not data:
             return None
         fernet = Fernet(self._get_encryption_key())
-        encrypted = fernet.encrypt(data.encode('utf-8'))
-        return base64.b64encode(encrypted).decode('utf-8')
+        encrypted = fernet.encrypt(data.encode("utf-8"))
+        return base64.b64encode(encrypted).decode("utf-8")
 
     def _decrypt_gee_data(self, encrypted_data: str) -> str:
         """Decrypt GEE credential data"""
@@ -176,8 +176,8 @@ class User(db.Model):
             return None
         try:
             fernet = Fernet(self._get_encryption_key())
-            decoded = base64.b64decode(encrypted_data.encode('utf-8'))
-            return fernet.decrypt(decoded).decode('utf-8')
+            decoded = base64.b64decode(encrypted_data.encode("utf-8"))
+            return fernet.decrypt(decoded).decode("utf-8")
         except Exception as e:
             logger.error(f"Failed to decrypt GEE data for user {self.email}: {e}")
             return None
@@ -186,7 +186,7 @@ class User(db.Model):
         """Set OAuth credentials for GEE"""
         self.gee_oauth_token = self._encrypt_gee_data(access_token)
         self.gee_refresh_token = self._encrypt_gee_data(refresh_token)
-        self.gee_credentials_type = 'oauth'
+        self.gee_credentials_type = "oauth"
         self.gee_credentials_created_at = datetime.datetime.utcnow()
 
     def set_gee_service_account(self, service_account_key: dict[str, Any]) -> None:
@@ -194,12 +194,12 @@ class User(db.Model):
         self.gee_service_account_key = self._encrypt_gee_data(
             json.dumps(service_account_key)
         )
-        self.gee_credentials_type = 'service_account'
+        self.gee_credentials_type = "service_account"
         self.gee_credentials_created_at = datetime.datetime.utcnow()
 
     def get_gee_oauth_credentials(self) -> tuple[Optional[str], Optional[str]]:
         """Get OAuth credentials for GEE"""
-        if self.gee_credentials_type != 'oauth':
+        if self.gee_credentials_type != "oauth":
             return None, None
         access_token = self._decrypt_gee_data(self.gee_oauth_token)
         refresh_token = self._decrypt_gee_data(self.gee_refresh_token)
@@ -207,7 +207,7 @@ class User(db.Model):
 
     def get_gee_service_account(self) -> Optional[dict[str, Any]]:
         """Get service account credentials for GEE"""
-        if self.gee_credentials_type != 'service_account':
+        if self.gee_credentials_type != "service_account":
             return None
         key_data = self._decrypt_gee_data(self.gee_service_account_key)
         if key_data:

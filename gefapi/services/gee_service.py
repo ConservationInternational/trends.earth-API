@@ -55,7 +55,7 @@ class GEEService:
                     f"Attempting to initialize GEE with user {user.email} credentials"
                 )
 
-                if user.gee_credentials_type == 'oauth':
+                if user.gee_credentials_type == "oauth":
                     if GEEService._initialize_ee_with_oauth(user):
                         logger.info(
                             f"Successfully initialized GEE with OAuth for "
@@ -67,7 +67,7 @@ class GEEService:
                         "falling back to service account"
                     )
 
-                elif user.gee_credentials_type == 'service_account':
+                elif user.gee_credentials_type == "service_account":
                     if GEEService._initialize_ee_with_user_service_account(user):
                         logger.info(
                             f"Successfully initialized GEE with service account for "
@@ -180,7 +180,7 @@ class GEEService:
                 token_uri="https://oauth2.googleapis.com/token",
                 client_id=os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
                 client_secret=os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
-                scopes=["https://www.googleapis.com/auth/earthengine"]
+                scopes=["https://www.googleapis.com/auth/earthengine"],
             )
 
             # Try to refresh token if needed
@@ -193,6 +193,7 @@ class GEEService:
                         credentials.token, credentials.refresh_token
                     )
                     from gefapi import db
+
                     db.session.commit()
             except RefreshError as e:
                 logger.error(
@@ -268,12 +269,21 @@ class GEEService:
         """Validate a service account key structure and basic functionality"""
         try:
             # Check required fields
-            required_fields = ["type", "project_id", "private_key_id", "private_key",
-                             "client_email", "client_id", "auth_uri", "token_uri"]
+            required_fields = [
+                "type",
+                "project_id",
+                "private_key_id",
+                "private_key",
+                "client_email",
+                "client_id",
+                "auth_uri",
+                "token_uri",
+            ]
 
             if not all(field in service_account_data for field in required_fields):
                 missing_fields = [
-                    field for field in required_fields
+                    field
+                    for field in required_fields
                     if field not in service_account_data
                 ]
                 logger.error(
