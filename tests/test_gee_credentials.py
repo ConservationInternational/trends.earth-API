@@ -1,8 +1,8 @@
 """Tests for GEE credentials functionality"""
 
-import json
 import os
 from unittest.mock import Mock, patch
+
 import pytest
 
 from gefapi import db
@@ -193,7 +193,7 @@ class TestGEEService:
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token"
         }
-        
+
         assert GEEService.validate_service_account_key(valid_key)
 
     def test_validate_service_account_key_missing_fields(self):
@@ -203,7 +203,7 @@ class TestGEEService:
             "project_id": "test_project",
             # Missing required fields
         }
-        
+
         assert not GEEService.validate_service_account_key(invalid_key)
 
     def test_validate_service_account_key_wrong_type(self):
@@ -218,7 +218,7 @@ class TestGEEService:
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token"
         }
-        
+
         assert not GEEService.validate_service_account_key(invalid_key)
 
     @patch('gefapi.services.gee_service.ee')
@@ -238,7 +238,7 @@ class TestGEEService:
 
             # Mock EE operations check to return initialized
             mock_ee.data.listOperations.return_value = [{"id": "test"}]
-            
+
             result = GEEService._initialize_ee(user)
             assert result is True
 
@@ -269,7 +269,7 @@ class TestGEEService:
 
             # Mock EE operations check to return initialized
             mock_ee.data.listOperations.return_value = [{"id": "test"}]
-            
+
             result = GEEService._initialize_ee(user)
             assert result is True
 
@@ -304,12 +304,12 @@ class TestGEECredentialsAPI:
     def test_get_gee_credentials_no_credentials(self, client, user_with_token):
         """Test getting GEE credentials status when user has none"""
         user, token = user_with_token
-        
+
         response = client.get(
             "/api/v1/user/me/gee-credentials",
             headers={"Authorization": f"Bearer {token}"}
         )
-        
+
         assert response.status_code == 200
         data = response.get_json()
         assert data["data"]["has_credentials"] is False
@@ -318,16 +318,16 @@ class TestGEECredentialsAPI:
     def test_get_gee_credentials_with_oauth(self, client, user_with_token, app_with_db):
         """Test getting GEE credentials status when user has OAuth"""
         user, token = user_with_token
-        
+
         with app_with_db.app_context():
             user.set_gee_oauth_credentials("access_token", "refresh_token")
             db.session.commit()
-        
+
         response = client.get(
             "/api/v1/user/me/gee-credentials",
             headers={"Authorization": f"Bearer {token}"}
         )
-        
+
         assert response.status_code == 200
         data = response.get_json()
         assert data["data"]["has_credentials"] is True
@@ -336,7 +336,7 @@ class TestGEECredentialsAPI:
     def test_upload_service_account_valid(self, client, user_with_token):
         """Test uploading valid service account"""
         user, token = user_with_token
-        
+
         service_account_key = {
             "type": "service_account",
             "project_id": "test_project",
@@ -347,13 +347,13 @@ class TestGEECredentialsAPI:
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token"
         }
-        
+
         response = client.post(
             "/api/v1/user/me/gee-service-account",
             headers={"Authorization": f"Bearer {token}"},
             json={"service_account_key": service_account_key}
         )
-        
+
         assert response.status_code == 200
         data = response.get_json()
         assert "successfully" in data["message"].lower()
@@ -361,18 +361,18 @@ class TestGEECredentialsAPI:
     def test_upload_service_account_invalid(self, client, user_with_token):
         """Test uploading invalid service account"""
         user, token = user_with_token
-        
+
         invalid_key = {
             "type": "user_account",  # Wrong type
             "project_id": "test_project"
         }
-        
+
         response = client.post(
             "/api/v1/user/me/gee-service-account",
             headers={"Authorization": f"Bearer {token}"},
             json={"service_account_key": invalid_key}
         )
-        
+
         assert response.status_code == 400
         data = response.get_json()
         assert "invalid" in data["detail"].lower()
@@ -380,16 +380,16 @@ class TestGEECredentialsAPI:
     def test_delete_gee_credentials(self, client, user_with_token, app_with_db):
         """Test deleting GEE credentials"""
         user, token = user_with_token
-        
+
         with app_with_db.app_context():
             user.set_gee_oauth_credentials("access_token", "refresh_token")
             db.session.commit()
-        
+
         response = client.delete(
             "/api/v1/user/me/gee-credentials",
             headers={"Authorization": f"Bearer {token}"}
         )
-        
+
         assert response.status_code == 200
         data = response.get_json()
         assert "deleted" in data["message"].lower()
@@ -397,12 +397,12 @@ class TestGEECredentialsAPI:
     def test_delete_gee_credentials_none_exist(self, client, user_with_token):
         """Test deleting GEE credentials when none exist"""
         user, token = user_with_token
-        
+
         response = client.delete(
             "/api/v1/user/me/gee-credentials",
             headers={"Authorization": f"Bearer {token}"}
         )
-        
+
         assert response.status_code == 404
         data = response.get_json()
         assert "not found" in data["detail"].lower()
@@ -415,19 +415,19 @@ class TestGEECredentialsAPI:
     def test_initiate_oauth_flow(self, mock_flow, client, user_with_token):
         """Test initiating OAuth flow"""
         user, token = user_with_token
-        
+
         # Mock the Flow
         mock_flow_instance = Mock()
         mock_flow_instance.authorization_url.return_value = (
             "https://accounts.google.com/oauth2/auth?...", "test_state"
         )
         mock_flow.from_client_config.return_value = mock_flow_instance
-        
+
         response = client.post(
             "/api/v1/user/me/gee-oauth/initiate",
             headers={"Authorization": f"Bearer {token}"}
         )
-        
+
         assert response.status_code == 200
         data = response.get_json()
         assert "auth_url" in data["data"]
@@ -436,14 +436,14 @@ class TestGEECredentialsAPI:
     def test_initiate_oauth_flow_not_configured(self, client, user_with_token):
         """Test initiating OAuth flow when not configured"""
         user, token = user_with_token
-        
+
         # Remove OAuth environment variables
         with patch.dict(os.environ, {}, clear=True):
             response = client.post(
                 "/api/v1/user/me/gee-oauth/initiate",
                 headers={"Authorization": f"Bearer {token}"}
             )
-        
+
         assert response.status_code == 500
         data = response.get_json()
         assert "not configured" in data["detail"].lower()
@@ -456,7 +456,7 @@ class TestGEECredentialsAPI:
             "/api/v1/user/me/gee-service-account",
             "/api/v1/user/me/gee-credentials/test"
         ]
-        
+
         for endpoint in endpoints:
             response = client.get(endpoint)
             assert response.status_code == 401

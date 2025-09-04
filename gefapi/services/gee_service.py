@@ -57,15 +57,27 @@ class GEEService:
 
                 if user.gee_credentials_type == 'oauth':
                     if GEEService._initialize_ee_with_oauth(user):
-                        logger.info(f"Successfully initialized GEE with OAuth for user {user.email}")
+                        logger.info(
+                            f"Successfully initialized GEE with OAuth for "
+                            f"user {user.email}"
+                        )
                         return True
-                    logger.warning(f"Failed to initialize GEE with OAuth for user {user.email}, falling back to service account")
+                    logger.warning(
+                        f"Failed to initialize GEE with OAuth for user {user.email}, "
+                        "falling back to service account"
+                    )
 
                 elif user.gee_credentials_type == 'service_account':
                     if GEEService._initialize_ee_with_user_service_account(user):
-                        logger.info(f"Successfully initialized GEE with service account for user {user.email}")
+                        logger.info(
+                            f"Successfully initialized GEE with service account for "
+                            f"user {user.email}"
+                        )
                         return True
-                    logger.warning(f"Failed to initialize GEE with user service account for user {user.email}, falling back to default")
+                    logger.warning(
+                        f"Failed to initialize GEE with user service account for "
+                        f"user {user.email}, falling back to default"
+                    )
 
             # Fall back to default service account
             return GEEService._initialize_ee_with_default_service_account()
@@ -131,7 +143,10 @@ class GEEService:
                     service_account_email, temp_key_path
                 )  # type: ignore
                 ee.Initialize(credentials)  # type: ignore
-                logger.info("Successfully initialized Google Earth Engine with default service account")
+                logger.info(
+                    "Successfully initialized Google Earth Engine with "
+                    "default service account"
+                )
                 return True
             finally:
                 # Clean up the temporary file
@@ -139,7 +154,10 @@ class GEEService:
                     os.unlink(temp_key_path)
 
         except Exception as e:
-            logger.error(f"Failed to initialize Google Earth Engine with default service account: {e}")
+            logger.error(
+                f"Failed to initialize Google Earth Engine with "
+                f"default service account: {e}"
+            )
             return False
 
     @staticmethod
@@ -171,20 +189,30 @@ class GEEService:
                     logger.info(f"Refreshing OAuth token for user {user.email}")
                     credentials.refresh(None)
                     # Update stored tokens
-                    user.set_gee_oauth_credentials(credentials.token, credentials.refresh_token)
+                    user.set_gee_oauth_credentials(
+                        credentials.token, credentials.refresh_token
+                    )
                     from gefapi import db
                     db.session.commit()
             except RefreshError as e:
-                logger.error(f"Failed to refresh OAuth token for user {user.email}: {e}")
+                logger.error(
+                    f"Failed to refresh OAuth token for user {user.email}: {e}"
+                )
                 return False
 
             # Initialize Earth Engine with OAuth credentials
             ee.Initialize(credentials)  # type: ignore
-            logger.info(f"Successfully initialized Google Earth Engine with OAuth for user {user.email}")
+            logger.info(
+                f"Successfully initialized Google Earth Engine with OAuth for "
+                f"user {user.email}"
+            )
             return True
 
         except Exception as e:
-            logger.error(f"Failed to initialize Google Earth Engine with OAuth for user {user.email}: {e}")
+            logger.error(
+                f"Failed to initialize Google Earth Engine with OAuth for "
+                f"user {user.email}: {e}"
+            )
             return False
 
     @staticmethod
@@ -218,7 +246,10 @@ class GEEService:
                     service_account_email, temp_key_path
                 )  # type: ignore
                 ee.Initialize(credentials)  # type: ignore
-                logger.info(f"Successfully initialized Google Earth Engine with service account for user {user.email}")
+                logger.info(
+                    f"Successfully initialized Google Earth Engine with "
+                    f"service account for user {user.email}"
+                )
                 return True
             finally:
                 # Clean up the temporary file
@@ -226,7 +257,10 @@ class GEEService:
                     os.unlink(temp_key_path)
 
         except Exception as e:
-            logger.error(f"Failed to initialize Google Earth Engine with user service account for user {user.email}: {e}")
+            logger.error(
+                f"Failed to initialize Google Earth Engine with user "
+                f"service account for user {user.email}: {e}"
+            )
             return False
 
     @staticmethod
@@ -238,8 +272,13 @@ class GEEService:
                              "client_email", "client_id", "auth_uri", "token_uri"]
 
             if not all(field in service_account_data for field in required_fields):
-                missing_fields = [field for field in required_fields if field not in service_account_data]
-                logger.error(f"Service account key missing required fields: {missing_fields}")
+                missing_fields = [
+                    field for field in required_fields
+                    if field not in service_account_data
+                ]
+                logger.error(
+                    f"Service account key missing required fields: {missing_fields}"
+                )
                 return False
 
             # Check that it's a service account
