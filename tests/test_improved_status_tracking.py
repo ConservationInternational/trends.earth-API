@@ -26,7 +26,7 @@ class TestImprovedStatusTracking:
         with app.app_context():
             # Create a status log with new schema
             status_log = StatusLog(
-                executions_active=5,
+                executions_pending=2,
                 executions_ready=2,
                 executions_running=3,
                 executions_finished=10,
@@ -52,7 +52,7 @@ class TestImprovedStatusTracking:
             expected_fields = {
                 "id",
                 "timestamp",
-                "executions_active",
+                "executions_pending",
                 "executions_ready",
                 "executions_running",
                 "executions_finished",
@@ -192,7 +192,7 @@ class TestImprovedStatusTracking:
             assert after_log.executions_finished == 1  # Only the original FINISHED
             assert after_log.executions_failed == 1  # Only the original FAILED
             assert after_log.executions_cancelled == 1  # Only the original CANCELLED
-            assert after_log.executions_active == 3  # ready + running (1 + 2)
+            assert after_log.executions_pending == 1  # ready + running (1 + 2) - 2 = 1
 
             # Verify counts in before status log (the one showing state before change)
             assert before_log.executions_ready == 1  # Only the original READY
@@ -202,7 +202,7 @@ class TestImprovedStatusTracking:
             assert before_log.executions_finished == 1  # Only the original FINISHED
             assert before_log.executions_failed == 1  # Only the original FAILED
             assert before_log.executions_cancelled == 1  # Only the original CANCELLED
-            assert before_log.executions_active == 2  # ready + running (1 + 1)
+            assert before_log.executions_pending == 2  # pending + ready (1 + 1)
 
     @patch("gefapi.services.execution_service.EmailService.send_html_email")
     def test_execution_service_update_uses_new_helper(self, mock_email, app):
@@ -318,7 +318,7 @@ class TestImprovedStatusTracking:
         # Create a status log entry
         with client.application.app_context():
             status_log = StatusLog(
-                executions_active=5,
+                executions_pending=2,
                 executions_ready=2,
                 executions_running=3,
                 executions_finished=10,

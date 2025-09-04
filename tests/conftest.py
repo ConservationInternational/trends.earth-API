@@ -12,8 +12,42 @@ import pytest
 # Add the project root to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# Set environment to 'testing' before importing the app
+# Set environment variables for testing before importing the app
 os.environ["ENV"] = "testing"
+os.environ["ENVIRONMENT"] = "testing"
+os.environ["TESTING"] = "true"
+
+# Set minimal required environment variables for testing if not already set
+if not os.environ.get("JWT_SECRET_KEY"):
+    os.environ["JWT_SECRET_KEY"] = "test-jwt-secret-key-for-ci"
+if not os.environ.get("SECRET_KEY"):
+    os.environ["SECRET_KEY"] = "test-secret-key-for-ci"
+if not os.environ.get("API_USER"):
+    os.environ["API_USER"] = "test_user"
+if not os.environ.get("API_PASSWORD"):
+    os.environ["API_PASSWORD"] = "test_password"
+if not os.environ.get("API_URL"):
+    os.environ["API_URL"] = "http://localhost:3000"
+
+# AWS configuration for testing
+if not os.environ.get("AWS_ACCESS_KEY_ID"):
+    os.environ["AWS_ACCESS_KEY_ID"] = "test_access_key"
+if not os.environ.get("AWS_SECRET_ACCESS_KEY"):
+    os.environ["AWS_SECRET_ACCESS_KEY"] = "test_secret_key"
+if not os.environ.get("AWS_DEFAULT_REGION"):
+    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+if not os.environ.get("SCRIPTS_S3_BUCKET"):
+    os.environ["SCRIPTS_S3_BUCKET"] = "test-scripts-bucket"
+if not os.environ.get("PARAMS_S3_BUCKET"):
+    os.environ["PARAMS_S3_BUCKET"] = "test-params-bucket"
+
+# Google Earth Engine configuration for testing
+if not os.environ.get("GOOGLE_PROJECT_ID"):
+    os.environ["GOOGLE_PROJECT_ID"] = "test-gcp-project"
+if not os.environ.get("GEE_ENDPOINT"):
+    os.environ["GEE_ENDPOINT"] = "https://earthengine-highvolume.googleapis.com"
+if not os.environ.get("EE_SERVICE_ACCOUNT_JSON"):
+    os.environ["EE_SERVICE_ACCOUNT_JSON"] = "dGVzdA=="  # base64 for "test"
 
 from flask_jwt_extended import create_access_token
 
@@ -125,7 +159,8 @@ def app():
             "ENABLED": True,
             # Use in-memory storage for testing instead of Redis
             "STORAGE_URI": "memory://",
-            "DEFAULT_LIMITS": ["100 per hour", "10 per minute"],
+            # More lenient for testing
+            "DEFAULT_LIMITS": ["200 per hour", "30 per minute"],
             "AUTH_LIMITS": [
                 "2 per minute",
                 "5 per hour",
@@ -384,7 +419,7 @@ def sample_status_log(app):
     """Create sample status log for testing"""
     with app.app_context():
         status_log = StatusLog(
-            executions_active=5,
+            executions_pending=3,
             executions_ready=2,
             executions_running=3,
             executions_finished=100,

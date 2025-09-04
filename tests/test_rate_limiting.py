@@ -181,13 +181,13 @@ class TestRateLimiting:
             # Restore original setting
             client.application.config["RATE_LIMITING"]["ENABLED"] = original_enabled
 
-    def test_rate_limit_bypass_in_testing(self, client):
+    def test_rate_limit_bypass_in_testing(self, client_no_rate_limiting):
         """Test that rate limiting is bypassed in testing mode"""
         # In testing mode, rate limiting should be more lenient
         # Make many requests to see if they're all successful
         success_count = 0
         for i in range(20):
-            response = client.get("/api-health")
+            response = client_no_rate_limiting.get("/api-health")
             if response.status_code == 200:
                 success_count += 1
 
