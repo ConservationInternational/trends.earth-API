@@ -3,7 +3,7 @@
 import collections.abc
 import os
 
-from gefapi.config import base, prod, staging
+from gefapi.config import base, prod, staging, test
 
 
 # Below is from https://stackoverflow.com/a/3233356. Needed to handle the "environment"
@@ -22,6 +22,8 @@ SETTINGS = base.SETTINGS
 if os.getenv("ENVIRONMENT") == "staging":
     _nested_dict_update(SETTINGS, staging.SETTINGS)
 
-
 if os.getenv("ENVIRONMENT") == "prod":
     _nested_dict_update(SETTINGS, prod.SETTINGS)
+
+if os.getenv("ENVIRONMENT") in ("test", "testing"):
+    _nested_dict_update(SETTINGS, test.SETTINGS)
