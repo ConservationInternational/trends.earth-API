@@ -511,26 +511,31 @@ class ExecutionService:
         # Use the new helper function for status updates
         if status is not None:
             # Send notification email for terminal states
-            if status == "FINISHED" or status == "FAILED":
+            if status in ["FINISHED", "FAILED", "CANCELLED"]:
                 user = UserService.get_user(str(execution.user_id))
                 script = ScriptService.get_script(str(execution.script_id))
-                try:
-                    EmailService.send_html_email(
-                        recipients=[user.email],
-                        html=EXECUTION_FINISHED_MAIL_CONTENT.format(
-                            status,
-                            execution.params.get("task_name"),
-                            script.name,
-                            str(execution.id),
-                            execution.start_date,
-                            execution.end_date or datetime.datetime.utcnow(),
-                            status,
-                        ),
-                        subject="[trends.earth] Execution finished",
-                    )
-                except Exception:
-                    rollbar.report_exc_info()
-                    logger.info("Failed to send email - check email service")
+                
+                # Check if user has email notifications enabled
+                if user.email_notifications_enabled:
+                    try:
+                        EmailService.send_html_email(
+                            recipients=[user.email],
+                            html=EXECUTION_FINISHED_MAIL_CONTENT.format(
+                                status,
+                                execution.params.get("task_name"),
+                                script.name,
+                                str(execution.id),
+                                execution.start_date,
+                                execution.end_date or datetime.datetime.utcnow(),
+                                status,
+                            ),
+                            subject="[trends.earth] Execution finished",
+                        )
+                    except Exception:
+                        rollbar.report_exc_info()
+                        logger.info("Failed to send email - check email service")
+                else:
+                    logger.info(f"Email notification skipped for user {user.email} - notifications disabled")
 
             # Update status with logging
             update_execution_status_with_logging(execution, status)

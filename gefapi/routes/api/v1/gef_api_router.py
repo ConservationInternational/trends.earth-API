@@ -1582,7 +1582,10 @@ def update_profile():
             name = body.get("name", None)
             country = body.get("country", None)
             institution = body.get("institution", None)
-            if name is not None or country is not None or institution is not None:
+            email_notifications_enabled = body.get("email_notifications_enabled", None)
+            
+            if (name is not None or country is not None or 
+                institution is not None or email_notifications_enabled is not None):
                 user = UserService.update_user(body, str(identity.id))
             else:
                 return error(status=400, detail="Not updated")
