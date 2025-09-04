@@ -29,13 +29,13 @@ def make_celery(app):
         "gefapi.services.docker_service.docker_run": {"queue": "build"},
         "docker.get_service_logs": {"queue": "build"},
         "gefapi.tasks.status_monitoring.refresh_swarm_cache_task": {"queue": "build"},
-        # Route all scheduled tasks to default queue to match worker configuration
-        "gefapi.tasks.execution_cleanup.cleanup_stale_executions": {"queue": "default"},
+        # Route all scheduled tasks with Docker access to build queue
+        "gefapi.tasks.execution_cleanup.cleanup_stale_executions": {"queue": "build"},
         "gefapi.tasks.execution_cleanup.cleanup_finished_executions": {
-            "queue": "default"
+            "queue": "build"
         },
         "gefapi.tasks.execution_cleanup.cleanup_old_failed_executions": {
-            "queue": "default"
+            "queue": "build"
         },
         "gefapi.tasks.refresh_token_cleanup.cleanup_expired_refresh_tokens": {
             "queue": "default"
@@ -59,14 +59,17 @@ def make_celery(app):
         "cleanup-stale-executions": {
             "task": "gefapi.tasks.execution_cleanup.cleanup_stale_executions",
             "schedule": 3600.0,  # Every hour (3600 seconds)
+            "options": {"queue": "build"},  # Run on build queue with Docker access
         },
         "cleanup-finished-executions": {
             "task": "gefapi.tasks.execution_cleanup.cleanup_finished_executions",
             "schedule": 86400.0,  # Every day (86400 seconds)
+            "options": {"queue": "build"},  # Run on build queue with Docker access
         },
         "cleanup-old-failed-executions": {
             "task": "gefapi.tasks.execution_cleanup.cleanup_old_failed_executions",
             "schedule": 86400.0,  # Every day (86400 seconds)
+            "options": {"queue": "build"},  # Run on build queue with Docker access
         },
         "cleanup-expired-refresh-tokens": {
             "task": "gefapi.tasks.refresh_token_cleanup.cleanup_expired_refresh_tokens",
@@ -77,6 +80,7 @@ def make_celery(app):
                 "gefapi.tasks.docker_service_monitoring.monitor_failed_docker_services"
             ),
             "schedule": 120.0,  # Every 2 minutes (120 seconds) - balanced detection
+            "options": {"queue": "build"},  # Run on build queue with Docker access
         },
         "monitor-completed-docker-services": {
             "task": (
