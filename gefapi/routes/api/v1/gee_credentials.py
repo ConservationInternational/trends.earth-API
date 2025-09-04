@@ -181,7 +181,9 @@ def upload_gee_service_account():
             try:
                 service_account_key = json.loads(service_account_key)
             except json.JSONDecodeError:
-                return error(status=400, detail="Invalid JSON format for service account key")
+                return error(
+                    status=400, detail="Invalid JSON format for service account key"
+                )
 
         # Validate service account key
         if not GEEService.validate_service_account_key(service_account_key):
@@ -193,7 +195,9 @@ def upload_gee_service_account():
 
         logger.info(f"Successfully stored GEE service account for user {user.email}")
 
-        return jsonify({"message": "GEE service account credentials saved successfully"})
+        return jsonify({
+            "message": "GEE service account credentials saved successfully"
+        })
 
     except Exception as e:
         logger.error(f"Error uploading service account: {e}")
@@ -229,7 +233,9 @@ def delete_gee_credentials():
         return error(status=500, detail="Failed to delete GEE credentials")
 
 
-@endpoints.route("/user/me/gee-credentials/test", strict_slashes=False, methods=["POST"])
+@endpoints.route(
+    "/user/me/gee-credentials/test", strict_slashes=False, methods=["POST"]
+)
 @jwt_required()
 def test_gee_credentials():
     """Test user's GEE credentials"""

@@ -6,7 +6,7 @@ import logging
 import os
 import re
 import tempfile
-from typing import Any, Optional
+from typing import Any
 
 import rollbar
 
@@ -51,7 +51,9 @@ class GEEService:
 
             # Try user credentials first if provided
             if user and user.has_gee_credentials():
-                logger.info(f"Attempting to initialize GEE with user {user.email} credentials")
+                logger.info(
+                    f"Attempting to initialize GEE with user {user.email} credentials"
+                )
 
                 if user.gee_credentials_type == 'oauth':
                     if GEEService._initialize_ee_with_oauth(user):
@@ -228,7 +230,7 @@ class GEEService:
             return False
 
     @staticmethod
-    def validate_service_account_key(service_account_data: Dict[str, Any]) -> bool:
+    def validate_service_account_key(service_account_data: dict[str, Any]) -> bool:
         """Validate a service account key structure and basic functionality"""
         try:
             # Check required fields
