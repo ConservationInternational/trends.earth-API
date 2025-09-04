@@ -11,7 +11,7 @@ class TestStatusLogSequence:
         """Test basic status log creation."""
         with app.app_context():
             status_log = StatusLog(
-                executions_active=1,
+                executions_pending=1,
                 executions_ready=2,
                 executions_running=3,
                 executions_finished=4,
@@ -23,7 +23,7 @@ class TestStatusLogSequence:
             db.session.commit()
 
             assert status_log.id is not None
-            assert status_log.executions_active == 1
+            assert status_log.executions_pending == 1
             assert status_log.executions_ready == 2
             assert status_log.executions_running == 3
             assert status_log.executions_finished == 4
@@ -37,7 +37,7 @@ class TestStatusLogSequence:
             status_logs = []
             for i in range(3):
                 status_log = StatusLog(
-                    executions_active=i,
+                    executions_pending=i,
                     executions_ready=i,
                     executions_running=i,
                     executions_finished=i,
@@ -59,7 +59,7 @@ class TestStatusLogSequence:
         """Test status log serialization."""
         with app.app_context():
             status_log = StatusLog(
-                executions_active=10,
+                executions_pending=10,
                 executions_ready=20,
                 executions_running=30,
                 executions_finished=40,
@@ -74,7 +74,7 @@ class TestStatusLogSequence:
 
             assert "id" in serialized
             assert "timestamp" in serialized
-            assert serialized["executions_active"] == 10
+            assert serialized["executions_pending"] == 10
             assert serialized["executions_ready"] == 20
             assert serialized["executions_running"] == 30
             assert serialized["executions_finished"] == 40
@@ -90,7 +90,7 @@ class TestStatusLogSequence:
         with app.app_context():
             # Just test that we can create a basic status log without errors
             status_log = StatusLog(
-                executions_active=1,
+                executions_pending=1,
                 executions_ready=2,
                 executions_running=3,
                 executions_finished=4,
@@ -110,7 +110,7 @@ class TestStatusLogSequence:
             db.session.commit()
 
             assert status_log.id is not None
-            assert status_log.executions_active == 0
+            assert status_log.executions_pending == 0
             assert status_log.executions_ready == 0
             assert status_log.executions_running == 0
             assert status_log.executions_finished == 0

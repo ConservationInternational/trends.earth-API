@@ -31,7 +31,7 @@ class TestStatusEndpoint:
         with client.application.app_context():
             for i in range(3):
                 status_log = StatusLog(
-                    executions_active=i + 1,
+                    executions_pending=i + 1,
                     executions_ready=i,
                     executions_running=i + 1,
                     executions_finished=i * 2,
@@ -59,7 +59,7 @@ class TestStatusEndpoint:
         for entry in data["data"]:
             assert "id" in entry
             assert "timestamp" in entry
-            assert "executions_active" in entry
+            assert "executions_pending" in entry
             assert "executions_ready" in entry
             assert "executions_running" in entry
             assert "executions_finished" in entry
@@ -72,7 +72,7 @@ class TestStatusEndpoint:
         with client.application.app_context():
             for i in range(5):
                 status_log = StatusLog(
-                    executions_active=i,
+                    executions_pending=i,
                     executions_ready=i,
                     executions_running=i,
                     executions_finished=i,
@@ -118,7 +118,7 @@ class TestStatusService:
         with app.app_context():
             # Create test data
             status_log = StatusLog(
-                executions_active=5,
+                executions_pending=5,
                 executions_ready=2,
                 executions_running=3,
                 executions_finished=10,
@@ -141,7 +141,7 @@ class TestStatusService:
             # Create test data
             for i in range(5):
                 status_log = StatusLog(
-                    executions_active=i,
+                    executions_pending=i,
                     executions_ready=i,
                     executions_running=i,
                     executions_finished=i,
