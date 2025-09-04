@@ -384,15 +384,19 @@ def _get_docker_swarm_info():
 
 def get_cached_swarm_status():
     """
-    Get Docker Swarm status from cache, with fallback to real-time data.
+    Get Docker Swarm status from cache only - never accesses Docker directly.
+
+    This function is safe to call from API services since it only reads from cache
+    and never attempts Docker socket access. Docker swarm data is updated by
+    periodic Celery tasks running on the build queue with Docker socket access.
 
     Returns:
         dict: Docker swarm information with node details and cache metadata.
               Always includes a 'cache_info' field with:
-              - cached_at: ISO timestamp when data was cached (or retrieved)
-              - cache_ttl: Cache TTL in seconds (0 for non-cached data)
+              - cached_at: ISO timestamp when data was cached
+              - cache_ttl: Cache TTL in seconds (0 for unavailable data)
               - cache_key: Redis cache key used
-              - source: Data source ('cached', 'legacy_cache', 'real_time_fallback')
+              - source: Data source ('cached', 'legacy_cache', 'cache_unavailable')
     """
 
     cache = get_redis_cache()
@@ -411,21 +415,27 @@ def get_cached_swarm_status():
                     "source": "legacy_cache",
                 }
             return cached_data
-        logger.info("No cached Docker Swarm status found")
+        logger.warning("No cached Docker Swarm status found - cache empty")
+    else:
+        logger.warning("Redis cache not available for Docker Swarm status")
 
-    # Fallback to real-time data if cache miss or unavailable
-    logger.info("Fetching Docker Swarm status as fallback")
-    swarm_data = _get_docker_swarm_info()
-
-    # Add cache info to indicate this is real-time data
-    swarm_data["cache_info"] = {
-        "cached_at": datetime.datetime.now(datetime.UTC).isoformat(),
-        "cache_ttl": 0,  # Not cached
-        "cache_key": SWARM_CACHE_KEY,
-        "source": "real_time_fallback",
+    # Return unavailable status instead of attempting Docker access
+    # This ensures API services never try to access Docker socket directly
+    logger.info("Returning unavailable status - cache not accessible")
+    return {
+        "error": "Docker Swarm status unavailable - cache not accessible",
+        "nodes": [],
+        "total_nodes": 0,
+        "total_managers": 0,
+        "total_workers": 0,
+        "swarm_active": False,
+        "cache_info": {
+            "cached_at": datetime.datetime.now(datetime.UTC).isoformat(),
+            "cache_ttl": 0,  # Not cached
+            "cache_key": SWARM_CACHE_KEY,
+            "source": "cache_unavailable",
+        },
     }
-
-    return swarm_data
 
 
 def update_swarm_cache():
