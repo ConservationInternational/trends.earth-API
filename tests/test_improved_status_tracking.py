@@ -114,9 +114,7 @@ class TestImprovedStatusTracking:
             initial_count = StatusLog.query.count()
 
             # Update execution status using the helper function
-            status_log = update_execution_status_with_logging(
-                execution, "RUNNING"
-            )
+            status_log = update_execution_status_with_logging(execution, "RUNNING")
 
             # Verify one new status log was created (after change only)
             assert StatusLog.query.count() == initial_count + 1
@@ -198,9 +196,7 @@ class TestImprovedStatusTracking:
             db.session.commit()
 
             # Update to RUNNING status
-            status_log = update_execution_status_with_logging(
-                new_execution, "RUNNING"
-            )
+            status_log = update_execution_status_with_logging(new_execution, "RUNNING")
 
             # Verify counts in status log (the one showing state after change)
             assert status_log.executions_ready == 1  # Only the original READY

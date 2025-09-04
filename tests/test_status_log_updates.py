@@ -190,11 +190,11 @@ class TestStatusLogUpdates:
 
             # Verify counts reflect state AFTER the change
             assert status_log.executions_pending == 1  # Only the original PENDING
-            assert status_log.executions_ready == 1     # Only the original READY
-            assert status_log.executions_running == 2   # Original RUNNING + new one
+            assert status_log.executions_ready == 1  # Only the original READY
+            assert status_log.executions_running == 2  # Original RUNNING + new one
             assert status_log.executions_finished == 1  # Only the original FINISHED
-            assert status_log.executions_failed == 1    # Only the original FAILED
-            assert status_log.executions_cancelled == 1 # Only the original CANCELLED
+            assert status_log.executions_failed == 1  # Only the original FAILED
+            assert status_log.executions_cancelled == 1  # Only the original CANCELLED
 
             # Verify transition information
             assert status_log.status_from == "PENDING"
@@ -412,7 +412,10 @@ class TestStatusLogUpdates:
         # At least one of them should have our test data
         found_test_entry = False
         for entry in data["data"]:
-            if entry.get("status_from") == "PENDING" and entry.get("status_to") == "RUNNING":
+            if (
+                entry.get("status_from") == "PENDING"
+                and entry.get("status_to") == "RUNNING"
+            ):
                 found_test_entry = True
                 assert entry["execution_id"] == "test-execution-id"
                 break
