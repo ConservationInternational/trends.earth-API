@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '20250904_add_user_gee_credentials'
-down_revision = '20250903_replace_active_with_pending_tracking'
+revision = 'add_user_gee_credentials'
+down_revision = 'replace_active_pending'
 branch_labels = None
 depends_on = None
 

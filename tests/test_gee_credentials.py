@@ -9,7 +9,6 @@ from gefapi import db
 from gefapi.models.user import User
 from gefapi.services.gee_service import GEEService
 
-
 # Ensure test environment has required variables
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-encryption')
 os.environ.setdefault('JWT_SECRET_KEY', 'test-jwt-secret-key')
