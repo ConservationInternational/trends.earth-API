@@ -226,10 +226,39 @@ class StatsService:
             }
 
             # Get total counts
-            total_jobs = db.session.query(func.count(Execution.id)).scalar() or 0
+            total_executions = db.session.query(func.count(Execution.id)).scalar() or 0
             total_users = db.session.query(func.count(User.id)).scalar() or 0
+            total_scripts = db.session.query(func.count(Script.id)).scalar() or 0
 
-            summary = {"total_jobs": total_jobs, "total_users": total_users}
+            # Get execution counts by status
+            total_executions_finished = (
+                db.session.query(func.count(Execution.id))
+                .filter(Execution.status == "FINISHED")
+                .scalar()
+                or 0
+            )
+            total_executions_failed = (
+                db.session.query(func.count(Execution.id))
+                .filter(Execution.status == "FAILED")
+                .scalar()
+                or 0
+            )
+            total_executions_cancelled = (
+                db.session.query(func.count(Execution.id))
+                .filter(Execution.status == "CANCELLED")
+                .scalar()
+                or 0
+            )
+
+            summary = {
+                "total_executions": total_executions,
+                "total_jobs": total_executions,  # Keep for backward compatibility
+                "total_users": total_users,
+                "total_scripts": total_scripts,
+                "total_executions_finished": total_executions_finished,
+                "total_executions_failed": total_executions_failed,
+                "total_executions_cancelled": total_executions_cancelled,
+            }
 
             # Get counts for each period
             for period_name, cutoff_date in periods.items():

@@ -19,8 +19,13 @@ class TestStatsAPIEndpoints:
         """Set up test fixtures."""
         self.sample_dashboard_stats = {
             "summary": {
-                "total_jobs": 1500,
+                "total_executions": 1500,
+                "total_jobs": 1500,  # Backward compatibility
                 "total_users": 250,
+                "total_scripts": 150,
+                "total_executions_finished": 1200,
+                "total_executions_failed": 200,
+                "total_executions_cancelled": 100,
                 "jobs_last_day": 15,
                 "jobs_last_week": 120,
                 "jobs_last_month": 450,
@@ -196,6 +201,61 @@ class TestStatsAPIEndpoints:
         )
 
     @patch("gefapi.utils.permissions.is_superadmin")
+    @patch.object(StatsService, "get_dashboard_stats")
+    def test_dashboard_stats_includes_required_counts(
+        self, mock_get_stats, mock_is_superadmin, client, auth_headers_superadmin
+    ):
+        """Test that dashboard stats includes all required counts from issue #49."""
+        mock_is_superadmin.return_value = True
+        
+        # Create sample data with all required fields
+        enhanced_stats = {
+            "summary": {
+                "total_executions": 1000,
+                "total_jobs": 1000,  # Backward compatibility
+                "total_users": 150,
+                "total_scripts": 75,
+                "total_executions_finished": 800,
+                "total_executions_failed": 150,
+                "total_executions_cancelled": 50,
+                "jobs_last_day": 10,
+                "jobs_last_week": 80,
+                "jobs_last_month": 300,
+                "jobs_last_year": 900,
+                "users_last_day": 2,
+                "users_last_week": 15,
+                "users_last_month": 45,
+                "users_last_year": 120,
+            }
+        }
+        
+        mock_get_stats.return_value = enhanced_stats
+
+        response = client.get(
+            "/api/v1/stats/dashboard?include=summary", headers=auth_headers_superadmin
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        summary = data["data"]["summary"]
+        
+        # Verify all required counts are present
+        assert summary["total_executions"] == 1000
+        assert summary["total_users"] == 150
+        assert summary["total_scripts"] == 75
+        assert summary["total_executions_finished"] == 800
+        assert summary["total_executions_failed"] == 150
+        assert summary["total_executions_cancelled"] == 50
+        
+        # Verify backward compatibility
+        assert summary["total_jobs"] == 1000
+        
+        # Verify service was called correctly
+        mock_get_stats.assert_called_once_with(
+            period="all", include=["summary"]
+        )
+
+    @patch("gefapi.utils.permissions.is_superadmin")
     def test_dashboard_stats_invalid_period(
         self, mock_is_superadmin, client, auth_headers_superadmin
     ):
@@ -335,8 +395,13 @@ class TestStatsAPIEndpoints:
         """Test health check endpoint."""
         mock_is_superadmin.return_value = True
         mock_get_summary.return_value = {
-            "total_jobs": 1500,
+            "total_executions": 1500,
+            "total_jobs": 1500,  # Backward compatibility
             "total_users": 250,
+            "total_scripts": 150,
+            "total_executions_finished": 1200,
+            "total_executions_failed": 200,
+            "total_executions_cancelled": 100,
             "jobs_last_month": 450,
         }
 
