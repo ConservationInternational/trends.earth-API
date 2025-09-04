@@ -25,6 +25,11 @@ class StatusLog(db.Model):
     executions_failed = db.Column(db.Integer(), default=0)
     executions_cancelled = db.Column(db.Integer(), default=0)
 
+    # Status transition fields
+    status_from = db.Column(db.String(20), nullable=True)
+    status_to = db.Column(db.String(20), nullable=True)
+    execution_id = db.Column(db.String(36), nullable=True)
+
     def __init__(
         self,
         executions_pending=0,
@@ -33,6 +38,9 @@ class StatusLog(db.Model):
         executions_finished=0,
         executions_failed=0,
         executions_cancelled=0,
+        status_from=None,
+        status_to=None,
+        execution_id=None,
     ):
         self.executions_pending = executions_pending
         self.executions_ready = executions_ready
@@ -40,6 +48,9 @@ class StatusLog(db.Model):
         self.executions_finished = executions_finished
         self.executions_failed = executions_failed
         self.executions_cancelled = executions_cancelled
+        self.status_from = status_from
+        self.status_to = status_to
+        self.execution_id = execution_id
 
     def __repr__(self):
         return f"<StatusLog {self.id!r}>"
@@ -55,4 +66,7 @@ class StatusLog(db.Model):
             "executions_finished": self.executions_finished,
             "executions_failed": self.executions_failed,
             "executions_cancelled": self.executions_cancelled,
+            "status_from": self.status_from,
+            "status_to": self.status_to,
+            "execution_id": self.execution_id,
         }
