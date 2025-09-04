@@ -92,7 +92,6 @@ class StatusTestUtils:
         """Create sample status data for testing"""
         return {
             "timestamp": datetime.utcnow().isoformat(),
-            "executions_pending": 5,
             "executions_pending": 2,
             "executions_completed_today": 10,
             "memory_usage_percent": 45.2,

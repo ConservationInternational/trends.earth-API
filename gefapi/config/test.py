@@ -4,13 +4,13 @@ import os
 
 SETTINGS = {
     # Override database URL for testing - use local PostgreSQL
-    "SQLALCHEMY_DATABASE_URI": os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/test_db"),
-    
+    "SQLALCHEMY_DATABASE_URI": os.getenv(
+        "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/test_db"
+    ),
     # Testing flags
     "testing": True,
     "TESTING": True,
     "DEBUG": False,
-    
     # Rate limiting configuration for testing
     "RATE_LIMITING": {
         "ENABLED": os.getenv("RATE_LIMITING_ENABLED", "true").lower() == "true",
@@ -23,7 +23,6 @@ SETTINGS = {
         "USER_CREATION_LIMITS": ["2 per minute"],  # Very low limit for testing
         "EXECUTION_RUN_LIMITS": ["3 per minute", "10 per hour"],
     },
-    
     # Redis configuration for testing - fallback to localhost
     "CELERY_BROKER_URL": os.getenv("REDIS_URL", "redis://localhost:6379/2"),
     "CELERY_RESULT_BACKEND": os.getenv("REDIS_URL", "redis://localhost:6379/2"),
