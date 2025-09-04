@@ -10,6 +10,13 @@ from gefapi.models.user import User
 from gefapi.services.gee_service import GEEService
 
 
+# Ensure test environment has required variables
+os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-encryption')
+os.environ.setdefault('JWT_SECRET_KEY', 'test-jwt-secret-key')
+os.environ.setdefault('EE_SERVICE_ACCOUNT_JSON', 'test-service-account-json')
+os.environ.setdefault('GOOGLE_PROJECT_ID', 'test-project-id')
+
+
 @pytest.fixture
 def app_with_db(app):
     """Fixture providing app with database"""
@@ -38,9 +45,7 @@ class TestUserGEECredentials:
                 country="Test Country",
                 institution="Test Institution"
             )
-            db.session.add(user)
-            db.session.commit()
-
+            # Don't persist to database for this simple test
             assert not user.has_gee_credentials()
             assert user.gee_credentials_type is None
             assert user.gee_credentials_created_at is None
@@ -55,8 +60,6 @@ class TestUserGEECredentials:
                 country="Test Country",
                 institution="Test Institution"
             )
-            db.session.add(user)
-            db.session.commit()
 
             # Set OAuth credentials
             access_token = "test_access_token"
@@ -82,8 +85,6 @@ class TestUserGEECredentials:
                 country="Test Country",
                 institution="Test Institution"
             )
-            db.session.add(user)
-            db.session.commit()
 
             # Set service account credentials
             service_account_key = {
@@ -116,8 +117,6 @@ class TestUserGEECredentials:
                 country="Test Country",
                 institution="Test Institution"
             )
-            db.session.add(user)
-            db.session.commit()
 
             # Set credentials first
             user.set_gee_oauth_credentials("token", "refresh")
@@ -139,8 +138,6 @@ class TestUserGEECredentials:
                 country="Test Country",
                 institution="Test Institution"
             )
-            db.session.add(user)
-            db.session.commit()
 
             # Set OAuth credentials
             access_token = "secret_access_token"
@@ -320,6 +317,8 @@ class TestGEECredentialsAPI:
         user, token = user_with_token
 
         with app_with_db.app_context():
+            # Re-query user to ensure it's in the current session
+            user = User.query.get(user.id)
             user.set_gee_oauth_credentials("access_token", "refresh_token")
             db.session.commit()
 
@@ -382,6 +381,8 @@ class TestGEECredentialsAPI:
         user, token = user_with_token
 
         with app_with_db.app_context():
+            # Re-query user to ensure it's in the current session
+            user = User.query.get(user.id)
             user.set_gee_oauth_credentials("access_token", "refresh_token")
             db.session.commit()
 
@@ -392,7 +393,7 @@ class TestGEECredentialsAPI:
 
         assert response.status_code == 200
         data = response.get_json()
-        assert "deleted" in data["message"].lower()
+        assert "GEE credentials deleted successfully" in data["message"]
 
     def test_delete_gee_credentials_none_exist(self, client, user_with_token):
         """Test deleting GEE credentials when none exist"""
@@ -405,13 +406,13 @@ class TestGEECredentialsAPI:
 
         assert response.status_code == 404
         data = response.get_json()
-        assert "not found" in data["detail"].lower()
+        assert "No GEE credentials found" in data["detail"]
 
     @patch.dict(os.environ, {
         'GOOGLE_OAUTH_CLIENT_ID': 'test_client_id',
         'GOOGLE_OAUTH_CLIENT_SECRET': 'test_client_secret'
     })
-    @patch('gefapi.routes.api.v1.gee_credentials.Flow')
+    @patch('google_auth_oauthlib.flow.Flow')
     def test_initiate_oauth_flow(self, mock_flow, client, user_with_token):
         """Test initiating OAuth flow"""
         user, token = user_with_token
@@ -446,7 +447,7 @@ class TestGEECredentialsAPI:
 
         assert response.status_code == 500
         data = response.get_json()
-        assert "not configured" in data["detail"].lower()
+        assert "OAuth not configured" in data["detail"]
 
     def test_api_requires_authentication(self, client):
         """Test that all GEE credential endpoints require authentication"""
