@@ -159,7 +159,7 @@ def app():
             "ENABLED": True,
             # Use in-memory storage for testing instead of Redis
             "STORAGE_URI": "memory://",
-            "DEFAULT_LIMITS": ["100 per hour", "10 per minute"],
+            "DEFAULT_LIMITS": ["200 per hour", "30 per minute"],  # More lenient for testing
             "AUTH_LIMITS": [
                 "2 per minute",
                 "5 per hour",
