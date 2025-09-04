@@ -5,8 +5,8 @@ Tests the new email_notifications_enabled user preference and its impact on
 execution completion emails.
 """
 
-import uuid
 from unittest.mock import patch
+import uuid
 
 import pytest
 
@@ -54,9 +54,7 @@ class TestEmailNotificationPreferences:
 
             # Create test execution
             execution = Execution(
-                script_id=script.id, 
-                params={"task_name": "Test Task"}, 
-                user_id=user.id
+                script_id=script.id, params={"task_name": "Test Task"}, user_id=user.id
             )
             execution.status = "RUNNING"
             db.session.add(execution)
@@ -65,9 +63,7 @@ class TestEmailNotificationPreferences:
             execution_id = str(execution.id)
 
             # Update execution to FINISHED
-            ExecutionService.update_execution(
-                {"status": "FINISHED"}, execution_id
-            )
+            ExecutionService.update_execution({"status": "FINISHED"}, execution_id)
 
             # Verify email was sent
             mock_email.assert_called_once()
@@ -105,9 +101,7 @@ class TestEmailNotificationPreferences:
 
             # Create test execution
             execution = Execution(
-                script_id=script.id, 
-                params={"task_name": "Test Task"}, 
-                user_id=user.id
+                script_id=script.id, params={"task_name": "Test Task"}, user_id=user.id
             )
             execution.status = "RUNNING"
             db.session.add(execution)
@@ -116,9 +110,7 @@ class TestEmailNotificationPreferences:
             execution_id = str(execution.id)
 
             # Update execution to FINISHED
-            ExecutionService.update_execution(
-                {"status": "FINISHED"}, execution_id
-            )
+            ExecutionService.update_execution({"status": "FINISHED"}, execution_id)
 
             # Verify email was NOT sent
             mock_email.assert_not_called()
@@ -128,7 +120,7 @@ class TestEmailNotificationPreferences:
         """Test that emails are sent for FINISHED, FAILED, and CANCELLED states"""
         with app.app_context():
             terminal_states = ["FINISHED", "FAILED", "CANCELLED"]
-            
+
             for status in terminal_states:
                 # Create test user with notifications enabled
                 user = User(
@@ -155,23 +147,21 @@ class TestEmailNotificationPreferences:
 
                 # Create test execution
                 execution = Execution(
-                    script_id=script.id, 
-                    params={"task_name": f"Test Task {status}"}, 
-                    user_id=user.id
+                    script_id=script.id,
+                    params={"task_name": f"Test Task {status}"},
+                    user_id=user.id,
                 )
                 execution.status = "RUNNING"
                 db.session.add(execution)
                 db.session.commit()
 
                 execution_id = str(execution.id)
-                
+
                 # Reset mock for each iteration
                 mock_email.reset_mock()
 
                 # Update execution to terminal state
-                ExecutionService.update_execution(
-                    {"status": status}, execution_id
-                )
+                ExecutionService.update_execution({"status": status}, execution_id)
 
                 # Verify email was sent for this terminal state
                 mock_email.assert_called_once()
@@ -191,14 +181,14 @@ class TestEmailNotificationPreferences:
                 institution="Test Institution",
                 role="USER",
             )
-            
+
             # Verify default value
             assert user.email_notifications_enabled is True
-            
+
             # Test changing the value
             user.email_notifications_enabled = False
             assert user.email_notifications_enabled is False
-            
+
             # Test serialization includes the field
             serialized = user.serialize()
             assert "email_notifications_enabled" in serialized
@@ -207,7 +197,7 @@ class TestEmailNotificationPreferences:
     def test_user_service_updates_email_notifications_preference(self, app):
         """Test that UserService.update_user can update email notification preferences"""
         from gefapi.services.user_service import UserService
-        
+
         with app.app_context():
             # Create test user
             user = User(
@@ -220,62 +210,53 @@ class TestEmailNotificationPreferences:
             )
             db.session.add(user)
             db.session.commit()
-            
+
             user_id = str(user.id)
-            
+
             # Verify default value
             assert user.email_notifications_enabled is True
-            
+
             # Update using UserService
             updated_user = UserService.update_user(
-                {"email_notifications_enabled": False}, 
-                user_id
+                {"email_notifications_enabled": False}, user_id
             )
-            
+
             # Verify the update worked
             assert updated_user.email_notifications_enabled is False
-            
+
             # Verify persistence
             fresh_user = UserService.get_user(user_id)
             assert fresh_user.email_notifications_enabled is False
-            
+
             # Test updating back to True
             updated_user = UserService.update_user(
-                {"email_notifications_enabled": True}, 
-                user_id
+                {"email_notifications_enabled": True}, user_id
             )
             assert updated_user.email_notifications_enabled is True
 
     def test_profile_update_api_handles_email_notifications(self, client, auth_headers):
         """Test that the /user/me PATCH endpoint can update email notification preferences"""
         # Update profile with email notification preference
-        update_data = {
-            "name": "Updated Name",
-            "email_notifications_enabled": False
-        }
-        
+        update_data = {"name": "Updated Name", "email_notifications_enabled": False}
+
         response = client.patch(
-            "/api/v1/user/me",
-            json=update_data,
-            headers=auth_headers
+            "/api/v1/user/me", json=update_data, headers=auth_headers
         )
-        
+
         assert response.status_code == 200
         data = response.get_json()
-        
+
         # Verify the response includes updated preference
         assert data["data"]["email_notifications_enabled"] is False
         assert data["data"]["name"] == "Updated Name"
-        
+
         # Test updating only email notifications preference
         update_data = {"email_notifications_enabled": True}
-        
+
         response = client.patch(
-            "/api/v1/user/me",
-            json=update_data,
-            headers=auth_headers
+            "/api/v1/user/me", json=update_data, headers=auth_headers
         )
-        
+
         assert response.status_code == 200
         data = response.get_json()
         assert data["data"]["email_notifications_enabled"] is True
@@ -283,10 +264,10 @@ class TestEmailNotificationPreferences:
     def test_profile_get_api_includes_email_notifications(self, client, auth_headers):
         """Test that the /user/me GET endpoint includes email notification preferences"""
         response = client.get("/api/v1/user/me", headers=auth_headers)
-        
+
         assert response.status_code == 200
         data = response.get_json()
-        
+
         # Verify email_notifications_enabled is included
         assert "email_notifications_enabled" in data["data"]
         # Default should be True

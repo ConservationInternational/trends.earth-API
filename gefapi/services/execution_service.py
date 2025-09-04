@@ -514,7 +514,7 @@ class ExecutionService:
             if status in ["FINISHED", "FAILED", "CANCELLED"]:
                 user = UserService.get_user(str(execution.user_id))
                 script = ScriptService.get_script(str(execution.script_id))
-                
+
                 # Check if user has email notifications enabled
                 if user.email_notifications_enabled:
                     try:
@@ -535,7 +535,10 @@ class ExecutionService:
                         rollbar.report_exc_info()
                         logger.info("Failed to send email - check email service")
                 else:
-                    logger.info(f"Email notification skipped for user {user.email} - notifications disabled")
+                    logger.info(
+                        f"Email notification skipped for user {user.email} - "
+                        "notifications disabled"
+                    )
 
             # Update status with logging
             update_execution_status_with_logging(execution, status)

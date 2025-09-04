@@ -53,11 +53,9 @@ class User(db.Model):
         db.Text(), default=None
     )  # JSON status
     google_groups_last_sync = db.Column(db.DateTime(), default=None)
-    
+
     # Email notification preferences
-    email_notifications_enabled = db.Column(
-        db.Boolean(), default=True, nullable=False
-    )
+    email_notifications_enabled = db.Column(db.Boolean(), default=True, nullable=False)
 
     def __init__(self, email, password, name, country, institution, role="USER"):
         self.email = email

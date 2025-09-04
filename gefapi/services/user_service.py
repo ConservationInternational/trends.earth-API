@@ -335,13 +335,13 @@ class UserService:
         current_user.name = user.get("name", current_user.name)
         current_user.country = user.get("country", current_user.country)
         current_user.institution = user.get("institution", current_user.institution)
-        
+
         # Update email notification preferences if provided
         if "email_notifications_enabled" in user:
             email_notifications_enabled = user.get("email_notifications_enabled")
             if isinstance(email_notifications_enabled, bool):
                 current_user.email_notifications_enabled = email_notifications_enabled
-        
+
         current_user.updated_at = datetime.datetime.utcnow()
         try:
             logger.info("[DB]: ADD")
