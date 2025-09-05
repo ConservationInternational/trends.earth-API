@@ -207,7 +207,7 @@ class TestStatsAPIEndpoints:
     ):
         """Test that dashboard stats includes all required counts from issue #49."""
         mock_is_superadmin.return_value = True
-        
+
         # Create sample data with all required fields
         enhanced_stats = {
             "summary": {
@@ -228,7 +228,7 @@ class TestStatsAPIEndpoints:
                 "users_last_year": 120,
             }
         }
-        
+
         mock_get_stats.return_value = enhanced_stats
 
         response = client.get(
@@ -238,7 +238,7 @@ class TestStatsAPIEndpoints:
         assert response.status_code == 200
         data = json.loads(response.data)
         summary = data["data"]["summary"]
-        
+
         # Verify all required counts are present
         assert summary["total_executions"] == 1000
         assert summary["total_users"] == 150
@@ -246,14 +246,12 @@ class TestStatsAPIEndpoints:
         assert summary["total_executions_finished"] == 800
         assert summary["total_executions_failed"] == 150
         assert summary["total_executions_cancelled"] == 50
-        
+
         # Verify backward compatibility
         assert summary["total_jobs"] == 1000
-        
+
         # Verify service was called correctly
-        mock_get_stats.assert_called_once_with(
-            period="all", include=["summary"]
-        )
+        mock_get_stats.assert_called_once_with(period="all", include=["summary"])
 
     @patch("gefapi.utils.permissions.is_superadmin")
     def test_dashboard_stats_invalid_period(

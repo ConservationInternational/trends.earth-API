@@ -352,31 +352,41 @@ class TestStatsService:
 
     @patch("gefapi.services.stats_service.get_redis_cache")
     @patch("gefapi.services.stats_service.db")
-    def test_summary_stats_includes_required_counts(self, mock_db, mock_get_redis_cache):
+    def test_summary_stats_includes_required_counts(
+        self, mock_db, mock_get_redis_cache
+    ):
         """Test that _get_summary_stats includes all required counts from issue #49."""
         # Setup mock database queries
         mock_session = MagicMock()
         mock_db.session = mock_session
-        
+
         # Mock the scalar() results for different queries
         call_count = 0
+
         def mock_scalar():
             nonlocal call_count
-            results = [1000, 250, 150, 800, 150, 50]  # executions, users, scripts, finished, failed, cancelled
+            results = [
+                1000,
+                250,
+                150,
+                800,
+                150,
+                50,
+            ]  # executions, users, scripts, finished, failed, cancelled
             result = results[call_count % len(results)]
             call_count += 1
             return result
-        
+
         mock_session.query().scalar = mock_scalar
         mock_session.query().filter().scalar = mock_scalar
-        
+
         # Mock Redis unavailable to force execution
         mock_get_redis_cache.return_value = self.mock_redis
         self.mock_redis.is_available.return_value = False
-        
+
         # Execute
         result = StatsService._get_summary_stats()
-        
+
         # Verify all required fields are present
         assert "total_executions" in result
         assert "total_users" in result
@@ -384,7 +394,7 @@ class TestStatsService:
         assert "total_executions_finished" in result
         assert "total_executions_failed" in result
         assert "total_executions_cancelled" in result
-        
+
         # Verify backward compatibility
         assert "total_jobs" in result
         assert result["total_jobs"] == result["total_executions"]
