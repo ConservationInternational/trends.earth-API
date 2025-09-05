@@ -17,24 +17,38 @@ class TestExecutionUpdateAuthFix:
 
     def test_user_can_update_own_execution(self, client, auth_headers_user):
         """Test that a user can update their own execution with results"""
-        # First, create a script and execution as a regular user
-        script_data = {
-            "name": "Test Results Script",
-            "slug": "test-results-script",
-            "type": "PYTHON",
-            "source_code": "print('Test results submission')",
-            "public": True,
-        }
+        # Use the Script model directly instead of API to avoid file upload complexity
+        from gefapi import db
+        from gefapi.models import Script, User
 
-        # Create script
-        script_response = client.post(
-            "/api/v1/script",
-            data=json.dumps(script_data),
-            headers=auth_headers_user,
-            content_type="application/json",
-        )
-        assert script_response.status_code == 201
-        script_id = script_response.json["data"]["id"]
+        # Get current user from fixtures (use the existing user@test.com)
+        with client.application.app_context():
+            current_user = User.query.filter_by(email="user@test.com").first()
+            if not current_user:
+                current_user = User(
+                    email="user@test.com",
+                    password="user123",
+                    name="Regular User",
+                    country="Test Country",
+                    institution="Test Institution",
+                    role="USER",
+                )
+                db.session.add(current_user)
+                db.session.commit()
+            
+            # Create script directly in database
+            import uuid
+            script_uuid = str(uuid.uuid4())[:8]
+            script = Script(
+                name="Test Results Script",
+                slug=f"test-results-script-{script_uuid}",
+                user_id=current_user.id,
+            )
+            script.status = "SUCCESS"  # Published and ready
+            script.public = True
+            db.session.add(script)
+            db.session.commit()
+            script_id = str(script.id)
 
         # Create execution (mocking docker to avoid actual container execution)
         with patch("gefapi.tasks.docker.docker_run.delay"):
@@ -85,22 +99,38 @@ class TestExecutionUpdateAuthFix:
         self, client, auth_headers_user, auth_headers_admin
     ):
         """Test that a user cannot update another user's execution"""
-        # Admin creates a script and execution
-        script_data = {
-            "name": "Admin Test Script",
-            "slug": "admin-test-script",
-            "type": "PYTHON",
-            "source_code": "print('Admin script')",
-            "public": True,
-        }
+        # Admin creates a script and execution using direct database access
+        from gefapi import db
+        from gefapi.models import Script, User
 
-        script_response = client.post(
-            "/api/v1/script",
-            data=json.dumps(script_data),
-            headers=auth_headers_admin,
-            content_type="application/json",
-        )
-        script_id = script_response.json["data"]["id"]
+        with client.application.app_context():
+            # Get admin user (use the existing admin@test.com from fixtures)
+            admin_user = User.query.filter_by(email="admin@test.com").first()
+            if not admin_user:
+                admin_user = User(
+                    email="admin@test.com",
+                    password="admin123",
+                    name="Admin User",
+                    country="Test Country",
+                    institution="Test Institution",
+                    role="ADMIN",
+                )
+                db.session.add(admin_user)
+                db.session.commit()
+            
+            # Create script directly in database
+            import uuid
+            script_uuid = str(uuid.uuid4())[:8]
+            script = Script(
+                name="Admin Test Script",
+                slug=f"admin-test-script-{script_uuid}",
+                user_id=admin_user.id,
+            )
+            script.status = "SUCCESS"  # Published and ready
+            script.public = True
+            db.session.add(script)
+            db.session.commit()
+            script_id = str(script.id)
 
         with patch("gefapi.tasks.docker.docker_run.delay"):
             execution_response = client.post(
@@ -128,22 +158,38 @@ class TestExecutionUpdateAuthFix:
         self, client, auth_headers_user, auth_headers_admin
     ):
         """Test that admin can still update any execution"""
-        # Regular user creates execution
-        script_data = {
-            "name": "User Test Script",
-            "slug": "user-test-script",
-            "type": "PYTHON",
-            "source_code": "print('User script')",
-            "public": True,
-        }
+        # Regular user creates execution using direct database access
+        from gefapi import db
+        from gefapi.models import Script, User
 
-        script_response = client.post(
-            "/api/v1/script",
-            data=json.dumps(script_data),
-            headers=auth_headers_user,
-            content_type="application/json",
-        )
-        script_id = script_response.json["data"]["id"]
+        with client.application.app_context():
+            # Get regular user (use the existing user@test.com from fixtures)
+            user = User.query.filter_by(email="user@test.com").first()
+            if not user:
+                user = User(
+                    email="user@test.com",
+                    password="user123",
+                    name="Regular User",
+                    country="Test Country",
+                    institution="Test Institution",
+                    role="USER",
+                )
+                db.session.add(user)
+                db.session.commit()
+            
+            # Create script directly in database
+            import uuid
+            script_uuid = str(uuid.uuid4())[:8]
+            script = Script(
+                name="User Test Script",
+                slug=f"user-test-script-{script_uuid}",
+                user_id=user.id,
+            )
+            script.status = "SUCCESS"  # Published and ready
+            script.public = True
+            db.session.add(script)
+            db.session.commit()
+            script_id = str(script.id)
 
         with patch("gefapi.tasks.docker.docker_run.delay"):
             execution_response = client.post(
