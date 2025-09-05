@@ -8,8 +8,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = 'merge_merge_pending_refresh'
-down_revision = ('add_refresh_tokens', '9a3b4c5d6e7f')
+revision = '7b6a9c8d5e4f'
+down_revision = ('8f9a0b1c2d3e', '9a3b4c5d6e7f')
 branch_labels = None
 depends_on = None
 

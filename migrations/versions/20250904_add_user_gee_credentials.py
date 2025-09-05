@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'add_user_gee_credentials'
-down_revision = 'merge_merge_pending_refresh'
+revision = 'a1b2c3d4e5f6'
+down_revision = '4e5f6a7b8c9d'
 branch_labels = None
 depends_on = None
 

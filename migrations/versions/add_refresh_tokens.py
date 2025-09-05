@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers
-revision = 'add_refresh_tokens'
+revision = '8f9a0b1c2d3e'
 down_revision = 'g23bc4de5678'
 branch_labels = None
 depends_on = None

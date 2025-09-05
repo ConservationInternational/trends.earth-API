@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "merge_st_be_2025"
+revision = "9a3b4c5d6e7f"
 down_revision = ("8f2e1d0c9b8a", "3eedf39b54dd")  # Multiple parents
 branch_labels = None
 depends_on = None
