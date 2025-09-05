@@ -5,8 +5,8 @@ This test verifies the fix for the issue where execution results were not being
 saved when status was also updated in the same request (commit 1447c9c bug).
 """
 
-import uuid
 from unittest.mock import patch
+import uuid
 
 import pytest
 
@@ -28,7 +28,7 @@ class TestExecutionResultsAndStatusUpdate:
     def test_update_status_and_results_simultaneously(self, mock_email, app):
         """
         Test that updating status=FINISHED and results together works correctly.
-        
+
         This was the main bug - when containers sent both status and results,
         only the status was saved but results remained empty {}.
         """
@@ -89,7 +89,7 @@ class TestExecutionResultsAndStatusUpdate:
             assert updated_execution.status == "FINISHED"
             assert updated_execution.end_date is not None
             assert updated_execution.progress == 100  # Auto-set for terminal state
-            
+
             # CRITICAL: Results should be saved, not remain empty
             assert updated_execution.results is not None
             assert updated_execution.results != {}
@@ -162,7 +162,7 @@ class TestExecutionResultsAndStatusUpdate:
     def test_update_results_without_status_change(self, app):
         """
         Test that updating only results (without status) works correctly.
-        
+
         This should work in both the old and new code.
         """
         with app.app_context():
@@ -322,13 +322,13 @@ class TestExecutionResultsAndStatusUpdate:
 
             # Update 1: Start running
             ExecutionService.update_execution({"status": "RUNNING"}, execution_id)
-            
+
             updated = ExecutionService.get_execution(execution_id)
             assert updated.status == "RUNNING"
 
             # Update 2: Progress only
             ExecutionService.update_execution({"progress": 25}, execution_id)
-            
+
             updated = ExecutionService.get_execution(execution_id)
             assert updated.progress == 25
             assert updated.status == "RUNNING"
@@ -337,7 +337,7 @@ class TestExecutionResultsAndStatusUpdate:
             ExecutionService.update_execution(
                 {"results": {"partial": "output"}}, execution_id
             )
-            
+
             updated = ExecutionService.get_execution(execution_id)
             assert updated.results["partial"] == "output"
             assert updated.status == "RUNNING"
@@ -350,7 +350,7 @@ class TestExecutionResultsAndStatusUpdate:
                 },
                 execution_id,
             )
-            
+
             updated = ExecutionService.get_execution(execution_id)
             assert updated.progress == 75
             assert updated.results["more"] == "data"
@@ -369,7 +369,7 @@ class TestExecutionResultsAndStatusUpdate:
                 },
                 execution_id,
             )
-            
+
             final = ExecutionService.get_execution(execution_id)
             assert final.status == "FINISHED"
             assert final.progress == 90  # Preserved explicit progress
