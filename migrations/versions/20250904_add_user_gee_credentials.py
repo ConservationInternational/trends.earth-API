@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'add_user_gee_credentials'
-down_revision = 'replace_active_pending'
+down_revision = 'merge_merge_pending_refresh'
 branch_labels = None
 depends_on = None
 
