@@ -196,6 +196,99 @@ def update_execution_status_with_logging(
 
 
 class ExecutionService:
+    """EXECUTION SERVICE"""
+
+    @staticmethod
+    def _build_execution_environment(user, execution_id):
+        """
+        Build environment variables for script execution container.
+
+        Args:
+            user: User model instance executing the script
+            execution_id: ID of the execution
+
+        Returns:
+            dict: Environment variables to pass to the container
+        """
+        # Start with base environment variables
+        environment = SETTINGS.get("environment", {}).copy()
+        environment["EXECUTION_ID"] = execution_id
+
+        # Add GEE authentication based on user's credential type
+        if user and user.has_gee_credentials():
+            if user.gee_credentials_type == "oauth":
+                # Add OAuth credentials for GEE authentication
+                logger.info(
+                    f"Adding OAuth credentials for user {user.email} "
+                    f"execution {execution_id}"
+                )
+
+                access_token, refresh_token = user.get_gee_oauth_credentials()
+                if access_token and refresh_token:
+                    environment.update(
+                        {
+                            "GEE_OAUTH_ACCESS_TOKEN": access_token,
+                            "GEE_OAUTH_REFRESH_TOKEN": refresh_token,
+                            "GOOGLE_OAUTH_CLIENT_ID": environment.get(
+                                "GOOGLE_OAUTH_CLIENT_ID"
+                            ),
+                            "GOOGLE_OAUTH_CLIENT_SECRET": environment.get(
+                                "GOOGLE_OAUTH_CLIENT_SECRET"
+                            ),
+                            "GOOGLE_OAUTH_TOKEN_URI": environment.get(
+                                "GOOGLE_OAUTH_TOKEN_URI"
+                            ),
+                        }
+                    )
+                    logger.info(
+                        f"OAuth environment variables added for user {user.email}"
+                    )
+                else:
+                    logger.warning(
+                        f"User {user.email} has OAuth credential type "
+                        "but missing tokens"
+                    )
+
+            elif user.gee_credentials_type == "service_account":
+                # Add user's service account credentials
+                logger.info(
+                    f"Adding user service account credentials for user "
+                    f"{user.email} execution {execution_id}"
+                )
+
+                service_account_data = user.get_gee_service_account()
+                if service_account_data:
+                    import base64
+                    import json
+
+                    # Encode service account as base64 for container
+                    service_account_json = json.dumps(service_account_data)
+                    service_account_b64 = base64.b64encode(
+                        service_account_json.encode()
+                    ).decode()
+                    environment["EE_SERVICE_ACCOUNT_JSON"] = service_account_b64
+                    logger.info(
+                        f"User service account credentials added for user {user.email}"
+                    )
+                else:
+                    logger.warning(
+                        f"User {user.email} has service account credential type "
+                        "but missing data"
+                    )
+
+        # If no user credentials, fall back to default service account (if configured)
+        if not user or not user.has_gee_credentials():
+            if environment.get("EE_SERVICE_ACCOUNT_JSON"):
+                logger.info(
+                    f"Using default service account for execution {execution_id}"
+                )
+            else:
+                logger.warning(
+                    f"No GEE credentials available for execution {execution_id}"
+                )
+
+        return environment
+
     """Execution Class"""
 
     @staticmethod
@@ -445,8 +538,9 @@ class ExecutionService:
             raise error
 
         try:
-            environment = SETTINGS.get("environment", {})
-            environment["EXECUTION_ID"] = execution.id
+            environment = ExecutionService._build_execution_environment(
+                user, execution.id
+            )
             docker_run.delay(execution.id, script.slug, environment, params)
         except Exception as e:
             rollbar.report_exc_info()

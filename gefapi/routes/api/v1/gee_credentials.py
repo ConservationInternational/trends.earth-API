@@ -38,7 +38,7 @@ def get_user_gee_credentials():
 
     **Response Fields**:
     - `has_credentials`: Boolean indicating if user has GEE credentials configured
-    - `credentials_type`: Type of credentials ("oauth" or "service_account"), null if none
+    - `credentials_type`: Type of credentials ("oauth" or "service_account"), or null
     - `created_at`: ISO timestamp when credentials were last set, null if none
 
     **Error Responses**:
@@ -81,7 +81,8 @@ def initiate_gee_oauth():
 
     **Prerequisites**:
     - Server must have Google OAuth client credentials configured
-    - Environment variables GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be set
+    - Environment variables GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET
+      required
 
     **Response Schema**:
     ```json
@@ -180,10 +181,10 @@ def handle_gee_oauth_callback():
     ```
 
     **Error Responses**:
-    - `400 Bad Request`: Missing code/state, invalid authorization code, or JSON parsing error
+    - `400 Bad Request`: Missing code/state, invalid code, or JSON parsing error
     - `401 Unauthorized`: JWT token required or invalid
     - `404 Not Found`: User not found
-    - `500 Internal Server Error`: Failed to exchange code for tokens or save credentials
+    - `500 Internal Server Error`: Failed to exchange code or save credentials
     """
     try:
         user_id = get_jwt_identity()
@@ -268,7 +269,7 @@ def upload_gee_service_account():
         "type": "service_account",
         "project_id": "your-gee-project",
         "private_key_id": "key-id",
-        "private_key": "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n",
+        "private_key": "-----BEGIN PRIVATE KEY-----...-----END PRIVATE KEY-----\\n",
         "client_email": "service-account@your-gee-project.iam.gserviceaccount.com",
         "client_id": "client-id",
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -280,7 +281,7 @@ def upload_gee_service_account():
     ```
 
     **Required Fields**:
-    - `service_account_key`: Complete Google service account JSON key object or JSON string
+    - `service_account_key`: Google service account JSON key object or JSON string
 
     **Service Account Key Requirements**:
     - Must be a valid Google Cloud service account key
@@ -301,7 +302,7 @@ def upload_gee_service_account():
     - Rotate keys regularly following Google Cloud security best practices
 
     **Error Responses**:
-    - `400 Bad Request`: Missing service account key, invalid JSON format, or key validation failed
+    - `400 Bad Request`: Missing/invalid service account key, or validation failed
     - `401 Unauthorized`: JWT token required or invalid
     - `404 Not Found`: User not found
     - `500 Internal Server Error`: Failed to save credentials
@@ -437,7 +438,7 @@ def test_gee_credentials():
     4. If credentials are invalid/expired, refresh or update credentials
 
     **Error Responses**:
-    - `400 Bad Request`: No GEE credentials configured or credentials are invalid/expired
+    - `400 Bad Request`: GEE credentials not configured or invalid/expired
     - `401 Unauthorized`: JWT token required or invalid
     - `404 Not Found`: User not found
     - `500 Internal Server Error`: Failed to test credentials
@@ -496,7 +497,7 @@ def get_user_gee_credentials_admin(user_id):
     - `user_id`: Target user's ID
     - `user_email`: Target user's email address
     - `has_credentials`: Boolean indicating if user has GEE credentials
-    - `credentials_type`: Type of credentials ("oauth" or "service_account"), null if none
+    - `credentials_type`: Type of credentials ("oauth" or "service_account"), or null
     - `created_at`: ISO timestamp when credentials were last set, null if none
 
     **Error Responses**:
@@ -539,7 +540,7 @@ def get_user_gee_credentials_admin(user_id):
 @jwt_required()
 def upload_user_gee_service_account_admin(user_id):
     """
-    Upload Google Earth Engine service account credentials for another user (Admin only).
+    Upload Google Earth Engine service account for another user (Admin only).
 
     **Authentication**: JWT token required
     **Authorization**: ADMIN or SUPERADMIN role required
@@ -555,7 +556,7 @@ def upload_user_gee_service_account_admin(user_id):
         "type": "service_account",
         "project_id": "your-gee-project",
         "private_key_id": "key-id",
-        "private_key": "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n",
+        "private_key": "-----BEGIN PRIVATE KEY-----...-----END PRIVATE KEY-----\\n",
         "client_email": "service-account@your-gee-project.iam.gserviceaccount.com",
         "client_id": "client-id",
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -567,7 +568,7 @@ def upload_user_gee_service_account_admin(user_id):
     ```
 
     **Required Fields**:
-    - `service_account_key`: Complete Google service account JSON key object or JSON string
+    - `service_account_key`: Complete service account JSON key object or JSON string
 
     **Response Schema**:
     ```json
@@ -588,7 +589,7 @@ def upload_user_gee_service_account_admin(user_id):
     - Replaces any existing credentials for the user
 
     **Error Responses**:
-    - `400 Bad Request`: Missing service account key, invalid JSON, or key validation failed
+    - `400 Bad Request`: Missing service account, invalid JSON, or validation failed
     - `401 Unauthorized`: JWT token required or invalid
     - `403 Forbidden`: Admin access required
     - `404 Not Found`: Target user not found
@@ -753,7 +754,7 @@ def test_user_gee_credentials_admin(user_id):
     - Pre-execution validation for GEE scripts
 
     **Error Responses**:
-    - `400 Bad Request`: No GEE credentials configured for user or credentials are invalid/expired
+    - `400 Bad Request`: No GEE credentials or credentials are invalid/expired
     - `401 Unauthorized`: JWT token required or invalid
     - `403 Forbidden`: Admin access required
     - `404 Not Found`: Target user not found
