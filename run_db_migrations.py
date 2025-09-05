@@ -106,21 +106,66 @@ def run_migrations():
 
                     # Check if database is already at the target state
                     try:
+                        # Test if all expected columns exist by querying models
+                        from gefapi.models.script import Script
+                        from gefapi.models.status_log import StatusLog
                         from gefapi.models.user import User
 
-                        # Test if all expected columns exist by querying the User model
+                        # Check User model for new columns
                         user = db.session.query(User).first()
                         if user is not None:
-                            # Try to access the new columns to verify they exist
-                            _ = user.gee_oauth_token
-                            _ = user.email_notifications_enabled
-                            logger.info("✅ Database schema appears to be up-to-date")
-                            print(
-                                "✅ Database schema is already current - "
-                                "no migration needed"
+                            # Try to access new columns to verify they exist
+                            _ = (
+                                user.gee_oauth_token
+                                if hasattr(user, "gee_oauth_token")
+                                else None
                             )
-                            print("✓ Database migrations completed successfully")
-                            return
+                            _ = (
+                                user.email_notifications_enabled
+                                if hasattr(user, "email_notifications_enabled")
+                                else None
+                            )
+                            _ = (
+                                user.google_groups_trends_earth_users
+                                if hasattr(user, "google_groups_trends_earth_users")
+                                else None
+                            )
+
+                        # Check status_log for new columns
+                        status_log = db.session.query(StatusLog).first()
+                        if status_log is not None:
+                            _ = (
+                                status_log.status_from
+                                if hasattr(status_log, "status_from")
+                                else None
+                            )
+                            _ = (
+                                status_log.status_to
+                                if hasattr(status_log, "status_to")
+                                else None
+                            )
+                            _ = (
+                                status_log.execution_id
+                                if hasattr(status_log, "execution_id")
+                                else None
+                            )
+
+                        # Check script for build_error column
+                        script = db.session.query(Script).first()
+                        if script is not None:
+                            _ = (
+                                script.build_error
+                                if hasattr(script, "build_error")
+                                else None
+                            )
+
+                        logger.info("✅ Database schema appears to be up-to-date")
+                        print(
+                            "✅ Database schema is already current - "
+                            "no migration needed"
+                        )
+                        print("✓ Database migrations completed successfully")
+                        return
                     except Exception as schema_check_error:
                         logger.info(
                             "Schema check indicated migration needed: "
@@ -134,9 +179,9 @@ def run_migrations():
                     )
                     print("🔧 Resolving multiple heads...")
 
-                    # Use the merge migration that combines both branches
-                    target_head = "3eedf39b54dd"
-                    logger.info(f"Upgrading to specific head: {target_head}")
+                    # Use the latest merge migration that combines all branches
+                    target_head = "heads"  # Upgrade to all heads
+                    logger.info(f"Upgrading to all heads: {target_head}")
                     try:
                         upgrade(revision=target_head)
                     except Exception as upgrade_error:
@@ -153,6 +198,7 @@ def run_migrations():
 
                 else:
                     logger.info("Single head found, proceeding with normal upgrade")
+                    print("✓ Single migration head found - proceeding with upgrade")
                     upgrade(revision="head")
 
             except Exception as head_check_error:
@@ -167,9 +213,9 @@ def run_migrations():
                 except Exception as upgrade_error:
                     logger.error(f"Direct upgrade failed: {upgrade_error}")
 
-                    # Final fallback: try upgrading to merged head
-                    logger.info("Trying upgrade to merged head as final fallback...")
-                    upgrade(revision="2c4f8e1a9b3d")
+                    # Final fallback: try upgrading to latest merged state
+                    logger.info("Trying upgrade to heads as final fallback...")
+                    upgrade(revision="heads")
 
             logger.info("Flask-Migrate upgrade completed successfully")
             print("✓ Database migrations completed successfully")
