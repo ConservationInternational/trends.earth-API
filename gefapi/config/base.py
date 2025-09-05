@@ -21,6 +21,12 @@ SETTINGS = {
         "API_USER": os.getenv("API_USER"),
         "API_PASSWORD": os.getenv("API_PASSWORD"),
         "API_URL": os.getenv("API_URL"),
+        # OAuth client credentials for GEE authentication
+        "GOOGLE_OAUTH_CLIENT_ID": os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
+        "GOOGLE_OAUTH_CLIENT_SECRET": os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
+        "GOOGLE_OAUTH_TOKEN_URI": os.getenv(
+            "GOOGLE_OAUTH_TOKEN_URI", "https://oauth2.googleapis.com/token"
+        ),
     },
     "ROLES": ["SUPERADMIN", "ADMIN", "USER"],
     "SQLALCHEMY_DATABASE_URI": os.getenv("DATABASE_URL")

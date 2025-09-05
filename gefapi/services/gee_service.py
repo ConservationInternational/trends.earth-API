@@ -19,9 +19,13 @@ class GEEService:
     """Service for managing Google Earth Engine tasks"""
 
     @staticmethod
-    def _initialize_ee() -> bool:
+    def _initialize_ee(user=None) -> bool:
         """
-        Initialize Google Earth Engine with service account credentials.
+        Initialize Google Earth Engine with service account credentials or
+        user credentials.
+
+        Args:
+            user: Optional User model instance to use user-specific credentials
 
         Returns:
             True if initialization successful, False otherwise
@@ -44,6 +48,50 @@ class GEEService:
                 logger.debug(
                     f"Earth Engine not initialized, proceeding with initialization: {e}"
                 )
+
+            # Try user credentials first if provided
+            if user and user.has_gee_credentials():
+                logger.info(
+                    f"Attempting to initialize GEE with user {user.email} credentials"
+                )
+
+                if user.gee_credentials_type == "oauth":
+                    if GEEService._initialize_ee_with_oauth(user):
+                        logger.info(
+                            f"Successfully initialized GEE with OAuth for "
+                            f"user {user.email}"
+                        )
+                        return True
+                    logger.warning(
+                        f"Failed to initialize GEE with OAuth for user {user.email}, "
+                        "falling back to service account"
+                    )
+
+                elif user.gee_credentials_type == "service_account":
+                    if GEEService._initialize_ee_with_user_service_account(user):
+                        logger.info(
+                            f"Successfully initialized GEE with service account for "
+                            f"user {user.email}"
+                        )
+                        return True
+                    logger.warning(
+                        f"Failed to initialize GEE with user service account for "
+                        f"user {user.email}, falling back to default"
+                    )
+
+            # Fall back to default service account
+            return GEEService._initialize_ee_with_default_service_account()
+
+        except Exception as e:
+            logger.error(f"Failed to initialize Google Earth Engine: {e}")
+            rollbar.report_exc_info()
+            return False
+
+    @staticmethod
+    def _initialize_ee_with_default_service_account() -> bool:
+        """Initialize Google Earth Engine with the default service account"""
+        try:
+            import ee  # type: ignore
 
             # Get service account JSON from environment
             service_account_json = SETTINGS.get("environment", {}).get(
@@ -95,7 +143,10 @@ class GEEService:
                     service_account_email, temp_key_path
                 )  # type: ignore
                 ee.Initialize(credentials)  # type: ignore
-                logger.info("Successfully initialized Google Earth Engine")
+                logger.info(
+                    "Successfully initialized Google Earth Engine with "
+                    "default service account"
+                )
                 return True
             finally:
                 # Clean up the temporary file
@@ -103,8 +154,161 @@ class GEEService:
                     os.unlink(temp_key_path)
 
         except Exception as e:
-            logger.error(f"Failed to initialize Google Earth Engine: {e}")
-            rollbar.report_exc_info()
+            logger.error(
+                f"Failed to initialize Google Earth Engine with "
+                f"default service account: {e}"
+            )
+            return False
+
+    @staticmethod
+    def _initialize_ee_with_oauth(user) -> bool:
+        """Initialize Google Earth Engine with user OAuth credentials"""
+        try:
+            import ee  # type: ignore
+            from google.auth.exceptions import RefreshError
+            from google.oauth2.credentials import Credentials
+
+            access_token, refresh_token = user.get_gee_oauth_credentials()
+            if not access_token or not refresh_token:
+                logger.warning(f"Missing OAuth tokens for user {user.email}")
+                return False
+
+            # Create OAuth credentials
+            credentials = Credentials(
+                token=access_token,
+                refresh_token=refresh_token,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
+                client_secret=os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
+                scopes=["https://www.googleapis.com/auth/earthengine"],
+            )
+
+            # Try to refresh token if needed
+            try:
+                if credentials.expired and credentials.refresh_token:
+                    logger.info(f"Refreshing OAuth token for user {user.email}")
+                    credentials.refresh(None)
+                    # Update stored tokens
+                    user.set_gee_oauth_credentials(
+                        credentials.token, credentials.refresh_token
+                    )
+                    from gefapi import db
+
+                    db.session.commit()
+            except RefreshError as e:
+                logger.error(
+                    f"Failed to refresh OAuth token for user {user.email}: {e}"
+                )
+                return False
+
+            # Initialize Earth Engine with OAuth credentials
+            ee.Initialize(credentials)  # type: ignore
+            logger.info(
+                f"Successfully initialized Google Earth Engine with OAuth for "
+                f"user {user.email}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Failed to initialize Google Earth Engine with OAuth for "
+                f"user {user.email}: {e}"
+            )
+            return False
+
+    @staticmethod
+    def _initialize_ee_with_user_service_account(user) -> bool:
+        """Initialize Google Earth Engine with user service account"""
+        try:
+            import ee  # type: ignore
+
+            service_account_data = user.get_gee_service_account()
+            if not service_account_data:
+                logger.warning(f"No service account data for user {user.email}")
+                return False
+
+            # Validate service account data structure
+            required_fields = ["client_email", "private_key", "type"]
+            if not all(field in service_account_data for field in required_fields):
+                logger.error(f"Invalid service account data for user {user.email}")
+                return False
+
+            # Write service account data to a temporary file
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False
+            ) as temp_file:
+                json.dump(service_account_data, temp_file)
+                temp_key_path = temp_file.name
+
+            try:
+                # Initialize Earth Engine with user service account
+                service_account_email = service_account_data["client_email"]
+                credentials = ee.ServiceAccountCredentials(  # type: ignore[attr-defined]
+                    service_account_email, temp_key_path
+                )  # type: ignore
+                ee.Initialize(credentials)  # type: ignore
+                logger.info(
+                    f"Successfully initialized Google Earth Engine with "
+                    f"service account for user {user.email}"
+                )
+                return True
+            finally:
+                # Clean up the temporary file
+                with contextlib.suppress(Exception):
+                    os.unlink(temp_key_path)
+
+        except Exception as e:
+            logger.error(
+                f"Failed to initialize Google Earth Engine with user "
+                f"service account for user {user.email}: {e}"
+            )
+            return False
+
+    @staticmethod
+    def validate_service_account_key(service_account_data: dict[str, Any]) -> bool:
+        """Validate a service account key structure and basic functionality"""
+        try:
+            # Check required fields
+            required_fields = [
+                "type",
+                "project_id",
+                "private_key_id",
+                "private_key",
+                "client_email",
+                "client_id",
+                "auth_uri",
+                "token_uri",
+            ]
+
+            if not all(field in service_account_data for field in required_fields):
+                missing_fields = [
+                    field
+                    for field in required_fields
+                    if field not in service_account_data
+                ]
+                logger.error(
+                    f"Service account key missing required fields: {missing_fields}"
+                )
+                return False
+
+            # Check that it's a service account
+            if service_account_data.get("type") != "service_account":
+                logger.error("Invalid service account type")
+                return False
+
+            # Basic format validation
+            if not service_account_data.get("client_email", "").endswith("@"):
+                logger.error("Invalid client email format")
+                return False
+
+            if not service_account_data.get("private_key", "").startswith("-----BEGIN"):
+                logger.error("Invalid private key format")
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error validating service account key: {e}")
             return False
 
     @staticmethod
@@ -146,12 +350,13 @@ class GEEService:
         return list(task_ids)
 
     @staticmethod
-    def cancel_gee_task(task_id: str) -> dict[str, Any]:
+    def cancel_gee_task(task_id: str, user=None) -> dict[str, Any]:
         """
         Cancel a Google Earth Engine task using the Earth Engine API.
 
         Args:
             task_id: The GEE task ID to cancel
+            user: Optional User model instance to use user-specific credentials
 
         Returns:
             Dictionary with cancellation result information
@@ -160,7 +365,7 @@ class GEEService:
 
         try:
             # Initialize Earth Engine
-            if not GEEService._initialize_ee():
+            if not GEEService._initialize_ee(user):
                 result["error"] = "Failed to initialize Google Earth Engine"
                 return result
 
@@ -313,13 +518,14 @@ class GEEService:
 
     @staticmethod
     def cancel_gee_tasks_from_execution(
-        execution_logs: list[str],
+        execution_logs: list[str], user=None
     ) -> list[dict[str, Any]]:
         """
         Extract GEE task IDs from execution logs and attempt to cancel them.
 
         Args:
             execution_logs: List of log text entries from the execution
+            user: Optional User model instance to use user-specific credentials
 
         Returns:
             List of cancellation results for each task found
@@ -338,7 +544,7 @@ class GEEService:
         # Cancel each task
         results = []
         for task_id in task_ids:
-            result = GEEService.cancel_gee_task(task_id)
+            result = GEEService.cancel_gee_task(task_id, user)
             results.append(result)
 
         return results
