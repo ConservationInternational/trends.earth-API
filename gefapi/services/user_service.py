@@ -325,6 +325,32 @@ class UserService:
 
     @staticmethod
     def update_user(user, user_id):
+        """Update user profile information including notification preferences
+
+        Updates various user fields including basic profile information and
+        preferences like email notification settings.
+
+        Args:
+            user (dict): Dictionary containing fields to update:
+                - name (str, optional): User's display name
+                - country (str, optional): User's country
+                - institution (str, optional): User's institution/organization
+                - role (str, optional): User's role (filtered by permissions)
+                - email_notifications_enabled (bool, optional): Email notification
+                  preference
+            user_id (str): UUID of the user to update
+
+        Returns:
+            User: Updated user object
+
+        Raises:
+            UserNotFound: If user with given ID doesn't exist
+
+        Notes:
+            - Role updates are filtered based on user permissions
+            - email_notifications_enabled must be a boolean value
+            - Automatically updates the updated_at timestamp
+        """
         logger.info("[SERVICE]: Updating user")
         current_user = UserService.get_user(user_id=user_id)
         if not current_user:

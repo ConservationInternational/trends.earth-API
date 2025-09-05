@@ -496,6 +496,32 @@ class ExecutionService:
 
     @staticmethod
     def update_execution(execution, execution_id):
+        """Update execution status, progress, or results and send notifications
+
+        Updates an execution's status, progress, or results. For terminal status
+        updates (FINISHED, FAILED, CANCELLED), automatically sends email
+        notifications to users who have email notifications enabled.
+
+        Args:
+            execution (dict): Dictionary containing fields to update:
+                - status (str, optional): New execution status
+                - progress (int, optional): Execution progress percentage
+                - results (dict, optional): Execution results data
+            execution_id (str): UUID of the execution to update
+
+        Returns:
+            Execution: Updated execution object
+
+        Raises:
+            ExecutionNotFound: If execution with given ID doesn't exist
+            Exception: If no valid fields provided for update
+
+        Notes:
+            - Email notifications are sent only for terminal states when user
+              has email_notifications_enabled=True
+            - Status updates trigger status logging via helper function
+            - Email failures don't prevent execution status updates
+        """
         logger.info("[SERVICE]: Updating execution")
         status = execution.get("status", None)
         progress = execution.get("progress", None)

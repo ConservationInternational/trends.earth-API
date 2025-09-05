@@ -69,7 +69,20 @@ class User(db.Model):
         return f"<User {self.email!r}>"
 
     def serialize(self, include=None, exclude=None):
-        """Return object data in easily serializeable format"""
+        """Return object data in easily serializeable format
+
+        Args:
+            include (list, optional): List of additional fields to include
+                (e.g., 'google_groups', 'scripts')
+            exclude (list, optional): List of fields to exclude from serialization
+
+        Returns:
+            dict: User object serialized as dictionary including:
+                - Basic user fields: id, email, name, country, institution, role
+                - Timestamps: created_at, updated_at
+                - Preferences: email_notifications_enabled
+                - Optional fields based on include parameter
+        """
         include = include if include else []
         exclude = exclude if exclude else []
         user = {
