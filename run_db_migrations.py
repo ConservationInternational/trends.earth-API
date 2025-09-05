@@ -107,6 +107,7 @@ def run_migrations():
                     # Check if database is already at the target state
                     try:
                         from gefapi.models.user import User
+
                         # Test if all expected columns exist by querying the User model
                         user = db.session.query(User).first()
                         if user is not None:
@@ -114,11 +115,15 @@ def run_migrations():
                             _ = user.gee_oauth_token
                             _ = user.email_notifications_enabled
                             logger.info("✅ Database schema appears to be up-to-date")
-                            print("✅ Database schema is already current - no migration needed")
+                            print(
+                                "✅ Database schema is already current - no migration needed"
+                            )
                             print("✓ Database migrations completed successfully")
                             return
                     except Exception as schema_check_error:
-                        logger.info(f"Schema check indicated migration needed: {schema_check_error}")
+                        logger.info(
+                            f"Schema check indicated migration needed: {schema_check_error}"
+                        )
 
                     # Try to upgrade to the known good merged head
                     logger.info(
@@ -132,13 +137,16 @@ def run_migrations():
                     try:
                         upgrade(revision=target_head)
                     except Exception as upgrade_error:
-                        if "already exists" in str(upgrade_error) or "DuplicateColumn" in str(upgrade_error):
-                            logger.info("✅ Database appears to be up-to-date (columns already exist)")
+                        if "already exists" in str(
+                            upgrade_error
+                        ) or "DuplicateColumn" in str(upgrade_error):
+                            logger.info(
+                                "✅ Database appears to be up-to-date (columns already exist)"
+                            )
                             print("✅ Database schema is already current")
-                            print("✓ Database migrations completed successfully") 
+                            print("✓ Database migrations completed successfully")
                             return
-                        else:
-                            raise upgrade_error
+                        raise upgrade_error
 
                 else:
                     logger.info("Single head found, proceeding with normal upgrade")
