@@ -40,6 +40,15 @@ are below: </p>
 
 
 def dict_to_query(params):
+    """
+    Convert dictionary parameters to URL query string format.
+    
+    Args:
+        params (dict): Dictionary of key-value pairs
+        
+    Returns:
+        str: URL-encoded query string without leading '?'
+    """
     query = ""
     for key in params:
         query += key + "=" + params.get(key) + "&"
@@ -151,7 +160,19 @@ def update_execution_status_with_logging(
 
 
 class ExecutionService:
-    """Execution Class"""
+    """
+    Service class for managing execution lifecycle and operations.
+    
+    This service handles all execution-related operations including:
+    - Creating new executions from script templates
+    - Querying and filtering executions with permissions
+    - Updating execution status with automatic status logging
+    - Cancelling running executions and associated resources
+    - Managing execution logs and monitoring
+    
+    All status updates use the centralized status tracking system to maintain
+    an audit trail of execution state changes.
+    """
 
     @staticmethod
     def get_executions(
@@ -165,6 +186,26 @@ class ExecutionService:
         filter_param=None,
         sort=None,
     ):
+        """
+        Retrieve executions with filtering, pagination, and permission controls.
+        
+        Args:
+            user: User object for permission checking
+            target_user_id (str, optional): Filter by specific user ID (admin only)
+            updated_at (datetime, optional): Filter by start date
+            status (str, optional): Filter by execution status
+            page (int): Page number for pagination (default: 1)
+            per_page (int): Results per page (default: 2000, max: 2000)
+            paginate (bool): Whether to apply pagination (default: True)
+            filter_param (str, optional): SQL-style filter expressions
+            sort (str, optional): SQL-style sort expressions
+            
+        Returns:
+            tuple: (executions list, total count)
+            
+        Raises:
+            Exception: If pagination parameters are invalid or filter permissions denied
+        """
         logger.info("[SERVICE]: Getting executions")
         logger.info("[DB]: QUERY")
 
@@ -380,6 +421,21 @@ class ExecutionService:
 
     @staticmethod
     def create_execution(script_id, params, user):
+        """
+        Create a new execution from a script template.
+        
+        Args:
+            script_id (str): UUID of the script to execute
+            params (dict): Execution parameters and configuration
+            user: User object creating the execution
+            
+        Returns:
+            Execution: Created execution object
+            
+        Raises:
+            ScriptNotFound: If script doesn't exist
+            ScriptStateNotValid: If script is not in SUCCESS state
+        """
         logger.info("[SERVICE]: Creating execution")
         script = ScriptService.get_script(script_id, user)
         if not script:
@@ -410,6 +466,20 @@ class ExecutionService:
 
     @staticmethod
     def get_execution(execution_id, user="fromservice"):
+        """
+        Retrieve a single execution by ID with permission checking.
+        
+        Args:
+            execution_id (str|UUID): UUID of the execution to retrieve
+            user (User|str): User object for permission checking, or "fromservice"
+                           for internal service calls
+                           
+        Returns:
+            Execution: The requested execution object
+            
+        Raises:
+            ExecutionNotFound: If execution doesn't exist or user lacks permission
+        """
         logger.info(f"[SERVICE]: Getting execution {execution_id}")
         logger.info("[DB]: QUERY")
         # user = 'from service' just in case the requests comes from the service
@@ -451,6 +521,25 @@ class ExecutionService:
 
     @staticmethod
     def update_execution(execution, execution_id):
+        """
+        Update execution properties including status, progress, and results.
+        
+        When status is updated, this method uses the centralized status tracking
+        system to automatically create status log entries and send notification
+        emails for terminal states.
+        
+        Args:
+            execution (dict): Dictionary containing fields to update
+                             (status, progress, results)
+            execution_id (str): UUID of the execution to update
+            
+        Returns:
+            Execution: Updated execution object
+            
+        Raises:
+            Exception: If no valid fields provided or execution not found
+            ExecutionNotFound: If execution doesn't exist
+        """
         logger.info("[SERVICE]: Updating execution")
         status = execution.get("status", None)
         progress = execution.get("progress", None)
@@ -507,6 +596,20 @@ class ExecutionService:
 
     @staticmethod
     def create_execution_log(log, execution_id):
+        """
+        Create a new log entry for an execution.
+        
+        Args:
+            log (dict): Log entry data containing 'text' and 'level' fields
+            execution_id (str): UUID of the execution to log for
+            
+        Returns:
+            ExecutionLog: Created log entry object
+            
+        Raises:
+            Exception: If required fields missing
+            ExecutionNotFound: If execution doesn't exist
+        """
         logger.info("[SERVICE]: Creating execution log")
         text = log.get("text", None)
         level = log.get("level", None)
@@ -529,6 +632,20 @@ class ExecutionService:
 
     @staticmethod
     def get_execution_logs(execution_id, start_date, last_id):
+        """
+        Retrieve execution logs with optional filtering.
+        
+        Args:
+            execution_id (str): UUID of the execution
+            start_date (datetime, optional): Filter logs after this date
+            last_id (int, optional): Filter logs after this log ID
+            
+        Returns:
+            list: List of ExecutionLog objects
+            
+        Raises:
+            ExecutionNotFound: If execution doesn't exist
+        """
         logger.info(f"[SERVICE]: Getting execution logs of execution {execution_id}: ")
         logger.info("[DB]: QUERY")
         try:
@@ -563,7 +680,26 @@ class ExecutionService:
 
     @staticmethod
     def cancel_execution(execution_id):
-        """Cancel an execution and any associated Google Earth Engine tasks"""
+        """
+        Cancel an execution and any associated Google Earth Engine tasks.
+        
+        This method performs a comprehensive cancellation process:
+        1. Stops Docker containers/services via Celery task
+        2. Cancels any Google Earth Engine tasks found in execution logs
+        3. Updates execution status to CANCELLED with detailed logging
+        4. Creates status log entries for the transition
+        
+        Args:
+            execution_id (str): UUID of the execution to cancel
+            
+        Returns:
+            dict: Cancellation results including execution data and detailed
+                  cancellation information for Docker and GEE resources
+                  
+        Raises:
+            ExecutionNotFound: If execution doesn't exist
+            Exception: If execution is already in terminal state or other errors
+        """
         logger.info(f"[SERVICE]: Canceling execution {execution_id}")
 
         from gefapi.services.gee_service import GEEService

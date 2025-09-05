@@ -9,7 +9,13 @@ logger = logging.getLogger()
 
 
 class StatusService:
-    """Status Service Class"""
+    """
+    Service class for retrieving and managing status log data.
+    
+    This service provides access to status log entries which track both
+    execution status transitions and system monitoring snapshots.
+    Supports filtering, sorting, and pagination for status log queries.
+    """
 
     @staticmethod
     def get_status_logs(
@@ -19,7 +25,22 @@ class StatusService:
         page=1,
         per_page=100,
     ):
-        """Get status logs with optional filtering and pagination"""
+        """
+        Get status logs with optional filtering and pagination.
+        
+        Retrieves status log entries which may include both execution status
+        transitions and system monitoring snapshots.
+        
+        Args:
+            start_date (datetime, optional): Filter logs after this timestamp
+            end_date (datetime, optional): Filter logs before this timestamp  
+            sort (str, optional): Sort field with optional '-' prefix for descending
+            page (int): Page number for pagination (default: 1)
+            per_page (int): Results per page (default: 100)
+            
+        Returns:
+            tuple: (status_logs list, total count)
+        """
         logger.info("[SERVICE]: Getting status logs")
         logger.info("[DB]: QUERY")
 

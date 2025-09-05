@@ -9,7 +9,23 @@ db.GUID = GUID
 
 
 class StatusLog(db.Model):
-    """StatusLog Model"""
+    """
+    StatusLog Model for tracking execution status changes and system monitoring.
+    
+    This model tracks both execution status transitions and overall system execution counts.
+    Each entry records a snapshot of the system state after a specific status change,
+    including details about which execution changed and what the transition was.
+    
+    Status transition entries (when status_from/status_to are provided):
+    - Record individual execution status changes
+    - Include execution ID and transition details
+    - Capture system state AFTER the change
+    
+    System monitoring entries (when status_from/status_to are None):
+    - Record periodic system health snapshots
+    - Include only execution counts by status
+    - Used for monitoring and analytics
+    """
 
     __tablename__ = "status_log"
     id = db.Column(db.Integer(), primary_key=True)
@@ -42,6 +58,20 @@ class StatusLog(db.Model):
         status_to=None,
         execution_id=None,
     ):
+        """
+        Initialize a StatusLog entry.
+        
+        Args:
+            executions_pending (int): Count of executions in PENDING status
+            executions_ready (int): Count of executions in READY status
+            executions_running (int): Count of executions in RUNNING status
+            executions_finished (int): Count of executions in FINISHED status
+            executions_failed (int): Count of executions in FAILED status
+            executions_cancelled (int): Count of executions in CANCELLED status
+            status_from (str, optional): Previous status for transition tracking
+            status_to (str, optional): New status for transition tracking
+            execution_id (str, optional): Execution ID for transition tracking
+        """
         self.executions_pending = executions_pending
         self.executions_ready = executions_ready
         self.executions_running = executions_running
@@ -56,7 +86,13 @@ class StatusLog(db.Model):
         return f"<StatusLog {self.id!r}>"
 
     def serialize(self):
-        """Return object data in easily serializeable format"""
+        """
+        Return object data in easily serializable format.
+        
+        Returns:
+            dict: Dictionary containing all status log fields including 
+                  execution counts, timestamp, and transition tracking fields
+        """
         return {
             "id": self.id,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
