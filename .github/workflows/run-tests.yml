@@ -1,9 +1,10 @@
 # TESTING STRATEGY:
 # 1. Run comprehensive tests following the same approach as local Docker setup
-# 2. Run tests by category with appropriate timeouts and fail-fast options
+# 2. Run tests by category with appropriate timeouts and NO fail-fast (show all failures)
 # 3. Use the same test configuration as local development environment
 # 4. Enable parallel test execution where possible
 # 5. Generate comprehensive coverage reports
+# 6. Continue running all tests even if some fail to show complete failure picture
 
 name: Run Tests
 
@@ -147,10 +148,10 @@ jobs:
       timeout-minutes: 25
       run: |
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-        # Run all tests like Docker setup: no coverage, fail-fast, comprehensive
+        # Run all tests like Docker setup: no coverage, continue on failures, comprehensive
         poetry run pytest tests/ \
           --no-cov \
-          -x \
+          --continue-on-collection-errors \
           --tb=short \
           --timeout=300 \
           --junitxml=comprehensive-test-results.xml \
@@ -303,8 +304,8 @@ jobs:
       run: |
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         poetry run pytest tests/test_integration.py \
-          --tb=short \
-          --maxfail=5 \
+          --tb=long \
+          --continue-on-collection-errors \
           --timeout=300 \
           --junitxml=comprehensive-integration-results.xml \
           -v
@@ -316,8 +317,8 @@ jobs:
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         poetry run pytest tests/test_performance.py \
           -m "slow" \
-          --tb=short \
-          --maxfail=3 \
+          --tb=long \
+          --continue-on-collection-errors \
           --timeout=300 \
           --junitxml=slow-performance-results.xml \
           -v || echo "Slow performance tests completed with issues"
@@ -369,7 +370,7 @@ jobs:
         
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Test coverage includes**:" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ **All tests run comprehensively** (Docker-style approach)" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ **All tests run comprehensively** (Docker-style approach, show all failures)" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ Unit tests (auth, executions, pagination, scripts, users, utils, status)" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ API validation tests (security, consistency, error handling)" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ Integration tests (full workflows)" >> $GITHUB_STEP_SUMMARY
@@ -381,10 +382,10 @@ jobs:
         echo "### ✨ Test Suite Improvements" >> $GITHUB_STEP_SUMMARY
         echo "**Previous setup**: Only 3-4 specific test methods were running" >> $GITHUB_STEP_SUMMARY
         echo "**Current setup**: Comprehensive Docker-style test execution including:" >> $GITHUB_STEP_SUMMARY
-        echo "- **Main job**: Complete test suite with \`pytest tests/\` (Docker approach)" >> $GITHUB_STEP_SUMMARY
-        echo "- **Integration job**: Additional comprehensive integration + slow performance tests" >> $GITHUB_STEP_SUMMARY
+        echo "- **Main job**: Complete test suite with \`pytest tests/\` (Docker approach, show all failures)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Integration job**: Additional comprehensive integration + slow performance tests (show all failures)" >> $GITHUB_STEP_SUMMARY
         echo "- **No test duplication**: Streamlined to avoid redundancy" >> $GITHUB_STEP_SUMMARY
-        echo "- **Multi-Python testing**: (3.9, 3.10, 3.11)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Multi-Python testing**: (3.10, 3.11, 3.12)" >> $GITHUB_STEP_SUMMARY
         echo "- **Coverage reporting**: Separate coverage run on Python 3.11" >> $GITHUB_STEP_SUMMARY
         echo "- **Enhanced reliability**: Database status checks, proper timeouts" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
