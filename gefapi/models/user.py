@@ -77,6 +77,8 @@ class User(db.Model):
         self.name = name
         self.country = country
         self.institution = institution
+        # Ensure email_notifications_enabled gets the default value
+        self.email_notifications_enabled = True
 
     def __repr__(self):
         return f"<User {self.email!r}>"
