@@ -1,6 +1,6 @@
 """Add executions_failed and executions_count columns to status_log table
 
-Revision ID: g23bc4de5678
+Revision ID: 123bc4de5678
 Revises: f12ab3cd4567
 Create Date: 2025-01-09 10:00:00.000000
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "g23bc4de5678"
+revision = "123bc4de5678"
 down_revision = "f12ab3cd4567"
 branch_labels = None
 depends_on = None

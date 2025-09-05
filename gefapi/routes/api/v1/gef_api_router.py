@@ -2111,7 +2111,7 @@ def update_profile():
 
     **Authentication**: JWT token required
     **Access**: Users can only update their own profile information
-    **Scope**: Updates current authenticated user's profile data and notification settings
+    **Scope**: Updates current authenticated user's profile data and settings
 
     **Request Schema**:
     ```json
@@ -2129,7 +2129,8 @@ def update_profile():
     - `name`: User's full name (string)
     - `country`: Two-letter country code (string)
     - `institution`: User's organization/institution (string)
-    - `email_notifications_enabled`: Enable/disable email notifications for execution completion (boolean)
+    - `email_notifications_enabled`: Enable/disable email notifications for
+      execution completion (boolean)
     - `password`: New password (must include `repeatPassword`)
     - `repeatPassword`: Password confirmation (must match `password`)
 
@@ -2152,7 +2153,8 @@ def update_profile():
     ```
 
     **Email Notification Behavior**:
-    - When `email_notifications_enabled=true` (default): User receives emails when executions finish
+    - When `email_notifications_enabled=true` (default): User receives emails
+      when executions finish
     - When `email_notifications_enabled=false`: No execution completion emails sent
     - Affects notifications for FINISHED, FAILED, and CANCELLED execution states
 

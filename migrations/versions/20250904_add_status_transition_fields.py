@@ -1,7 +1,7 @@
 """Add status transition fields to status_log
 
-Revision ID: 20250904_add_status_transition_fields
-Revises: 20250903_replace_active_with_pending_tracking
+Revision ID: 4a7c8b9d2e5f
+Revises: 2c4f8e1a9b3d
 Create Date: 2025-09-04 21:00:00.000000
 
 """
@@ -10,8 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = "20250904_add_status_transition_fields"
-down_revision = "20250903_replace_active_with_pending_tracking"
+revision = "4a7c8b9d2e5f"
+down_revision = "2c4f8e1a9b3d"
 branch_labels = None
 depends_on = None
 
