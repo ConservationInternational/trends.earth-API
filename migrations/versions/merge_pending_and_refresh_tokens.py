@@ -1,7 +1,7 @@
 """Merge status tracking and refresh tokens branches
 
 Revision ID: merge_merge_pending_refresh
-Revises: add_refresh_tokens, replace_active_pending
+Revises: add_refresh_tokens, 20250903_replace_active_with_pending_tracking
 Create Date: 2025-09-03 21:00:00.000000
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'merge_merge_pending_refresh'
-down_revision = ('add_refresh_tokens', 'replace_active_pending')
+down_revision = ('add_refresh_tokens', '20250903_replace_active_with_pending_tracking')
 branch_labels = None
 depends_on = None
 

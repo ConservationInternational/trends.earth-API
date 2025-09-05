@@ -1,6 +1,6 @@
 """Replace executions_active with executions_pending tracking
 
-Revision ID: replace_active_pending
+Revision ID: 20250903_replace_active_with_pending_tracking
 Revises: 20250115_improve_status_tracking
 Create Date: 2025-09-03 10:00:00.000000
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "replace_active_pending"
+revision = "20250903_replace_active_with_pending_tracking"
 down_revision = "20250115_improve_status_tracking"
 branch_labels = None
 depends_on = None

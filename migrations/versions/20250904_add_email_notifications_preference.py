@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '20250904_add_email_notifications_preference'
-down_revision = '20250903_replace_active_with_pending_tracking'
+down_revision = 'merge_st_be_2025'
 branch_labels = None
 depends_on = None
 
