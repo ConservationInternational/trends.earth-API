@@ -524,21 +524,33 @@ class ExecutionService:
         """
         Update execution properties including status, progress, and results.
 
+        Updates an execution's status, progress, or results. For terminal status
+        updates (FINISHED, FAILED, CANCELLED), automatically sends email
+        notifications to users who have email notifications enabled.
+
         When status is updated, this method uses the centralized status tracking
         system to automatically create status log entries and send notification
         emails for terminal states.
 
         Args:
-            execution (dict): Dictionary containing fields to update
-                             (status, progress, results)
+            execution (dict): Dictionary containing fields to update:
+                - status (str, optional): New execution status
+                - progress (int, optional): Execution progress percentage
+                - results (dict, optional): Execution results data
             execution_id (str): UUID of the execution to update
 
         Returns:
             Execution: Updated execution object
 
         Raises:
-            Exception: If no valid fields provided or execution not found
-            ExecutionNotFound: If execution doesn't exist
+            ExecutionNotFound: If execution with given ID doesn't exist
+            Exception: If no valid fields provided for update
+
+        Notes:
+            - Email notifications are sent only for terminal states when user
+              has email_notifications_enabled=True
+            - Status updates trigger status logging via helper function
+            - Email failures don't prevent execution status updates
         """
         logger.info("[SERVICE]: Updating execution")
         status = execution.get("status", None)
@@ -555,26 +567,34 @@ class ExecutionService:
         # Use the new helper function for status updates
         if status is not None:
             # Send notification email for terminal states
-            if status == "FINISHED" or status == "FAILED":
+            if status in ["FINISHED", "FAILED", "CANCELLED"]:
                 user = UserService.get_user(str(execution.user_id))
                 script = ScriptService.get_script(str(execution.script_id))
-                try:
-                    EmailService.send_html_email(
-                        recipients=[user.email],
-                        html=EXECUTION_FINISHED_MAIL_CONTENT.format(
-                            status,
-                            execution.params.get("task_name"),
-                            script.name,
-                            str(execution.id),
-                            execution.start_date,
-                            execution.end_date or datetime.datetime.utcnow(),
-                            status,
-                        ),
-                        subject="[trends.earth] Execution finished",
+
+                # Check if user has email notifications enabled
+                if user.email_notifications_enabled:
+                    try:
+                        EmailService.send_html_email(
+                            recipients=[user.email],
+                            html=EXECUTION_FINISHED_MAIL_CONTENT.format(
+                                status,
+                                execution.params.get("task_name"),
+                                script.name,
+                                str(execution.id),
+                                execution.start_date,
+                                execution.end_date or datetime.datetime.utcnow(),
+                                status,
+                            ),
+                            subject="[trends.earth] Execution finished",
+                        )
+                    except Exception:
+                        rollbar.report_exc_info()
+                        logger.info("Failed to send email - check email service")
+                else:
+                    logger.info(
+                        f"Email notification skipped for user {user.email} - "
+                        "notifications disabled"
                     )
-                except Exception:
-                    rollbar.report_exc_info()
-                    logger.info("Failed to send email - check email service")
 
             # Update status with logging
             update_execution_status_with_logging(execution, status)

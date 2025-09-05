@@ -2107,11 +2107,11 @@ def get_me():
 @jwt_required()
 def update_profile():
     """
-    Update current user's profile information.
+    Update current user's profile information and preferences.
 
     **Authentication**: JWT token required
     **Access**: Users can only update their own profile information
-    **Scope**: Updates current authenticated user's profile data
+    **Scope**: Updates current authenticated user's profile data and notification settings
 
     **Request Schema**:
     ```json
@@ -2119,6 +2119,7 @@ def update_profile():
       "name": "John Smith",
       "country": "CA",
       "institution": "New Research Institute",
+      "email_notifications_enabled": false,
       "password": "newSecurePassword123",
       "repeatPassword": "newSecurePassword123"
     }
@@ -2128,6 +2129,7 @@ def update_profile():
     - `name`: User's full name (string)
     - `country`: Two-letter country code (string)
     - `institution`: User's organization/institution (string)
+    - `email_notifications_enabled`: Enable/disable email notifications for execution completion (boolean)
     - `password`: New password (must include `repeatPassword`)
     - `repeatPassword`: Password confirmation (must match `password`)
 
@@ -2141,12 +2143,18 @@ def update_profile():
         "role": "USER",
         "country": "CA",
         "institution": "New Research Institute",
+        "email_notifications_enabled": false,
         "created_at": "2025-01-15T10:30:00Z",
         "updated_at": "2025-01-15T12:00:00Z",
         "is_active": true
       }
     }
     ```
+
+    **Email Notification Behavior**:
+    - When `email_notifications_enabled=true` (default): User receives emails when executions finish
+    - When `email_notifications_enabled=false`: No execution completion emails sent
+    - Affects notifications for FINISHED, FAILED, and CANCELLED execution states
 
     **Password Update Requirements**:
     - Both `password` and `repeatPassword` fields must be provided
@@ -2168,6 +2176,7 @@ def update_profile():
     **Error Responses**:
     - `400 Bad Request`: Invalid data, password mismatch, or no fields to update
     - `401 Unauthorized`: JWT token required
+    - `404 Not Found`: User not found
     - `422 Unprocessable Entity`: Validation failed
     - `500 Internal Server Error`: Profile update failed
     """
@@ -2189,7 +2198,14 @@ def update_profile():
             name = body.get("name", None)
             country = body.get("country", None)
             institution = body.get("institution", None)
-            if name is not None or country is not None or institution is not None:
+            email_notifications_enabled = body.get("email_notifications_enabled", None)
+
+            if (
+                name is not None
+                or country is not None
+                or institution is not None
+                or email_notifications_enabled is not None
+            ):
                 user = UserService.update_user(body, str(identity.id))
             else:
                 return error(status=400, detail="Not updated")

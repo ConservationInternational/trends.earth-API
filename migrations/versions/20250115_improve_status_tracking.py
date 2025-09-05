@@ -1,7 +1,7 @@
 """Improve status tracking
 
-Revision ID: 20250115_improve_status_tracking
-Revises: h34de5fg6789
+Revision ID: 8f2e1d0c9b8a
+Revises: 1f38b2475f49
 Create Date: 2025-01-15 10:00:00.000000
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "20250115_improve_status_tracking"
-down_revision = "h34de5fg6789"
+revision = "8f2e1d0c9b8a"
+down_revision = "1f38b2475f49"
 branch_labels = None
 depends_on = None
 
