@@ -371,10 +371,12 @@ class TestStatusLogUpdates:
                 assert status_log.status_to == terminal_status
                 assert status_log.execution_id == str(execution.id)
 
-                # Reset for next iteration
+                # Reset for next iteration (commit changes first)
+                db.session.commit()
                 execution.status = "RUNNING"
                 execution.end_date = None
                 execution.progress = 50
+                db.session.commit()
 
     def test_status_endpoint_with_new_schema(self, client, auth_headers_admin):
         """Test that the status endpoint works with the new schema"""
