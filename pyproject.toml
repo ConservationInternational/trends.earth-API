@@ -40,6 +40,8 @@ google-auth-httplib2 = ">=0.1.0"
 google-api-python-client = ">=2.0.0"
 # Google Earth Engine API
 earthengine-api = ">=1.0.0"
+# Cryptography for secure credential storage
+cryptography = ">=3.4.8"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"

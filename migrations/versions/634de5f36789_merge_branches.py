@@ -1,8 +1,8 @@
-"""Merge status tracking and build error migrations
+"""Merge branches: status_log and script enhancements
 
-Revision ID: 9f3e7c5a1b8d
-Revises: 8f2e1d0c9b8a, 3eedf39b54dd
-Create Date: 2025-09-02 12:00:00.000000
+Revision ID: 234de5f6789a
+Revises: 123bc4de5678, 115924e98eb5
+Create Date: 2025-07-09 15:50:00.000000
 
 """
 
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "9f3e7c5a1b8d"
-down_revision = ("8f2e1d0c9b8a", "3eedf39b54dd")  # Multiple parents
+revision = "634de5f36789"
+down_revision = ("923bc4de5678", "115924e98eb5")  # Multiple parents
 branch_labels = None
 depends_on = None
 

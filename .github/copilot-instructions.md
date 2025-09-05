@@ -204,7 +204,25 @@ docker exec -it trendsearth-api-admin-1 flask db upgrade
 docker compose -f docker-compose.admin.yml down
 ```
 
-**IMPORTANT - Migration Revision IDs**: All Alembic migration revision IDs must be short hexadecimal hashes (e.g., `3eedf39b54dd`, `7b6a9c8d5e4f`), not descriptive names or filenames. When creating or editing migrations, always use proper hash-format revision IDs to avoid Alembic KeyError exceptions.
+**CRITICAL - Migration Naming Requirements**: 
+- **Revision IDs**: ALL Alembic migration revision IDs MUST be 12-character hexadecimal hashes (e.g., `3eedf39b54dd`, `7b6a9c8d5e4f`). Never use descriptive names, letters beyond a-f, or non-hex characters.
+- **File Names**: Migration files MUST follow the format `{revision_id}_{description}.py` (e.g., `3eedf39b54dd_add_build_error_column.py`)
+- **Validation**: Run the migration chain analyzer to verify proper naming before committing
+- **Consequences**: Improper revision IDs cause Alembic KeyError exceptions and break the migration system
+
+**Example of CORRECT migration naming:**
+```python
+# File: 3eedf39b54dd_add_user_column.py
+revision = '3eedf39b54dd'  # ✅ Correct: 12-char hex hash
+down_revision = '2b4c6d8e0a1f'  # ✅ Correct: references proper hash
+
+# File naming: ✅ CORRECT
+3eedf39b54dd_add_user_column.py
+
+# File naming: ❌ INCORRECT
+add_user_column.py
+user_migration_2025.py
+```
 
 ### Common Issues and Solutions
 
