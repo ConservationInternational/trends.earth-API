@@ -564,8 +564,17 @@ class ExecutionService:
                 message="Execution with id " + execution_id + " does not exist"
             )
 
+        # Update progress and results first (regardless of status update)
+        if progress is not None:
+            execution.progress = progress
+        if results is not None:
+            execution.results = results
+
         # Use the new helper function for status updates
         if status is not None:
+            # Update status with logging
+            update_execution_status_with_logging(execution, status)
+
             # Send notification email for terminal states
             if status in ["FINISHED", "FAILED", "CANCELLED"]:
                 user = UserService.get_user(str(execution.user_id))
@@ -596,14 +605,8 @@ class ExecutionService:
                         "notifications disabled"
                     )
 
-            # Update status with logging
-            update_execution_status_with_logging(execution, status)
         else:
-            # For non-status updates, just update the fields without status logging
-            if progress is not None:
-                execution.progress = progress
-            if results is not None:
-                execution.results = results
+            # For non-status updates, need to commit the progress/results changes
             try:
                 logger.info("[DB]: ADD")
                 db.session.add(execution)

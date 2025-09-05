@@ -2149,8 +2149,7 @@ def update_profile():
         "updated_at": "2025-01-15T12:00:00Z",
         "is_active": true
       }
-    }
-    ```
+      ```
 
     **Email Notification Behavior**:
     - When `email_notifications_enabled=true` (default): User receives emails
