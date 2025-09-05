@@ -111,7 +111,7 @@ def run_migrations():
                     print("🔧 Resolving multiple heads...")
 
                     # Use the merge migration that combines both branches
-                    target_head = "merge_st_be_2025"
+                    target_head = "2c4f8e1a9b3d"
                     logger.info(f"Upgrading to merged head: {target_head}")
                     upgrade(revision=target_head)
 
@@ -133,7 +133,7 @@ def run_migrations():
 
                     # Final fallback: try upgrading to merged head
                     logger.info("Trying upgrade to merged head as final fallback...")
-                    upgrade(revision="merge_st_be_2025")
+                    upgrade(revision="2c4f8e1a9b3d")
 
             logger.info("Flask-Migrate upgrade completed successfully")
             print("✓ Database migrations completed successfully")
