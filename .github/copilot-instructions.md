@@ -204,6 +204,8 @@ docker exec -it trendsearth-api-admin-1 flask db upgrade
 docker compose -f docker-compose.admin.yml down
 ```
 
+**IMPORTANT - Migration Revision IDs**: All Alembic migration revision IDs must be short hexadecimal hashes (e.g., `3eedf39b54dd`, `7b6a9c8d5e4f`), not descriptive names or filenames. When creating or editing migrations, always use proper hash-format revision IDs to avoid Alembic KeyError exceptions.
+
 ### Common Issues and Solutions
 
 #### Docker Build Failures

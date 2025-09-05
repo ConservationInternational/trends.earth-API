@@ -67,6 +67,9 @@ class User(db.Model):
     gee_credentials_type = db.Column(db.String(20), nullable=True)
     gee_credentials_created_at = db.Column(db.DateTime(), nullable=True)
 
+    # Email notification preferences
+    email_notifications_enabled = db.Column(db.Boolean(), default=True, nullable=False)
+
     def __init__(self, email, password, name, country, institution, role="USER"):
         self.email = email
         self.password = self.set_password(password)
@@ -79,7 +82,20 @@ class User(db.Model):
         return f"<User {self.email!r}>"
 
     def serialize(self, include=None, exclude=None):
-        """Return object data in easily serializeable format"""
+        """Return object data in easily serializeable format
+
+        Args:
+            include (list, optional): List of additional fields to include
+                (e.g., 'google_groups', 'scripts')
+            exclude (list, optional): List of fields to exclude from serialization
+
+        Returns:
+            dict: User object serialized as dictionary including:
+                - Basic user fields: id, email, name, country, institution, role
+                - Timestamps: created_at, updated_at
+                - Preferences: email_notifications_enabled
+                - Optional fields based on include parameter
+        """
         include = include if include else []
         exclude = exclude if exclude else []
         user = {
@@ -91,6 +107,7 @@ class User(db.Model):
             "name": self.name,
             "country": self.country,
             "institution": self.institution,
+            "email_notifications_enabled": self.email_notifications_enabled,
         }
 
         # Include Google Groups preferences if requested
