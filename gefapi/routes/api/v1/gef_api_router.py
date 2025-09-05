@@ -2119,57 +2119,56 @@ def get_me():
 @endpoints.route("/user/me", strict_slashes=False, methods=["PATCH"])
 @jwt_required()
 def update_profile():
-    """
-    Update current user's profile information or password.
+    """Update current user's profile information and preferences
 
     **Authentication**: JWT token required
-    **Access**: Users can update their own profile information
+    **Method**: PATCH
+    **Endpoint**: `/api/v1/user/me`
 
-    **Request Schema (Profile Update)**:
+    Updates the authenticated user's profile including basic information and
+    notification preferences. Supports both profile updates and password changes.
+
+    **Request Body (JSON)**:
     ```json
     {
-      "name": "John Smith",
-      "country": "CA",
-      "institution": "University of Toronto"
+      "name": "Updated Name",
+      "country": "Updated Country",
+      "institution": "Updated Institution",
+      "email_notifications_enabled": false,
+      "password": "newpassword",
+      "repeatPassword": "newpassword"
     }
     ```
 
-    **Request Schema (Password Update)**:
-    ```json
-    {
-      "password": "newSecurePassword123",
-      "repeatPassword": "newSecurePassword123"
-    }
-    ```
+    **Profile Fields**:
+    - `name` (string, optional): User's display name
+    - `country` (string, optional): User's country
+    - `institution` (string, optional): User's institution/organization
+    - `email_notifications_enabled` (boolean, optional): Enable/disable email
+      notifications for execution completion
 
-    **Updatable Profile Fields**:
-    - `name`: User's full name
-    - `country`: Two-letter country code
-    - `institution`: User's organization/institution
+    **Password Change Fields**:
+    - `password` (string, optional): New password (requires repeatPassword)
+    - `repeatPassword` (string, optional): Confirmation of new password
 
-    **Password Update Requirements**:
-    - `password`: New password (must meet security requirements)
-    - `repeatPassword`: Password confirmation (must match `password`)
-    - Both fields required for password updates
-
-    **Success Response Schema**:
+    **Success Response**:
     ```json
     {
       "data": {
         "id": "user-123",
-        "email": "john.smith@example.com",
-        "name": "John Smith",
+        "email": "user@example.com",
+        "name": "Updated Name",
+        "country": "Updated Country",
+        "institution": "Updated Institution",
         "role": "USER",
-        "country": "CA",
-        "institution": "University of Toronto",
+        "email_notifications_enabled": false,
         "created_at": "2025-01-15T10:30:00Z",
-        "updated_at": "2025-01-15T12:00:00Z",
-        "is_active": true
+        "updated_at": "2025-01-15T11:00:00Z"
       }
     }
     ```
 
-    **Update Behavior**:
+  **Update Behavior**:
     - Profile updates: Changes name, country, or institution
     - Password updates: Securely updates user password with validation
     - Role field is ignored (cannot be self-modified)
@@ -2181,9 +2180,16 @@ def update_profile():
     - Secure password hashing
     - Audit logging for profile changes
 
+    **Email Notification Behavior**:
+    - When `email_notifications_enabled=true` (default): User receives emails when
+      executions finish
+    - When `email_notifications_enabled=false`: No execution completion emails sent
+    - Affects notifications for FINISHED, FAILED, and CANCELLED execution states
+
     **Error Responses**:
-    - `400 Bad Request`: Invalid data, missing fields, or password mismatch
+    - `400 Bad Request`: No valid fields provided for update or password mismatch
     - `401 Unauthorized`: JWT token required
+    - `404 Not Found`: User not found
     - `422 Unprocessable Entity`: Validation failed (weak password, invalid
       country code)
     - `500 Internal Server Error`: Update process failed
@@ -2206,7 +2212,14 @@ def update_profile():
             name = body.get("name", None)
             country = body.get("country", None)
             institution = body.get("institution", None)
-            if name is not None or country is not None or institution is not None:
+            email_notifications_enabled = body.get("email_notifications_enabled", None)
+
+            if (
+                name is not None
+                or country is not None
+                or institution is not None
+                or email_notifications_enabled is not None
+            ):
                 user = UserService.update_user(body, str(identity.id))
             else:
                 return error(status=400, detail="Not updated")

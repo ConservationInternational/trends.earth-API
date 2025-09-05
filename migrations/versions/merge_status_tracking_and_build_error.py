@@ -1,7 +1,7 @@
 """Merge status tracking and build error migrations
 
 Revision ID: merge_st_be_2025
-Revises: 20250115_improve_status_tracking, 3eedf39b54dd
+Revises: 8f2e1d0c9b8a, 3eedf39b54dd
 Create Date: 2025-09-02 12:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "merge_st_be_2025"
-down_revision = ("20250115_improve_status_tracking", "3eedf39b54dd")  # Multiple parents
+down_revision = ("8f2e1d0c9b8a", "3eedf39b54dd")  # Multiple parents
 branch_labels = None
 depends_on = None
 
