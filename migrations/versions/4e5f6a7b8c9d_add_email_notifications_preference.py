@@ -1,7 +1,7 @@
 """add email notifications preference
 
 Revision ID: 7b6a9c8d5e4f
-Revises: merge_st_be_2025
+Revises: 9f3e7c5a1b8d
 Create Date: 2025-09-04 23:30:00.000000
 
 """

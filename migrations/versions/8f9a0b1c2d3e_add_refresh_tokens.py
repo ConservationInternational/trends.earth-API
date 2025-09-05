@@ -1,7 +1,7 @@
 """Add refresh tokens table
 
-Revision ID: add_refresh_tokens
-Revises: g23bc4de5678
+Revision ID: 5f6e8a9c1b2d
+Revises: 123bc4de5678
 Create Date: 2024-01-01 00:00:00.000000
 
 """

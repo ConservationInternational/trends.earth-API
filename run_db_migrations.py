@@ -116,18 +116,21 @@ def run_migrations():
                             _ = user.email_notifications_enabled
                             logger.info("✅ Database schema appears to be up-to-date")
                             print(
-                                "✅ Database schema is already current - no migration needed"
+                                "✅ Database schema is already current - "
+                                "no migration needed"
                             )
                             print("✓ Database migrations completed successfully")
                             return
                     except Exception as schema_check_error:
                         logger.info(
-                            f"Schema check indicated migration needed: {schema_check_error}"
+                            "Schema check indicated migration needed: "
+                            f"{schema_check_error}"
                         )
 
                     # Try to upgrade to the known good merged head
                     logger.info(
-                        "Attempting to resolve multiple heads by upgrading to the latest merged head..."
+                        "Attempting to resolve multiple heads by upgrading to "
+                        "the latest merged head..."
                     )
                     print("🔧 Resolving multiple heads...")
 
@@ -141,7 +144,7 @@ def run_migrations():
                             upgrade_error
                         ) or "DuplicateColumn" in str(upgrade_error):
                             logger.info(
-                                "✅ Database appears to be up-to-date (columns already exist)"
+                                "✅ Database appears to be up-to-date (columns exist)"
                             )
                             print("✅ Database schema is already current")
                             print("✓ Database migrations completed successfully")

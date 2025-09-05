@@ -260,19 +260,19 @@ def get_scripts():
 @jwt_required()
 def get_script(script):
     """
-    Retrieve a specific script by ID or slug.
+    Retrieve details for a specific script by ID or slug.
 
     **Authentication**: JWT token required
-    **Access**: Users can view scripts based on visibility and access permissions
+    **Access**: Returns script details visible to the current user based on permissions
 
     **Path Parameters**:
-    - `script`: Script ID or slug identifier
+    - `script`: Script identifier/slug or numeric ID
 
     **Query Parameters**:
-    - `include`: Comma-separated list of additional fields to include
-      - Available: `logs`, `user`, `user_name`, `user_email`
-    - `exclude`: Comma-separated list of fields to exclude
-      - Available: `description`, `logs`, `params`
+    - `include`: Comma-separated list of additional fields to include in response
+      - Available: `logs`, `user`, `executions`, `access_controls`
+    - `exclude`: Comma-separated list of fields to exclude from response
+      - Available: `description`, `logs`, `user_id`
 
     **Response Schema**:
     ```json
@@ -281,7 +281,7 @@ def get_script(script):
         "id": "script-123",
         "slug": "vegetation-analysis",
         "name": "Vegetation Change Analysis",
-        "description": "Analyzes vegetation change over time using satellite data",
+        "description": "Analyzes vegetation changes using satellite imagery",
         "status": "PUBLISHED",
         "created_at": "2025-01-15T10:30:00Z",
         "updated_at": "2025-01-15T10:30:00Z",
@@ -300,13 +300,13 @@ def get_script(script):
     - `FAILED`: Script validation or processing failed
 
     **Field Control Examples**:
-    - `?include=user` - Include user information
-    - `?include=logs` - Include execution logs
-    - `?exclude=description,logs` - Exclude verbose fields
+    - `?include=user` - Include user information who created the script
+    - `?include=logs` - Include script processing logs
+    - `?exclude=description` - Exclude verbose description field
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
-    - `404 Not Found`: Script does not exist or access denied
+    - `404 Not Found`: Script does not exist or user doesn't have access
     - `500 Internal Server Error`: Server error
     """
     logger.info("[ROUTER]: Getting script " + script)
@@ -332,15 +332,13 @@ def publish_script(script):
     Publish a script to make it available for execution.
 
     **Authentication**: JWT token required
-    **Authorization**: Script owner or admin access required
-    **Purpose**: Publishes an uploaded script to make it available for execution by
-    users
+    **Authorization**: Admin or script owner access required
+    **Purpose**: Makes an uploaded script available for execution by authorized users
 
     **Path Parameters**:
-    - `script`: Script ID or slug identifier
+    - `script`: Script identifier/slug or numeric ID
 
-    **Request**: No request body required - this is a POST endpoint that triggers
-    publishing
+    **Request**: No request body required
 
     **Success Response Schema**:
     ```json
@@ -349,6 +347,7 @@ def publish_script(script):
         "id": "script-123",
         "slug": "vegetation-analysis",
         "name": "Vegetation Change Analysis",
+        "description": "Analyzes vegetation changes using satellite imagery",
         "status": "PUBLISHED",
         "created_at": "2025-01-15T10:30:00Z",
         "updated_at": "2025-01-15T10:35:00Z",
@@ -361,25 +360,22 @@ def publish_script(script):
     ```
 
     **Publishing Process**:
-    - Validates script integrity and configuration
+    - Validates script configuration and dependencies
     - Updates script status from UPLOADED to PUBLISHED
-    - Makes script available in execution endpoints
-    - Enables script discovery for authorized users
+    - Makes script available in public script listings
+    - Enables script execution for authorized users
 
-    **Publishable States**:
-    - `UPLOADED`: Can be published if validation passes
-    - `UNPUBLISHED`: Can be republished
-
-    **Non-Publishable States**:
-    - `PUBLISHED`: Already published
-    - `FAILED`: Validation failed, requires fixing
+    **Prerequisites**:
+    - Script must be in UPLOADED status
+    - Script must have valid configuration
+    - User must have publishing permissions (admin or script owner)
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: Only script owner or admin can publish
+    - `403 Forbidden`: Insufficient permissions to publish script
     - `404 Not Found`: Script does not exist
-    - `400 Bad Request`: Script is not in a publishable state
-    - `500 Internal Server Error`: Publishing process failed
+    - `400 Bad Request`: Script not in valid state for publishing
+    - `500 Internal Server Error`: Publishing failed
     """
     logger.info("[ROUTER]: Publishing script " + script)
     try:
@@ -397,18 +393,17 @@ def publish_script(script):
 @jwt_required()
 def unpublish_script(script):
     """
-    Unpublish a script to remove it from public availability.
+    Unpublish a script to make it unavailable for new executions.
 
     **Authentication**: JWT token required
-    **Authorization**: Script owner or admin access required
-    **Purpose**: Unpublishes a script to prevent new executions while preserving
-    existing data
+    **Authorization**: Admin or script owner access required
+    **Purpose**: Removes a published script from public availability while
+      preserving data
 
     **Path Parameters**:
-    - `script`: Script ID or slug identifier
+    - `script`: Script identifier/slug or numeric ID
 
-    **Request**: No request body required - this is a POST endpoint that triggers
-    unpublishing
+    **Request**: No request body required
 
     **Success Response Schema**:
     ```json
@@ -417,6 +412,7 @@ def unpublish_script(script):
         "id": "script-123",
         "slug": "vegetation-analysis",
         "name": "Vegetation Change Analysis",
+        "description": "Analyzes vegetation changes using satellite imagery",
         "status": "UNPUBLISHED",
         "created_at": "2025-01-15T10:30:00Z",
         "updated_at": "2025-01-15T10:35:00Z",
@@ -429,26 +425,23 @@ def unpublish_script(script):
     ```
 
     **Unpublishing Effects**:
-    - Changes script status from PUBLISHED to UNPUBLISHED
-    - Removes script from execution endpoints for regular users
-    - Preserves all existing executions and their data
-    - Script remains visible to owner and admins
-    - Can be republished later if needed
+    - Updates script status from PUBLISHED to UNPUBLISHED
+    - Removes script from public script listings
+    - Prevents new executions from being started
+    - Existing running executions continue to completion
+    - Script data and configuration are preserved
 
-    **Unpublishable States**:
-    - `PUBLISHED`: Can be unpublished
-
-    **Non-Unpublishable States**:
-    - `UPLOADED`: Not yet published
-    - `UNPUBLISHED`: Already unpublished
-    - `FAILED`: In error state
+    **Use Cases**:
+    - Temporarily disable a script for maintenance
+    - Remove deprecated or problematic scripts
+    - Control script availability during updates
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: Only script owner or admin can unpublish
+    - `403 Forbidden`: Insufficient permissions to unpublish script
     - `404 Not Found`: Script does not exist
-    - `400 Bad Request`: Script is not in a publishable state
-    - `500 Internal Server Error`: Unpublishing process failed
+    - `400 Bad Request`: Script not in valid state for unpublishing
+    - `500 Internal Server Error`: Unpublishing failed
     """
     logger.info("[ROUTER]: Unpublishsing script " + script)
     try:
@@ -466,50 +459,47 @@ def unpublish_script(script):
 @jwt_required()
 def download_script(script):
     """
-    Download a script file as a compressed archive.
+    Download a script's source code and files as a compressed archive.
 
     **Authentication**: JWT token required
-    **Authorization**: Script access permissions required
-    **Content-Type**: application/gzip (tar.gz archive)
+    **Access**: Script must be accessible to current user based on permissions
+    **Format**: Returns compressed tar.gz archive containing script files
 
     **Path Parameters**:
-    - `script`: Script ID or slug identifier
+    - `script`: Script identifier/slug or numeric ID
 
-    **Response**:
-    - Binary file download (tar.gz archive)
-    - Contains script files and dependencies
-    - Filename format: `{script_slug}.tar.gz`
+    **Response**: Binary file download (tar.gz archive)
+    - **Content-Type**: `application/gzip`
+    - **Content-Disposition**: `attachment; filename=script-name.tar.gz`
 
     **Archive Contents**:
-    - Main script file(s)
-    - Configuration files
-    - Dependencies and requirements
-    - README or documentation (if present)
-
-    **Download Process**:
-    1. Validates user access to the script
-    2. Retrieves script archive from storage (S3)
-    3. Creates temporary file for download
-    4. Returns binary file stream
-
-    **Access Control**:
-    - Script must be published or user must be script owner
-    - Admin users can download any script
-    - Access restrictions (roles/users) are respected
+    - Main script file(s) (Python, R, or other supported languages)
+    - Configuration files (script metadata, requirements)
+    - Dependencies and libraries (if included)
+    - Documentation and README files
+    - Supporting data files (if any)
 
     **Usage Examples**:
     ```bash
-    # Download script with authentication
+    # Download script archive
     curl -H "Authorization: Bearer your_jwt_token" \
          -o vegetation-analysis.tar.gz \
          "https://api.trends.earth/api/v1/script/vegetation-analysis/download"
+
+    # Extract downloaded archive
+    tar -xzf vegetation-analysis.tar.gz
     ```
+
+    **Access Control**:
+    - Users can download scripts they have execution access to
+    - Admin users can download any script
+    - Private scripts require explicit permission
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: Access denied - insufficient permissions
+    - `403 Forbidden`: No access to download this script
     - `404 Not Found`: Script does not exist
-    - `500 Internal Server Error`: Download process failed or file not found in storage
+    - `500 Internal Server Error`: Download failed or file unavailable
     """
     logger.info("[ROUTER]: Download script " + script)
     try:
@@ -536,17 +526,20 @@ def download_script(script):
 @jwt_required()
 def get_script_logs(script):
     """
-    Retrieve logs for a specific script's operations.
+    Retrieve processing and validation logs for a specific script.
 
     **Authentication**: JWT token required
-    **Access**: Script owner or admin access required
+    **Access**: Script must be accessible to current user
+    **Purpose**: View script upload, validation, and publishing logs for debugging
 
     **Path Parameters**:
-    - `script`: Script ID or slug identifier
+    - `script`: Script identifier/slug or numeric ID
 
     **Query Parameters**:
     - `start`: Start timestamp for log filtering (ISO 8601 format)
+      - Example: `?start=2025-01-15T10:30:00Z`
     - `last-id`: Last log ID for pagination/incremental updates
+      - Example: `?last-id=log-456`
 
     **Response Schema**:
     ```json
@@ -555,50 +548,47 @@ def get_script_logs(script):
         {
           "id": "log-123",
           "script_id": "script-456",
-          "timestamp": "2025-01-15T10:30:15Z",
+          "timestamp": "2025-01-15T10:30:00Z",
           "level": "INFO",
-          "message": "Script validation completed successfully",
+          "message": "Script validation started",
           "details": {
-            "operation": "validation",
-            "duration_ms": 1250
+            "stage": "validation",
+            "file_count": 5,
+            "total_size": "2.3MB"
           }
         },
         {
           "id": "log-124",
           "script_id": "script-456",
-          "timestamp": "2025-01-15T10:30:16Z",
-          "level": "INFO",
-          "message": "Script published and available for execution",
+          "timestamp": "2025-01-15T10:30:15Z",
+          "level": "SUCCESS",
+          "message": "Script validation completed successfully",
           "details": {
-            "operation": "publish",
-            "status": "PUBLISHED"
+            "stage": "validation",
+            "duration": "15s"
           }
         }
       ]
     }
     ```
 
-    **Log Operations Tracked**:
-    - Script upload and validation
-    - Publishing and unpublishing events
-    - Configuration changes
-    - Error conditions and warnings
-    - Access control modifications
-
     **Log Levels**:
     - `DEBUG`: Detailed diagnostic information
-    - `INFO`: General operational information
+    - `INFO`: General information about script processing
     - `WARNING`: Warning messages about potential issues
     - `ERROR`: Error messages about failures
+    - `SUCCESS`: Successful completion of operations
 
-    **Usage Examples**:
-    - `?start=2025-01-15T10:30:00Z` - Get logs after specific timestamp
-    - `?last-id=log-120` - Get logs after specific log ID (pagination)
-    - `?start=2025-01-15T10:30:00Z&last-id=log-120` - Combined filtering
+    **Log Types**:
+    - Upload processing logs
+    - Script validation and syntax checking
+    - Dependency resolution logs
+    - Publishing process logs
+    - Configuration validation results
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: Access denied - script owner or admin required
+    - `403 Forbidden`: No access to view script logs
     - `404 Not Found`: Script does not exist
     - `500 Internal Server Error`: Failed to retrieve logs
     """
@@ -623,20 +613,27 @@ def get_script_logs(script):
 @validate_file
 def update_script(script):
     """
-    Update a script by uploading a new version of the script file.
+    Update an existing script by uploading a new version.
 
     **Authentication**: JWT token required
-    **Authorization**: Script owner or admin access required
+    **Authorization**: Admin or script owner access required
     **Content-Type**: multipart/form-data (file upload)
 
     **Path Parameters**:
-    - `script`: Script ID or slug identifier
+    - `script`: Script identifier/slug or numeric ID to update
 
     **Form Data**:
-    - `file`: Updated script file to upload
+    - `file`: New script file to upload
       - Supported formats: Python scripts (.py), ZIP archives
       - Must contain valid script configuration
       - File size limits apply (configured server-side)
+
+    **Update Process**:
+    - Validates new script file format and content
+    - Preserves script metadata (name, description, permissions)
+    - Updates script files and dependencies
+    - Resets status to UPLOADED (requires re-publishing if was published)
+    - Maintains execution history and logs
 
     **Success Response Schema**:
     ```json
@@ -645,10 +642,10 @@ def update_script(script):
         "id": "script-123",
         "slug": "vegetation-analysis",
         "name": "Vegetation Change Analysis",
-        "description": "Updated geospatial analysis with improved algorithms",
+        "description": "Analyzes vegetation changes using satellite imagery",
         "status": "UPLOADED",
         "created_at": "2025-01-15T10:30:00Z",
-        "updated_at": "2025-01-15T11:45:00Z",
+        "updated_at": "2025-01-15T11:15:00Z",
         "user_id": "user-456",
         "cpu": 2,
         "memory": 4096,
@@ -657,32 +654,18 @@ def update_script(script):
     }
     ```
 
-    **Update Process**:
-    1. Validates user permissions for the script
-    2. Validates uploaded file format and content
-    3. Replaces existing script content
-    4. Updates script metadata and timestamps
-    5. Sets status to UPLOADED (requires republishing)
-
-    **Post-Update Actions Required**:
-    - Script status reverts to UPLOADED after update
-    - Must be republished to make available for execution
-    - Previous executions remain unaffected
-    - New executions will use updated script version
-
-    **File Requirements**:
-    - Must follow trends.earth script structure
-    - Configuration files must be valid
-    - Dependencies should be properly specified
-    - File size within configured limits
+    **Status Changes**:
+    - Published scripts become UPLOADED and require re-publishing
+    - Failed scripts can be updated to fix issues
+    - Update preserves access controls and user permissions
 
     **Error Responses**:
-    - `400 Bad Request`: Invalid file format, validation failed, or malformed content
+    - `400 Bad Request`: Invalid file format or validation failed
     - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: Access denied - script owner or admin required
+    - `403 Forbidden`: Insufficient permissions to update script
     - `404 Not Found`: Script does not exist
     - `413 Payload Too Large`: File size exceeds limits
-    - `500 Internal Server Error`: Update process failed
+    - `500 Internal Server Error`: Script update failed
     """
     logger.info("[ROUTER]: Updating a script")
     sent_file = request.files.get("file")
@@ -709,14 +692,22 @@ def update_script(script):
 @jwt_required()
 def delete_script(script):
     """
-    Delete a script and all associated data.
+    Permanently delete a script and all associated data.
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
-    **Warning**: This operation is irreversible and removes all script data
+    **Authorization**: Admin access required (ADMIN or SUPERADMIN)
+    **Warning**: This action is irreversible and deletes all associated data
 
     **Path Parameters**:
-    - `script`: Script ID or slug identifier
+    - `script`: Script identifier/slug or numeric ID to delete
+
+    **Deletion Process**:
+    - Cancels any running executions using this script
+    - Deletes all execution history and logs for this script
+    - Removes script files and dependencies from storage
+    - Deletes script metadata and configuration
+    - Removes access control settings
+    - Cleans up any associated resources
 
     **Success Response Schema**:
     ```json
@@ -725,6 +716,7 @@ def delete_script(script):
         "id": "script-123",
         "slug": "vegetation-analysis",
         "name": "Vegetation Change Analysis",
+        "description": "Analyzes vegetation changes using satellite imagery",
         "status": "DELETED",
         "created_at": "2025-01-15T10:30:00Z",
         "updated_at": "2025-01-15T12:00:00Z",
@@ -736,36 +728,22 @@ def delete_script(script):
     }
     ```
 
-    **Deletion Process**:
-    1. Validates admin permissions
-    2. Checks for active executions (may prevent deletion)
-    3. Removes script files from storage
-    4. Deletes script metadata from database
-    5. Removes associated logs and configurations
+    **Impact**:
+    - All executions using this script will be cancelled
+    - Historical execution data is permanently lost
+    - Script cannot be recovered after deletion
+    - Users lose access to download script files
 
-    **Data Removed**:
-    - Script files and archives
-    - Script metadata and configuration
-    - Script logs and operational data
-    - Access control settings
-    - Associated file storage
-
-    **Data Preserved**:
-    - Execution history (executions remain but script reference is removed)
-    - User data and accounts
-    - System logs referencing the script
-
-    **Restrictions**:
-    - Only ADMIN and SUPERADMIN users can delete scripts
-    - Scripts with active (running) executions may not be deletable
-    - Some system-critical scripts may have deletion protection
+    **Security Considerations**:
+    - Only admin users can delete scripts
+    - Action is logged for audit purposes
+    - Confirmation should be required in client applications
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: Admin access required for script deletion
+    - `403 Forbidden`: Admin access required
     - `404 Not Found`: Script does not exist
-    - `409 Conflict`: Script has active executions or dependencies
-    - `500 Internal Server Error`: Deletion process failed
+    - `500 Internal Server Error`: Deletion failed
     """
     logger.info("[ROUTER]: Deleting script: " + script)
     identity = current_user
@@ -1580,56 +1558,62 @@ def get_download_results(execution):
     Download execution results as a JSON file.
 
     **Authentication**: Not required (public endpoint)
-    **Access**: Anyone can download results if they have the execution ID
-    **Content-Type**: text/plain (JSON file download)
+    **Access**: Anyone can download execution results for monitoring purposes
+    **Format**: Returns results as downloadable JSON file
 
     **Path Parameters**:
     - `execution`: Execution ID (UUID format)
 
-    **Response**:
-    - Binary file download (JSON format)
-    - Contains execution results data
-    - Filename: `results.json`
+    **Response**: JSON file download
+    - **Content-Type**: `text/plain`
+    - **Content-Disposition**: `attachment; filename=results.json`
+    - **Body**: JSON-formatted execution results
 
     **Results Content**:
-    - Analysis outputs and computed values
-    - Generated file references and URLs
-    - Processing summaries and statistics
-    - Error information (if execution failed)
-    - Metadata about the execution
-
-    **Example Results Structure**:
     ```json
     {
-      "analysis_complete": true,
-      "output_files": [
-        "vegetation_change_2023.tif",
-        "summary_statistics.json"
-      ],
-      "statistics": {
-        "total_area_analyzed": 50000,
-        "change_detected": 15.7
+      "execution_id": "abc123-def456",
+      "script_id": "vegetation-analysis",
+      "status": "SUCCESS",
+      "results": {
+        "output_files": [
+          "vegetation_change_2020_2023.tif",
+          "analysis_summary.json",
+          "statistics.csv"
+        ],
+        "analysis_summary": {
+          "total_area_analyzed": "50000 km²",
+          "vegetation_loss": "5.2%",
+          "vegetation_gain": "2.1%",
+          "net_change": "-3.1%"
+        },
+        "processing_time": "45 minutes",
+        "completed_at": "2025-01-15T11:45:00Z"
       },
-      "processing_time": "00:45:23",
-      "status": "SUCCESS"
+      "metadata": {
+        "parameters": {
+          "region": "africa",
+          "year_start": 2020,
+          "year_end": 2023
+        },
+        "execution_time": "2700 seconds",
+        "resource_usage": {
+          "peak_memory": "4.2 GB",
+          "cpu_time": "120 minutes"
+        }
+      }
     }
     ```
 
-    **Usage Examples**:
-    ```bash
-    # Download results
-    curl -o results.json \
-         "https://api.trends.earth/api/v1/execution/abc123-def456/download-results"
-    ```
-
-    **File Download**:
-    - Content-Disposition header sets filename to `results.json`
-    - MIME type: `text/plain` for broad compatibility
-    - Results are JSON-formatted execution output
+    **Use Cases**:
+    - Download analysis results for offline processing
+    - Archive execution outputs for record keeping
+    - Share results with external stakeholders
+    - Integrate with external reporting systems
 
     **Error Responses**:
     - `404 Not Found`: Execution does not exist
-    - `500 Internal Server Error`: Failed to retrieve or format results
+    - `500 Internal Server Error`: Failed to retrieve results
     """
     logger.info(f"[ROUTER]: Download execution results of execution {execution} ")
     try:
@@ -1712,12 +1696,11 @@ def get_execution_docker_logs(execution):
 @validate_execution_log_creation
 def create_execution_log(execution):
     """
-    Create a new log entry for an execution (admin only).
+    Create a log entry for a specific execution (admin only).
 
     **Authentication**: JWT token required
-    **Authorization**: Admin access required
-    **Purpose**: Allows admins to manually add log entries to executions for
-    debugging or documentation
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
+    **Purpose**: Manually add log entries for debugging, monitoring, or audit purposes
 
     **Path Parameters**:
     - `execution`: Execution ID (UUID format)
@@ -1726,55 +1709,57 @@ def create_execution_log(execution):
     ```json
     {
       "level": "INFO",
-      "message": "Manual log entry added by admin",
+      "message": "Custom log message for execution monitoring",
       "details": {
-        "admin_action": "debugging",
-        "additional_info": "Added for troubleshooting purposes"
+        "component": "manual_logging",
+        "admin_action": true,
+        "timestamp": "2025-01-15T10:30:00Z"
       }
     }
     ```
 
     **Request Fields**:
-    - `level`: Log level (DEBUG, INFO, WARNING, ERROR) - required
-    - `message`: Log message content - required
-    - `details`: Additional structured data - optional
+    - `level`: Log level - "DEBUG", "INFO", "WARNING", "ERROR" (required)
+    - `message`: Log message content (required, max 1000 characters)
+    - `details`: Additional structured data (optional JSON object)
+    - `timestamp`: Log timestamp (optional, defaults to current time)
 
     **Success Response Schema**:
     ```json
     {
       "data": {
-        "id": "log-123",
+        "id": "log-789",
         "execution_id": "abc123-def456",
-        "timestamp": "2025-01-15T10:30:15Z",
+        "timestamp": "2025-01-15T10:30:00Z",
         "level": "INFO",
-        "message": "Manual log entry added by admin",
+        "message": "Custom log message for execution monitoring",
         "details": {
-          "admin_action": "debugging",
-          "additional_info": "Added for troubleshooting purposes"
+          "component": "manual_logging",
+          "admin_action": true,
+          "created_by": "admin-user-123"
         }
       }
     }
     ```
 
-    **Valid Log Levels**:
-    - `DEBUG`: Detailed diagnostic information
-    - `INFO`: General information messages
-    - `WARNING`: Warning messages about potential issues
-    - `ERROR`: Error messages about failures
-
     **Use Cases**:
-    - Adding manual debugging information
-    - Documenting admin interventions
-    - Recording external events affecting execution
-    - Annotating execution progress for analysis
+    - Add administrative notes to execution logs
+    - Record manual interventions or troubleshooting steps
+    - Supplement automated logs with human observations
+    - Document resolution of execution issues
+
+    **Log Integration**:
+    - Manual logs appear alongside automated execution logs
+    - Preserved in execution log history
+    - Included in log exports and monitoring dashboards
+    - Tagged with creating admin user information
 
     **Error Responses**:
-    - `400 Bad Request`: Invalid request data or missing required fields
     - `401 Unauthorized`: JWT token required
     - `403 Forbidden`: Admin access required
     - `404 Not Found`: Execution does not exist
-    - `422 Unprocessable Entity`: Validation failed
-    - `500 Internal Server Error`: Failed to create log entry
+    - `422 Unprocessable Entity`: Invalid request data or validation failed
+    - `500 Internal Server Error`: Log creation failed
     """
     logger.info("[ROUTER]: Creating execution log for " + execution)
     body = request.get_json()
@@ -2003,19 +1988,19 @@ def get_users():
 @jwt_required()
 def get_user(user):
     """
-    Retrieve a specific user's profile information (admin only).
+    Retrieve detailed information for a specific user (admin only).
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
-    **Access**: Restricted to ADMIN and SUPERADMIN users only
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
+    **Access**: Only admin users can view other users' detailed information
 
     **Path Parameters**:
-    - `user`: User ID or email address
+    - `user`: User identifier (email address or numeric ID)
 
     **Query Parameters**:
     - `include`: Comma-separated list of additional fields to include
-      - Available: `password_last_changed`, `last_login`, `sessions`
-    - `exclude`: Comma-separated list of fields to exclude
+      - Available: `executions`, `scripts`, `login_history`, `password_last_changed`
+    - `exclude`: Comma-separated list of fields to exclude from response
       - Available: `institution`, `country`
 
     **Response Schema**:
@@ -2023,14 +2008,15 @@ def get_user(user):
     {
       "data": {
         "id": "user-123",
-        "email": "john.doe@example.com",
+        "email": "user@example.com",
         "name": "John Doe",
         "role": "USER",
         "country": "US",
-        "institution": "Conservation International",
+        "institution": "Example Organization",
         "created_at": "2025-01-15T10:30:00Z",
         "updated_at": "2025-01-15T11:45:00Z",
-        "is_active": true
+        "is_active": true,
+        "last_login": "2025-01-15T09:30:00Z"
       }
     }
     ```
@@ -2042,20 +2028,21 @@ def get_user(user):
     - `SUPERADMIN`: Super administrator with unrestricted access
 
     **Field Control Examples**:
-    - `?include=password_last_changed` - Include password change timestamp
-    - `?include=last_login` - Include last login information
-    - `?exclude=institution,country` - Exclude organization details
+    - `?include=executions` - Include user's execution count and recent activity
+    - `?include=scripts` - Include user's script count and script details
+    - `?exclude=institution,country` - Exclude personal information fields
 
-    **Privacy Considerations**:
-    - This endpoint exposes user personal information
-    - Only available to admin users for legitimate administrative purposes
-    - Access is logged for audit purposes
+    **Use Cases**:
+    - Admin user management and profile review
+    - User support and troubleshooting
+    - Audit and compliance reporting
+    - Account verification and validation
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
     - `403 Forbidden`: Admin access required
     - `404 Not Found`: User does not exist
-    - `500 Internal Server Error`: Failed to retrieve user information
+    - `500 Internal Server Error`: Failed to retrieve user
     """
     logger.info("[ROUTER]: Getting user" + user)
     include = request.args.get("include")
@@ -2119,80 +2106,80 @@ def get_me():
 @endpoints.route("/user/me", strict_slashes=False, methods=["PATCH"])
 @jwt_required()
 def update_profile():
-    """Update current user's profile information and preferences
+    """
+    Update current user's profile information and preferences.
 
-      **Authentication**: JWT token required
-      **Method**: PATCH
-      **Endpoint**: `/api/v1/user/me`
+    **Authentication**: JWT token required
+    **Access**: Users can only update their own profile information
+    **Scope**: Updates current authenticated user's profile data and settings
 
-      Updates the authenticated user's profile including basic information and
-      notification preferences. Supports both profile updates and password changes.
+    **Request Schema**:
+    ```json
+    {
+      "name": "John Smith",
+      "country": "CA",
+      "institution": "New Research Institute",
+      "email_notifications_enabled": false,
+      "password": "newSecurePassword123",
+      "repeatPassword": "newSecurePassword123"
+    }
+    ```
 
-      **Request Body (JSON)**:
-      ```json
-      {
-        "name": "Updated Name",
-        "country": "Updated Country",
-        "institution": "Updated Institution",
+    **Updatable Fields**:
+    - `name`: User's full name (string)
+    - `country`: Two-letter country code (string)
+    - `institution`: User's organization/institution (string)
+    - `email_notifications_enabled`: Enable/disable email notifications for
+      execution completion (boolean)
+    - `password`: New password (must include `repeatPassword`)
+    - `repeatPassword`: Password confirmation (must match `password`)
+
+    **Response Schema**:
+    ```json
+    {
+      "data": {
+        "id": "user-123",
+        "email": "user@example.com",
+        "name": "John Smith",
+        "role": "USER",
+        "country": "CA",
+        "institution": "New Research Institute",
         "email_notifications_enabled": false,
-        "password": "newpassword",
-        "repeatPassword": "newpassword"
+        "created_at": "2025-01-15T10:30:00Z",
+        "updated_at": "2025-01-15T12:00:00Z",
+        "is_active": true
       }
       ```
 
-      **Profile Fields**:
-      - `name` (string, optional): User's display name
-      - `country` (string, optional): User's country
-      - `institution` (string, optional): User's institution/organization
-      - `email_notifications_enabled` (boolean, optional): Enable/disable email
-        notifications for execution completion
+    **Email Notification Behavior**:
+    - When `email_notifications_enabled=true` (default): User receives emails
+      when executions finish
+    - When `email_notifications_enabled=false`: No execution completion emails sent
+    - Affects notifications for FINISHED, FAILED, and CANCELLED execution states
 
-      **Password Change Fields**:
-      - `password` (string, optional): New password (requires repeatPassword)
-      - `repeatPassword` (string, optional): Confirmation of new password
+    **Password Update Requirements**:
+    - Both `password` and `repeatPassword` fields must be provided
+    - Passwords must match exactly
+    - Password must meet security requirements (length, complexity)
+    - Old password is not required for self-service updates
 
-      **Success Response**:
-      ```json
-      {
-        "data": {
-          "id": "user-123",
-          "email": "user@example.com",
-          "name": "Updated Name",
-          "country": "Updated Country",
-          "institution": "Updated Institution",
-          "role": "USER",
-          "email_notifications_enabled": false,
-          "created_at": "2025-01-15T10:30:00Z",
-          "updated_at": "2025-01-15T11:00:00Z"
-        }
-      }
-      ```
+    **Profile Update Rules**:
+    - Users cannot change their own role
+    - Email address cannot be changed via this endpoint
+    - At least one field must be provided for update
+    - Changes are applied immediately
 
-    **Update Behavior**:
-      - Profile updates: Changes name, country, or institution
-      - Password updates: Securely updates user password with validation
-      - Role field is ignored (cannot be self-modified)
-      - Email cannot be changed via this endpoint
+    **Validation**:
+    - Country codes validated against ISO 3166-1 alpha-2 standard
+    - Name and institution have length and character restrictions
+    - Password strength requirements enforced
 
-      **Security Features**:
-      - Password strength validation
-      - Password confirmation requirement
-      - Secure password hashing
-      - Audit logging for profile changes
-
-      **Email Notification Behavior**:
-      - When `email_notifications_enabled=true` (default): User receives emails when
-        executions finish
-      - When `email_notifications_enabled=false`: No execution completion emails sent
-      - Affects notifications for FINISHED, FAILED, and CANCELLED execution states
-
-      **Error Responses**:
-      - `400 Bad Request`: No valid fields provided for update or password mismatch
-      - `401 Unauthorized`: JWT token required
-      - `404 Not Found`: User not found
-      - `422 Unprocessable Entity`: Validation failed (weak password, invalid
-        country code)
-      - `500 Internal Server Error`: Update process failed
+    **Error Responses**:
+    - `400 Bad Request`: Invalid data, password mismatch, or no fields to update
+    - `401 Unauthorized`: JWT token required
+    - `404 Not Found`: User not found
+    - `422 Unprocessable Entity`: Validation failed
+    - `500 Internal Server Error`: Profile update failed
     """
     logger.info("[ROUTER]: Updating profile")
     body = request.get_json()
@@ -2239,7 +2226,8 @@ def change_password():
     Change current user's password with old password verification.
 
     **Authentication**: JWT token required
-    **Security**: Requires current password for verification
+    **Access**: Secure password change requiring current password verification
+    **Security**: Validates old password before allowing change
 
     **Request Schema**:
     ```json
@@ -2250,50 +2238,48 @@ def change_password():
     ```
 
     **Request Fields**:
-    - `old_password`: Current password for verification - required
-    - `new_password`: New password to set - required
+    - `old_password`: Current password for verification (required)
+    - `new_password`: New password to set (required)
 
-    **Success Response Schema**:
+    **Response Schema**:
     ```json
     {
       "data": {
         "id": "user-123",
-        "email": "john.doe@example.com",
+        "email": "user@example.com",
         "name": "John Doe",
         "role": "USER",
         "created_at": "2025-01-15T10:30:00Z",
-        "updated_at": "2025-01-15T12:00:00Z",
-        "is_active": true
+        "updated_at": "2025-01-15T12:30:00Z",
+        "password_last_changed": "2025-01-15T12:30:00Z"
       }
     }
     ```
 
+    **Security Features**:
+    - Verifies current password before allowing change
+    - Enforces password strength requirements
+    - Updates password change timestamp
+    - Invalidates existing sessions (optional security measure)
+    - Logs password change event for audit
+
     **Password Requirements**:
     - Minimum length (typically 8+ characters)
-    - Must include mix of uppercase, lowercase, numbers
-    - Special characters recommended
+    - Must include mix of letters, numbers, and special characters
     - Cannot be same as current password
-    - Cannot be commonly used passwords
+    - Cannot be common or easily guessable passwords
 
-    **Security Process**:
-    1. Verifies current password is correct
-    2. Validates new password meets security requirements
-    3. Securely hashes new password
-    4. Updates password in database
-    5. Logs password change event
-
-    **Security Features**:
-    - Old password verification prevents unauthorized changes
-    - Secure password hashing (bcrypt/scrypt)
-    - Password strength validation
-    - Audit logging for security monitoring
-    - Session invalidation options
+    **Use Cases**:
+    - Regular password rotation for security
+    - Password change after suspected compromise
+    - Compliance with security policies
+    - User-initiated security enhancement
 
     **Error Responses**:
     - `400 Bad Request`: Missing required fields
-    - `401 Unauthorized`: JWT token required or old password incorrect
+    - `401 Unauthorized`: JWT token required or incorrect old password
     - `422 Unprocessable Entity`: New password doesn't meet requirements
-    - `500 Internal Server Error`: Password change process failed
+    - `500 Internal Server Error`: Password change failed
     """
     logger.info("[ROUTER]: Changing password")
     body = request.get_json()
@@ -2322,61 +2308,57 @@ def delete_profile():
     Delete current user's account and all associated data.
 
     **Authentication**: JWT token required
-    **Warning**: This operation is irreversible and removes all user data
-    **Access**: Users can delete their own account
+    **Warning**: This action is irreversible and deletes all user data
+    **Scope**: Deletes current authenticated user's account
 
-    **Request**: No request body required - this is a DELETE endpoint
+    **Request**: No request body required
+
+    **Deletion Process**:
+    - Cancels all running executions for this user
+    - Deletes all execution history and logs
+    - Removes user-created scripts (if user is owner)
+    - Deletes user profile and authentication data
+    - Revokes all active sessions and tokens
+    - Removes user from any Google Groups (if enabled)
 
     **Success Response Schema**:
     ```json
     {
       "data": {
         "id": "user-123",
-        "email": "john.doe@example.com",
+        "email": "user@example.com",
         "name": "John Doe",
         "role": "USER",
         "created_at": "2025-01-15T10:30:00Z",
-        "updated_at": "2025-01-15T12:00:00Z",
-        "is_active": false
+        "updated_at": "2025-01-15T13:00:00Z",
+        "deleted_at": "2025-01-15T13:00:00Z",
+        "status": "DELETED"
       }
     }
     ```
 
-    **Deletion Process**:
-    1. Validates user authentication
-    2. Cancels any running executions
-    3. Removes user scripts and associated files
-    4. Deletes execution history
-    5. Removes user account and profile data
-    6. Invalidates all user sessions and tokens
+    **Data Cleanup**:
+    - User profile information permanently deleted
+    - Execution history and logs removed
+    - Script ownership transferred or scripts deleted
+    - Session tokens invalidated immediately
+    - Email address becomes available for re-registration
 
-    **Data Removed**:
-    - User profile and account information
-    - User-created scripts and configurations
-    - Execution history and logs
-    - Session tokens and refresh tokens
-    - Personal preferences and settings
+    **Important Notes**:
+    - Action cannot be undone - all data is permanently lost
+    - User will be immediately logged out from all devices
+    - Any shared scripts may become inaccessible to other users
+    - Admin users cannot delete their own accounts via this endpoint
 
-    **Data Preservation**:
-    - System logs (with anonymized references)
-    - Aggregated statistics (anonymized)
-    - Shared data contributions (if applicable)
-
-    **Pre-Deletion Checks**:
-    - Running executions are cancelled or completed
-    - Shared scripts may be transferred to admin ownership
-    - Important data is backed up (if configured)
-
-    **Security Considerations**:
-    - Account deletion is logged for audit purposes
-    - Immediate session invalidation
-    - Email notification sent to user
-    - Grace period may apply (implementation dependent)
+    **GDPR Compliance**:
+    - Implements "right to erasure" requirements
+    - Removes all personal data from system
+    - Maintains minimal audit log for compliance (anonymized)
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
-    - `409 Conflict`: Account has dependencies that prevent deletion
-    - `500 Internal Server Error`: Deletion process failed
+    - `403 Forbidden`: Cannot delete admin accounts via self-service
+    - `500 Internal Server Error`: Account deletion failed
     """
     logger.info("[ROUTER]: Delete me")
     identity = current_user
@@ -2403,64 +2385,57 @@ def recover_password(user):
     """
     Initiate password recovery process for a user account.
 
-    **Rate Limited**: Subject to password recovery rate limits
+    **Rate Limited**: Subject to password recovery rate limits (configurable)
     **Access**: Public endpoint - no authentication required
-    **Security**: Rate limited to prevent abuse
+    **Security**: Rate limited to prevent abuse and email flooding
 
     **Path Parameters**:
-    - `user`: User email address for password recovery
+    - `user`: User identifier (email address or numeric ID)
 
-    **Request**: No request body required - this is a POST endpoint
+    **Request**: No request body required
+
+    **Recovery Process**:
+    1. Validates user exists and account is active
+    2. Generates secure password reset token with expiration
+    3. Sends password recovery email with reset link
+    4. Logs recovery attempt for security monitoring
 
     **Success Response Schema**:
     ```json
     {
       "data": {
         "id": "user-123",
-        "email": "john.doe@example.com",
+        "email": "user@example.com",
         "name": "John Doe",
         "role": "USER",
-        "created_at": "2025-01-15T10:30:00Z",
-        "updated_at": "2025-01-15T12:00:00Z",
-        "is_active": true
+        "recovery_initiated": true,
+        "recovery_token_expires": "2025-01-15T16:00:00Z"
       }
     }
     ```
 
-    **Recovery Process**:
-    1. Validates user account exists and is active
-    2. Generates secure password reset token
-    3. Sends password recovery email to user
-    4. Token expires after configured time period
-    5. Logs recovery attempt for security monitoring
-
     **Email Content**:
-    - Password reset link with secure token
-    - Expiration time information
-    - Security instructions and warnings
-    - Contact information for support
+    - Secure reset link with time-limited token
+    - Clear instructions for password reset process
+    - Security notice about unsolicited requests
+    - Link expiration time (typically 1-2 hours)
 
     **Security Features**:
-    - Cryptographically secure reset tokens
-    - Time-limited token validity (typically 1-24 hours)
-    - Rate limiting to prevent abuse
-    - Email address validation
-    - Audit logging for security monitoring
+    - Rate limiting prevents email flooding attacks
+    - Tokens expire automatically for security
+    - Email delivery doesn't reveal if account exists (privacy)
+    - Multiple recovery attempts are logged and monitored
 
-    **Rate Limiting**:
-    - Limited requests per email address per time period
-    - Global rate limiting for the endpoint
-    - Progressive delays for repeated attempts
-
-    **Privacy Protection**:
-    - No indication whether email exists in system
-    - Consistent response times regardless of account status
-    - Secure token generation and handling
+    **Use Cases**:
+    - User forgot their password
+    - Account recovery after security incident
+    - Password reset for inactive accounts
+    - Initial password setup (in some configurations)
 
     **Error Responses**:
-    - `404 Not Found`: User account does not exist
+    - `404 Not Found`: User does not exist (for security, may return success)
     - `429 Too Many Requests`: Rate limit exceeded
-    - `500 Internal Server Error`: Email sending failed or recovery process error
+    - `500 Internal Server Error`: Email delivery failed or system error
     """
     logger.info("[ROUTER]: Recovering password")
     try:
@@ -2485,75 +2460,69 @@ def update_user(user):
     Update another user's profile information (admin only).
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
-    **Validation**: Input validation applied via decorator
+    **Authorization**: Admin level access required for most updates
+    **Special Permissions**: Role changes require SUPERADMIN access
 
     **Path Parameters**:
-    - `user`: User ID or email address to update
+    - `user`: User identifier (email address or numeric ID) to update
 
     **Request Schema**:
     ```json
     {
       "name": "Jane Smith",
       "country": "CA",
-      "institution": "University of Toronto",
+      "institution": "Updated Research Institute",
       "role": "ADMIN",
       "is_active": true
     }
     ```
 
     **Updatable Fields**:
-    - `name`: User's full name
-    - `country`: Two-letter country code
-    - `institution`: User's organization/institution
-    - `role`: User role (SUPERADMIN required for role changes)
-    - `is_active`: Account status (admin only)
+    - `name`: User's full name (ADMIN+ can update)
+    - `country`: Two-letter country code (ADMIN+ can update)
+    - `institution`: User's organization (ADMIN+ can update)
+    - `role`: User role (SUPERADMIN only)
+    - `is_active`: Account active status (ADMIN+ can update)
 
-    **Success Response Schema**:
+    **Response Schema**:
     ```json
     {
       "data": {
-        "id": "user-123",
-        "email": "jane.smith@example.com",
+        "id": "user-456",
+        "email": "user@example.com",
         "name": "Jane Smith",
         "role": "ADMIN",
         "country": "CA",
-        "institution": "University of Toronto",
+        "institution": "Updated Research Institute",
         "created_at": "2025-01-15T10:30:00Z",
-        "updated_at": "2025-01-15T12:00:00Z",
+        "updated_at": "2025-01-15T14:00:00Z",
         "is_active": true
       }
     }
     ```
 
-    **Role Management**:
-    - Only SUPERADMIN users can modify user roles
-    - Valid roles: USER, MANAGER, ADMIN, SUPERADMIN
+    **Permission Matrix**:
+    - **ADMIN**: Can update name, country, institution, is_active
+    - **SUPERADMIN**: Can update all fields including role
+
+    **Role Update Rules**:
+    - Only SUPERADMIN can change user roles
+    - Cannot downgrade another SUPERADMIN (security protection)
     - Role changes are logged for audit purposes
-    - Cannot demote the last SUPERADMIN user
+    - Role changes may affect user's active sessions
 
-    **Permission Levels**:
-    - ADMIN: Can update profile fields (name, country, institution)
-    - SUPERADMIN: Can update all fields including role and status
-
-    **Security Features**:
-    - Input validation and sanitization
-    - Role-based access control
-    - Audit logging for user modifications
-    - Email notifications for significant changes
-
-    **Restrictions**:
-    - Cannot update own role (prevents privilege escalation)
-    - Email address changes may require separate verification
-    - Some fields may have additional validation rules
+    **Use Cases**:
+    - Admin user account management
+    - Account activation/deactivation
+    - Profile corrections and updates
+    - Role assignments and permissions management
 
     **Error Responses**:
-    - `400 Bad Request`: Invalid input data or validation failed
     - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: Insufficient privileges for requested changes
+    - `403 Forbidden`: Insufficient permissions for requested update
     - `404 Not Found`: User does not exist
-    - `422 Unprocessable Entity`: Validation errors
-    - `500 Internal Server Error`: Update process failed
+    - `422 Unprocessable Entity`: Validation failed
+    - `500 Internal Server Error`: User update failed
     """
     logger.info("[ROUTER]: Updating user" + user)
     body = request.get_json()
@@ -2581,68 +2550,67 @@ def update_user(user):
 @jwt_required()
 def delete_user(user):
     """
-    Delete a user account and all associated data (admin only).
+    Delete another user's account and all associated data (admin only).
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
-    **Warning**: This operation is irreversible and removes all user data
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
+    **Warning**: This action is irreversible and deletes all user data
 
     **Path Parameters**:
-    - `user`: User ID or email address to delete
+    - `user`: User identifier (email address or numeric ID) to delete
+
+    **Protection**: Cannot delete the system admin account ("gef@gef.com")
+
+    **Deletion Process**:
+    - Cancels all running executions for the target user
+    - Deletes all execution history and logs
+    - Removes user-created scripts (if user is owner)
+    - Deletes user profile and authentication data
+    - Revokes all active sessions and tokens
+    - Removes user from any Google Groups (if enabled)
+    - Transfers or deletes shared resources
 
     **Success Response Schema**:
     ```json
     {
       "data": {
-        "id": "user-123",
-        "email": "john.doe@example.com",
+        "id": "user-456",
+        "email": "user@example.com",
         "name": "John Doe",
         "role": "USER",
         "created_at": "2025-01-15T10:30:00Z",
-        "updated_at": "2025-01-15T12:00:00Z",
-        "is_active": false
+        "updated_at": "2025-01-15T14:30:00Z",
+        "deleted_at": "2025-01-15T14:30:00Z",
+        "deleted_by": "admin-123",
+        "status": "DELETED"
       }
     }
     ```
 
-    **Deletion Process**:
-    1. Validates admin permissions and target user
-    2. Cancels any running executions
-    3. Transfers or removes user scripts
-    4. Deletes execution history and logs
-    5. Removes user account and profile data
-    6. Invalidates all user sessions and tokens
+    **Administrative Features**:
+    - Action is logged with admin user who performed deletion
+    - All user data is permanently removed
+    - User's scripts and executions are cleaned up
+    - Email address becomes available for re-registration
 
-    **Data Handling**:
-    - User scripts: May be transferred to admin or deleted
-    - Executions: History preserved for audit, access removed
-    - Personal data: Completely removed
-    - System logs: Anonymized references preserved
+    **Data Cleanup**:
+    - User profile information permanently deleted
+    - Execution history and logs removed
+    - Script ownership transferred or scripts deleted
+    - Session tokens invalidated immediately
+    - Audit logs maintain record of deletion action
 
-    **Special Protections**:
-    - Cannot delete system user account "gef@gef.com"
-    - Cannot delete the last SUPERADMIN user
-    - Cannot delete own account (use profile deletion instead)
-    - Active executions must be handled before deletion
-
-    **Admin Notifications**:
-    - Deletion is logged for audit purposes
-    - Email notifications sent to admin team
-    - User receives account closure confirmation
-    - Backup retention policies apply
-
-    **Cascade Effects**:
-    - User sessions invalidated immediately
-    - API tokens revoked
-    - Script access permissions updated
-    - Shared resources ownership transferred
+    **Use Cases**:
+    - Account cleanup and user management
+    - Compliance with data retention policies
+    - Removing inactive or problematic accounts
+    - GDPR "right to erasure" compliance
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: Admin access required or protected account
+    - `403 Forbidden`: Admin access required or cannot delete system admin
     - `404 Not Found`: User does not exist
-    - `409 Conflict`: User has dependencies preventing deletion
-    - `500 Internal Server Error`: Deletion process failed
+    - `500 Internal Server Error`: Account deletion failed
     """
     logger.info("[ROUTER]: Deleting user" + user)
     identity = current_user
@@ -2670,11 +2638,11 @@ def admin_change_password(user):
     Change another user's password (admin only).
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
-    **Security**: Admin password changes are logged for audit
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
+    **Security**: Admin password reset without requiring old password
 
     **Path Parameters**:
-    - `user`: User ID or email address whose password to change
+    - `user`: User identifier (email address or numeric ID) for password change
 
     **Request Schema**:
     ```json
@@ -2684,65 +2652,56 @@ def admin_change_password(user):
     ```
 
     **Request Fields**:
-    - `new_password`: New password to set for the user - required
+    - `new_password`: New password to set for the user (required)
 
-    **Success Response Schema**:
+    **Response Schema**:
     ```json
     {
       "data": {
-        "id": "user-123",
-        "email": "john.doe@example.com",
+        "id": "user-456",
+        "email": "user@example.com",
         "name": "John Doe",
         "role": "USER",
         "created_at": "2025-01-15T10:30:00Z",
-        "updated_at": "2025-01-15T12:00:00Z",
-        "is_active": true
+        "updated_at": "2025-01-15T15:00:00Z",
+        "password_last_changed": "2025-01-15T15:00:00Z",
+        "password_changed_by": "admin-123"
       }
     }
     ```
 
-    **Password Requirements**:
-    - Minimum length (typically 8+ characters)
-    - Must include mix of uppercase, lowercase, numbers
-    - Special characters recommended
-    - Cannot be commonly used passwords
-    - Meets organization security policy
+    **Administrative Features**:
+    - Does not require user's current password
+    - Updates password change timestamp
+    - Records which admin performed the change
+    - Enforces same password strength requirements
+    - Invalidates user's existing sessions for security
 
-    **Admin Password Change Process**:
-    1. Validates admin permissions
-    2. Validates target user exists and is accessible
-    3. Validates new password meets security requirements
-    4. Securely hashes new password
-    5. Updates password in database
-    6. Logs admin password change event
-    7. Optionally invalidates user's existing sessions
-
-    **Security Features**:
-    - Admin action is logged with details
-    - Secure password hashing (bcrypt/scrypt)
-    - Password strength validation
-    - User notification of password change
-    - Session invalidation options
+    **Security Considerations**:
+    - Action is logged for audit purposes
+    - User receives notification of password change
+    - All user's active sessions are terminated
+    - Password must meet system security requirements
 
     **Use Cases**:
-    - User forgot password and cannot access email
-    - Account lockout recovery
+    - Emergency account recovery for locked users
+    - Password reset for users who forgot credentials
     - Security incident response
-    - User support requests
+    - Administrative account maintenance
 
     **Audit Logging**:
-    - Admin user who performed the change
-    - Target user whose password was changed
-    - Timestamp of the change
-    - Reason (if provided)
+    - Records admin user who changed password
+    - Timestamps the password change event
+    - Maintains audit trail for compliance
+    - May trigger security notifications
 
     **Error Responses**:
-    - `400 Bad Request`: Missing or invalid new password
+    - `400 Bad Request`: Missing new_password field
     - `401 Unauthorized`: JWT token required
     - `403 Forbidden`: Admin access required
-    - `404 Not Found`: Target user does not exist
+    - `404 Not Found`: User does not exist
     - `422 Unprocessable Entity`: Password doesn't meet requirements
-    - `500 Internal Server Error`: Password change process failed
+    - `500 Internal Server Error`: Password change failed
     """
     logger.info("[ROUTER]: Admin changing password for user " + user)
     body = request.get_json()
@@ -3230,10 +3189,11 @@ def reset_rate_limits():
 @jwt_required()
 def get_user_sessions():
     """
-    Retrieve current user's active sessions across all devices.
+    Retrieve current user's active authentication sessions.
 
     **Authentication**: JWT token required
-    **Access**: Users can view their own active sessions
+    **Access**: Returns current user's own active sessions
+    **Purpose**: Session management and security monitoring
 
     **Response Schema**:
     ```json
@@ -3241,33 +3201,33 @@ def get_user_sessions():
       "data": [
         {
           "id": "session-123",
-          "token": "ref_token_prefix...",
           "user_id": "user-456",
-          "created_at": "2025-01-15T10:30:00Z",
-          "last_used_at": "2025-01-15T12:00:00Z",
-          "expires_at": "2025-02-15T10:30:00Z",
-          "device_info": {
-            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)...",
-            "ip_address": "192.168.1.100",
-            "platform": "Web"
-          },
+          "created_at": "2025-01-15T10:00:00Z",
+          "last_accessed": "2025-01-15T14:30:00Z",
+          "expires_at": "2025-01-22T10:00:00Z",
+          "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "ip_address": "192.168.1.100",
           "is_current": true,
-          "is_active": true
+          "device_info": {
+            "browser": "Chrome",
+            "os": "Windows",
+            "device_type": "desktop"
+          }
         },
         {
           "id": "session-124",
-          "token": "ref_token_prefix...",
           "user_id": "user-456",
-          "created_at": "2025-01-14T08:15:00Z",
-          "last_used_at": "2025-01-14T18:30:00Z",
-          "expires_at": "2025-02-14T08:15:00Z",
-          "device_info": {
-            "user_agent": "TrendsEarth-Mobile/1.2.3",
-            "ip_address": "10.0.0.50",
-            "platform": "Mobile"
-          },
+          "created_at": "2025-01-14T15:00:00Z",
+          "last_accessed": "2025-01-15T12:00:00Z",
+          "expires_at": "2025-01-21T15:00:00Z",
+          "user_agent": "TrendsEarth-Mobile/1.0",
+          "ip_address": "10.0.0.50",
           "is_current": false,
-          "is_active": true
+          "device_info": {
+            "browser": "Mobile App",
+            "os": "Android",
+            "device_type": "mobile"
+          }
         }
       ]
     }
@@ -3275,34 +3235,29 @@ def get_user_sessions():
 
     **Session Information**:
     - `id`: Unique session identifier
-    - `token`: Prefix of the refresh token (for identification)
-    - `created_at`: When the session was first created
-    - `last_used_at`: Most recent activity timestamp
-    - `expires_at`: When the session will expire
-    - `device_info`: Information about the device/client
-    - `is_current`: Whether this is the current session
-    - `is_active`: Whether the session is still valid
-
-    **Device Information**:
-    - User agent string for browser/app identification
-    - IP address of the device
-    - Platform type (Web, Mobile, Desktop, API)
-    - Geographic location (if available)
+    - `created_at`: When session was created/login occurred
+    - `last_accessed`: Last activity timestamp for this session
+    - `expires_at`: When session will automatically expire
+    - `user_agent`: Browser/application identifier
+    - `ip_address`: IP address of the session
+    - `is_current`: Whether this is the current API request's session
+    - `device_info`: Parsed device and browser information
 
     **Use Cases**:
-    - Security monitoring: Check for suspicious sessions
-    - Device management: See all logged-in devices
-    - Session cleanup: Identify old or unused sessions
-    - Account security: Verify authorized access only
+    - Monitor active login sessions across devices
+    - Identify suspicious login activity
+    - Manage multiple device access
+    - Security audit and session cleanup
 
-    **Privacy Considerations**:
-    - Only shows user's own sessions
-    - IP addresses may be anonymized for privacy
-    - Sensitive token information is truncated
+    **Security Features**:
+    - Only shows current user's sessions (privacy protection)
+    - Includes last access time for activity monitoring
+    - Device fingerprinting for security analysis
+    - Current session identification
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
-    - `500 Internal Server Error`: Failed to retrieve session information
+    - `500 Internal Server Error`: Failed to retrieve sessions
     """
     logger.info("[ROUTER]: Getting user sessions")
     identity = current_user
@@ -3321,16 +3276,16 @@ def get_user_sessions():
 @jwt_required()
 def revoke_user_session(session_id):
     """
-    Revoke a specific user session (logout from specific device).
+    Revoke a specific authentication session.
 
     **Authentication**: JWT token required
-    **Access**: Users can revoke their own sessions only
-    **Security**: Session revocation is immediate and permanent
+    **Access**: Users can only revoke their own sessions
+    **Purpose**: Selective session termination for security
 
     **Path Parameters**:
-    - `session_id`: Session ID to revoke (from sessions list)
+    - `session_id`: Session identifier to revoke
 
-    **Request**: No request body required - this is a DELETE endpoint
+    **Request**: No request body required
 
     **Success Response Schema**:
     ```json
@@ -3340,37 +3295,31 @@ def revoke_user_session(session_id):
     ```
 
     **Revocation Process**:
-    1. Validates session belongs to current user
-    2. Immediately invalidates the refresh token
-    3. Marks session as revoked in database
-    4. Logs revocation action for security audit
-    5. Associated access tokens remain valid until expiry
-
-    **Security Effects**:
-    - Target session cannot generate new access tokens
-    - User is effectively logged out on that device
-    - Existing access tokens continue working until expiry (typically 1 hour)
-    - Session cannot be reactivated or restored
+    - Validates session belongs to current user
+    - Invalidates the specified session token
+    - Removes session from active sessions list
+    - Logs revocation event for security audit
 
     **Use Cases**:
-    - Lost or stolen device security
-    - Logging out from specific devices
-    - Cleaning up old or unused sessions
-    - Security incident response
+    - Log out from specific device while staying logged in on others
+    - Security response to suspicious session activity
+    - Remote device management (e.g., lost phone)
+    - Granular session control
+
+    **Security Features**:
+    - Users can only revoke their own sessions (privacy protection)
+    - Immediate token invalidation
+    - Audit logging for security monitoring
+    - No impact on other active sessions
 
     **Session Identification**:
-    - Use session ID from `/user/me/sessions` endpoint
-    - Session must belong to the current user
-    - Cannot revoke other users' sessions
-
-    **Audit Logging**:
-    - Session revocation is logged for security monitoring
-    - Includes timestamp, user, and revoked session details
-    - Helps track security events and user behavior
+    - Use `GET /user/me/sessions` to list sessions and get session IDs
+    - Sessions are identified by unique session identifiers
+    - Current session can be revoked (will require re-authentication)
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
-    - `404 Not Found`: Session does not exist or doesn't belong to user
+    - `404 Not Found`: Session not found or doesn't belong to user
     - `500 Internal Server Error`: Failed to revoke session
     """
     logger.info(f"[ROUTER]: Revoking user session {session_id}")
@@ -3400,13 +3349,13 @@ def revoke_user_session(session_id):
 @jwt_required()
 def revoke_all_user_sessions():
     """
-    Revoke all user sessions (logout from all devices).
+    Revoke all authentication sessions for current user (logout everywhere).
 
     **Authentication**: JWT token required
-    **Access**: Users can revoke all their own sessions
-    **Security**: Global session revocation for account security
+    **Access**: Revokes all sessions for current authenticated user
+    **Purpose**: Complete logout from all devices and applications
 
-    **Request**: No request body required - this is a DELETE endpoint
+    **Request**: No request body required
 
     **Success Response Schema**:
     ```json
@@ -3416,41 +3365,35 @@ def revoke_all_user_sessions():
     ```
 
     **Revocation Process**:
-    1. Identifies all active sessions for the current user
-    2. Immediately invalidates all refresh tokens
-    3. Marks all sessions as revoked in database
-    4. Logs global revocation action for security audit
-    5. Returns count of revoked sessions
-
-    **Global Logout Effects**:
-    - User is logged out from ALL devices and applications
-    - All refresh tokens become invalid immediately
-    - Existing access tokens continue working until expiry (typically 1 hour)
-    - User must re-authenticate on all devices
-
-    **Security Implications**:
-    - Immediate protection against compromised accounts
-    - Stops unauthorized access across all devices
-    - Forces re-authentication everywhere
-    - Cannot be undone - requires fresh login on all devices
+    - Identifies all active sessions for current user
+    - Invalidates all session tokens immediately
+    - Removes all sessions from active sessions list
+    - Logs bulk revocation event for security audit
+    - Includes current session (user will need to re-authenticate)
 
     **Use Cases**:
-    - Account security breach response
-    - Password change followup
-    - Suspected unauthorized access
-    - Account cleanup and security refresh
-    - Lost device with active sessions
+    - Emergency security response (suspected account compromise)
+    - Complete logout when changing passwords
+    - Privacy protection when using shared/public computers
+    - Account cleanup and security hygiene
 
-    **Post-Revocation Requirements**:
-    - User must obtain new tokens via `/auth` endpoint
-    - All applications/devices need fresh authentication
-    - Current session (making the request) is also revoked
-    - User should change password if security breach suspected
+    **Security Features**:
+    - Immediate invalidation of all tokens
+    - Forces re-authentication on all devices
+    - Comprehensive security reset
+    - Audit logging with session count
 
-    **Audit Logging**:
-    - Global session revocation is logged for security monitoring
-    - Includes timestamp, user, and count of revoked sessions
-    - Critical security event for compliance and monitoring
+    **Post-Revocation Effect**:
+    - User is logged out from all devices/applications
+    - All API requests with old tokens will fail
+    - Fresh login required on all devices
+    - New sessions will have new tokens and IDs
+
+    **Important Notes**:
+    - This action affects the current session making the request
+    - User will need to re-authenticate immediately after this call
+    - All mobile apps and browser sessions will require re-login
+    - Consider using this for security incidents or password changes
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required

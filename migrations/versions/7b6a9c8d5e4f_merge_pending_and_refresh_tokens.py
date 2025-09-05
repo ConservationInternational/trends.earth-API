@@ -1,7 +1,7 @@
 """Merge status tracking and refresh tokens branches
 
-Revision ID: merge_merge_pending_refresh
-Revises: add_refresh_tokens, 9a3b4c5d6e7f
+Revision ID: 6c8e1f4a7b9d
+Revises: 5f6e8a9c1b2d, 9a3b4c5d6e7f
 Create Date: 2025-09-03 21:00:00.000000
 """
 from alembic import op

@@ -40,6 +40,15 @@ are below: </p>
 
 
 def dict_to_query(params):
+    """
+    Convert dictionary parameters to URL query string format.
+
+    Args:
+        params (dict): Dictionary of key-value pairs
+
+    Returns:
+        str: URL-encoded query string without leading '?'
+    """
     query = ""
     for key in params:
         query += key + "=" + params.get(key) + "&"
@@ -53,8 +62,8 @@ def update_execution_status_with_logging(
     Helper function to update execution status and log to status_log table.
 
     This function should be called whenever a script's status field changes.
-    It updates the execution status and creates two status_log entries:
-    one before the change and one after the change to provide complete audit trail.
+    It updates the execution status and creates a single status_log entry
+    AFTER the change with information about the status transition.
 
     Args:
         execution (Execution): The execution object to update
@@ -63,7 +72,7 @@ def update_execution_status_with_logging(
             transaction
 
     Returns:
-        tuple: (before_status_log, after_status_log) - The created status log entries
+        StatusLog: The created status log entry
     """
     logger.info(f"[SERVICE]: Updating execution {execution.id} status to {new_status}")
 
@@ -71,9 +80,17 @@ def update_execution_status_with_logging(
     old_status = execution.status
 
     try:
-        # Count current executions by status BEFORE making the change
+        # Update the execution status first
+        execution.status = new_status
+
+        # Update end_date and progress for terminal states
+        if new_status in ["FINISHED", "FAILED", "CANCELLED"]:
+            execution.end_date = datetime.datetime.utcnow()
+            execution.progress = 100
+
+        # Count current executions by status AFTER making the change
         logger.info(
-            "[SERVICE]: Counting executions by status for status log (before change)"
+            "[SERVICE]: Counting executions by status for status log (after change)"
         )
 
         status_counts = (
@@ -82,94 +99,42 @@ def update_execution_status_with_logging(
             .all()
         )
 
-        # Convert to dictionary for before counts
-        before_count_dict = dict(status_counts)
+        # Convert to dictionary for counts
+        count_dict = dict(status_counts)
 
-        # Map to the expected field names for BEFORE status log
-        before_executions_pending = before_count_dict.get("PENDING", 0)
-        before_executions_ready = before_count_dict.get("READY", 0)
-        before_executions_running = before_count_dict.get("RUNNING", 0)
-        before_executions_finished = before_count_dict.get("FINISHED", 0)
-        before_executions_failed = before_count_dict.get("FAILED", 0)
-        before_executions_cancelled = before_count_dict.get("CANCELLED", 0)
-
-        logger.info(
-            f"[SERVICE]: Status counts BEFORE change - "
-            f"Pending: {before_executions_pending}, Ready: {before_executions_ready}, "
-            f"Running: {before_executions_running}, "
-            f"Finished: {before_executions_finished}, "
-            f"Failed: {before_executions_failed}, "
-            f"Cancelled: {before_executions_cancelled}"
-        )
-
-        # Create status log entry for BEFORE the change
-        before_status_log = StatusLog(
-            executions_pending=before_executions_pending,
-            executions_ready=before_executions_ready,
-            executions_running=before_executions_running,
-            executions_finished=before_executions_finished,
-            executions_failed=before_executions_failed,
-            executions_cancelled=before_executions_cancelled,
-        )
-
-        # Now calculate the AFTER counts by adjusting from the before counts
-        # This is more reliable than querying again since we control the change
-        after_count_dict = before_count_dict.copy()
-
-        # Safely adjust counts for the status change we're making
-        # Handle the case where old_status might not exist in counts (edge case)
-        if old_status and old_status in after_count_dict:
-            after_count_dict[old_status] = max(0, after_count_dict[old_status] - 1)
-        elif old_status:
-            # If old_status wasn't in the count, it means there were 0 of that status
-            # So we can't subtract, just log this unusual case
-            logger.warning(
-                f"[SERVICE]: Old status {old_status} not found in current counts - "
-                f"this may indicate a race condition or data inconsistency"
-            )
-
-        # Add to the new status count
-        after_count_dict[new_status] = after_count_dict.get(new_status, 0) + 1
-
-        # Update the execution status after calculating the counts
-        execution.status = new_status
-
-        # Update end_date and progress for terminal states
-        if new_status in ["FINISHED", "FAILED", "CANCELLED"]:
-            execution.end_date = datetime.datetime.utcnow()
-            execution.progress = 100
-
-        # Map to the expected field names for AFTER status log
-        after_executions_pending = after_count_dict.get("PENDING", 0)
-        after_executions_ready = after_count_dict.get("READY", 0)
-        after_executions_running = after_count_dict.get("RUNNING", 0)
-        after_executions_finished = after_count_dict.get("FINISHED", 0)
-        after_executions_failed = after_count_dict.get("FAILED", 0)
-        after_executions_cancelled = after_count_dict.get("CANCELLED", 0)
+        # Map to the expected field names
+        executions_pending = count_dict.get("PENDING", 0)
+        executions_ready = count_dict.get("READY", 0)
+        executions_running = count_dict.get("RUNNING", 0)
+        executions_finished = count_dict.get("FINISHED", 0)
+        executions_failed = count_dict.get("FAILED", 0)
+        executions_cancelled = count_dict.get("CANCELLED", 0)
 
         logger.info(
             f"[SERVICE]: Status counts AFTER change - "
-            f"Pending: {after_executions_pending}, Ready: {after_executions_ready}, "
-            f"Running: {after_executions_running}, "
-            f"Finished: {after_executions_finished}, "
-            f"Failed: {after_executions_failed}, "
-            f"Cancelled: {after_executions_cancelled}"
+            f"Pending: {executions_pending}, Ready: {executions_ready}, "
+            f"Running: {executions_running}, "
+            f"Finished: {executions_finished}, "
+            f"Failed: {executions_failed}, "
+            f"Cancelled: {executions_cancelled}"
         )
 
-        # Create status log entry for AFTER the change
-        after_status_log = StatusLog(
-            executions_pending=after_executions_pending,
-            executions_ready=after_executions_ready,
-            executions_running=after_executions_running,
-            executions_finished=after_executions_finished,
-            executions_failed=after_executions_failed,
-            executions_cancelled=after_executions_cancelled,
+        # Create status log entry for the transition
+        status_log = StatusLog(
+            executions_pending=executions_pending,
+            executions_ready=executions_ready,
+            executions_running=executions_running,
+            executions_finished=executions_finished,
+            executions_failed=executions_failed,
+            executions_cancelled=executions_cancelled,
+            status_from=old_status,
+            status_to=new_status,
+            execution_id=str(execution.id),
         )
 
-        # Save execution and both status logs
+        # Save execution and status log
         db.session.add(execution)
-        db.session.add(before_status_log)
-        db.session.add(after_status_log)
+        db.session.add(status_log)
 
         # Add any additional objects to the same transaction
         if additional_objects:
@@ -179,12 +144,11 @@ def update_execution_status_with_logging(
         db.session.commit()
 
         logger.info(
-            f"[SERVICE]: Status logs created with IDs {before_status_log.id} (before) "
-            f"and {after_status_log.id} (after) for execution {execution.id} "
-            f"status change {old_status} -> {new_status}"
+            f"[SERVICE]: Status log created with ID {status_log.id} for execution "
+            f"{execution.id} status change {old_status} -> {new_status}"
         )
 
-        return (before_status_log, after_status_log)
+        return status_log
 
     except Exception as error:
         logger.error(
@@ -196,7 +160,19 @@ def update_execution_status_with_logging(
 
 
 class ExecutionService:
-    """EXECUTION SERVICE"""
+    """
+    Service class for managing execution lifecycle and operations.
+
+    This service handles all execution-related operations including:
+    - Creating new executions from script templates
+    - Querying and filtering executions with permissions
+    - Updating execution status with automatic status logging
+    - Cancelling running executions and associated resources
+    - Managing execution logs and monitoring
+
+    All status updates use the centralized status tracking system to maintain
+    an audit trail of execution state changes.
+    """
 
     @staticmethod
     def _build_execution_environment(user, execution_id):
@@ -303,6 +279,26 @@ class ExecutionService:
         filter_param=None,
         sort=None,
     ):
+        """
+        Retrieve executions with filtering, pagination, and permission controls.
+
+        Args:
+            user: User object for permission checking
+            target_user_id (str, optional): Filter by specific user ID (admin only)
+            updated_at (datetime, optional): Filter by start date
+            status (str, optional): Filter by execution status
+            page (int): Page number for pagination (default: 1)
+            per_page (int): Results per page (default: 2000, max: 2000)
+            paginate (bool): Whether to apply pagination (default: True)
+            filter_param (str, optional): SQL-style filter expressions
+            sort (str, optional): SQL-style sort expressions
+
+        Returns:
+            tuple: (executions list, total count)
+
+        Raises:
+            Exception: If pagination parameters are invalid or filter permissions denied
+        """
         logger.info("[SERVICE]: Getting executions")
         logger.info("[DB]: QUERY")
 
@@ -518,6 +514,21 @@ class ExecutionService:
 
     @staticmethod
     def create_execution(script_id, params, user):
+        """
+        Create a new execution from a script template.
+
+        Args:
+            script_id (str): UUID of the script to execute
+            params (dict): Execution parameters and configuration
+            user: User object creating the execution
+
+        Returns:
+            Execution: Created execution object
+
+        Raises:
+            ScriptNotFound: If script doesn't exist
+            ScriptStateNotValid: If script is not in SUCCESS state
+        """
         logger.info("[SERVICE]: Creating execution")
         script = ScriptService.get_script(script_id, user)
         if not script:
@@ -549,6 +560,20 @@ class ExecutionService:
 
     @staticmethod
     def get_execution(execution_id, user="fromservice"):
+        """
+        Retrieve a single execution by ID with permission checking.
+
+        Args:
+            execution_id (str|UUID): UUID of the execution to retrieve
+            user (User|str): User object for permission checking, or "fromservice"
+                           for internal service calls
+
+        Returns:
+            Execution: The requested execution object
+
+        Raises:
+            ExecutionNotFound: If execution doesn't exist or user lacks permission
+        """
         logger.info(f"[SERVICE]: Getting execution {execution_id}")
         logger.info("[DB]: QUERY")
         # user = 'from service' just in case the requests comes from the service
@@ -590,11 +615,16 @@ class ExecutionService:
 
     @staticmethod
     def update_execution(execution, execution_id):
-        """Update execution status, progress, or results and send notifications
+        """
+        Update execution properties including status, progress, and results.
 
         Updates an execution's status, progress, or results. For terminal status
         updates (FINISHED, FAILED, CANCELLED), automatically sends email
         notifications to users who have email notifications enabled.
+
+        When status is updated, this method uses the centralized status tracking
+        system to automatically create status log entries and send notification
+        emails for terminal states.
 
         Args:
             execution (dict): Dictionary containing fields to update:
@@ -683,6 +713,20 @@ class ExecutionService:
 
     @staticmethod
     def create_execution_log(log, execution_id):
+        """
+        Create a new log entry for an execution.
+
+        Args:
+            log (dict): Log entry data containing 'text' and 'level' fields
+            execution_id (str): UUID of the execution to log for
+
+        Returns:
+            ExecutionLog: Created log entry object
+
+        Raises:
+            Exception: If required fields missing
+            ExecutionNotFound: If execution doesn't exist
+        """
         logger.info("[SERVICE]: Creating execution log")
         text = log.get("text", None)
         level = log.get("level", None)
@@ -705,6 +749,20 @@ class ExecutionService:
 
     @staticmethod
     def get_execution_logs(execution_id, start_date, last_id):
+        """
+        Retrieve execution logs with optional filtering.
+
+        Args:
+            execution_id (str): UUID of the execution
+            start_date (datetime, optional): Filter logs after this date
+            last_id (int, optional): Filter logs after this log ID
+
+        Returns:
+            list: List of ExecutionLog objects
+
+        Raises:
+            ExecutionNotFound: If execution doesn't exist
+        """
         logger.info(f"[SERVICE]: Getting execution logs of execution {execution_id}: ")
         logger.info("[DB]: QUERY")
         try:
@@ -739,7 +797,26 @@ class ExecutionService:
 
     @staticmethod
     def cancel_execution(execution_id):
-        """Cancel an execution and any associated Google Earth Engine tasks"""
+        """
+        Cancel an execution and any associated Google Earth Engine tasks.
+
+        This method performs a comprehensive cancellation process:
+        1. Stops Docker containers/services via Celery task
+        2. Cancels any Google Earth Engine tasks found in execution logs
+        3. Updates execution status to CANCELLED with detailed logging
+        4. Creates status log entries for the transition
+
+        Args:
+            execution_id (str): UUID of the execution to cancel
+
+        Returns:
+            dict: Cancellation results including execution data and detailed
+                  cancellation information for Docker and GEE resources
+
+        Raises:
+            ExecutionNotFound: If execution doesn't exist
+            Exception: If execution is already in terminal state or other errors
+        """
         logger.info(f"[SERVICE]: Canceling execution {execution_id}")
 
         from gefapi.services.gee_service import GEEService
@@ -905,10 +982,8 @@ class ExecutionService:
 
                 # Use the helper function to update status and create status logs
                 # Include the cancellation log in the same transaction
-                before_status_log, after_status_log = (
-                    update_execution_status_with_logging(
-                        execution, "CANCELLED", additional_objects=[cancellation_log]
-                    )
+                update_execution_status_with_logging(
+                    execution, "CANCELLED", additional_objects=[cancellation_log]
                 )
 
                 logger.info(

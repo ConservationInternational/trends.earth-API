@@ -1,8 +1,8 @@
 """
-Tests for improved status tracking functionality.
+Tests for status log updates with transition tracking.
 
-Tests the new event-driven status tracking system that logs to status_log
-whenever execution status changes.
+Tests the new status tracking system that logs to status_log
+AFTER execution status changes with transition information.
 """
 
 from unittest.mock import patch
@@ -18,20 +18,20 @@ from gefapi.services.execution_service import (
 
 
 @pytest.mark.usefixtures("client", "auth_headers_admin")
-class TestImprovedStatusTracking:
-    """Test improved status tracking functionality"""
+class TestStatusLogUpdates:
+    """Test status log updates with transition tracking"""
 
-    def test_status_log_model_new_schema(self, app):
-        """Test that StatusLog model has the correct new schema"""
+    def test_status_log_model_has_transition_fields(self, app):
+        """Test that StatusLog model has the new transition fields"""
         with app.app_context():
-            # Create a status log with new schema including transition fields
+            # Create a status log with new transition fields
             status_log = StatusLog(
-                executions_pending=2,
+                executions_pending=1,
                 executions_ready=2,
                 executions_running=3,
-                executions_finished=10,
+                executions_finished=4,
                 executions_failed=1,
-                executions_cancelled=2,
+                executions_cancelled=0,
                 status_from="PENDING",
                 status_to="RUNNING",
                 execution_id="test-execution-id",
@@ -40,24 +40,15 @@ class TestImprovedStatusTracking:
             db.session.add(status_log)
             db.session.commit()
 
-            # Test serialization includes new field and excludes old fields
+            # Test serialization includes new fields
             serialized = status_log.serialize()
 
-            assert "executions_cancelled" in serialized
-            assert serialized["executions_cancelled"] == 2
-
-            # Test new transition fields
             assert "status_from" in serialized
             assert serialized["status_from"] == "PENDING"
             assert "status_to" in serialized
             assert serialized["status_to"] == "RUNNING"
             assert "execution_id" in serialized
             assert serialized["execution_id"] == "test-execution-id"
-
-            # These fields should be removed
-            assert "executions_count" not in serialized
-            assert "users_count" not in serialized
-            assert "scripts_count" not in serialized
 
             # Verify all expected fields are present
             expected_fields = {
@@ -75,15 +66,15 @@ class TestImprovedStatusTracking:
             }
             assert set(serialized.keys()) == expected_fields
 
-    def test_update_execution_status_with_logging_creates_status_log(self, app):
-        """Test that updating execution status creates a status log entry"""
+    def test_update_execution_status_creates_single_log_after_change(self, app):
+        """Test that updating execution status creates only one log entry AFTER the change"""
         import uuid
 
         with app.app_context():
             # Create test user with unique email
             user_uuid = uuid.uuid4()
             user = User(
-                email=f"test1-{user_uuid}@example.com",
+                email=f"test-transition-1-{user_uuid}@example.com",
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -96,7 +87,7 @@ class TestImprovedStatusTracking:
             script_uuid = uuid.uuid4()
             script = Script(
                 name="Test Script",
-                slug=f"test-script-1-{script_uuid}",
+                slug=f"test-script-transition-1-{script_uuid}",
                 user_id=user.id,
             )
             script.status = "SUCCESS"
@@ -116,7 +107,7 @@ class TestImprovedStatusTracking:
             # Update execution status using the helper function
             status_log = update_execution_status_with_logging(execution, "RUNNING")
 
-            # Verify one new status log was created (after change only)
+            # Verify only one new status log was created
             assert StatusLog.query.count() == initial_count + 1
             assert status_log is not None
             assert execution.status == "RUNNING"
@@ -126,13 +117,12 @@ class TestImprovedStatusTracking:
             assert status_log.status_to == "RUNNING"
             assert status_log.execution_id == str(execution.id)
 
-    def test_update_execution_status_with_logging_counts_executions(self, app):
-        """Test that status log contains correct execution counts"""
+    def test_status_log_contains_accurate_counts_after_change(self, app):
+        """Test that status log contains correct execution counts after the status change"""
         import uuid
 
         with app.app_context():
             # Clean up all data using TRUNCATE CASCADE to avoid foreign key issues
-            # This will reset the database to a clean state for this test
             try:
                 db.session.execute(db.text("TRUNCATE TABLE status_log CASCADE"))
                 db.session.execute(db.text("TRUNCATE TABLE execution_log CASCADE"))
@@ -148,7 +138,7 @@ class TestImprovedStatusTracking:
 
             # Create test user
             user = User(
-                email=f"test2-{uuid.uuid4()}@example.com",
+                email=f"test-transition-2-{uuid.uuid4()}@example.com",
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -161,7 +151,7 @@ class TestImprovedStatusTracking:
             script_uuid = uuid.uuid4()
             script = Script(
                 name="Test Script",
-                slug=f"test-script-2-{script_uuid}",
+                slug=f"test-script-transition-2-{script_uuid}",
                 user_id=user.id,
             )
             script.status = "SUCCESS"
@@ -198,15 +188,13 @@ class TestImprovedStatusTracking:
             # Update to RUNNING status
             status_log = update_execution_status_with_logging(new_execution, "RUNNING")
 
-            # Verify counts in status log (the one showing state after change)
+            # Verify counts reflect state AFTER the change
+            assert status_log.executions_pending == 1  # Only the original PENDING
             assert status_log.executions_ready == 1  # Only the original READY
-            assert (
-                status_log.executions_running == 2
-            )  # RUNNING + PENDING (original) + new RUNNING
+            assert status_log.executions_running == 2  # Original RUNNING + new one
             assert status_log.executions_finished == 1  # Only the original FINISHED
             assert status_log.executions_failed == 1  # Only the original FAILED
             assert status_log.executions_cancelled == 1  # Only the original CANCELLED
-            assert status_log.executions_pending == 1  # Only the original PENDING
 
             # Verify transition information
             assert status_log.status_from == "PENDING"
@@ -221,7 +209,7 @@ class TestImprovedStatusTracking:
         with app.app_context():
             # Create test user
             user = User(
-                email=f"test3-{uuid.uuid4()}@example.com",
+                email=f"test-transition-3-{uuid.uuid4()}@example.com",
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -229,18 +217,18 @@ class TestImprovedStatusTracking:
                 role="USER",
             )
             db.session.add(user)
-            db.session.commit()  # Commit user first to get user.id
+            db.session.commit()
 
             # Create test script
             script_uuid = uuid.uuid4()
             script = Script(
                 name="Test Script",
-                slug=f"test-script-3-{script_uuid}",
+                slug=f"test-script-transition-3-{script_uuid}",
                 user_id=user.id,
             )
             script.status = "SUCCESS"
             db.session.add(script)
-            db.session.commit()  # Commit script first to get script.id
+            db.session.commit()
 
             # Create test execution
             execution = Execution(
@@ -258,13 +246,17 @@ class TestImprovedStatusTracking:
                 {"status": "FINISHED"}, execution_id
             )
 
-            # Verify status log was created
-            assert (
-                StatusLog.query.count() == initial_log_count + 1
-            )  # One log per status change
+            # Verify only one status log was created
+            assert StatusLog.query.count() == initial_log_count + 1
             assert updated_execution.status == "FINISHED"
             assert updated_execution.end_date is not None
             assert updated_execution.progress == 100
+
+            # Verify the status log has transition information
+            status_log = StatusLog.query.order_by(StatusLog.id.desc()).first()
+            assert status_log.status_from == "RUNNING"
+            assert status_log.status_to == "FINISHED"
+            assert status_log.execution_id == execution_id
 
     def test_execution_cancel_uses_new_helper(self, app):
         """Test that execution cancellation uses the new helper function"""
@@ -274,7 +266,7 @@ class TestImprovedStatusTracking:
             # Create test user with unique email
             user_uuid = uuid.uuid4()
             user = User(
-                email=f"test4-{user_uuid}@example.com",
+                email=f"test-transition-4-{user_uuid}@example.com",
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -287,7 +279,7 @@ class TestImprovedStatusTracking:
             script_uuid = uuid.uuid4()
             script = Script(
                 name="Test Script",
-                slug=f"test-script-4-{script_uuid}",
+                slug=f"test-script-transition-4-{script_uuid}",
                 user_id=user.id,
             )
             script.status = "SUCCESS"
@@ -316,52 +308,15 @@ class TestImprovedStatusTracking:
                 # Cancel the execution
                 result = ExecutionService.cancel_execution(execution_id)
 
-                # Verify status log was created
-                assert (
-                    StatusLog.query.count() == initial_log_count + 1
-                )  # One log per status change
+                # Verify only one status log was created
+                assert StatusLog.query.count() == initial_log_count + 1
                 assert result["execution"]["status"] == "CANCELLED"
 
-    def test_status_endpoint_with_new_schema(self, client, auth_headers_admin):
-        """Test that the status endpoint works with the new schema"""
-        # Create a status log entry with new transition fields
-        with client.application.app_context():
-            status_log = StatusLog(
-                executions_pending=2,
-                executions_ready=2,
-                executions_running=3,
-                executions_finished=10,
-                executions_failed=1,
-                executions_cancelled=2,
-                status_from="PENDING",
-                status_to="RUNNING",
-                execution_id="test-execution-id",
-            )
-            db.session.add(status_log)
-            db.session.commit()
-
-        # Call the status endpoint
-        response = client.get("/api/v1/status", headers=auth_headers_admin)
-
-        assert response.status_code == 200
-        data = response.json
-
-        assert "data" in data
-        assert len(data["data"]) > 0
-
-        status_entry = data["data"][0]
-
-        # Verify new schema fields are present
-        assert "executions_cancelled" in status_entry
-        assert status_entry["executions_cancelled"] == 2
-        assert "status_from" in status_entry
-        assert "status_to" in status_entry
-        assert "execution_id" in status_entry
-
-        # Verify old fields are not present
-        assert "executions_count" not in status_entry
-        assert "users_count" not in status_entry
-        assert "scripts_count" not in status_entry
+                # Verify the status log has transition information
+                status_log = StatusLog.query.order_by(StatusLog.id.desc()).first()
+                assert status_log.status_from == "RUNNING"
+                assert status_log.status_to == "CANCELLED"
+                assert status_log.execution_id == execution_id
 
     def test_helper_function_handles_terminal_states(self, app):
         """Test that the helper function properly handles terminal execution states"""
@@ -371,7 +326,7 @@ class TestImprovedStatusTracking:
             # Create test user with unique email
             user_uuid = uuid.uuid4()
             user = User(
-                email=f"test5-{user_uuid}@example.com",
+                email=f"test-transition-5-{user_uuid}@example.com",
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -384,7 +339,7 @@ class TestImprovedStatusTracking:
             script_uuid = uuid.uuid4()
             script = Script(
                 name="Test Script",
-                slug=f"test-script-5-{script_uuid}",
+                slug=f"test-script-transition-5-{script_uuid}",
                 user_id=user.id,
             )
             script.status = "SUCCESS"
@@ -421,6 +376,51 @@ class TestImprovedStatusTracking:
                 execution.end_date = None
                 execution.progress = 50
 
+    def test_status_endpoint_with_new_schema(self, client, auth_headers_admin):
+        """Test that the status endpoint works with the new schema"""
+        # Create a status log entry with transition information
+        with client.application.app_context():
+            status_log = StatusLog(
+                executions_pending=2,
+                executions_ready=2,
+                executions_running=3,
+                executions_finished=10,
+                executions_failed=1,
+                executions_cancelled=2,
+                status_from="PENDING",
+                status_to="RUNNING",
+                execution_id="test-execution-id",
+            )
+            db.session.add(status_log)
+            db.session.commit()
+
+        # Call the status endpoint
+        response = client.get("/api/v1/status", headers=auth_headers_admin)
+
+        assert response.status_code == 200
+        data = response.json
+
+        assert "data" in data
+        assert len(data["data"]) > 0
+
+        status_entry = data["data"][0]
+
+        # Verify new schema fields are present
+        assert "status_from" in status_entry
+        assert "status_to" in status_entry
+        assert "execution_id" in status_entry
+        # At least one of them should have our test data
+        found_test_entry = False
+        for entry in data["data"]:
+            if (
+                entry.get("status_from") == "PENDING"
+                and entry.get("status_to") == "RUNNING"
+            ):
+                found_test_entry = True
+                assert entry["execution_id"] == "test-execution-id"
+                break
+        assert found_test_entry, "Test status log entry not found in API response"
+
     def test_helper_function_error_handling(self, app):
         """Test that the helper function handles database errors properly"""
         import uuid
@@ -429,7 +429,7 @@ class TestImprovedStatusTracking:
             # Create test user with unique email
             user_uuid = uuid.uuid4()
             user = User(
-                email=f"test6-{user_uuid}@example.com",
+                email=f"test-transition-6-{user_uuid}@example.com",
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -442,7 +442,7 @@ class TestImprovedStatusTracking:
             script_uuid = uuid.uuid4()
             script = Script(
                 name="Test Script",
-                slug=f"test-script-6-{script_uuid}",
+                slug=f"test-script-transition-6-{script_uuid}",
                 user_id=user.id,
             )
             script.status = "SUCCESS"

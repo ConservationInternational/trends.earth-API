@@ -24,59 +24,52 @@ from gefapi.utils.script_access import (
 @jwt_required()
 def get_script_access(script_id):
     """
-    Retrieve script access control information and permissions.
+    Retrieve script access control configuration.
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
     **Purpose**: View current access control settings for script management
 
     **Path Parameters**:
-    - `script_id`: Script ID or slug identifier
+    - `script_id`: Script identifier/slug or numeric ID
 
     **Response Schema**:
     ```json
     {
       "data": {
-        "script_id": "script-123",
+        "script_id": "12345",
         "restricted": true,
         "allowed_roles": ["ADMIN", "SUPERADMIN"],
-        "allowed_users": ["user-456", "user-789"],
-        "access_type": "role_and_user_restricted",
-        "total_restrictions": 4
+        "allowed_users": ["user123", "user456"],
+        "access_type": "role_and_user_restricted"
       }
     }
     ```
 
-    **Access Control Types**:
-    - `unrestricted`: Script available to all authenticated users
+    **Response Fields**:
+    - `script_id`: The script identifier
+    - `restricted`: Whether script has any access restrictions
+    - `allowed_roles`: List of roles with access to this script
+    - `allowed_users`: List of user IDs with explicit access
+    - `access_type`: Type of restriction applied
+
+    **Access Types**:
+    - `unrestricted`: No access controls - available to all authenticated users
     - `role_restricted`: Only specific roles can access
     - `user_restricted`: Only specific users can access
     - `role_and_user_restricted`: Both role and user restrictions apply
 
-    **Restriction Information**:
-    - `restricted`: Boolean indicating if any restrictions exist
-    - `allowed_roles`: Array of roles with access (USER, ADMIN, SUPERADMIN)
-    - `allowed_users`: Array of user IDs with explicit access
-    - `access_type`: Summary of restriction type
-    - `total_restrictions`: Count of total access rules
-
-    **Access Logic**:
-    - If no restrictions: All authenticated users can access
-    - If role restrictions only: Users with matching roles can access
-    - If user restrictions only: Explicitly listed users can access
-    - If both restrictions: Users must match either role OR be explicitly listed
-
     **Use Cases**:
-    - Audit script access permissions
-    - Review security settings before publishing
-    - Compliance and access control reporting
-    - Troubleshooting access issues
+    - Review script permissions before modification
+    - Audit script access controls for compliance
+    - Troubleshoot user access issues
+    - Script security management
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
     - `403 Forbidden`: Admin privileges required
     - `404 Not Found`: Script does not exist
-    - `500 Internal Server Error`: Failed to retrieve access information
+    - `500 Internal Server Error`: Failed to retrieve access controls
     """
     try:
         # Only ADMIN and SUPERADMIN users can view script access controls
@@ -98,14 +91,14 @@ def get_script_access(script_id):
 @jwt_required()
 def set_script_access_roles(script_id):
     """
-    Set or update allowed roles for script access control.
+    Set role-based access control for a script.
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
-    **Purpose**: Configure role-based access restrictions for script execution
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
+    **Purpose**: Configure which user roles can access and execute a script
 
     **Path Parameters**:
-    - `script_id`: Script ID or slug identifier
+    - `script_id`: Script identifier/slug or numeric ID
 
     **Request Schema**:
     ```json
@@ -115,53 +108,47 @@ def set_script_access_roles(script_id):
     ```
 
     **Request Fields**:
-    - `roles`: Array of roles allowed to access the script
-      - Valid roles: `USER`, `ADMIN`, `SUPERADMIN`
-      - Empty array removes all role restrictions
-      - Must be an array (can be empty)
+    - `roles`: Array of role names that should have access
+      (empty array removes restrictions)
 
-    **Success Response Schema**:
+    **Valid Roles**:
+    - `USER`: Regular users
+    - `ADMIN`: Administrator users
+    - `SUPERADMIN`: Super administrator users
+
+    **Response Schema**:
     ```json
     {
       "data": {
-        "script_id": "script-123",
+        "script_id": "12345",
         "restricted": true,
         "allowed_roles": ["ADMIN", "SUPERADMIN"],
         "allowed_users": [],
-        "access_type": "role_restricted",
-        "total_restrictions": 2
+        "access_type": "role_restricted"
       }
     }
     ```
 
-    **Role-Based Access Control**:
-    - `USER`: Regular users with basic permissions
-    - `ADMIN`: Administrative users with elevated permissions
-    - `SUPERADMIN`: Super administrators with full system access
-
-    **Update Behavior**:
-    - Replaces existing role restrictions completely
-    - Empty array removes all role restrictions
-    - Does not affect user-specific restrictions
-    - Changes take effect immediately
-
-    **Access Logic After Update**:
-    - If roles specified: Only users with matching roles can access
-    - If roles empty: Role restrictions removed (user restrictions may still apply)
-    - Combined with user restrictions: Users need matching role OR explicit user access
+    **Behavior**:
+    - Empty roles array removes all role restrictions
+    - Non-empty array restricts access to specified roles only
+    - Users with specified roles can access script regardless of user-specific
+      restrictions
+    - Higher privilege roles (SUPERADMIN) can access scripts restricted to
+      lower roles
 
     **Use Cases**:
-    - Restrict sensitive scripts to admin users only
-    - Create role-based script categories
-    - Implement organizational access policies
-    - Security compliance requirements
+    - Restrict sensitive analysis scripts to admin users only
+    - Make scripts available to all authenticated users
+    - Create role-based script catalogs
+    - Implement script security policies
 
     **Error Responses**:
-    - `400 Bad Request`: Invalid roles, missing field, or malformed request
+    - `400 Bad Request`: Missing 'roles' field or invalid role names
     - `401 Unauthorized`: JWT token required
     - `403 Forbidden`: Admin privileges required
     - `404 Not Found`: Script does not exist
-    - `500 Internal Server Error`: Failed to update role restrictions
+    - `500 Internal Server Error`: Failed to update access controls
     """
     try:
         # Only ADMIN and SUPERADMIN users can modify script access controls
@@ -201,77 +188,67 @@ def set_script_access_roles(script_id):
 @jwt_required()
 def set_script_access_users(script_id):
     """
-    Set or update allowed users for script access control.
+    Set user-specific access control for a script.
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
-    **Purpose**: Configure user-specific access restrictions for script execution
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
+    **Purpose**: Configure which specific users can access and execute a script
 
     **Path Parameters**:
-    - `script_id`: Script ID or slug identifier
+    - `script_id`: Script identifier/slug or numeric ID
 
     **Request Schema**:
     ```json
     {
-      "users": ["user-123", "user-456"]
+      "users": ["user123", "user456"]
     }
     ```
 
     **Request Fields**:
-    - `users`: Array of user IDs allowed to access the script
-      - Must be valid existing user IDs
-      - Empty array removes all user restrictions
-      - Must be an array (can be empty)
+    - `users`: Array of user IDs that should have access
+      (empty array removes restrictions)
 
-    **Success Response Schema**:
+    **User Validation**:
+    - All provided user IDs must exist in the system
+    - User IDs can be numeric IDs or email addresses
+    - Invalid user IDs will cause the request to fail
+
+    **Response Schema**:
     ```json
     {
       "data": {
-        "script_id": "script-123",
+        "script_id": "12345",
         "restricted": true,
         "allowed_roles": [],
-        "allowed_users": ["user-123", "user-456"],
-        "access_type": "user_restricted",
-        "total_restrictions": 2
+        "allowed_users": ["user123", "user456"],
+        "access_type": "user_restricted"
       }
     }
     ```
 
-    **User-Specific Access Control**:
-    - Grants explicit access to individual users
-    - Bypasses role-based restrictions for listed users
-    - Users must exist in the system
-    - User IDs are validated before applying restrictions
+    **Behavior**:
+    - Empty users array removes all user-specific restrictions
+    - Non-empty array restricts access to specified users only
+    - User restrictions work independently of role restrictions
+    - Users in the allowed list can access script regardless of their role
 
-    **Update Behavior**:
-    - Replaces existing user restrictions completely
-    - Empty array removes all user restrictions
-    - Does not affect role-based restrictions
-    - Changes take effect immediately
-    - Validates all user IDs exist before updating
-
-    **Access Logic After Update**:
-    - If users specified: Only explicitly listed users can access
-    - If users empty: User restrictions removed (role restrictions may still apply)
-    - Combined with role restrictions: Users need matching role OR explicit user access
-
-    **User ID Validation**:
-    - All provided user IDs must exist in the system
-    - Invalid user IDs cause the entire request to fail
-    - No partial updates - all or nothing approach
+    **Access Logic**:
+    - If both role and user restrictions exist: user must match either criteria
+    - User-specific access overrides role-based restrictions
+    - Admins can always access scripts regardless of restrictions
 
     **Use Cases**:
-    - Grant access to specific collaborators
-    - Create exclusive user groups for sensitive scripts
-    - Temporary access for project teams
-    - Fine-grained access control management
+    - Grant script access to specific researchers or partners
+    - Create private scripts for limited user groups
+    - Implement per-project script access controls
+    - Beta testing with selected users
 
     **Error Responses**:
-    - `400 Bad Request`: Invalid user IDs, missing field, or malformed request
+    - `400 Bad Request`: Missing 'users' field, invalid user IDs, or user not found
     - `401 Unauthorized`: JWT token required
     - `403 Forbidden`: Admin privileges required
-    - `404 Not Found`: Script does not exist or invalid user ID
-    - `500 Internal Server Error`: Failed to update user restrictions
+    - `404 Not Found`: Script does not exist
+    - `500 Internal Server Error`: Failed to update access controls
     """
     try:
         # Only ADMIN and SUPERADMIN users can modify script access controls
@@ -312,61 +289,48 @@ def set_script_access_users(script_id):
 @jwt_required()
 def add_script_access_user(script_id, user_id):
     """
-    Add a specific user to script access permissions.
+    Add a specific user to script access control list.
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
     **Purpose**: Grant script access to an individual user
 
     **Path Parameters**:
-    - `script_id`: Script ID or slug identifier
-    - `user_id`: User ID to grant access to
+    - `script_id`: Script identifier/slug or numeric ID
+    - `user_id`: User identifier (numeric ID or email address)
 
-    **Request**: No request body required - this is a POST endpoint
+    **Request**: No request body required
 
-    **Success Response Schema**:
+    **Response Schema**:
     ```json
     {
       "data": {
-        "script_id": "script-123",
+        "script_id": "12345",
         "restricted": true,
         "allowed_roles": [],
-        "allowed_users": ["user-123", "user-456", "user-789"],
-        "access_type": "user_restricted",
-        "total_restrictions": 3
+        "allowed_users": ["user123", "user456", "user789"],
+        "access_type": "user_restricted"
       }
     }
     ```
 
-    **Add User Process**:
-    1. Validates script exists and user has admin permissions
-    2. Validates target user exists in the system
-    3. Adds user to the script's allowed users list
-    4. Returns updated access control information
-    5. Changes take effect immediately
-
     **Behavior**:
-    - Adds user to existing access list (does not replace)
-    - No effect if user already has access
-    - Does not affect role-based restrictions
-    - User gains immediate access to the script
+    - Adds user to existing user access list (if any)
+    - Creates user restriction if none existed
+    - User is validated to exist in system before adding
+    - Duplicate additions are handled gracefully (no error)
 
-    **Access Grant Logic**:
-    - User can now execute the script regardless of role
-    - Overrides role restrictions for this specific user
-    - Combined with existing role and user restrictions
+    **Access Effect**:
+    - User gains immediate access to script
+    - User can discover script in their script listings
+    - User can execute script regardless of their role
     - Access persists until explicitly removed
 
-    **User Validation**:
-    - User ID must exist in the system
-    - User account must be active
-    - Validates user before granting access
-
     **Use Cases**:
-    - Grant temporary access to collaborators
-    - Add team members to project scripts
-    - Exception handling for role-based restrictions
-    - Individual user permission management
+    - Grant access to individual researchers
+    - Add collaborators to private scripts
+    - Provide temporary access for specific projects
+    - Incrementally build user access lists
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
@@ -401,61 +365,53 @@ def add_script_access_user(script_id, user_id):
 @jwt_required()
 def remove_script_access_user(script_id, user_id):
     """
-    Remove a specific user from script access permissions.
+    Remove a specific user from script access control list.
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
     **Purpose**: Revoke script access from an individual user
 
     **Path Parameters**:
-    - `script_id`: Script ID or slug identifier
-    - `user_id`: User ID to revoke access from
+    - `script_id`: Script identifier/slug or numeric ID
+    - `user_id`: User identifier (numeric ID or email address)
 
-    **Request**: No request body required - this is a DELETE endpoint
+    **Request**: No request body required
 
-    **Success Response Schema**:
+    **Response Schema**:
     ```json
     {
       "data": {
-        "script_id": "script-123",
+        "script_id": "12345",
         "restricted": true,
         "allowed_roles": [],
-        "allowed_users": ["user-123"],
-        "access_type": "user_restricted",
-        "total_restrictions": 1
+        "allowed_users": ["user123"],
+        "access_type": "user_restricted"
       }
     }
     ```
 
-    **Remove User Process**:
-    1. Validates script exists and user has admin permissions
-    2. Removes user from the script's allowed users list
-    3. Returns updated access control information
-    4. Changes take effect immediately
-    5. Does not validate if user exists (allows cleanup)
-
     **Behavior**:
-    - Removes user from existing access list
-    - No error if user was not in the list
-    - Does not affect role-based restrictions
-    - User loses explicit access immediately
+    - Removes user from script's allowed users list
+    - User immediately loses access to script
+    - Does not affect other users' access
+    - Gracefully handles removal of non-existent users
 
-    **Access Revocation Logic**:
-    - User can no longer execute script via user access
-    - May still have access via role-based permissions
-    - Only removes explicit user permission
-    - Does not affect other users' permissions
+    **Access Effect**:
+    - User can no longer see script in listings
+    - User cannot execute script
+    - Existing executions continue to completion
+    - User may regain access through role-based permissions
 
-    **Cleanup Behavior**:
-    - Works even if user account no longer exists
-    - Useful for cleaning up permissions after user deletion
-    - Safe operation that cannot harm access controls
+    **Cleanup Logic**:
+    - If user list becomes empty, user restrictions may be removed
+    - Script may become unrestricted if no other access controls exist
+    - Access type is recalculated based on remaining restrictions
 
     **Use Cases**:
-    - Remove temporary access from collaborators
-    - Clean up permissions after project completion
-    - Revoke access for security reasons
-    - User account lifecycle management
+    - Remove access when user leaves project
+    - Revoke access due to security concerns
+    - Clean up outdated user permissions
+    - Manage temporary access grants
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
@@ -486,64 +442,56 @@ def remove_script_access_user(script_id, user_id):
 @jwt_required()
 def add_script_access_role(script_id, role):
     """
-    Add a specific role to script access permissions.
+    Add a specific role to script access control list.
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
     **Purpose**: Grant script access to all users with a specific role
 
     **Path Parameters**:
-    - `script_id`: Script ID or slug identifier
-    - `role`: Role to grant access to (USER, ADMIN, SUPERADMIN)
+    - `script_id`: Script identifier/slug or numeric ID
+    - `role`: Role name to add (USER, ADMIN, or SUPERADMIN)
 
-    **Request**: No request body required - this is a POST endpoint
+    **Request**: No request body required
 
-    **Success Response Schema**:
+    **Valid Roles**:
+    - `USER`: Regular users
+    - `ADMIN`: Administrator users
+    - `SUPERADMIN`: Super administrator users
+
+    **Response Schema**:
     ```json
     {
       "data": {
-        "script_id": "script-123",
+        "script_id": "12345",
         "restricted": true,
         "allowed_roles": ["ADMIN", "SUPERADMIN"],
         "allowed_users": [],
-        "access_type": "role_restricted",
-        "total_restrictions": 2
+        "access_type": "role_restricted"
       }
     }
     ```
 
-    **Valid Roles**:
-    - `USER`: Regular users with basic permissions
-    - `ADMIN`: Administrative users with elevated permissions
-    - `SUPERADMIN`: Super administrators with full system access
-
-    **Add Role Process**:
-    1. Validates script exists and user has admin permissions
-    2. Validates role is valid (USER, ADMIN, SUPERADMIN)
-    3. Adds role to the script's allowed roles list
-    4. Returns updated access control information
-    5. Changes take effect immediately
-
     **Behavior**:
-    - Adds role to existing access list (does not replace)
-    - No effect if role already has access
-    - Does not affect user-specific restrictions
-    - All users with this role gain immediate access
+    - Adds role to existing role access list (if any)
+    - Creates role restriction if none existed
+    - All users with the specified role gain access
+    - Duplicate additions are handled gracefully (no error)
 
-    **Access Grant Logic**:
-    - All users with the specified role can execute the script
-    - Combined with existing role and user restrictions
-    - Role permissions apply to current and future users
+    **Access Effect**:
+    - All current and future users with this role can access script
+    - Role-based access is dynamic (new users with role get access automatically)
+    - Higher privilege roles typically include lower privilege access
     - Access persists until role is explicitly removed
 
     **Use Cases**:
-    - Grant access to all administrators
-    - Create role-based script categories
-    - Implement organizational access policies
-    - Bulk permission management
+    - Grant access to all admin users for management scripts
+    - Make scripts available to all regular users
+    - Implement role-based script catalogs
+    - Create tiered access based on user privileges
 
     **Error Responses**:
-    - `400 Bad Request`: Invalid role specified
+    - `400 Bad Request`: Invalid role name
     - `401 Unauthorized`: JWT token required
     - `403 Forbidden`: Admin privileges required
     - `404 Not Found`: Script does not exist
@@ -576,62 +524,53 @@ def add_script_access_role(script_id, role):
 @jwt_required()
 def remove_script_access_role(script_id, role):
     """
-    Remove a specific role from script access permissions.
+    Remove a specific role from script access control list.
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
     **Purpose**: Revoke script access from all users with a specific role
 
     **Path Parameters**:
-    - `script_id`: Script ID or slug identifier
-    - `role`: Role to revoke access from (USER, ADMIN, SUPERADMIN)
+    - `script_id`: Script identifier/slug or numeric ID
+    - `role`: Role name to remove (USER, ADMIN, or SUPERADMIN)
 
-    **Request**: No request body required - this is a DELETE endpoint
+    **Request**: No request body required
 
-    **Success Response Schema**:
+    **Response Schema**:
     ```json
     {
       "data": {
-        "script_id": "script-123",
+        "script_id": "12345",
         "restricted": true,
         "allowed_roles": ["ADMIN"],
         "allowed_users": [],
-        "access_type": "role_restricted",
-        "total_restrictions": 1
+        "access_type": "role_restricted"
       }
     }
     ```
 
-    **Remove Role Process**:
-    1. Validates script exists and user has admin permissions
-    2. Removes role from the script's allowed roles list
-    3. Returns updated access control information
-    4. Changes take effect immediately
-    5. Does not validate role exists (allows cleanup)
-
     **Behavior**:
-    - Removes role from existing access list
-    - No error if role was not in the list
-    - Does not affect user-specific restrictions
-    - All users with this role lose role-based access
+    - Removes role from script's allowed roles list
+    - All users with only this role lose access immediately
+    - Does not affect other roles' access
+    - Gracefully handles removal of non-existent roles
 
-    **Access Revocation Logic**:
-    - Users with this role can no longer execute script via role access
-    - May still have access via explicit user permissions
-    - Only removes role-based permission
-    - Does not affect other roles' permissions
+    **Access Effect**:
+    - Users with this role can no longer see script in listings
+    - Users with this role cannot execute script
+    - Existing executions continue to completion
+    - Users may retain access through user-specific permissions or other roles
 
-    **Impact on Users**:
-    - Users lose access unless they have explicit user permission
-    - Affects all current and future users with this role
-    - Immediate effect - no grace period
-    - Users can regain access via individual user grants
+    **Cleanup Logic**:
+    - If role list becomes empty, role restrictions may be removed
+    - Script may become unrestricted if no other access controls exist
+    - Access type is recalculated based on remaining restrictions
 
     **Use Cases**:
-    - Tighten security by removing broad role access
-    - Change from role-based to user-specific permissions
-    - Respond to security incidents
-    - Refine access control policies
+    - Remove access when role permissions change
+    - Tighten security by restricting to higher privilege roles only
+    - Clean up outdated role-based permissions
+    - Implement policy changes across scripts
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
@@ -662,62 +601,53 @@ def remove_script_access_role(script_id, role):
 @jwt_required()
 def clear_script_access(script_id):
     """
-    Clear all access restrictions from a script (make it publicly accessible).
+    Remove all access restrictions from a script.
 
     **Authentication**: JWT token required
-    **Authorization**: Admin or superadmin access required
-    **Purpose**: Remove all access controls and make script available to all
-    authenticated users
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
+    **Purpose**: Make script accessible to all authenticated users
 
     **Path Parameters**:
-    - `script_id`: Script ID or slug identifier
+    - `script_id`: Script identifier/slug or numeric ID
 
-    **Request**: No request body required - this is a DELETE endpoint
+    **Request**: No request body required
 
-    **Success Response Schema**:
+    **Response Schema**:
     ```json
     {
       "data": {
-        "script_id": "script-123",
+        "script_id": "12345",
         "restricted": false,
         "allowed_roles": [],
         "allowed_users": [],
-        "access_type": "unrestricted",
-        "total_restrictions": 0
+        "access_type": "unrestricted"
       }
     }
     ```
 
-    **Clear Access Process**:
-    1. Validates script exists and user has admin permissions
-    2. Removes all role-based restrictions
-    3. Removes all user-specific restrictions
-    4. Sets script to unrestricted access mode
-    5. Returns updated access control information
+    **Clearing Process**:
+    - Removes all role-based restrictions
+    - Removes all user-specific restrictions
+    - Makes script available to all authenticated users
+    - Updates script access type to "unrestricted"
 
-    **Unrestricted Access Effects**:
-    - All authenticated users can access and execute the script
-    - No role or user restrictions apply
-    - Script becomes publicly available within the platform
-    - Changes take effect immediately
-
-    **Security Implications**:
-    - Script becomes accessible to all users
-    - Consider script content and sensitivity before clearing restrictions
-    - Audit and compliance considerations
-    - Irreversible operation (must re-add restrictions manually)
+    **Effect**:
+    - Any authenticated user can discover and execute the script
+    - Script appears in public script listings
+    - No special permissions required for access
+    - Maintains script visibility in search results
 
     **Use Cases**:
-    - Make scripts publicly available for general use
-    - Remove restrictive access controls
-    - Convert private scripts to public utilities
-    - Simplify access management
+    - Making private scripts public
+    - Removing outdated access restrictions
+    - Simplifying script access management
+    - Opening scripts for general use
 
-    **Post-Clear Behavior**:
-    - Script appears in public script listings
-    - All authenticated users can execute
-    - No permission checks beyond authentication
-    - Can re-add restrictions later if needed
+    **Security Considerations**:
+    - Ensure script content is appropriate for public access
+    - Review script parameters for sensitive data exposure
+    - Consider impact on system resources from increased usage
+    - Document decision for audit purposes
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
