@@ -40,8 +40,6 @@ class GEEService:
             if ee is None:
                 logger.error("Google Earth Engine API not available")
                 return False
-
-        try:
             # Check if already initialized by making a simple API call
             try:
                 # Test with a simple API call

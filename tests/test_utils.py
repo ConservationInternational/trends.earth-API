@@ -182,7 +182,7 @@ TEST_USER_DATA = {
 }
 
 TEST_ADMIN_DATA = {
-    "email": "admin@example.com",
+    "email": "admin-test-default@example.com",
     "password": "adminpassword123",
     "name": "Admin User",
     "role": "ADMIN",

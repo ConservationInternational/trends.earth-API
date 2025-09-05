@@ -671,7 +671,9 @@ class ExecutionService:
         # Use the new helper function for status updates
         if status is not None:
             # Update status with logging, pass explicit progress if provided
-            update_execution_status_with_logging(execution, status, explicit_progress=progress)
+            update_execution_status_with_logging(
+                execution, status, explicit_progress=progress
+            )
 
             # Send notification email for terminal states
             if status in ["FINISHED", "FAILED", "CANCELLED"]:

@@ -1,8 +1,8 @@
 """Tests for GEE credentials functionality"""
 
 import os
-import uuid
 from unittest.mock import Mock, patch
+import uuid
 
 import pytest
 
@@ -507,7 +507,7 @@ class TestGEECredentialsAPI:
             "/api/v1/user/me/gee-credentials",
             "/api/v1/user/me/gee-service-account",
         ]
-        
+
         # These endpoints only accept POST, so GET should return 405
         post_only_endpoints = [
             "/api/v1/user/me/gee-oauth/initiate",
@@ -517,11 +517,11 @@ class TestGEECredentialsAPI:
         for endpoint in get_endpoints:
             response = client.get(endpoint)
             assert response.status_code == 401
-            
+
         for endpoint in post_only_endpoints:
             response = client.get(endpoint)
             assert response.status_code == 405  # Method not allowed
-            
+
             # Test POST without auth should return 401
             response = client.post(endpoint)
             assert response.status_code == 401

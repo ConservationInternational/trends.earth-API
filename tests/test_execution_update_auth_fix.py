@@ -20,13 +20,18 @@ class TestExecutionUpdateAuthFix:
         # Use the Script model directly instead of API to avoid file upload complexity
         from gefapi import db
         from gefapi.models import Script, User
+        import uuid
 
-        # Get current user from fixtures (use the existing user@test.com)
+        # Generate unique email for this test run
+        test_id = str(uuid.uuid4())[:8]
+        user_email = f"execution-update-user-{test_id}@test.com"
+
+        # Get current user from fixtures or create unique one
         with client.application.app_context():
-            current_user = User.query.filter_by(email="user@test.com").first()
+            current_user = User.query.filter_by(email=user_email).first()
             if not current_user:
                 current_user = User(
-                    email="user@test.com",
+                    email=user_email,
                     password="user123",
                     name="Regular User",
                     country="Test Country",
@@ -35,7 +40,7 @@ class TestExecutionUpdateAuthFix:
                 )
                 db.session.add(current_user)
                 db.session.commit()
-            
+
             # Create script directly in database
             import uuid
             script_uuid = str(uuid.uuid4())[:8]
@@ -104,11 +109,15 @@ class TestExecutionUpdateAuthFix:
         from gefapi.models import Script, User
 
         with client.application.app_context():
-            # Get admin user (use the existing admin@test.com from fixtures)
-            admin_user = User.query.filter_by(email="admin@test.com").first()
+            # Generate unique email for this test run
+            admin_test_id = str(uuid.uuid4())[:8]
+            admin_email = f"execution-update-admin-{admin_test_id}@test.com"
+            
+            # Get admin user or create unique one
+            admin_user = User.query.filter_by(email=admin_email).first()
             if not admin_user:
                 admin_user = User(
-                    email="admin@test.com",
+                    email=admin_email,
                     password="admin123",
                     name="Admin User",
                     country="Test Country",
@@ -117,7 +126,7 @@ class TestExecutionUpdateAuthFix:
                 )
                 db.session.add(admin_user)
                 db.session.commit()
-            
+
             # Create script directly in database
             import uuid
             script_uuid = str(uuid.uuid4())[:8]
@@ -161,13 +170,18 @@ class TestExecutionUpdateAuthFix:
         # Regular user creates execution using direct database access
         from gefapi import db
         from gefapi.models import Script, User
+        import uuid
 
         with client.application.app_context():
-            # Get regular user (use the existing user@test.com from fixtures)
-            user = User.query.filter_by(email="user@test.com").first()
+            # Generate unique email for this test run
+            user_test_id = str(uuid.uuid4())[:8]
+            user_email = f"execution-forbidden-user-{user_test_id}@test.com"
+            
+            # Get regular user or create unique one
+            user = User.query.filter_by(email=user_email).first()
             if not user:
                 user = User(
-                    email="user@test.com",
+                    email=user_email,
                     password="user123",
                     name="Regular User",
                     country="Test Country",
@@ -176,7 +190,7 @@ class TestExecutionUpdateAuthFix:
                 )
                 db.session.add(user)
                 db.session.commit()
-            
+
             # Create script directly in database
             import uuid
             script_uuid = str(uuid.uuid4())[:8]
