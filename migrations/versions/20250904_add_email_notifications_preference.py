@@ -1,7 +1,7 @@
 """add email notifications preference
 
-Revision ID: 20250904_add_email_notifications_preference
-Revises: 20250903_replace_active_with_pending_tracking
+Revision ID: 7b6a9c8d5e4f
+Revises: merge_st_be_2025
 Create Date: 2025-09-04 23:30:00.000000
 
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '20250904_add_email_notifications_preference'
+revision = '7b6a9c8d5e4f'
 down_revision = 'merge_st_be_2025'
 branch_labels = None
 depends_on = None
