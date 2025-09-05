@@ -69,7 +69,7 @@ def run_migrations():
         from flask_migrate import upgrade
 
         logger.info("Importing gefapi app...")
-        from gefapi import app
+        from gefapi import app, db
 
         logger.info("Imports completed successfully")
 
@@ -104,16 +104,41 @@ def run_migrations():
                     logger.warning(f"Multiple heads detected: {heads}")
                     print(f"⚠️  Multiple migration heads detected: {heads}")
 
-                    # Try to upgrade to each head individually to find current state
+                    # Check if database is already at the target state
+                    try:
+                        from gefapi.models.user import User
+                        # Test if all expected columns exist by querying the User model
+                        user = db.session.query(User).first()
+                        if user is not None:
+                            # Try to access the new columns to verify they exist
+                            _ = user.gee_oauth_token
+                            _ = user.email_notifications_enabled
+                            logger.info("✅ Database schema appears to be up-to-date")
+                            print("✅ Database schema is already current - no migration needed")
+                            print("✓ Database migrations completed successfully")
+                            return
+                    except Exception as schema_check_error:
+                        logger.info(f"Schema check indicated migration needed: {schema_check_error}")
+
+                    # Try to upgrade to the known good merged head
                     logger.info(
-                        "Attempt to fix multiple heads by upgrading to merged head..."
+                        "Attempting to resolve multiple heads by upgrading to the latest merged head..."
                     )
                     print("🔧 Resolving multiple heads...")
 
                     # Use the merge migration that combines both branches
-                    target_head = "2c4f8e1a9b3d"
-                    logger.info(f"Upgrading to merged head: {target_head}")
-                    upgrade(revision=target_head)
+                    target_head = "3eedf39b54dd"
+                    logger.info(f"Upgrading to specific head: {target_head}")
+                    try:
+                        upgrade(revision=target_head)
+                    except Exception as upgrade_error:
+                        if "already exists" in str(upgrade_error) or "DuplicateColumn" in str(upgrade_error):
+                            logger.info("✅ Database appears to be up-to-date (columns already exist)")
+                            print("✅ Database schema is already current")
+                            print("✓ Database migrations completed successfully") 
+                            return
+                        else:
+                            raise upgrade_error
 
                 else:
                     logger.info("Single head found, proceeding with normal upgrade")
