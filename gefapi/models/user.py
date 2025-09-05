@@ -49,6 +49,13 @@ class User(db.Model):
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
+    # Session management refresh tokens
+    user_refresh_tokens = db.relationship(
+        "RefreshToken",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+        back_populates="user",
+    )
     # Google Groups opt-in fields
     google_groups_trends_earth_users = db.Column(
         db.Boolean(), default=False, nullable=False
