@@ -225,11 +225,12 @@ class StatsService:
         Get datetime cutoff for filtering data by time period.
 
         Args:
-            period: Time period string ('last_day', 'last_week', 'last_month', 
+            period: Time period string ('last_day', 'last_week', 'last_month',
                    'last_year', or any other value for no filter)
 
         Returns:
-            Optional[datetime]: Cutoff datetime for the period, or None for 'all'/'invalid'
+            Optional[datetime]: Cutoff datetime for the period, or None for
+                'all'/'invalid'
         """
         now = datetime.utcnow()
 
@@ -249,7 +250,7 @@ class StatsService:
 
         Returns total counts and time-based breakdowns including:
         - Total executions, users, and scripts
-        - Execution counts by status (finished, failed, cancelled) 
+        - Execution counts by status (finished, failed, cancelled)
         - Historical counts for jobs and users over different periods
 
         Returns:
@@ -262,7 +263,8 @@ class StatsService:
                 - total_executions_failed: Count of failed executions
                 - total_executions_cancelled: Count of cancelled executions
                 - jobs_last_day/week/month/year: Job counts for time periods
-                - users_last_day/week/month/year: User registration counts for time periods
+                - users_last_day/week/month/year: User registration counts for
+                    time periods
         """
         cache_key = StatsService._get_cache_key("_get_summary_stats")
 
@@ -815,7 +817,8 @@ class StatsService:
             slug: Script slug from database (e.g., 'productivity-v2.1.0')
 
         Returns:
-            str: Normalized task name (e.g., 'productivity') or 'unknown' for invalid input
+            str: Normalized task name (e.g., 'productivity') or 'unknown' for
+                invalid input
         """
         if not slug:
             return "unknown"
