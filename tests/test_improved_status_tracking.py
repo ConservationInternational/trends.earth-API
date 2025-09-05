@@ -416,10 +416,12 @@ class TestImprovedStatusTracking:
                 assert status_log.status_to == terminal_status
                 assert status_log.execution_id == str(execution.id)
 
-                # Reset for next iteration
+                # Reset for next iteration (commit changes first)
+                db.session.commit()
                 execution.status = "RUNNING"
                 execution.end_date = None
                 execution.progress = 50
+                db.session.commit()
 
     def test_helper_function_error_handling(self, app):
         """Test that the helper function handles database errors properly"""

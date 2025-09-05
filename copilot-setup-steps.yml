@@ -191,16 +191,19 @@ setup_steps:
       # Start with a fresh Docker environment
       docker-compose -f docker-compose.develop.yml down -v 2>/dev/null || true
       
-      # Build the main API container
-      docker-compose -f docker-compose.develop.yml build --no-cache
+      # Note: In restricted environments (like GitHub Copilot sandbox), 
+      # Docker builds may fail due to network restrictions with Alpine package manager.
+      # This is expected and tests can still be run using the local Python environment.
       
-      # Verify the build was successful
-      if docker images | grep -q "trendsearth"; then
+      # Build the main API container (may fail in restricted environments)
+      if docker-compose -f docker-compose.develop.yml build --no-cache; then
         echo "✅ Docker containers built successfully"
         docker images | grep "trendsearth" | head -5
       else
-        echo "❌ Docker container build failed"
-        exit 1
+        echo "⚠️ Docker container build failed (expected in restricted environments)"
+        echo "✅ You can still run tests using the local Python environment with:"
+        echo "   TESTING=true python3 -m pytest tests/ -v"
+        echo "   Note: Database-dependent tests will require PostgreSQL/Redis services"
       fi
 
   # =============================================================================
@@ -222,25 +225,34 @@ setup_steps:
       poetry run ruff --version
       echo "✅ Ruff linting tool is available"
       
-      # Start services briefly to test connectivity
+      # Test services briefly (may fail in restricted environments)
       echo "🚀 Testing service startup..."
-      docker-compose -f docker-compose.develop.yml up -d postgres redis
+      if docker-compose -f docker-compose.develop.yml up -d postgres redis; then
+        # Wait for services to be ready
+        sleep 10
+        
+        # Test database connectivity
+        if docker-compose -f docker-compose.develop.yml exec -T postgres pg_isready -U trendsearth_develop -d trendsearth_develop_db; then
+          echo "✅ PostgreSQL service is ready"
+        else
+          echo "⚠️ PostgreSQL service not accessible (may be expected in restricted environments)"
+        fi
+        
+        # Test Redis connectivity
+        if docker-compose -f docker-compose.develop.yml exec -T redis redis-cli ping; then
+          echo "✅ Redis service is ready"
+        else
+          echo "⚠️ Redis service not accessible (may be expected in restricted environments)"
+        fi
+        
+        # Clean up test services
+        docker-compose -f docker-compose.develop.yml down
+      else
+        echo "⚠️ Docker services failed to start (expected in restricted environments)"
+        echo "✅ You can still run unit tests and linting with the local Python environment"
+      fi
       
-      # Wait for services to be ready
-      sleep 10
-      
-      # Test database connectivity
-      docker-compose -f docker-compose.develop.yml exec -T postgres pg_isready -U trendsearth_develop -d trendsearth_develop_db
-      echo "✅ PostgreSQL service is ready"
-      
-      # Test Redis connectivity
-      docker-compose -f docker-compose.develop.yml exec -T redis redis-cli ping
-      echo "✅ Redis service is ready"
-      
-      # Clean up test services
-      docker-compose -f docker-compose.develop.yml down
-      
-      echo "🎉 Environment setup validation completed successfully!"
+      echo "🎉 Environment setup validation completed!"
 
   # =============================================================================
   # ENVIRONMENT SUMMARY
@@ -269,6 +281,7 @@ setup_steps:
       echo "  • Build: docker-compose -f docker-compose.develop.yml build"
       echo "  • Start: docker-compose -f docker-compose.develop.yml up"
       echo "  • Test: ./run_tests.sh"
+      echo "  • Test (local): TESTING=true python3 -m pytest tests/ -v"
       echo "  • Lint: poetry run ruff check gefapi/ tests/"
       echo ""
       echo "📚 API DOCUMENTATION:"
