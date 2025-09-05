@@ -24,7 +24,16 @@ class StatsService:
 
     @staticmethod
     def _get_cache_key(method_name: str, **kwargs) -> str:
-        """Generate cache key for a method call."""
+        """
+        Generate a consistent cache key for a method call.
+
+        Args:
+            method_name: Name of the method being cached
+            **kwargs: Method parameters to include in cache key
+
+        Returns:
+            str: Formatted cache key with sorted parameters for consistency
+        """
         # Sort kwargs for consistent cache keys
         sorted_kwargs = sorted(kwargs.items())
         kwargs_str = "_".join([f"{k}={v}" for k, v in sorted_kwargs])
@@ -32,7 +41,22 @@ class StatsService:
 
     @staticmethod
     def _get_from_cache_or_execute(cache_key: str, execution_func) -> Any:
-        """Get data from cache or execute function and cache result."""
+        """
+        Get data from Redis cache or execute function and cache the result.
+
+        Implements caching pattern with fallback to direct execution when Redis
+        is unavailable. Automatically handles cache misses and sets cache values.
+
+        Args:
+            cache_key: Redis key for caching the result
+            execution_func: Function to execute if cache miss or Redis unavailable
+
+        Returns:
+            Any: Cached result or fresh execution result
+
+        Raises:
+            Exception: Re-raises any exception from the execution function
+        """
         redis_cache = get_redis_cache()
         # Try to get from cache first
         if redis_cache.is_available():
@@ -197,7 +221,16 @@ class StatsService:
 
     @staticmethod
     def _get_time_filter(period: str) -> Optional[datetime]:
-        """Get datetime filter for period."""
+        """
+        Get datetime cutoff for filtering data by time period.
+
+        Args:
+            period: Time period string ('last_day', 'last_week', 'last_month', 
+                   'last_year', or any other value for no filter)
+
+        Returns:
+            Optional[datetime]: Cutoff datetime for the period, or None for 'all'/'invalid'
+        """
         now = datetime.utcnow()
 
         filters = {
@@ -211,7 +244,26 @@ class StatsService:
 
     @staticmethod
     def _get_summary_stats() -> dict[str, Any]:
-        """Get summary statistics for different time periods."""
+        """
+        Get comprehensive summary statistics for the dashboard.
+
+        Returns total counts and time-based breakdowns including:
+        - Total executions, users, and scripts
+        - Execution counts by status (finished, failed, cancelled) 
+        - Historical counts for jobs and users over different periods
+
+        Returns:
+            dict: Summary statistics containing:
+                - total_executions: Total number of executions
+                - total_jobs: Alias for total_executions (backward compatibility)
+                - total_users: Total number of registered users
+                - total_scripts: Total number of available scripts
+                - total_executions_finished: Count of successfully completed executions
+                - total_executions_failed: Count of failed executions
+                - total_executions_cancelled: Count of cancelled executions
+                - jobs_last_day/week/month/year: Job counts for time periods
+                - users_last_day/week/month/year: User registration counts for time periods
+        """
         cache_key = StatsService._get_cache_key("_get_summary_stats")
 
         def execute_summary():
@@ -403,7 +455,17 @@ class StatsService:
 
     @staticmethod
     def _get_task_stats(period: str) -> dict[str, Any]:
-        """Get task statistics."""
+        """
+        Get task execution statistics grouped by type and version.
+
+        Args:
+            period: Time period filter for data
+
+        Returns:
+            dict: Task statistics containing:
+                - by_type: List of tasks with counts and success rates
+                - by_version: List of script versions with usage counts and percentages
+        """
         cutoff_date = StatsService._get_time_filter(period)
 
         # Task type statistics
@@ -743,7 +805,18 @@ class StatsService:
 
     @staticmethod
     def _normalize_task_name(slug: str) -> str:
-        """Normalize task names for consistent grouping."""
+        """
+        Normalize script slugs to consistent task names for grouping.
+
+        Handles version removal, deprecated name mapping, and productivity variants
+        to ensure consistent task categorization across statistics.
+
+        Args:
+            slug: Script slug from database (e.g., 'productivity-v2.1.0')
+
+        Returns:
+            str: Normalized task name (e.g., 'productivity') or 'unknown' for invalid input
+        """
         if not slug:
             return "unknown"
 
@@ -859,7 +932,18 @@ class StatsService:
 
     @staticmethod
     def _extract_version(slug: str) -> str:
-        """Extract version from script slug."""
+        """
+        Extract major version number from script slug.
+
+        Parses version patterns like '-v2.1.0' and returns the major version number.
+        Handles both dot-separated (v2.1.0) and hyphen-separated (v2-1-0) formats.
+
+        Args:
+            slug: Script slug containing version (e.g., 'task-v2.1.0')
+
+        Returns:
+            str: Major version number (e.g., '2') or 'unknown' if no version found
+        """
         if not slug:
             return "unknown"
 
