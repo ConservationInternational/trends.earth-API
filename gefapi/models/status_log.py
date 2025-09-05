@@ -11,16 +11,17 @@ db.GUID = GUID
 class StatusLog(db.Model):
     """
     StatusLog Model for tracking execution status changes and system monitoring.
-    
-    This model tracks both execution status transitions and overall system execution counts.
-    Each entry records a snapshot of the system state after a specific status change,
-    including details about which execution changed and what the transition was.
-    
+
+    This model tracks both execution status transitions and overall system
+    execution counts. Each entry records a snapshot of the system state after a
+    specific status change, including details about which execution changed and
+    what the transition was.
+
     Status transition entries (when status_from/status_to are provided):
     - Record individual execution status changes
     - Include execution ID and transition details
     - Capture system state AFTER the change
-    
+
     System monitoring entries (when status_from/status_to are None):
     - Record periodic system health snapshots
     - Include only execution counts by status
@@ -60,7 +61,7 @@ class StatusLog(db.Model):
     ):
         """
         Initialize a StatusLog entry.
-        
+
         Args:
             executions_pending (int): Count of executions in PENDING status
             executions_ready (int): Count of executions in READY status
@@ -88,9 +89,9 @@ class StatusLog(db.Model):
     def serialize(self):
         """
         Return object data in easily serializable format.
-        
+
         Returns:
-            dict: Dictionary containing all status log fields including 
+            dict: Dictionary containing all status log fields including
                   execution counts, timestamp, and transition tracking fields
         """
         return {
