@@ -510,13 +510,13 @@ class TestGEECredentialsAPI:
         # These endpoints should return 401 when accessed without auth
         get_endpoints = [
             "/api/v1/user/me/gee-credentials",
-            "/api/v1/user/me/gee-service-account",
         ]
 
         # These endpoints only accept POST, so GET should return 405
         post_only_endpoints = [
             "/api/v1/user/me/gee-oauth/initiate",
             "/api/v1/user/me/gee-credentials/test",
+            "/api/v1/user/me/gee-service-account",  # This is POST-only
         ]
 
         for endpoint in get_endpoints:
@@ -753,6 +753,11 @@ class TestAdminGEECredentialsAPI:
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
         target_user_id = target_user.id  # Store the ID before context switches
+        
+        # Ensure the user has no GEE credentials
+        target_user.clear_gee_credentials()
+        from gefapi import db
+        db.session.commit()
 
         response = client.post(
             f"/api/v1/user/{target_user_id}/gee-credentials/test",

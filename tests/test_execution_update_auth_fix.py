@@ -56,7 +56,7 @@ class TestExecutionUpdateAuthFix:
             script_id = str(script.id)
 
         # Create execution (mocking docker to avoid actual container execution)
-        with patch("gefapi.tasks.docker.docker_run.delay"):
+        with patch("gefapi.services.docker_service.docker_run.delay"):
             execution_response = client.post(
                 f"/api/v1/script/{script_id}/run",
                 data=json.dumps({"params": {}}),
@@ -138,7 +138,7 @@ class TestExecutionUpdateAuthFix:
             db.session.commit()
             script_id = str(script.id)
 
-        with patch("gefapi.tasks.docker.docker_run.delay"):
+        with patch("gefapi.services.docker_service.docker_run.delay"):
             execution_response = client.post(
                 f"/api/v1/script/{script_id}/run",
                 data=json.dumps({"params": {}}),
@@ -198,7 +198,7 @@ class TestExecutionUpdateAuthFix:
             db.session.commit()
             script_id = str(script.id)
 
-        with patch("gefapi.tasks.docker.docker_run.delay"):
+        with patch("gefapi.services.docker_service.docker_run.delay"):
             execution_response = client.post(
                 f"/api/v1/script/{script_id}/run",
                 data=json.dumps({"params": {}}),
