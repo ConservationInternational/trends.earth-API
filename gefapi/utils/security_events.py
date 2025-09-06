@@ -2,7 +2,7 @@
 
 from datetime import datetime
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from flask import has_request_context, request
 from flask_limiter.util import get_remote_address
@@ -31,9 +31,9 @@ SECURITY_EVENTS = {
 
 def log_security_event(
     event_type: str,
-    user_id: Optional[str] = None,
-    user_email: Optional[str] = None,
-    details: Optional[dict[str, Any]] = None,
+    user_id: str | None = None,
+    user_email: str | None = None,
+    details: dict[str, Any] | None = None,
     level: str = "warning",
 ) -> None:
     """
@@ -100,7 +100,7 @@ def log_security_event(
 
 
 def log_authentication_event(
-    success: bool, email: str, reason: Optional[str] = None
+    success: bool, email: str, reason: str | None = None
 ) -> None:
     """
     Convenience function for logging authentication events.
@@ -125,7 +125,7 @@ def log_admin_action(
     admin_user_id: str,
     admin_email: str,
     action: str,
-    target_user_id: Optional[str] = None,
+    target_user_id: str | None = None,
 ) -> None:
     """
     Log administrative actions for audit trail.
@@ -146,7 +146,7 @@ def log_admin_action(
 
 
 def log_suspicious_activity(
-    description: str, user_id: Optional[str] = None, user_email: Optional[str] = None
+    description: str, user_id: str | None = None, user_email: str | None = None
 ) -> None:
     """
     Log suspicious activity that may require investigation.
@@ -165,7 +165,7 @@ def log_suspicious_activity(
     )
 
 
-def log_rate_limit_exceeded(limit_type: str, user_id: Optional[str] = None) -> None:
+def log_rate_limit_exceeded(limit_type: str, user_id: str | None = None) -> None:
     """
     Log rate limit violations.
 

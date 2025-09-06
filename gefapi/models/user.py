@@ -5,7 +5,7 @@ import datetime
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 import uuid
 
 from cryptography.fernet import Fernet
@@ -223,7 +223,7 @@ class User(db.Model):
         self.gee_credentials_type = "service_account"
         self.gee_credentials_created_at = datetime.datetime.utcnow()
 
-    def get_gee_oauth_credentials(self) -> tuple[Optional[str], Optional[str]]:
+    def get_gee_oauth_credentials(self) -> tuple[str | None, str | None]:
         """Get OAuth credentials for GEE"""
         if self.gee_credentials_type != "oauth":
             return None, None
@@ -231,7 +231,7 @@ class User(db.Model):
         refresh_token = self._decrypt_gee_data(self.gee_refresh_token)
         return access_token, refresh_token
 
-    def get_gee_service_account(self) -> Optional[dict[str, Any]]:
+    def get_gee_service_account(self) -> dict[str, Any] | None:
         """Get service account credentials for GEE"""
         if self.gee_credentials_type != "service_account":
             return None

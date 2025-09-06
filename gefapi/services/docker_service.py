@@ -733,7 +733,7 @@ class DockerService:
                 )
 
                 if isinstance(
-                    error, (_Urllib3ProtocolError, _http_client.IncompleteRead)
+                    error, _Urllib3ProtocolError | _http_client.IncompleteRead
                 ):
                     # Note: docker-py talks to the local daemon; the daemon then
                     # pushes to the registry. Client-side HTTP tweaks don't affect
@@ -763,7 +763,7 @@ class DockerService:
                 )
 
                 if isinstance(
-                    error, (_Urllib3ProtocolError, _http_client.IncompleteRead)
+                    error, _Urllib3ProtocolError | _http_client.IncompleteRead
                 ):
                     post_exists, post_digest, post_last_mod, post_msg = (
                         _registry_get_manifest_digest(

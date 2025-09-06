@@ -31,7 +31,7 @@ class StatusLog(db.Model):
     __tablename__ = "status_log"
     id = db.Column(db.Integer(), primary_key=True)
     timestamp = db.Column(
-        db.DateTime(), default=lambda: datetime.datetime.now(datetime.timezone.utc)
+        db.DateTime(), default=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     # Execution counts

@@ -442,7 +442,7 @@ def validate_execution_update(func):
             if "progress" in json_data:
                 progress = json_data["progress"]
                 if (
-                    not isinstance(progress, (int, float))
+                    not isinstance(progress, int | float)
                     or progress < 0
                     or progress > 100
                 ):

@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 import redis
 
@@ -48,7 +48,7 @@ class RedisCache:
             self._client = None
 
     @property
-    def client(self) -> Optional[redis.Redis]:
+    def client(self) -> redis.Redis | None:
         """Get Redis client, reinitialize if needed"""
         if self._client is None:
             self._initialize_client()
@@ -92,7 +92,7 @@ class RedisCache:
             logger.error(f"Failed to cache value for key '{key}': {e}")
             return False
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get a value from Redis cache
 

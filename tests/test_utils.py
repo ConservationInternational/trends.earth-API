@@ -5,7 +5,7 @@ Testing utilities and helpers for Trends.Earth API tests
 from datetime import datetime, timedelta
 import io
 import tempfile
-from typing import Any, Optional
+from typing import Any
 from unittest.mock import MagicMock
 
 
@@ -107,7 +107,7 @@ class ErrorTestUtils:
 
     @staticmethod
     def assert_error_response(
-        response, expected_status: int, expected_detail: Optional[str] = None
+        response, expected_status: int, expected_detail: str | None = None
     ):
         """Assert that response is an error with expected format"""
         assert response.status_code == expected_status
@@ -117,7 +117,7 @@ class ErrorTestUtils:
             assert expected_detail in data["error"]["detail"]
 
     @staticmethod
-    def assert_validation_error(response, field_name: Optional[str] = None):
+    def assert_validation_error(response, field_name: str | None = None):
         """Assert that response is a validation error"""
         ErrorTestUtils.assert_error_response(response, 400)
         if field_name:
