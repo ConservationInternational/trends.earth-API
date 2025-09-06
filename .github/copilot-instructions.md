@@ -290,7 +290,7 @@ gefapi/                 # Main application package
 ### CI/CD Pipeline
 
 #### GitHub Actions Workflows
-- **`.github/workflows/run-tests.yml`** - Comprehensive test suite (Python 3.9, 3.10, 3.11)
+- **`.github/workflows/run-tests.yml`** - Comprehensive test suite (Python 3.11, 3.12)
 - **`.github/workflows/ruff.yaml`** - Code quality checks
 - **`.github/workflows/deploy-staging.yml`** - Staging deployment
 - **`.github/workflows/deploy-production.yml`** - Production deployment

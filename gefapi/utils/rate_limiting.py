@@ -386,7 +386,7 @@ def get_current_rate_limits():
                 # Redis storage - get all keys matching rate limit patterns
                 pattern = "LIMITER/*"
                 keys = storage.storage.keys(pattern)
-                if isinstance(keys, (list, tuple)):
+                if isinstance(keys, list | tuple):
                     rate_limit_keys = [
                         key.decode() if isinstance(key, bytes) else key for key in keys
                     ]
@@ -476,7 +476,7 @@ def get_current_rate_limits():
                     limit_info["identifier"] = rate_key
 
                 # Only include limits that have a current count > 0 (actively limiting)
-                if isinstance(current_count, (int, float)) and current_count > 0:
+                if isinstance(current_count, int | float) and current_count > 0:
                     active_limits.append(limit_info)
 
             except Exception as e:

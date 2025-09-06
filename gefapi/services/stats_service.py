@@ -5,7 +5,7 @@ Provides comprehensive statistics for executions, users, and system metrics.
 
 from datetime import datetime, timedelta
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import desc, func
 
@@ -86,7 +86,7 @@ class StatsService:
 
     @staticmethod
     def get_dashboard_stats(
-        period: str = "all", include: Optional[list[str]] = None
+        period: str = "all", include: list[str] | None = None
     ) -> dict[str, Any]:
         """
         Get comprehensive dashboard statistics.
@@ -134,8 +134,8 @@ class StatsService:
     def get_execution_stats(
         period: str = "last_month",
         group_by: str = "day",
-        task_type: Optional[str] = None,
-        status: Optional[str] = None,
+        task_type: str | None = None,
+        status: str | None = None,
     ) -> dict[str, Any]:
         """
         Get detailed execution statistics and trends.
@@ -179,7 +179,7 @@ class StatsService:
     def get_user_stats(
         period: str = "last_year",
         group_by: str = "month",
-        country: Optional[str] = None,
+        country: str | None = None,
     ) -> dict[str, Any]:
         """
         Get user statistics and geographical distribution.
@@ -220,7 +220,7 @@ class StatsService:
         return StatsService._get_from_cache_or_execute(cache_key, execute_stats)
 
     @staticmethod
-    def _get_time_filter(period: str) -> Optional[datetime]:
+    def _get_time_filter(period: str) -> datetime | None:
         """
         Get datetime cutoff for filtering data by time period.
 
@@ -547,7 +547,7 @@ class StatsService:
 
     @staticmethod
     def _get_execution_time_series(
-        period: str, group_by: str, task_type: Optional[str], status: Optional[str]
+        period: str, group_by: str, task_type: str | None, status: str | None
     ) -> list[dict[str, Any]]:
         """Get execution time series data."""
         cutoff_date = StatsService._get_time_filter(period)
@@ -611,7 +611,7 @@ class StatsService:
         return sorted(time_series.values(), key=lambda x: x["timestamp"] or "")
 
     @staticmethod
-    def _get_top_users(period: str, task_type: Optional[str]) -> list[dict[str, Any]]:
+    def _get_top_users(period: str, task_type: str | None) -> list[dict[str, Any]]:
         """Get top users by execution count."""
         cutoff_date = StatsService._get_time_filter(period)
 
@@ -723,7 +723,7 @@ class StatsService:
 
     @staticmethod
     def _get_registration_trends(
-        period: str, group_by: str, country: Optional[str]
+        period: str, group_by: str, country: str | None
     ) -> list[dict[str, Any]]:
         """Get user registration trends."""
         cutoff_date = StatsService._get_time_filter(period)
@@ -845,7 +845,7 @@ class StatsService:
     # ============================================================================
 
     @staticmethod
-    def clear_cache(pattern: Optional[str] = None) -> bool:
+    def clear_cache(pattern: str | None = None) -> bool:
         """
         Clear cached stats data.
 
