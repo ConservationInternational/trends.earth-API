@@ -541,6 +541,8 @@ class TestAdminGEECredentialsAPI:
         """Test admin getting user's GEE credentials status when user has none"""
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
+        target_user_id = target_user.id  # Store the ID before context switches
+        target_user_email = target_user.email  # Store the email before context switches
 
         response = client.get(
             f"/api/v1/user/{target_user_id}/gee-credentials",
@@ -560,6 +562,7 @@ class TestAdminGEECredentialsAPI:
         """Test admin getting user's GEE credentials status when user has OAuth"""
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
+        target_user_id = target_user.id  # Store the ID before context switches
         target_user_id = target_user_id  # Store the ID before the context
 
         with app_with_db.app_context():
@@ -585,6 +588,8 @@ class TestAdminGEECredentialsAPI:
         """Test admin uploading service account for another user"""
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
+        target_user_id = target_user.id  # Store the ID before context switches
+        target_user_email = target_user.email  # Store the email before context switches
 
         service_account_key = {
             "type": "service_account",
@@ -614,6 +619,7 @@ class TestAdminGEECredentialsAPI:
         """Test admin uploading invalid service account for another user"""
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
+        target_user_id = target_user.id  # Store the ID before context switches
 
         invalid_key = {
             "type": "user_account",  # Wrong type
@@ -636,8 +642,8 @@ class TestAdminGEECredentialsAPI:
         """Test admin deleting another user's GEE credentials"""
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
-        target_user_id = target_user_id  # Store the ID
-        target_user_email = target_user_email  # Store the email
+        target_user_id = target_user.id  # Store the ID before context switches
+        target_user_email = target_user.email  # Store the email before context switches
 
         with app_with_db.app_context():
             # Re-query user to ensure it's in the current session
@@ -661,6 +667,7 @@ class TestAdminGEECredentialsAPI:
         """Test admin deleting user's GEE credentials when none exist"""
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
+        target_user_id = target_user.id  # Store the ID before context switches
 
         response = client.delete(
             f"/api/v1/user/{target_user_id}/gee-credentials",
@@ -683,6 +690,8 @@ class TestAdminGEECredentialsAPI:
         """Test admin testing another user's valid GEE credentials"""
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
+        target_user_id = target_user.id  # Store the ID before context switches
+        target_user_email = target_user.email  # Store the email before context switches
 
         with app_with_db.app_context():
             # Re-query user to ensure it's in the current session
@@ -715,6 +724,8 @@ class TestAdminGEECredentialsAPI:
         """Test admin testing another user's invalid GEE credentials"""
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
+        target_user_id = target_user.id  # Store the ID before context switches
+        target_user_email = target_user.email  # Store the email before context switches
 
         with app_with_db.app_context():
             # Re-query user to ensure it's in the current session
@@ -741,6 +752,7 @@ class TestAdminGEECredentialsAPI:
         """Test admin testing user's GEE credentials when none exist"""
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
+        target_user_id = target_user.id  # Store the ID before context switches
 
         response = client.post(
             f"/api/v1/user/{target_user_id}/gee-credentials/test",
@@ -831,6 +843,7 @@ class TestAdminGEECredentialsAPI:
         """Test that superadmin users can access admin endpoints"""
         superadmin_user, superadmin_token = superadmin_user_with_token
         target_user, _ = user_with_token
+        target_user_id = target_user.id  # Store the ID before context switches
 
         response = client.get(
             f"/api/v1/user/{target_user_id}/gee-credentials",
@@ -844,6 +857,7 @@ class TestAdminGEECredentialsAPI:
     def test_admin_endpoints_require_authentication(self, client, user_with_token):
         """Test that admin GEE credential endpoints require authentication"""
         target_user, _ = user_with_token
+        target_user_id = target_user.id  # Store the ID before context switches
 
         endpoints = [
             ("GET", f"/api/v1/user/{target_user_id}/gee-credentials"),
