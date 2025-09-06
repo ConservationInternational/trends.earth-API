@@ -11,7 +11,7 @@ readme = "README.md"
 packages = [{ include = "gefapi" }]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.13"
+python = ">=3.11,<3.13"
 flask = "*"
 flask-cors = "*"
 flask-compress = "*"
@@ -60,8 +60,8 @@ packages = ["gefapi"]
 line-length = 88
 indent-width = 4
 
-# Assume Python 3.9+ (matching your test matrix)
-target-version = "py39"
+# Assume Python 3.11+ (matching your test matrix)
+target-version = "py311"
 
 # Exclude files/directories from linting
 exclude = [
@@ -229,7 +229,7 @@ docstring-quotes = "double"
 max-complexity = 10
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
