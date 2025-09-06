@@ -1244,8 +1244,8 @@ def update_execution(execution):
     Update an execution's properties (admin only).
 
     **Authentication**: JWT token required
-    **Authorization**: Admin level access required
-    **Access**: Only admin users can update execution properties
+    **Authorization**: Users can update their own executions, admin users can update any execution
+    **Access**: Execution owners and admin users can update execution properties
 
     **Path Parameters**:
     - `execution`: Execution ID (UUID format)
@@ -1287,7 +1287,7 @@ def update_execution(execution):
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: Admin access required
+    - `403 Forbidden`: User cannot access this execution (not owner or admin)
     - `404 Not Found`: Execution does not exist
     - `422 Unprocessable Entity`: Invalid request data
     - `500 Internal Server Error`: Server error
