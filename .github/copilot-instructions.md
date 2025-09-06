@@ -137,6 +137,9 @@ docker compose -f docker-compose.develop.yml run --rm test
 ```
 
 #### 4. Code Quality and Linting
+
+**⚠️ MANDATORY: All code changes MUST pass Ruff linting and formatting without any errors before submission.**
+
 ```bash
 # Install Poetry locally for linting (if needed)
 pip install poetry
@@ -313,11 +316,14 @@ gefapi/                 # Main application package
 ## Development Guidelines
 
 ### Code Style
+
+**⚠️ CRITICAL REQUIREMENT: `ruff format` and `ruff check` must complete without any errors before submitting code changes. This is strictly enforced.**
+
 - **Ruff formatting**: 88 character line length, double quotes
 - **Import sorting**: isort-compatible with known first-party packages
 - **Error handling**: Comprehensive exception handling with proper logging
 - **Security**: Bandit security scanning, input validation
-- **Quality requirements**: `ruff format` and `ruff check` must complete without any errors
+- **Quality requirements**: All code must pass Ruff linting and formatting checks
 
 ### Database Patterns
 - **SQLAlchemy ORM**: Declarative models in `gefapi/models/`
@@ -366,7 +372,11 @@ docker compose -f docker-compose.admin.yml down
 # Verify setup
 poetry run python -c "import gefapi; print('✅ App imports successfully')"
 docker compose -f docker-compose.develop.yml config  # Validate compose files
-poetry run ruff check gefapi/ --select=E,W,F        # Basic linting
+
+# REQUIRED: Code quality validation (MUST pass before submitting)
+poetry run ruff check gefapi/ tests/                 # Full linting check
+poetry run ruff format --check gefapi/ tests/        # Formatting check
+poetry run ruff check gefapi/ --select=E,W,F         # Basic linting
 
 # Test connectivity
 curl http://localhost:3000/api-health                # Health check

@@ -234,7 +234,9 @@ class TestEmailNotificationPreferences:
             )
             assert updated_user.email_notifications_enabled is True
 
-    def test_profile_update_api_handles_email_notifications(self, client, auth_headers_user):
+    def test_profile_update_api_handles_email_notifications(
+        self, client, auth_headers_user
+    ):
         """Test that the /user/me PATCH endpoint can update email notification preferences"""
         # Update profile with email notification preference
         update_data = {"name": "Updated Name", "email_notifications_enabled": False}
@@ -261,7 +263,9 @@ class TestEmailNotificationPreferences:
         data = response.get_json()
         assert data["data"]["email_notifications_enabled"] is True
 
-    def test_profile_get_api_includes_email_notifications(self, client, auth_headers_user):
+    def test_profile_get_api_includes_email_notifications(
+        self, client, auth_headers_user
+    ):
         """Test that the /user/me GET endpoint includes email notification preferences"""
         response = client.get("/api/v1/user/me", headers=auth_headers_user)
 

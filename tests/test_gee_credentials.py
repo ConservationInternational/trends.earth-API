@@ -752,15 +752,16 @@ class TestAdminGEECredentialsAPI:
         """Test admin testing user's GEE credentials when none exist"""
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
-        
+
         with client.application.app_context():
             from gefapi import db
+
             # Refresh the user from database to ensure we have the latest state
             fresh_user = User.query.get(target_user.id)
             # Ensure the user has no GEE credentials
             fresh_user.clear_gee_credentials()
             db.session.commit()
-            
+
             target_user_id = fresh_user.id
 
         response = client.post(
