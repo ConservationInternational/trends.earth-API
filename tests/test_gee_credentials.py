@@ -17,6 +17,11 @@ os.environ.setdefault("EE_SERVICE_ACCOUNT_JSON", "test-service-account-json")
 os.environ.setdefault("GOOGLE_PROJECT_ID", "test-project-id")
 
 
+def generate_unique_email(prefix="test"):
+    """Generate a unique email for testing"""
+    return f"{prefix}-{uuid.uuid4().hex[:8]}@example.com"
+
+
 @pytest.fixture
 def app_with_db(app):
     """Fixture providing app with database"""
@@ -86,7 +91,7 @@ class TestUserGEECredentials:
         """Test that users have no GEE credentials by default"""
         with app_with_db.app_context():
             user = User(
-                email="test@example.com",
+                email=generate_unique_email("no-creds"),
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -101,7 +106,7 @@ class TestUserGEECredentials:
         """Test setting and getting OAuth credentials"""
         with app_with_db.app_context():
             user = User(
-                email="test@example.com",
+                email=generate_unique_email("oauth-creds"),
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -126,7 +131,7 @@ class TestUserGEECredentials:
         """Test setting and getting service account credentials"""
         with app_with_db.app_context():
             user = User(
-                email="test@example.com",
+                email=generate_unique_email(),
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -158,7 +163,7 @@ class TestUserGEECredentials:
         """Test clearing GEE credentials"""
         with app_with_db.app_context():
             user = User(
-                email="test@example.com",
+                email=generate_unique_email(),
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -179,7 +184,7 @@ class TestUserGEECredentials:
         """Test that credentials are encrypted in database"""
         with app_with_db.app_context():
             user = User(
-                email="test@example.com",
+                email=generate_unique_email(),
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -201,7 +206,7 @@ class TestUserGEECredentials:
         """Test that user serialization includes GEE credentials when requested"""
         with app_with_db.app_context():
             user = User(
-                email="test@example.com",
+                email=generate_unique_email(),
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -270,7 +275,7 @@ class TestGEEService:
         """Test initializing GEE with user OAuth credentials"""
         with app_with_db.app_context():
             user = User(
-                email="test@example.com",
+                email=generate_unique_email(),
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -291,7 +296,7 @@ class TestGEEService:
         """Test initializing GEE with user service account"""
         with app_with_db.app_context():
             user = User(
-                email="test@example.com",
+                email=generate_unique_email(),
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -322,7 +327,7 @@ class TestGEEService:
         """Test canceling GEE task with user credentials"""
         with app_with_db.app_context():
             user = User(
-                email="test@example.com",
+                email=generate_unique_email(),
                 password="password123",
                 name="Test User",
                 country="Test Country",
@@ -538,14 +543,14 @@ class TestAdminGEECredentialsAPI:
         target_user, _ = user_with_token
 
         response = client.get(
-            f"/api/v1/user/{target_user.id}/gee-credentials",
+            f"/api/v1/user/{target_user_id}/gee-credentials",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data["data"]["user_id"] == str(target_user.id)
-        assert data["data"]["user_email"] == target_user.email
+        assert data["data"]["user_id"] == str(target_user_id)
+        assert data["data"]["user_email"] == target_user_email
         assert data["data"]["has_credentials"] is False
         assert data["data"]["credentials_type"] is None
 
@@ -555,21 +560,22 @@ class TestAdminGEECredentialsAPI:
         """Test admin getting user's GEE credentials status when user has OAuth"""
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
+        target_user_id = target_user_id  # Store the ID before the context
 
         with app_with_db.app_context():
             # Re-query user to ensure it's in the current session
-            target_user = User.query.get(target_user.id)
+            target_user = User.query.get(target_user_id)
             target_user.set_gee_oauth_credentials("access_token", "refresh_token")
             db.session.commit()
 
         response = client.get(
-            f"/api/v1/user/{target_user.id}/gee-credentials",
+            f"/api/v1/user/{target_user_id}/gee-credentials",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data["data"]["user_id"] == str(target_user.id)
+        assert data["data"]["user_id"] == str(target_user_id)
         assert data["data"]["has_credentials"] is True
         assert data["data"]["credentials_type"] == "oauth"
 
@@ -592,7 +598,7 @@ class TestAdminGEECredentialsAPI:
         }
 
         response = client.post(
-            f"/api/v1/user/{target_user.id}/gee-service-account",
+            f"/api/v1/user/{target_user_id}/gee-service-account",
             headers={"Authorization": f"Bearer {admin_token}"},
             json={"service_account_key": service_account_key},
         )
@@ -600,7 +606,7 @@ class TestAdminGEECredentialsAPI:
         assert response.status_code == 200
         data = response.get_json()
         assert "saved for user" in data["message"]
-        assert target_user.email in data["message"]
+        assert target_user_email in data["message"]
 
     def test_admin_upload_invalid_service_account_for_user(
         self, client, admin_user_with_token, user_with_token
@@ -615,7 +621,7 @@ class TestAdminGEECredentialsAPI:
         }
 
         response = client.post(
-            f"/api/v1/user/{target_user.id}/gee-service-account",
+            f"/api/v1/user/{target_user_id}/gee-service-account",
             headers={"Authorization": f"Bearer {admin_token}"},
             json={"service_account_key": invalid_key},
         )
@@ -630,22 +636,24 @@ class TestAdminGEECredentialsAPI:
         """Test admin deleting another user's GEE credentials"""
         admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
+        target_user_id = target_user_id  # Store the ID
+        target_user_email = target_user_email  # Store the email
 
         with app_with_db.app_context():
             # Re-query user to ensure it's in the current session
-            target_user = User.query.get(target_user.id)
+            target_user = User.query.get(target_user_id)
             target_user.set_gee_oauth_credentials("access_token", "refresh_token")
             db.session.commit()
 
         response = client.delete(
-            f"/api/v1/user/{target_user.id}/gee-credentials",
+            f"/api/v1/user/{target_user_id}/gee-credentials",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 200
         data = response.get_json()
         assert "deleted for user" in data["message"]
-        assert target_user.email in data["message"]
+        assert target_user_email in data["message"]
 
     def test_admin_delete_user_gee_credentials_none_exist(
         self, client, admin_user_with_token, user_with_token
@@ -655,7 +663,7 @@ class TestAdminGEECredentialsAPI:
         target_user, _ = user_with_token
 
         response = client.delete(
-            f"/api/v1/user/{target_user.id}/gee-credentials",
+            f"/api/v1/user/{target_user_id}/gee-credentials",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
 
@@ -678,7 +686,7 @@ class TestAdminGEECredentialsAPI:
 
         with app_with_db.app_context():
             # Re-query user to ensure it's in the current session
-            target_user = User.query.get(target_user.id)
+            target_user = User.query.get(target_user_id)
             target_user.set_gee_oauth_credentials("access_token", "refresh_token")
             db.session.commit()
 
@@ -686,14 +694,14 @@ class TestAdminGEECredentialsAPI:
         mock_initialize.return_value = True
 
         response = client.post(
-            f"/api/v1/user/{target_user.id}/gee-credentials/test",
+            f"/api/v1/user/{target_user_id}/gee-credentials/test",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 200
         data = response.get_json()
         assert "are valid and working" in data["message"]
-        assert target_user.email in data["message"]
+        assert target_user_email in data["message"]
 
     @patch("gefapi.services.gee_service.GEEService._initialize_ee")
     def test_admin_test_user_gee_credentials_invalid(
@@ -710,7 +718,7 @@ class TestAdminGEECredentialsAPI:
 
         with app_with_db.app_context():
             # Re-query user to ensure it's in the current session
-            target_user = User.query.get(target_user.id)
+            target_user = User.query.get(target_user_id)
             target_user.set_gee_oauth_credentials("access_token", "refresh_token")
             db.session.commit()
 
@@ -718,14 +726,14 @@ class TestAdminGEECredentialsAPI:
         mock_initialize.return_value = False
 
         response = client.post(
-            f"/api/v1/user/{target_user.id}/gee-credentials/test",
+            f"/api/v1/user/{target_user_id}/gee-credentials/test",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 400
         data = response.get_json()
         assert "are invalid or expired" in data["detail"]
-        assert target_user.email in data["detail"]
+        assert target_user_email in data["detail"]
 
     def test_admin_test_user_gee_credentials_none_exist(
         self, client, admin_user_with_token, user_with_token
@@ -735,7 +743,7 @@ class TestAdminGEECredentialsAPI:
         target_user, _ = user_with_token
 
         response = client.post(
-            f"/api/v1/user/{target_user.id}/gee-credentials/test",
+            f"/api/v1/user/{target_user_id}/gee-credentials/test",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
 
@@ -825,23 +833,23 @@ class TestAdminGEECredentialsAPI:
         target_user, _ = user_with_token
 
         response = client.get(
-            f"/api/v1/user/{target_user.id}/gee-credentials",
+            f"/api/v1/user/{target_user_id}/gee-credentials",
             headers={"Authorization": f"Bearer {superadmin_token}"},
         )
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data["data"]["user_id"] == str(target_user.id)
+        assert data["data"]["user_id"] == str(target_user_id)
 
     def test_admin_endpoints_require_authentication(self, client, user_with_token):
         """Test that admin GEE credential endpoints require authentication"""
         target_user, _ = user_with_token
 
         endpoints = [
-            ("GET", f"/api/v1/user/{target_user.id}/gee-credentials"),
-            ("POST", f"/api/v1/user/{target_user.id}/gee-service-account"),
-            ("DELETE", f"/api/v1/user/{target_user.id}/gee-credentials"),
-            ("POST", f"/api/v1/user/{target_user.id}/gee-credentials/test"),
+            ("GET", f"/api/v1/user/{target_user_id}/gee-credentials"),
+            ("POST", f"/api/v1/user/{target_user_id}/gee-service-account"),
+            ("DELETE", f"/api/v1/user/{target_user_id}/gee-credentials"),
+            ("POST", f"/api/v1/user/{target_user_id}/gee-credentials/test"),
         ]
 
         for method, endpoint in endpoints:
