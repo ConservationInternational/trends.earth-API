@@ -158,7 +158,7 @@ class TestExecutionUpdateAuthFix:
         )
 
         assert update_response.status_code == 403
-        assert "Forbidden" in update_response.json["error"]
+        assert "Forbidden" in update_response.json["detail"]
 
     def test_admin_can_update_any_execution(
         self, client, auth_headers_user, auth_headers_admin

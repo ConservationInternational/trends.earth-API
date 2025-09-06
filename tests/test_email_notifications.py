@@ -254,7 +254,7 @@ class TestEmailNotificationPreferences:
         update_data = {"email_notifications_enabled": True}
 
         response = client.patch(
-            "/api/v1/user/me", json=update_data, headers=auth_headers
+            "/api/v1/user/me", json=update_data, headers=auth_headers_user
         )
 
         assert response.status_code == 200

@@ -1295,13 +1295,24 @@ def update_execution(execution):
     logger.info("[ROUTER]: Updating execution " + execution)
     body = request.get_json()
     user = current_user
-    if not can_access_admin_features(user):
-        return error(status=403, detail="Forbidden")
+    
+    # Allow admins to update any execution, or users to update their own executions
     try:
+        # First try to get the execution with user permissions to check ownership
+        execution_obj = ExecutionService.get_execution(execution, user)
+        # If we get here, either the user is admin OR it's their own execution
         execution = ExecutionService.update_execution(body, execution)
     except ExecutionNotFound as e:
-        logger.error("[ROUTER]: " + e.message)
-        return error(status=404, detail=e.message)
+        # If the execution is not found for this user, check if it exists at all
+        # If it exists but user can't access it, return 403 instead of 404
+        try:
+            ExecutionService.get_execution(execution, "fromservice")
+            # Execution exists but user can't access it - return 403
+            return error(status=403, detail="Forbidden")
+        except ExecutionNotFound:
+            # Execution truly doesn't exist - return 404
+            logger.error("[ROUTER]: " + e.message)
+            return error(status=404, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")

@@ -285,6 +285,8 @@ def regular_user(app):
             # Ensure the existing user has the correct role and password
             user.role = "USER"
             user.password = user.set_password("user123")
+            # Ensure email notifications are enabled for consistent testing
+            user.email_notifications_enabled = True
         else:
             user = User(
                 email="user@test.com",
@@ -513,6 +515,8 @@ def regular_user_no_rate_limiting(app_no_rate_limiting):
             # Ensure the existing user has the correct role and password
             user.role = "USER"
             user.password = user.set_password("user123")
+            # Ensure email notifications are enabled for consistent testing
+            user.email_notifications_enabled = True
         else:
             user = User(
                 email="user@test.com",
