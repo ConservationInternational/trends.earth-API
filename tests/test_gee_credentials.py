@@ -2,6 +2,7 @@
 
 import os
 from unittest.mock import Mock, patch
+import uuid
 
 import pytest
 
@@ -38,8 +39,10 @@ def admin_user_with_token(app):
     with app.app_context():
         from flask_jwt_extended import create_access_token
 
+        # Use unique email to avoid conflicts
+        unique_id = str(uuid.uuid4())[:8]
         admin_user = User(
-            email="admin@example.com",
+            email=f"admin-{unique_id}@example.com",
             password="password123",
             name="Admin User",
             country="Test Country",
@@ -59,8 +62,10 @@ def superadmin_user_with_token(app):
     with app.app_context():
         from flask_jwt_extended import create_access_token
 
+        # Use unique email to avoid conflicts
+        unique_id = str(uuid.uuid4())[:8]
         superadmin_user = User(
-            email="superadmin@example.com",
+            email=f"superadmin-{unique_id}@example.com",
             password="password123",
             name="Superadmin User",
             country="Test Country",
@@ -497,15 +502,28 @@ class TestGEECredentialsAPI:
 
     def test_api_requires_authentication(self, client):
         """Test that all GEE credential endpoints require authentication"""
-        endpoints = [
+        # These endpoints should return 401 when accessed without auth
+        get_endpoints = [
             "/api/v1/user/me/gee-credentials",
-            "/api/v1/user/me/gee-oauth/initiate",
             "/api/v1/user/me/gee-service-account",
+        ]
+
+        # These endpoints only accept POST, so GET should return 405
+        post_only_endpoints = [
+            "/api/v1/user/me/gee-oauth/initiate",
             "/api/v1/user/me/gee-credentials/test",
         ]
 
-        for endpoint in endpoints:
+        for endpoint in get_endpoints:
             response = client.get(endpoint)
+            assert response.status_code == 401
+
+        for endpoint in post_only_endpoints:
+            response = client.get(endpoint)
+            assert response.status_code == 405  # Method not allowed
+
+            # Test POST without auth should return 401
+            response = client.post(endpoint)
             assert response.status_code == 401
 
 
@@ -526,7 +544,7 @@ class TestAdminGEECredentialsAPI:
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data["data"]["user_id"] == target_user.id
+        assert data["data"]["user_id"] == str(target_user.id)
         assert data["data"]["user_email"] == target_user.email
         assert data["data"]["has_credentials"] is False
         assert data["data"]["credentials_type"] is None
@@ -551,7 +569,7 @@ class TestAdminGEECredentialsAPI:
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data["data"]["user_id"] == target_user.id
+        assert data["data"]["user_id"] == str(target_user.id)
         assert data["data"]["has_credentials"] is True
         assert data["data"]["credentials_type"] == "oauth"
 
@@ -813,7 +831,7 @@ class TestAdminGEECredentialsAPI:
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data["data"]["user_id"] == target_user.id
+        assert data["data"]["user_id"] == str(target_user.id)
 
     def test_admin_endpoints_require_authentication(self, client, user_with_token):
         """Test that admin GEE credential endpoints require authentication"""

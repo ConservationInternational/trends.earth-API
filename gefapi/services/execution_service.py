@@ -56,7 +56,7 @@ def dict_to_query(params):
 
 
 def update_execution_status_with_logging(
-    execution, new_status, additional_objects=None
+    execution, new_status, additional_objects=None, explicit_progress=None
 ):
     """
     Helper function to update execution status and log to status_log table.
@@ -70,6 +70,8 @@ def update_execution_status_with_logging(
         new_status (str): The new status to set
         additional_objects (list, optional): Additional objects to add to the same
             transaction
+        explicit_progress (int, optional): If provided, don't auto-set progress to 100
+            for terminal states
 
     Returns:
         StatusLog: The created status log entry
@@ -86,7 +88,9 @@ def update_execution_status_with_logging(
         # Update end_date and progress for terminal states
         if new_status in ["FINISHED", "FAILED", "CANCELLED"]:
             execution.end_date = datetime.datetime.utcnow()
-            execution.progress = 100
+            # Only set progress to 100 if no explicit progress was provided
+            if explicit_progress is None:
+                execution.progress = 100
 
         # Count current executions by status AFTER making the change
         logger.info(
@@ -666,8 +670,10 @@ class ExecutionService:
 
         # Use the new helper function for status updates
         if status is not None:
-            # Update status with logging
-            update_execution_status_with_logging(execution, status)
+            # Update status with logging, pass explicit progress if provided
+            update_execution_status_with_logging(
+                execution, status, explicit_progress=progress
+            )
 
             # Send notification email for terminal states
             if status in ["FINISHED", "FAILED", "CANCELLED"]:

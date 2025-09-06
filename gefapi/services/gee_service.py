@@ -14,6 +14,12 @@ from gefapi.config import SETTINGS
 
 logger = logging.getLogger(__name__)
 
+# Import ee at module level for test mocking, but allow ImportError
+try:
+    import ee  # type: ignore
+except ImportError:
+    ee = None
+
 
 class GEEService:
     """Service for managing Google Earth Engine tasks"""
@@ -31,12 +37,9 @@ class GEEService:
             True if initialization successful, False otherwise
         """
         try:
-            import ee  # type: ignore
-        except ImportError as e:
-            logger.error(f"Google Earth Engine API not available: {e}")
-            return False
-
-        try:
+            if ee is None:
+                logger.error("Google Earth Engine API not available")
+                return False
             # Check if already initialized by making a simple API call
             try:
                 # Test with a simple API call
@@ -91,7 +94,9 @@ class GEEService:
     def _initialize_ee_with_default_service_account() -> bool:
         """Initialize Google Earth Engine with the default service account"""
         try:
-            import ee  # type: ignore
+            if ee is None:
+                logger.error("Google Earth Engine API not available")
+                return False
 
             # Get service account JSON from environment
             service_account_json = SETTINGS.get("environment", {}).get(
@@ -164,7 +169,9 @@ class GEEService:
     def _initialize_ee_with_oauth(user) -> bool:
         """Initialize Google Earth Engine with user OAuth credentials"""
         try:
-            import ee  # type: ignore
+            if ee is None:
+                logger.error("Google Earth Engine API not available")
+                return False
             from google.auth.exceptions import RefreshError
             from google.oauth2.credentials import Credentials
 
@@ -220,7 +227,9 @@ class GEEService:
     def _initialize_ee_with_user_service_account(user) -> bool:
         """Initialize Google Earth Engine with user service account"""
         try:
-            import ee  # type: ignore
+            if ee is None:
+                logger.error("Google Earth Engine API not available")
+                return False
 
             service_account_data = user.get_gee_service_account()
             if not service_account_data:
@@ -297,7 +306,8 @@ class GEEService:
                 return False
 
             # Basic format validation
-            if not service_account_data.get("client_email", "").endswith("@"):
+            client_email = service_account_data.get("client_email", "")
+            if not client_email or "@" not in client_email:
                 logger.error("Invalid client email format")
                 return False
 
@@ -369,7 +379,9 @@ class GEEService:
                 result["error"] = "Failed to initialize Google Earth Engine"
                 return result
 
-            import ee  # type: ignore
+            if ee is None:
+                result["error"] = "Google Earth Engine API not available"
+                return result
 
             # Get the project ID (prefer config, fall back to environment)
             project_id = SETTINGS.get("environment", {}).get(

@@ -28,8 +28,8 @@ class RefreshToken(db.Model):
 
     __table_args__ = (db.UniqueConstraint("token", name="refresh_tokens_token_key"),)
 
-    # Relationship
-    user = db.relationship("User", backref=db.backref("refresh_tokens", lazy=True))
+    # Relationship - backref handled by User model
+    user = db.relationship("User", back_populates="user_refresh_tokens")
 
     def __init__(self, user_id, expires_at=None, device_info=None):
         self.user_id = user_id
