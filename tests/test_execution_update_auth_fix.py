@@ -7,8 +7,12 @@ fixing the issue where containers couldn't submit results due to auth restrictio
 
 import json
 from unittest.mock import patch
+import uuid
 
 import pytest
+
+from gefapi import db
+from gefapi.models import Script, User
 
 
 @pytest.mark.usefixtures("client", "auth_headers_user", "auth_headers_admin")
@@ -18,9 +22,6 @@ class TestExecutionUpdateAuthFix:
     def test_user_can_update_own_execution(self, client, auth_headers_user):
         """Test that a user can update their own execution with results"""
         # Use the Script model directly instead of API to avoid file upload complexity
-        from gefapi import db
-        from gefapi.models import Script, User
-        import uuid
 
         # Generate unique email for this test run
         test_id = str(uuid.uuid4())[:8]
@@ -42,7 +43,6 @@ class TestExecutionUpdateAuthFix:
                 db.session.commit()
 
             # Create script directly in database
-            import uuid
             script_uuid = str(uuid.uuid4())[:8]
             script = Script(
                 name="Test Results Script",
@@ -105,14 +105,12 @@ class TestExecutionUpdateAuthFix:
     ):
         """Test that a user cannot update another user's execution"""
         # Admin creates a script and execution using direct database access
-        from gefapi import db
-        from gefapi.models import Script, User
 
         with client.application.app_context():
             # Generate unique email for this test run
             admin_test_id = str(uuid.uuid4())[:8]
             admin_email = f"execution-update-admin-{admin_test_id}@test.com"
-            
+
             # Get admin user or create unique one
             admin_user = User.query.filter_by(email=admin_email).first()
             if not admin_user:
@@ -128,7 +126,6 @@ class TestExecutionUpdateAuthFix:
                 db.session.commit()
 
             # Create script directly in database
-            import uuid
             script_uuid = str(uuid.uuid4())[:8]
             script = Script(
                 name="Admin Test Script",
@@ -168,15 +165,12 @@ class TestExecutionUpdateAuthFix:
     ):
         """Test that admin can still update any execution"""
         # Regular user creates execution using direct database access
-        from gefapi import db
-        from gefapi.models import Script, User
-        import uuid
 
         with client.application.app_context():
             # Generate unique email for this test run
             user_test_id = str(uuid.uuid4())[:8]
             user_email = f"execution-forbidden-user-{user_test_id}@test.com"
-            
+
             # Get regular user or create unique one
             user = User.query.filter_by(email=user_email).first()
             if not user:
@@ -192,7 +186,6 @@ class TestExecutionUpdateAuthFix:
                 db.session.commit()
 
             # Create script directly in database
-            import uuid
             script_uuid = str(uuid.uuid4())[:8]
             script = Script(
                 name="User Test Script",
