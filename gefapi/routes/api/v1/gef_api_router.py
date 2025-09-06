@@ -1244,8 +1244,8 @@ def update_execution(execution):
     Update an execution's properties (admin only).
 
     **Authentication**: JWT token required
-    **Authorization**: Users can update their own executions, admin users can update any execution
-    **Access**: Execution owners and admin users can update execution properties
+    **Authorization**: Admin level access required
+    **Access**: Only admin users can update execution properties
 
     **Path Parameters**:
     - `execution`: Execution ID (UUID format)
@@ -1287,7 +1287,7 @@ def update_execution(execution):
 
     **Error Responses**:
     - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: User cannot access this execution (not owner or admin)
+    - `403 Forbidden`: Admin access required
     - `404 Not Found`: Execution does not exist
     - `422 Unprocessable Entity`: Invalid request data
     - `500 Internal Server Error`: Server error
@@ -1295,24 +1295,13 @@ def update_execution(execution):
     logger.info("[ROUTER]: Updating execution " + execution)
     body = request.get_json()
     user = current_user
-    
-    # Allow admins to update any execution, or users to update their own executions
+    if not can_access_admin_features(user):
+        return error(status=403, detail="Forbidden")
     try:
-        # First try to get the execution with user permissions to check ownership
-        execution_obj = ExecutionService.get_execution(execution, user)
-        # If we get here, either the user is admin OR it's their own execution
         execution = ExecutionService.update_execution(body, execution)
     except ExecutionNotFound as e:
-        # If the execution is not found for this user, check if it exists at all
-        # If it exists but user can't access it, return 403 instead of 404
-        try:
-            ExecutionService.get_execution(execution, "fromservice")
-            # Execution exists but user can't access it - return 403
-            return error(status=403, detail="Forbidden")
-        except ExecutionNotFound:
-            # Execution truly doesn't exist - return 404
-            logger.error("[ROUTER]: " + e.message)
-            return error(status=404, detail=e.message)
+        logger.error("[ROUTER]: " + e.message)
+        return error(status=404, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
