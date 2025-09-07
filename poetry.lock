@@ -125,10 +125,7 @@ files = [
 [package.dependencies]
 jmespath = ">=0.7.1,<2.0.0"
 python-dateutil = ">=2.1,<3.0.0"
-urllib3 = [
-    {version = ">=1.25.4,<2.2.0 || >2.2.0,<3", markers = "python_version >= \"3.10\""},
-    {version = ">=1.25.4,<1.27", markers = "python_version < \"3.10\""},
-]
+urllib3 = {version = ">=1.25.4,<2.2.0 || >2.2.0,<3", markers = "python_version >= \"3.10\""}
 
 [package.extras]
 crt = ["awscrt (==0.23.8)"]
@@ -2959,5 +2956,5 @@ cffi = ["cffi (>=1.11)"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.9,<3.14"
-content-hash = "fbf8e9d041ec01def55a81bfdc839f3810cbf3b389132d64c767462a2930d2db"
+python-versions = ">=3.11,<3.14"
+content-hash = "e1f463236797c195d4ad361c4743305cfeffa5fa213f472d95fed74c3571a0bc"
