@@ -2,16 +2,22 @@
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry]
+[project]
 name = "trends-earth-api"
 version = "1.0.0"
 description = "API for managing Scripts, Users, and Executions in Trends.Earth"
-authors = ["Alex Zvoleff <azvoleff@conservation.org>"]
+authors = [
+    { name = "Alex Zvoleff", email = "azvoleff@conservation.org" }
+]
 readme = "README.md"
+requires-python = ">=3.9,<3.14"
+dynamic = ["dependencies"]
+
+[tool.poetry]
 packages = [{ include = "gefapi" }]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.13"
+python = ">=3.9,<3.14"
 flask = "*"
 flask-cors = "*"
 flask-compress = "*"
@@ -60,8 +66,8 @@ packages = ["gefapi"]
 line-length = 88
 indent-width = 4
 
-# Assume Python 3.9+ (matching your test matrix)
-target-version = "py39"
+# Assume Python 3.11+ (updated for better compatibility)
+target-version = "py311"
 
 # Exclude files/directories from linting
 exclude = [

@@ -13,7 +13,7 @@ Example usage:
 
 import json
 import time
-from typing import Any, Optional
+from typing import Any
 import warnings
 
 from IPython.display import HTML, display
@@ -996,7 +996,7 @@ def test_rate_limiting(
 def test_gee_script_execution(
     client: TrendsEarthAPIClient,
     script_name: str,
-    custom_params: Optional[dict[str, Any]] = None,
+    custom_params: dict[str, Any] | None = None,
 ):
     """Test execution of a specific GEE script"""
     print(f"🌍 Testing {script_name} script execution")
