@@ -1,6 +1,7 @@
 from datetime import timedelta
 import logging
 import os
+import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,8 @@ SETTINGS = {
     "SCRIPTS_S3_BUCKET": os.getenv("SCRIPTS_S3_BUCKET"),
     "PARAMS_S3_PREFIX": os.getenv("PARAMS_S3_PREFIX"),
     "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
-    "UPLOAD_FOLDER": "/tmp/scripts",
+    "UPLOAD_FOLDER": os.getenv("UPLOAD_FOLDER",
+                               os.path.join(tempfile.gettempdir(), "scripts")),
     "ALLOWED_EXTENSIONS": {"tar.gz"},
     "MAX_RESULTS_SIZE": int(os.getenv("MAX_RESULTS_SIZE", 300000)),  # 300KB default
     "JWT_ACCESS_TOKEN_EXPIRES": timedelta(

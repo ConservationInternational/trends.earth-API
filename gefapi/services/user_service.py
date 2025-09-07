@@ -2,7 +2,7 @@
 
 import datetime
 import logging
-import random
+import secrets
 import string
 from uuid import UUID
 
@@ -34,7 +34,10 @@ class UserService:
         email = user.get("email", None)
         password = user.get("password", None)
         password = (
-            "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            "".join(
+                secrets.choice(string.ascii_uppercase + string.digits)
+                for _ in range(6)
+            )
             if password is None
             else password
         )
@@ -285,7 +288,10 @@ class UserService:
         user = UserService.get_user(user_id=user_id)
         if not user:
             raise UserNotFound(message="User with id " + user_id + " does not exist")
-        password = "".join(random.choices(string.ascii_uppercase + string.digits, k=20))
+        password = "".join(
+            secrets.choice(string.ascii_uppercase + string.digits)
+            for _ in range(20)
+        )
         user.password = user.set_password(password=password)
         try:
             logger.info("[DB]: ADD")

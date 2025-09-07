@@ -344,7 +344,49 @@ def docker_build(script_id):
         get_script_from_s3(script_file, temp_file_path)
         extract_path = temp_dir + "/" + script.slug
         with tarfile.open(name=temp_file_path, mode="r:gz") as tar:
-            tar.extractall(path=extract_path)
+            # Secure extraction to prevent path traversal attacks (Zip Slip)
+            def safe_extract(tar, path):
+                """Safely extract tar file, preventing path traversal attacks."""
+                for member in tar.getmembers():
+                    # Check for absolute paths
+                    if os.path.isabs(member.name):
+                        logger.warning(
+                            f"[SECURITY] Skipping absolute path: {member.name}"
+                        )
+                        continue
+                    # Check for parent directory references
+                    if ".." in member.name or member.name.startswith("/"):
+                        logger.warning(
+                            f"[SECURITY] Skipping unsafe path: {member.name}"
+                        )
+                        continue
+                    # Check for overly long paths
+                    if len(member.name) > 255:
+                        logger.warning(
+                            f"[SECURITY] Skipping overly long path: "
+                            f"{member.name[:50]}..."
+                        )
+                        continue
+                    # Resolve the full path and ensure it's within extraction dir
+                    full_path = os.path.realpath(os.path.join(path, member.name))
+                    if not full_path.startswith(os.path.realpath(path)):
+                        logger.warning(
+                            f"[SECURITY] Skipping path outside extraction dir: "
+                            f"{member.name}"
+                        )
+                        continue
+                tar.extractall(  # nosec B202 - members are validated above
+                    path=path,
+                    members=[
+                        m for m in tar.getmembers()
+                        if not os.path.isabs(m.name)
+                        and ".." not in m.name
+                        and not m.name.startswith("/")
+                        and len(m.name) <= 255
+                    ]
+                )
+
+            safe_extract(tar, extract_path)
 
         logger.info("[THREAD] Running build")
         script.status = "BUILDING"
