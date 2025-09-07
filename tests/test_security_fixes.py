@@ -1,6 +1,7 @@
 """
 Security fixes validation tests for path traversal and weak random generation
 """
+
 import os
 import secrets
 import string
@@ -20,10 +21,7 @@ class TestSecurityFixes(unittest.TestCase):
         # Generate multiple passwords to ensure they're different (non-deterministic)
         passwords = []
         for _ in range(10):
-            password = "".join(
-                secrets.choice(charset)
-                for _ in range(6)
-            )
+            password = "".join(secrets.choice(charset) for _ in range(6))
             passwords.append(password)
 
         # All passwords should be 6 characters
@@ -55,7 +53,8 @@ class TestSecurityFixes(unittest.TestCase):
             # Our safe extraction should work
             with tarfile.open(tar_path, "r:gz") as tar:
                 safe_members = [
-                    m for m in tar.getmembers()
+                    m
+                    for m in tar.getmembers()
                     if not os.path.isabs(m.name)
                     and ".." not in m.name
                     and not m.name.startswith("/")
@@ -68,15 +67,17 @@ class TestSecurityFixes(unittest.TestCase):
         """Test that malicious paths are properly detected and filtered"""
         malicious_paths = [
             "../../../etc/passwd",  # Parent directory traversal
-            "/etc/passwd",           # Absolute path
+            "/etc/passwd",  # Absolute path
             "../../../../root/.ssh/id_rsa",  # Multiple parent traversals
-            "a" * 300,              # Overly long path
+            "a" * 300,  # Overly long path
         ]
 
         for path in malicious_paths:
             # Test absolute path detection
             if os.path.isabs(path):
-                self.assertTrue(os.path.isabs(path), f"Should detect absolute path: {path}")
+                self.assertTrue(
+                    os.path.isabs(path), f"Should detect absolute path: {path}"
+                )
 
             # Test parent directory detection
             if ".." in path:
@@ -84,7 +85,9 @@ class TestSecurityFixes(unittest.TestCase):
 
             # Test length validation
             if len(path) > 255:
-                self.assertGreater(len(path), 255, f"Should detect overly long path: {path}")
+                self.assertGreater(
+                    len(path), 255, f"Should detect overly long path: {path}"
+                )
 
     def test_tempdir_configuration(self):
         """Test that temporary directory configuration is secure"""

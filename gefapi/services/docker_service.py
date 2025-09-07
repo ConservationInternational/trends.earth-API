@@ -378,12 +378,13 @@ def docker_build(script_id):
                 tar.extractall(  # nosec B202 - members are validated above
                     path=path,
                     members=[
-                        m for m in tar.getmembers()
+                        m
+                        for m in tar.getmembers()
                         if not os.path.isabs(m.name)
                         and ".." not in m.name
                         and not m.name.startswith("/")
                         and len(m.name) <= 255
-                    ]
+                    ],
                 )
 
             safe_extract(tar, extract_path)

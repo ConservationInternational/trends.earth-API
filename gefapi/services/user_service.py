@@ -35,8 +35,7 @@ class UserService:
         password = user.get("password", None)
         password = (
             "".join(
-                secrets.choice(string.ascii_uppercase + string.digits)
-                for _ in range(6)
+                secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6)
             )
             if password is None
             else password
@@ -289,8 +288,7 @@ class UserService:
         if not user:
             raise UserNotFound(message="User with id " + user_id + " does not exist")
         password = "".join(
-            secrets.choice(string.ascii_uppercase + string.digits)
-            for _ in range(20)
+            secrets.choice(string.ascii_uppercase + string.digits) for _ in range(20)
         )
         user.password = user.set_password(password=password)
         try:
