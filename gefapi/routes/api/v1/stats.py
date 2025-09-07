@@ -28,8 +28,98 @@ def get_dashboard_stats():
     - period: Time period filter (last_day, last_week, last_month, last_year, all)
     - include: Comma-separated list of sections (summary, trends, geographic, tasks)
 
+    Example Response for include=summary (period=all):
+    {
+        "data": {
+            "summary": {
+                "total_executions": 1500,
+                "total_jobs": 1500,
+                "total_users": 250,
+                "total_scripts": 150,
+                "total_executions_finished": 1200,
+                "total_executions_failed": 200,
+                "total_executions_cancelled": 100
+            }
+        }
+    }
+
+    Example Response for include=summary (period=last_month):
+    {
+        "data": {
+            "summary": {
+                "total_executions": 450,
+                "total_jobs": 450,
+                "total_users": 80,
+                "total_scripts": 150,
+                "total_executions_finished": 360,
+                "total_executions_failed": 60,
+                "total_executions_cancelled": 30
+            }
+        }
+    }
+
+    Example Response for include=trends:
+    {
+        "data": {
+            "trends": {
+                "hourly_jobs": [
+                    {"hour": "2025-08-08T10:00:00Z", "count": 5},
+                    {"hour": "2025-08-08T11:00:00Z", "count": 8}
+                ],
+                "daily_jobs": [
+                    {"date": "2025-08-07", "count": 45},
+                    {"date": "2025-08-08", "count": 52}
+                ],
+                "monthly_jobs": [
+                    {"month": "2025-07", "count": 1200},
+                    {"month": "2025-08", "count": 300}
+                ]
+            }
+        }
+    }
+
+    Example Response for include=geographic:
+    {
+        "data": {
+            "geographic": {
+                "top_countries": [
+                    {"country": "USA", "user_count": 100, "percentage": 40.0},
+                    {"country": "Brazil", "user_count": 75, "percentage": 30.0},
+                    {"country": "Germany", "user_count": 50, "percentage": 20.0}
+                ]
+            }
+        }
+    }
+
+    Example Response for include=tasks:
+    {
+        "data": {
+            "tasks": {
+                "by_type": [
+                    {"task": "productivity", "count": 500, "success_rate": 95.0},
+                    {"task": "land-cover", "count": 300, "success_rate": 92.0},
+                    {"task": "carbon", "count": 200, "success_rate": 89.0}
+                ],
+                "by_version": [
+                    {"version": "2", "count": 600, "percentage": 60.0},
+                    {"version": "1", "count": 400, "percentage": 40.0}
+                ]
+            }
+        }
+    }
+
+    Example Response for include=summary,trends,geographic,tasks (all sections):
+    {
+        "data": {
+            "summary": { ... },
+            "trends": { ... },
+            "geographic": { ... },
+            "tasks": { ... }
+        }
+    }
+
     Returns:
-        JSON response with dashboard statistics
+        JSON response with dashboard statistics containing requested sections
     """
     # Only SUPERADMIN users can access dashboard stats
     if not is_superadmin(current_user):
@@ -106,6 +196,39 @@ def get_execution_stats():
     - group_by: Grouping interval (hour, day, week, month)
     - task_type: Filter by specific task type
     - status: Filter by execution status (PENDING, RUNNING, FINISHED, FAILED, CANCELLED)
+
+    Example Response:
+    {
+        "data": {
+            "time_series": [
+                {
+                    "timestamp": "2025-08-08T10:00:00Z",
+                    "total": 10,
+                    "by_status": {"FINISHED": 8, "FAILED": 2},
+                    "by_task": {"productivity": 6, "land-cover": 4}
+                }
+            ],
+            "top_users": [
+                {
+                    "user_id": "123",
+                    "email": "user1@example.com",
+                    "execution_count": 45,
+                    "success_rate": 94.4,
+                    "favorite_tasks": ["productivity", "land-cover"]
+                }
+            ],
+            "task_performance": [
+                {
+                    "task": "productivity",
+                    "total_executions": 500,
+                    "success_rate": 95.0,
+                    "avg_duration_minutes": 45.2,
+                    "failure_reasons": []
+                }
+            ]
+        }
+    }
+
     Returns:
         JSON response with execution statistics
     """
@@ -188,6 +311,28 @@ def get_user_stats():
     - period: Time period filter (last_day, last_week, last_month, last_year, all)
     - group_by: Grouping interval (day, week, month)
     - country: Filter by specific country
+
+    Example Response:
+    {
+        "data": {
+            "registration_trends": [
+                {"date": "2025-08-07", "new_users": 12, "total_users": 250},
+                {"date": "2025-08-08", "new_users": 8, "total_users": 258}
+            ],
+            "geographic_distribution": [
+                {"country": "USA", "user_count": 100, "percentage": 40.0},
+                {"country": "Brazil", "user_count": 75, "percentage": 30.0},
+                {"country": "Germany", "user_count": 50, "percentage": 20.0}
+            ],
+            "activity_stats": {
+                "active_last_day": 45,
+                "active_last_week": 234,
+                "active_last_month": 567,
+                "never_executed": 123
+            }
+        }
+    }
+
     Returns:
         JSON response with user statistics
     """
@@ -261,6 +406,21 @@ def get_stats_health():
     Get basic health check for stats endpoints.
 
     Returns basic counts to verify the stats service is working.
+
+    Example Response:
+    {
+        "data": {
+            "status": "healthy",
+            "basic_counts": {
+                "total_jobs": 1500,
+                "total_users": 250,
+                "jobs_last_month": 450
+            }
+        }
+    }
+
+    Returns:
+        JSON response with health status and basic counts
     """
     if not is_superadmin(current_user):
         log_security_event(
@@ -302,6 +462,29 @@ def get_cache_info():
     Get information about the stats cache.
 
     Shows cached keys, TTL information, and cache status.
+
+    Example Response:
+    {
+        "data": {
+            "cache_status": "available",
+            "total_keys": 15,
+            "keys": [
+                {
+                    "key": "stats_service:get_dashboard_stats:include=summary"
+                           "_period=all",
+                    "ttl": 240,
+                    "size_bytes": 1024
+                }
+            ],
+            "memory_usage": {
+                "used_memory": "2.5MB",
+                "max_memory": "256MB"
+            }
+        }
+    }
+
+    Returns:
+        JSON response with cache information
     """
     if not is_superadmin(current_user):
         log_security_event(
@@ -338,8 +521,30 @@ def get_cache_info():
 def clear_cache():
     """
     Clear the stats cache.
+
     Query Parameters:
     - pattern: Optional pattern to match cache keys (e.g., 'summary', 'trends')
+
+    Allowed patterns: summary, trends, geographic, tasks, executions, users, activity
+
+    Example Response (success):
+    {
+        "data": {
+            "success": true,
+            "message": "Cache cleared successfully"
+        }
+    }
+
+    Example Response (with pattern):
+    {
+        "data": {
+            "success": true,
+            "message": "Cache cleared successfully for pattern: summary"
+        }
+    }
+
+    Returns:
+        JSON response indicating success or failure of cache clearing operation
     """
     if not is_superadmin(current_user):
         log_security_event(

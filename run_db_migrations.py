@@ -114,11 +114,13 @@ def run_migrations():
                         # Check User model for new columns
                         user = db.session.query(User).first()
                         if user is not None:
-                            # Try to access new columns to verify they exist
-                            _ = (
-                                user.gee_oauth_token
-                                if hasattr(user, "gee_oauth_token")
-                                else None
+                            # Try to access the new columns to verify they exist
+                            _ = user.gee_oauth_token
+                            _ = user.email_notifications_enabled
+                            logger.info("✅ Database schema appears to be up-to-date")
+                            print(
+                                "✅ Database schema is already current - "
+                                "no migration needed"
                             )
                             _ = (
                                 user.email_notifications_enabled

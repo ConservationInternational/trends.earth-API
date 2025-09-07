@@ -10,7 +10,7 @@ This script runs inside the Docker container after migrations and sets up:
 Designed to run inside the migrate service where all dependencies are available.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import logging
 import os
 import sys
@@ -157,8 +157,8 @@ class StagingEnvironmentSetup:
                         "Test Institution",
                         hashed_password,
                         user_data["role"],
-                        datetime.now(timezone.utc),
-                        datetime.now(timezone.utc),
+                        datetime.now(UTC),
+                        datetime.now(UTC),
                     ),
                 )
 

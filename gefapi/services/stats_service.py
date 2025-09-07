@@ -93,10 +93,15 @@ class StatsService:
 
         Args:
             period: Time period filter (last_day, last_week, last_month, last_year, all)
+                   Affects all sections:
+                   - summary: Filters all counts to the selected period only
+                   - trends: Filters time series data based on the period
+                   - geographic: Filters user registration data based on the period
+                   - tasks: Filters execution data based on the period
             include: List of sections to include (summary, trends, geographic, tasks)
 
         Returns:
-            Dictionary containing requested statistics
+            Dictionary containing requested statistics sections
         """
         if include is None:
             include = ["summary", "trends", "geographic", "tasks"]
@@ -111,7 +116,7 @@ class StatsService:
 
             try:
                 if "summary" in include:
-                    result["summary"] = StatsService._get_summary_stats()
+                    result["summary"] = StatsService._get_summary_stats(period)
 
                 if "trends" in include:
                     result["trends"] = StatsService._get_trends_data(period)
@@ -244,65 +249,72 @@ class StatsService:
         return filters.get(period)
 
     @staticmethod
-    def _get_summary_stats() -> dict[str, Any]:
+    def _get_summary_stats(period: str = "all") -> dict[str, Any]:
         """
         Get comprehensive summary statistics for the dashboard.
 
-        Returns total counts and time-based breakdowns including:
-        - Total executions, users, and scripts
-        - Execution counts by status (finished, failed, cancelled)
-        - Historical counts for jobs and users over different periods
+        Args:
+            period: Time period filter for filtering execution and user data
+                   (last_day, last_week, last_month, last_year, all)
+
+        Returns summary counts for the specified period:
+        - Total executions, users, and scripts (filtered by period if not 'all')
+        - Execution counts by status (filtered by period if not 'all')
 
         Returns:
             dict: Summary statistics containing:
-                - total_executions: Total number of executions
+                - total_executions: Total number of executions (within period)
                 - total_jobs: Alias for total_executions (backward compatibility)
-                - total_users: Total number of registered users
-                - total_scripts: Total number of available scripts
+                - total_users: Total number of registered users (within period)
+                - total_scripts: Total number of available scripts (always all-time)
                 - total_executions_finished: Count of successfully completed executions
                 - total_executions_failed: Count of failed executions
                 - total_executions_cancelled: Count of cancelled executions
-                - jobs_last_day/week/month/year: Job counts for time periods
-                - users_last_day/week/month/year: User registration counts for
-                    time periods
         """
-        cache_key = StatsService._get_cache_key("_get_summary_stats")
+        cache_key = StatsService._get_cache_key("_get_summary_stats", period=period)
 
         def execute_summary():
-            now = datetime.utcnow()
+            # Get period filter
+            cutoff_date = StatsService._get_time_filter(period)
 
-            # Define time periods
-            periods = {
-                "last_day": now - timedelta(days=1),
-                "last_week": now - timedelta(days=7),
-                "last_month": now - timedelta(days=30),
-                "last_year": now - timedelta(days=365),
-            }
+            # Get total counts (filtered by period if specified)
+            execution_query = db.session.query(func.count(Execution.id))
+            user_query = db.session.query(func.count(User.id))
 
-            # Get total counts
-            total_executions = db.session.query(func.count(Execution.id)).scalar() or 0
-            total_users = db.session.query(func.count(User.id)).scalar() or 0
+            if cutoff_date:
+                execution_query = execution_query.filter(
+                    Execution.start_date >= cutoff_date
+                )
+                user_query = user_query.filter(User.created_at >= cutoff_date)
+
+            total_executions = execution_query.scalar() or 0
+            total_users = user_query.scalar() or 0
+            # Scripts count is always all-time since scripts don't have a time dimension
             total_scripts = db.session.query(func.count(Script.id)).scalar() or 0
 
-            # Get execution counts by status
-            total_executions_finished = (
-                db.session.query(func.count(Execution.id))
-                .filter(Execution.status == "FINISHED")
-                .scalar()
-                or 0
+            # Get execution counts by status (filtered by period if specified)
+            finished_query = db.session.query(func.count(Execution.id)).filter(
+                Execution.status == "FINISHED"
             )
-            total_executions_failed = (
-                db.session.query(func.count(Execution.id))
-                .filter(Execution.status == "FAILED")
-                .scalar()
-                or 0
+            failed_query = db.session.query(func.count(Execution.id)).filter(
+                Execution.status == "FAILED"
             )
-            total_executions_cancelled = (
-                db.session.query(func.count(Execution.id))
-                .filter(Execution.status == "CANCELLED")
-                .scalar()
-                or 0
+            cancelled_query = db.session.query(func.count(Execution.id)).filter(
+                Execution.status == "CANCELLED"
             )
+
+            if cutoff_date:
+                finished_query = finished_query.filter(
+                    Execution.start_date >= cutoff_date
+                )
+                failed_query = failed_query.filter(Execution.start_date >= cutoff_date)
+                cancelled_query = cancelled_query.filter(
+                    Execution.start_date >= cutoff_date
+                )
+
+            total_executions_finished = finished_query.scalar() or 0
+            total_executions_failed = failed_query.scalar() or 0
+            total_executions_cancelled = cancelled_query.scalar() or 0
 
             summary = {
                 "total_executions": total_executions,
@@ -313,26 +325,6 @@ class StatsService:
                 "total_executions_failed": total_executions_failed,
                 "total_executions_cancelled": total_executions_cancelled,
             }
-
-            # Get counts for each period
-            for period_name, cutoff_date in periods.items():
-                # Jobs count
-                jobs_count = (
-                    db.session.query(func.count(Execution.id))
-                    .filter(Execution.start_date >= cutoff_date)
-                    .scalar()
-                    or 0
-                )
-                summary[f"jobs_{period_name}"] = jobs_count
-
-                # Users count (registered in period)
-                users_count = (
-                    db.session.query(func.count(User.id))
-                    .filter(User.created_at >= cutoff_date)
-                    .scalar()
-                    or 0
-                )
-                summary[f"users_{period_name}"] = users_count
 
             return summary
 
