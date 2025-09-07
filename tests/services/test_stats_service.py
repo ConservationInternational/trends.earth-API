@@ -19,16 +19,13 @@ class TestStatsService:
         """Set up test fixtures."""
         self.mock_redis = MagicMock(spec=RedisCache)
         self.sample_summary_data = {
-            "total_jobs": 1500,
+            "total_executions": 1500,
+            "total_jobs": 1500,  # Backward compatibility alias
             "total_users": 250,
-            "jobs_last_day": 15,
-            "jobs_last_week": 120,
-            "jobs_last_month": 450,
-            "jobs_last_year": 1200,
-            "users_last_day": 5,
-            "users_last_week": 25,
-            "users_last_month": 80,
-            "users_last_year": 200,
+            "total_scripts": 50,
+            "total_executions_finished": 1200,
+            "total_executions_failed": 200,
+            "total_executions_cancelled": 100,
         }
 
     @patch("gefapi.services.stats_service.get_redis_cache")
@@ -420,26 +417,30 @@ class TestStatsServiceIntegration:
         mock_get_redis_cache.return_value = mock_redis
 
         with app.app_context():
-            # Execute
+            # Execute with default period
             result = StatsService._get_summary_stats()
 
-            # Verify structure
+            # Verify structure for the new implementation
             assert isinstance(result, dict)
-            assert "total_jobs" in result
+            assert "total_executions" in result
+            assert "total_jobs" in result  # Backward compatibility alias
             assert "total_users" in result
-            assert "jobs_last_day" in result
-            assert "jobs_last_week" in result
-            assert "jobs_last_month" in result
-            assert "jobs_last_year" in result
-            assert "users_last_day" in result
-            assert "users_last_week" in result
-            assert "users_last_month" in result
-            assert "users_last_year" in result
+            assert "total_scripts" in result
+            assert "total_executions_finished" in result
+            assert "total_executions_failed" in result
+            assert "total_executions_cancelled" in result
 
             # Values should be integers (even if 0)
             for key, value in result.items():
                 assert isinstance(value, int)
                 assert value >= 0
+
+            # Test with different period parameters
+            for period in ["last_day", "last_week", "last_month", "last_year", "all"]:
+                period_result = StatsService._get_summary_stats(period=period)
+                assert isinstance(period_result, dict)
+                assert "total_executions" in period_result
+                assert "total_users" in period_result
 
     @patch("gefapi.services.stats_service.get_redis_cache")
     def test_get_dashboard_stats_database_integration(
