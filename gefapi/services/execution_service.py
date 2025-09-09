@@ -328,7 +328,6 @@ class ExecutionService:
                     rollbar.report_exc_info()
                     raise error
                 query = query.filter(Execution.user_id == validated_user_id)
-            # For admin, no additional user filter needed
         else:
             # For non-admin users, only show their own executions
             query = query.filter(Execution.user_id == user.id)

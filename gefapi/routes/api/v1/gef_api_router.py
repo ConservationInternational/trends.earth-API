@@ -987,7 +987,7 @@ def get_user_executions():
         # Get executions for current user only
         executions, total = ExecutionService.get_executions(
             user=current_user,
-            target_user_id=None,  # None means get current user's executions
+            target_user_id=str(current_user.id),  # Force user filtering
             updated_at=updated_at,
             status=None,
             page=page,
