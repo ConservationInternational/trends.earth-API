@@ -1019,10 +1019,33 @@ class DockerService:
 
                 # env = [k + "=" + v for str(k), str(v) in environment.items()]
                 env = []
+                credential_env_vars = {}
                 for item in environment.items():
                     # Skip None values to avoid passing them to containers
                     if item[1] is not None:
                         env.append(f"{item[0]}={item[1]}")
+                        # Track credential-related environment variables for debugging
+                        if any(
+                            item[0].startswith(prefix)
+                            for prefix in ["GEE_", "GOOGLE_", "EE_"]
+                        ):
+                            if (
+                                "TOKEN" in item[0]
+                                or "KEY" in item[0]
+                                or "SECRET" in item[0]
+                                or "JSON" in item[0]
+                            ):
+                                credential_env_vars[item[0]] = (
+                                    f"present, length={len(str(item[1]))}"
+                                )
+                            else:
+                                credential_env_vars[item[0]] = str(item[1])
+
+                # Log credential environment variables being passed to container
+                logger.info(
+                    "Container credential environment variables for execution "
+                    f"{execution_id}: {credential_env_vars}"
+                )
 
                 # Resolve execution and script safely
                 exec_obj = Execution.query.get(execution_id)
