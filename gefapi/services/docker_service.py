@@ -1020,7 +1020,9 @@ class DockerService:
                 # env = [k + "=" + v for str(k), str(v) in environment.items()]
                 env = []
                 for item in environment.items():
-                    env.append(f"{item[0]}={item[1]}")
+                    # Skip None values to avoid passing them to containers
+                    if item[1] is not None:
+                        env.append(f"{item[0]}={item[1]}")
 
                 # Resolve execution and script safely
                 exec_obj = Execution.query.get(execution_id)

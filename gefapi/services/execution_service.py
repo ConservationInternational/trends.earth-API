@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+import os
 from uuid import UUID
 
 import rollbar
@@ -264,7 +265,11 @@ class ExecutionService:
                 )
             else:
                 logger.warning(
-                    f"No GEE credentials available for execution {execution_id}"
+                    f"No GEE credentials available for execution {execution_id}. "
+                    f"EE_SERVICE_ACCOUNT_JSON in environment: "
+                    f"{bool(environment.get('EE_SERVICE_ACCOUNT_JSON'))}, "
+                    f"EE_SERVICE_ACCOUNT_JSON from OS env: "
+                    f"{bool(os.getenv('EE_SERVICE_ACCOUNT_JSON'))}"
                 )
 
         return environment
