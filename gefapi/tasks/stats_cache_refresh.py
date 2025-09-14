@@ -49,7 +49,7 @@ def refresh_dashboard_stats_cache(self):
         "total_refreshed": 0,
         "successful": 0,
         "failed": 0,
-        "cache_keys": []
+        "cache_keys": [],
     }
 
     # Common parameter combinations to pre-cache
@@ -59,7 +59,6 @@ def refresh_dashboard_stats_cache(self):
         {"period": "last_month", "include": ["summary", "trends"]},
         {"period": "last_week", "include": ["summary"]},
         {"period": "last_year", "include": ["trends", "geographic"]},
-
         # Individual sections that might be requested separately
         {"period": "all", "include": ["summary"]},
         {"period": "all", "include": ["trends"]},
@@ -80,7 +79,7 @@ def refresh_dashboard_stats_cache(self):
             cache_key = StatsService._get_cache_key(
                 "get_dashboard_stats",
                 period=config["period"],
-                include=",".join(sorted(config["include"]))
+                include=",".join(sorted(config["include"])),
             )
 
             refresh_summary["cache_keys"].append(cache_key)
@@ -125,7 +124,7 @@ def refresh_execution_stats_cache(self):
         "total_refreshed": 0,
         "successful": 0,
         "failed": 0,
-        "cache_keys": []
+        "cache_keys": [],
     }
 
     # Common execution stats parameter combinations
@@ -159,7 +158,7 @@ def refresh_execution_stats_cache(self):
                 period=config["period"],
                 group_by=config["group_by"],
                 task_type=config["task_type"] or "none",
-                status=config["status"] or "none"
+                status=config["status"] or "none",
             )
 
             refresh_summary["cache_keys"].append(cache_key)
@@ -206,7 +205,7 @@ def refresh_user_stats_cache(self):
         "total_refreshed": 0,
         "successful": 0,
         "failed": 0,
-        "cache_keys": []
+        "cache_keys": [],
     }
 
     # Common user stats parameter combinations
@@ -232,7 +231,7 @@ def refresh_user_stats_cache(self):
                 "get_user_stats",
                 period=config["period"],
                 group_by=config["group_by"],
-                country=config["country"] or "none"
+                country=config["country"] or "none",
             )
 
             refresh_summary["cache_keys"].append(cache_key)
@@ -279,7 +278,7 @@ def warmup_stats_cache_on_startup(self):
         "user_refresh": None,
         "total_operations": 0,
         "total_successful": 0,
-        "total_failed": 0
+        "total_failed": 0,
     }
 
     try:

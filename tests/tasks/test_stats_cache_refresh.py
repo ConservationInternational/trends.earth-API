@@ -157,15 +157,13 @@ class TestStatsTaskIntegration:
         ]
 
         for schedule_name in expected_schedules:
-            assert (
-                schedule_name in beat_schedule
-            ), f"Schedule {schedule_name} not found"
-            assert (
-                "task" in beat_schedule[schedule_name]
-            ), f"Schedule {schedule_name} missing task"
-            assert (
-                "schedule" in beat_schedule[schedule_name]
-            ), f"Schedule {schedule_name} missing schedule"
+            assert schedule_name in beat_schedule, f"Schedule {schedule_name} not found"
+            assert "task" in beat_schedule[schedule_name], (
+                f"Schedule {schedule_name} missing task"
+            )
+            assert "schedule" in beat_schedule[schedule_name], (
+                f"Schedule {schedule_name} missing schedule"
+            )
 
     def test_stats_tasks_use_correct_queue(self, app):
         """Test that stats tasks are routed to the correct queue."""
@@ -183,6 +181,6 @@ class TestStatsTaskIntegration:
 
         for task_name in expected_routes:
             assert task_name in task_routes, f"Task {task_name} not routed"
-            assert (
-                task_routes[task_name]["queue"] == "default"
-            ), f"Task {task_name} not using default queue"
+            assert task_routes[task_name]["queue"] == "default", (
+                f"Task {task_name} not using default queue"
+            )
