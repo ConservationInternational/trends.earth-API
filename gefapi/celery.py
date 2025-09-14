@@ -46,6 +46,19 @@ def make_celery(app):
         "gefapi.tasks.docker_completed_monitoring.monitor_completed_docker_services": {
             "queue": "build"
         },
+        # Stats cache refresh tasks - run on default queue
+        "gefapi.tasks.stats_cache_refresh.refresh_dashboard_stats_cache": {
+            "queue": "default"
+        },
+        "gefapi.tasks.stats_cache_refresh.refresh_execution_stats_cache": {
+            "queue": "default"
+        },
+        "gefapi.tasks.stats_cache_refresh.refresh_user_stats_cache": {
+            "queue": "default"
+        },
+        "gefapi.tasks.stats_cache_refresh.warmup_stats_cache_on_startup": {
+            "queue": "default"
+        },
         # All other tasks use default queue
     }
 
@@ -88,6 +101,22 @@ def make_celery(app):
             ),
             "schedule": 180.0,  # Every 3 minutes - check for completed services
             "options": {"queue": "build"},  # Run on build queue with Docker access
+        },
+        # Stats cache refresh tasks for performance optimization
+        "refresh-dashboard-stats-cache": {
+            "task": "gefapi.tasks.stats_cache_refresh.refresh_dashboard_stats_cache",
+            "schedule": 240.0,  # Every 4 minutes (cache TTL is 5 minutes)
+            "options": {"queue": "default"},  # Run on default queue
+        },
+        "refresh-execution-stats-cache": {
+            "task": "gefapi.tasks.stats_cache_refresh.refresh_execution_stats_cache",
+            "schedule": 300.0,  # Every 5 minutes
+            "options": {"queue": "default"},  # Run on default queue
+        },
+        "refresh-user-stats-cache": {
+            "task": "gefapi.tasks.stats_cache_refresh.refresh_user_stats_cache",
+            "schedule": 360.0,  # Every 6 minutes
+            "options": {"queue": "default"},  # Run on default queue
         },
     }
     celery.conf.timezone = "UTC"
