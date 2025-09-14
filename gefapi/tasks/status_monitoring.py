@@ -1,8 +1,10 @@
 """STATUS MONITORING TASKS"""
 
+from collections import defaultdict
 import contextlib
 import datetime
 import logging
+import time
 
 from celery import Task
 import rollbar
@@ -15,6 +17,13 @@ logger = logging.getLogger(__name__)
 # Cache configuration
 SWARM_CACHE_KEY = "docker_swarm_status"
 SWARM_CACHE_TTL = 300  # 5 minutes TTL (buffer for 2-minute refresh cycle)
+
+# Performance monitoring cache key
+SWARM_PERF_CACHE_KEY = "docker_swarm_performance"
+
+# Optimization: Cache task data to avoid repeated API calls
+_TASK_DATA_CACHE = {}
+_TASK_CACHE_EXPIRY = 0
 
 
 class StatusMonitoringTask(Task):
@@ -29,6 +38,102 @@ class StatusMonitoringTask(Task):
 from gefapi import celery  # noqa: E402
 
 
+def _get_optimized_task_data(docker_client):
+    """
+    Optimized collection of task data with caching to avoid repeated API calls.
+
+    This function collects all task data in a single pass and groups it by node,
+    significantly reducing the number of Docker API calls compared to the
+    per-node approach.
+
+    Returns:
+        dict: Task data grouped by node_id with resource usage information
+    """
+    current_time = time.time()
+
+    # Use cached data if still valid (30 second cache for task data)
+    global _TASK_DATA_CACHE, _TASK_CACHE_EXPIRY
+    if current_time < _TASK_CACHE_EXPIRY and _TASK_DATA_CACHE:
+        logger.debug("Using cached task data for resource calculations")
+        return _TASK_DATA_CACHE
+
+    logger.debug("Collecting fresh task data for resource calculations")
+
+    # Initialize result structure
+    tasks_by_node = defaultdict(
+        lambda: {"task_count": 0, "used_cpu_nanos": 0, "used_memory_bytes": 0}
+    )
+
+    try:
+        start_time = time.time()
+
+        # Get all services once - major optimization
+        services = docker_client.services.list()
+
+        # Process all tasks in a single loop
+        for service in services:
+            try:
+                service_tasks = service.tasks()
+
+                # Pre-fetch service-level reservations to avoid repeated lookups
+                service_spec = service.attrs.get("Spec", {})
+                service_resources = service_spec.get("TaskTemplate", {}).get(
+                    "Resources", {}
+                )
+                service_reservations = service_resources.get("Reservations", {})
+                # Default 10% CPU
+                service_cpu_nanos = service_reservations.get("NanoCPUs", int(1e8))
+                # Default ~95MB
+                service_memory_bytes = service_reservations.get("MemoryBytes", int(1e8))
+
+                for task in service_tasks:
+                    task_node_id = task.get("NodeID")
+                    task_state = task.get("Status", {}).get("State", "")
+
+                    # Only count running/active tasks
+                    if (
+                        task_state in ["running", "starting", "pending"]
+                        and task_node_id
+                    ):
+                        node_data = tasks_by_node[task_node_id]
+                        node_data["task_count"] += 1
+
+                        # Get task-specific reservations or fall back to service
+                        # defaults
+                        task_spec = task.get("Spec", {})
+                        resources = task_spec.get("Resources", {})
+                        reservations = resources.get("Reservations", {})
+
+                        task_cpu_nanos = reservations.get("NanoCPUs", service_cpu_nanos)
+                        task_memory_bytes = reservations.get(
+                            "MemoryBytes", service_memory_bytes
+                        )
+
+                        node_data["used_cpu_nanos"] += task_cpu_nanos
+                        node_data["used_memory_bytes"] += task_memory_bytes
+
+            except Exception as service_error:
+                logger.debug(f"Error processing service {service.id}: {service_error}")
+                continue
+
+        # Cache the results for 30 seconds
+        _TASK_DATA_CACHE = dict(tasks_by_node)
+        _TASK_CACHE_EXPIRY = current_time + 30
+
+        collection_time = time.time() - start_time
+        logger.debug(f"Task data collection completed in {collection_time:.2f} seconds")
+
+        # Store collection time for performance tracking
+        _get_optimized_task_data._last_collection_time = collection_time
+
+        return _TASK_DATA_CACHE
+
+    except Exception as e:
+        logger.warning(f"Error in optimized task data collection: {e}")
+        # Return empty data on error
+        return {}
+
+
 def _get_docker_swarm_info():
     """
     Collect Docker Swarm node information including resource usage,
@@ -41,6 +146,12 @@ def _get_docker_swarm_info():
     - Current resource usage based on actual task reservations
     - Available capacity for additional tasks
     - Detailed resource metrics (CPU/memory usage percentages)
+
+    OPTIMIZATIONS IMPLEMENTED:
+    - Pre-collection of all task data to avoid N+1 API calls
+    - Caching of task data for 30 seconds to avoid repeated calculations
+    - Performance monitoring and timing collection
+    - Efficient data structure grouping by node_id
 
     Returns:
         dict: Docker swarm information with the following structure:
@@ -75,7 +186,13 @@ def _get_docker_swarm_info():
                         "created_at": str,  # ISO timestamp
                         "updated_at": str   # ISO timestamp
                     }
-                ]
+                ],
+                "_performance": {  # Performance monitoring metadata
+                    "collection_time_seconds": float,
+                    "node_count": int,
+                    "task_collection_time_seconds": float,
+                    "cache_used": bool
+                }
             }
 
     Example Response:
@@ -110,9 +227,17 @@ def _get_docker_swarm_info():
                     "created_at": "2025-01-15T10:30:00Z",
                     "updated_at": "2025-01-15T12:45:00Z"
                 }
-            ]
+            ],
+            "_performance": {
+                "collection_time_seconds": 0.85,
+                "node_count": 3,
+                "task_collection_time_seconds": 0.42,
+                "cache_used": false
+            }
         }
     """
+    collection_start_time = time.time()
+
     try:
         docker_client = get_docker_client()
         if docker_client is None:
@@ -152,6 +277,11 @@ def _get_docker_swarm_info():
 
         # Get swarm nodes
         nodes = docker_client.nodes.list()
+
+        # OPTIMIZATION: Collect all task data once instead of per-node
+        logger.debug("Collecting task data for resource calculations")
+        tasks_by_node = _get_optimized_task_data(docker_client)
+
         node_details = []
         total_managers = 0
         total_workers = 0
@@ -192,102 +322,16 @@ def _get_docker_swarm_info():
                 # Convert memory bytes to GB
                 memory_gb = memory_bytes / (1024**3) if memory_bytes else 0
 
-                # Get running tasks/containers on this node - this will be handled
-                # in the capacity calculation section below
-                tasks_on_node = 0
+                # OPTIMIZATION: Use pre-collected task data instead of nested loops
+                node_id = node_attrs.get("ID")
+                node_task_data = tasks_by_node.get(
+                    node_id,
+                    {"task_count": 0, "used_cpu_nanos": 0, "used_memory_bytes": 0},
+                )
 
-                # Calculate available capacity using Docker Swarm's actual resource
-                # reservations. Docker Swarm tracks the exact resource reservations
-                # for each running task
-                used_cpu_nanos = 0
-                used_memory_bytes = 0
-
-                try:
-                    # Get all services and their tasks running on this specific node
-                    services = docker_client.services.list()
-                    node_id = node_attrs.get("ID")
-
-                    # Count tasks on this node and accumulate actual resource
-                    # reservations
-                    node_task_count = 0
-                    for service in services:
-                        service_tasks = service.tasks()
-                        for task in service_tasks:
-                            task_node_id = task.get("NodeID")
-                            task_state = task.get("Status", {}).get("State", "")
-
-                            if task_node_id == node_id and task_state in [
-                                "running",
-                                "starting",
-                                "pending",
-                            ]:
-                                node_task_count += 1
-
-                                # Get the actual resource reservations from the
-                                # task spec
-                                task_spec = task.get("Spec", {})
-                                resources = task_spec.get("Resources", {})
-                                reservations = resources.get("Reservations", {})
-
-                                # Extract CPU reservations (in nanoseconds)
-                                task_cpu_nanos = reservations.get("NanoCPUs", 0)
-                                # Extract memory reservations (in bytes)
-                                task_memory_bytes = reservations.get("MemoryBytes", 0)
-
-                                # If no reservations are set, use service-level
-                                # reservations
-                                if task_cpu_nanos == 0 or task_memory_bytes == 0:
-                                    try:
-                                        service_spec = service.attrs.get("Spec", {})
-                                        service_resources = service_spec.get(
-                                            "TaskTemplate", {}
-                                        ).get("Resources", {})
-                                        service_reservations = service_resources.get(
-                                            "Reservations", {}
-                                        )
-
-                                        if task_cpu_nanos == 0:
-                                            task_cpu_nanos = service_reservations.get(
-                                                "NanoCPUs", int(1e8)
-                                            )  # Default 10% CPU
-                                        if task_memory_bytes == 0:
-                                            task_memory_bytes = (
-                                                service_reservations.get(
-                                                    "MemoryBytes", int(1e8)
-                                                )
-                                            )  # Default ~95MB
-                                    except Exception as service_error:
-                                        logger.debug(
-                                            "Could not get service "
-                                            f"reservations: {service_error}"
-                                        )
-                                        # Use defaults if we can't get service
-                                        # reservations
-                                        if task_cpu_nanos == 0:
-                                            task_cpu_nanos = int(1e8)  # Default 10% CPU
-                                        if task_memory_bytes == 0:
-                                            task_memory_bytes = int(
-                                                1e8
-                                            )  # Default ~95MB
-
-                                used_cpu_nanos += task_cpu_nanos
-                                used_memory_bytes += task_memory_bytes
-
-                    # Update tasks_on_node with our accurate count
-                    tasks_on_node = node_task_count
-
-                except Exception as resource_error:
-                    logger.warning(
-                        "Could not calculate Docker Swarm resource usage for "
-                        f"node {node_attrs.get('ID')}: {resource_error}"
-                    )
-                    # Fallback to simple count-based estimation
-                    used_cpu_nanos = tasks_on_node * int(
-                        1e8
-                    )  # Default 10% CPU per task
-                    used_memory_bytes = tasks_on_node * int(
-                        1e8
-                    )  # Default ~95MB per task
+                tasks_on_node = node_task_data["task_count"]
+                used_cpu_nanos = node_task_data["used_cpu_nanos"]
+                used_memory_bytes = node_task_data["used_memory_bytes"]
 
                 # Calculate remaining capacity
                 node_cpu_nanos = nano_cpus
@@ -361,16 +405,35 @@ def _get_docker_swarm_info():
         # Sort nodes by role (managers first) and then by hostname
         node_details.sort(key=lambda x: (not x["is_manager"], x["hostname"]))
 
-        return {
+        # Calculate performance metrics
+        collection_time = time.time() - collection_start_time
+        task_collection_time = getattr(
+            _get_optimized_task_data, "_last_collection_time", 0
+        )
+        cache_used = collection_time < task_collection_time  # Approximation
+
+        result = {
             "nodes": node_details,
             "total_nodes": len(nodes),
             "total_managers": total_managers,
             "total_workers": total_workers,
             "swarm_active": True,
             "error": None,
+            "_performance": {
+                "collection_time_seconds": round(collection_time, 3),
+                "node_count": len(nodes),
+                "task_collection_time_seconds": round(task_collection_time, 3),
+                "cache_used": cache_used,
+            },
         }
 
+        # Store performance data in cache for monitoring
+        _store_performance_metrics(result["_performance"])
+
+        return result
+
     except Exception as e:
+        collection_time = time.time() - collection_start_time
         logger.error(f"Error collecting Docker swarm information: {e}")
         return {
             "error": str(e),
@@ -379,7 +442,38 @@ def _get_docker_swarm_info():
             "total_managers": 0,
             "total_workers": 0,
             "swarm_active": False,
+            "_performance": {
+                "collection_time_seconds": round(collection_time, 3),
+                "node_count": 0,
+                "task_collection_time_seconds": 0,
+                "cache_used": False,
+                "error": True,
+            },
         }
+
+
+def _store_performance_metrics(performance_data):
+    """Store performance metrics in Redis for monitoring."""
+    try:
+        cache = get_redis_cache()
+        if cache.is_available():
+            # Add timestamp to performance data
+            performance_data["timestamp"] = datetime.datetime.now(
+                datetime.UTC
+            ).isoformat()
+
+            # Store with short TTL for monitoring purposes
+            cache.set(SWARM_PERF_CACHE_KEY, performance_data, 600)  # 10 minutes
+
+            # Log performance if it's notably slow
+            if performance_data.get("collection_time_seconds", 0) > 2.0:
+                logger.warning(
+                    f"Slow swarm data collection detected: "
+                    f"{performance_data['collection_time_seconds']:.2f}s for "
+                    f"{performance_data['node_count']} nodes"
+                )
+    except Exception as e:
+        logger.debug(f"Could not store performance metrics: {e}")
 
 
 def get_cached_swarm_status():
@@ -477,6 +571,47 @@ def update_swarm_cache():
         logger.warning("Redis cache not available, cannot cache swarm status")
 
     return swarm_data
+
+
+@celery.task(base=StatusMonitoringTask, bind=True)
+def warm_swarm_cache_on_startup(self):
+    """
+    Warm the Docker Swarm cache on application startup.
+
+    This task should be called once when the application starts to ensure
+    that swarm data is immediately available without waiting for the first
+    scheduled refresh.
+
+    Returns:
+        dict: Result of cache warming operation with metadata
+    """
+    logger.info("[STARTUP]: Warming Docker Swarm cache on application startup")
+
+    try:
+        # Force a fresh cache update
+        swarm_data = update_swarm_cache()
+
+        cache_info = swarm_data.get("cache_info", {})
+        logger.info(
+            f"[STARTUP]: Docker Swarm cache warmed successfully - "
+            f"Active: {swarm_data['swarm_active']}, "
+            f"Nodes: {swarm_data['total_nodes']}, "
+            f"Cached at: {cache_info.get('cached_at', 'unknown')}"
+        )
+
+        return {
+            "success": True,
+            "swarm_data": swarm_data,
+            "message": "Cache warmed successfully on startup",
+        }
+
+    except Exception as error:
+        logger.error(f"[STARTUP]: Error warming Docker Swarm cache: {str(error)}")
+        return {
+            "success": False,
+            "error": str(error),
+            "message": "Cache warming failed on startup",
+        }
 
 
 @celery.task(base=StatusMonitoringTask, bind=True)
