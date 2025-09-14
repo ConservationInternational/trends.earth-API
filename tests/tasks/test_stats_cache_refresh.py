@@ -5,7 +5,7 @@ Tests verify that the periodic cache refresh tasks are properly configured
 and can execute without errors, including proper Flask application context handling.
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -150,19 +150,19 @@ class TestStatsCacheRefreshTasks:
         # Setup mocks
         mock_get_cache_key.return_value = "test_cache_key"
         mock_has_app_context.return_value = False  # No app context available
-        
+
         # Mock app context manager
         mock_app_context = MagicMock()
         mock_app.app_context.return_value = mock_app_context
-        
+
         # Mock the database operations to avoid actual DB calls
         with patch("gefapi.services.stats_service.get_redis_cache") as mock_redis:
             mock_redis.return_value.is_available.return_value = False
-            
+
             # Mock database queries to return valid data
             with patch("gefapi.services.stats_service.db.session") as mock_session:
                 mock_session.query.return_value.scalar.return_value = 100
-                
+
                 # Execute task
                 result = refresh_dashboard_stats_cache.apply().result
 
@@ -170,7 +170,7 @@ class TestStatsCacheRefreshTasks:
         # Note: The exact number of calls depends on the service implementation
         # but we should see at least one call to create app context
         assert mock_app.app_context.call_count >= 1
-        
+
         # Verify task completed successfully
         assert result["total_refreshed"] == 8
 

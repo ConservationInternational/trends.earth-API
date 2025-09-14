@@ -68,8 +68,8 @@ class StatsService:
         # Execute function and cache result
         try:
             # Ensure we have a Flask application context for database operations
-            from flask import has_app_context, current_app
-            
+            from flask import has_app_context
+
             if has_app_context():
                 # We already have an app context, execute directly
                 result = execution_func()
@@ -77,6 +77,7 @@ class StatsService:
                 # No app context available, create one
                 # Import here to avoid circular imports
                 from gefapi import app
+
                 with app.app_context():
                     result = execution_func()
 
