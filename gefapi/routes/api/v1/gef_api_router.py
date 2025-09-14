@@ -2871,6 +2871,108 @@ def get_status_logs():
     )
 
 
+@endpoints.route("/status/swarm/cache", strict_slashes=False, methods=["GET"])
+@jwt_required()
+def get_swarm_cache_statistics():
+    """
+    Get Docker Swarm cache statistics and performance metrics.
+
+    **Authentication**: JWT token required
+    **Access**: Restricted to ADMIN and SUPERADMIN users only
+    **Purpose**: Monitor cache performance, hit rates, and health for optimization
+
+    **Response Schema**:
+    ```json
+    {
+      "data": {
+        "cache_status": "available",
+        "primary_cache": {
+          "key": "docker_swarm_status",
+          "exists": true,
+          "ttl_seconds": 267,
+          "data_available": true,
+          "age_seconds": 33.2
+        },
+        "backup_cache": {
+          "key": "docker_swarm_status_backup",
+          "exists": true,
+          "ttl_seconds": 1533,
+          "data_available": true,
+          "age_seconds": 33.2
+        },
+        "recommendations": [
+          "Cache is healthy and operating normally"
+        ]
+      }
+    }
+    ```
+
+    **Cache Status Values**:
+    - `available`: Redis cache is accessible and operational
+    - `unavailable`: Redis cache is not accessible
+
+    **Cache Fields**:
+    - `exists`: Whether the cache key exists in Redis
+    - `ttl_seconds`: Time to live in seconds (-1 if no TTL, -2 if key doesn't exist)
+    - `data_available`: Whether valid data is stored in the cache
+    - `age_seconds`: Age of cached data in seconds (if available)
+
+    **Recommendations**:
+    - Performance optimization suggestions
+    - Health warnings and error notifications
+    - Cache configuration recommendations
+
+    **Use Cases**:
+    - Monitor cache effectiveness and hit rates
+    - Debug cache-related performance issues
+    - Validate cache configuration and timing
+    - Capacity planning for cache infrastructure
+
+    **Error Responses**:
+    - `401 Unauthorized`: JWT token required
+    - `403 Forbidden`: Admin access required
+    - `500 Internal Server Error`: Failed to retrieve cache statistics
+    """
+    logger.info("[ROUTER]: Getting Docker Swarm cache statistics")
+
+    from flask_jwt_extended import get_jwt_identity
+
+    from gefapi.services import UserService
+
+    try:
+        # Check user permissions
+        user_id = get_jwt_identity()
+        user = UserService.get_user(user_id)
+
+        if not user or user.role not in ["ADMIN", "SUPERADMIN"]:
+            logger.error(f"[ROUTER]: Access denied for user {user_id}")
+            return error(status=403, detail="Access denied. Admin privileges required.")
+
+        # Get cache statistics
+        try:
+            from gefapi.tasks.status_monitoring import get_swarm_cache_statistics
+
+            cache_stats = get_swarm_cache_statistics()
+        except Exception as stats_error:
+            logger.warning(f"[ROUTER]: Failed to get cache statistics: {stats_error}")
+            cache_stats = {
+                "cache_status": "error",
+                "primary_cache": {"exists": False, "data_available": False},
+                "backup_cache": {"exists": False, "data_available": False},
+                "recommendations": [
+                    f"Error retrieving cache statistics: {str(stats_error)}"
+                ],
+                "error": str(stats_error),
+            }
+
+        logger.info("[ROUTER]: Successfully retrieved cache statistics")
+        return jsonify(data=cache_stats), 200
+
+    except Exception as e:
+        logger.error(f"[ROUTER]: Error getting cache statistics: {str(e)}")
+        return error(status=500, detail="Error retrieving cache statistics")
+
+
 @endpoints.route("/status/swarm", strict_slashes=False, methods=["GET"])
 @jwt_required()
 def get_swarm_status():
