@@ -360,7 +360,7 @@ class TestSwarmStatusCaching:
 class TestSwarmStatusCacheIntegration:
     """Integration tests for swarm status caching"""
 
-    @patch("gefapi.services.docker_service.get_docker_client")
+    @patch("gefapi.tasks.status_monitoring.get_docker_client")
     def test_swarm_cache_integration_no_docker(self, mock_get_client, app):
         """Test cache integration when Docker is not available"""
         with app.app_context():

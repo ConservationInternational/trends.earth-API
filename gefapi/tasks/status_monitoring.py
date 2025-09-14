@@ -424,6 +424,10 @@ def get_cached_swarm_status():
                     "cache_key": SWARM_CACHE_KEY,
                     "source": "legacy_cache",
                 }
+            else:
+                # Ensure source field exists in existing cache_info
+                if "source" not in cached_data["cache_info"]:
+                    cached_data["cache_info"]["source"] = "cached"
             cached_data["cache_info"]["cache_hit"] = cache_hit
             return cached_data
 
@@ -445,6 +449,9 @@ def get_cached_swarm_status():
             else:
                 backup_data["cache_info"]["source"] = "backup_cache"
                 backup_data["cache_info"]["cache_key"] = SWARM_CACHE_BACKUP_KEY
+                # Ensure all required fields exist
+                if "cache_ttl" not in backup_data["cache_info"]:
+                    backup_data["cache_info"]["cache_ttl"] = SWARM_CACHE_BACKUP_TTL
             backup_data["cache_info"]["cache_hit"] = cache_hit
             return backup_data
 
@@ -505,6 +512,7 @@ def update_swarm_cache():
         "cached_at": cache_timestamp.isoformat(),
         "cache_ttl": SWARM_CACHE_TTL,
         "cache_key": SWARM_CACHE_KEY,
+        "source": "fresh_update",
         "backup_cached": False,
         "cache_operations": cache_operations,
     }
