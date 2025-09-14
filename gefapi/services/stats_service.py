@@ -67,7 +67,18 @@ class StatsService:
 
         # Execute function and cache result
         try:
-            result = execution_func()
+            # Ensure we have a Flask application context for database operations
+            from flask import has_app_context, current_app
+            
+            if has_app_context():
+                # We already have an app context, execute directly
+                result = execution_func()
+            else:
+                # No app context available, create one
+                # Import here to avoid circular imports
+                from gefapi import app
+                with app.app_context():
+                    result = execution_func()
 
             # Cache the result if Redis is available
             if redis_cache.is_available():
