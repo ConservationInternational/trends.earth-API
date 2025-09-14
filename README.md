@@ -19,7 +19,7 @@ This project belongs to the Trends.Earth project and implements the API used by 
 - **Poetry** - Dependency management and packaging
 - **Flask** - Web framework for API endpoints
 - **SQLAlchemy** - ORM for database operations (PostgreSQL)
-- **Celery** - Background task management with periodic tasks (execution cleanup, finished execution cleanup, old failed execution cleanup)
+- **Celery** - Background task management with periodic tasks (execution cleanup, stats cache refresh, Docker monitoring)
 - **Docker** - Containerization for development and production
 - **Gunicorn** - WSGI server for production deployment
 - **Flask-Migrate** - Database migration management
@@ -1803,6 +1803,29 @@ cd trends.earth-api
 
 # Avoid mounting from /mnt/c/ if possible
 ```
+
+#### Dashboard/Stats API Performance
+
+The application includes automatic performance optimization for dashboard statistics endpoints:
+
+- **Proactive Cache Refresh**: Celery beat tasks refresh dashboard, execution, and user statistics every 4-6 minutes
+- **Warm Cache Strategy**: Statistics are pre-calculated before cache expiry (5-minute TTL)
+- **Reduced Database Load**: Heavy aggregation queries run in background, not during user requests
+- **Fast Response Times**: Dashboard endpoints typically respond in <200ms with cached data
+
+**Manual cache management:**
+```bash
+# Check cache status
+curl -H "Authorization: Bearer <token>" http://localhost:3000/api/v1/stats/cache
+
+# Clear cache if needed
+curl -X DELETE -H "Authorization: Bearer <token>" http://localhost:3000/api/v1/stats/cache
+
+# Monitor cache refresh tasks
+docker compose logs -f beat
+```
+
+See [`docs/stats-performance-optimization.md`](docs/stats-performance-optimization.md) for detailed implementation information.
 
 ### Getting Help
 
