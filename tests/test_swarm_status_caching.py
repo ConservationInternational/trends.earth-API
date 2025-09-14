@@ -84,8 +84,11 @@ class TestSwarmStatusEndpoint:
         assert response.status_code == 200
         data = response.json
 
-        # Verify response structure
+        # Verify response structure (new structured format)
+        assert "message" in data
         assert "data" in data
+        assert data["message"] == "Docker Swarm status retrieved successfully from cache"
+        
         swarm_data = data["data"]
 
         # Verify swarm information
@@ -134,6 +137,11 @@ class TestSwarmStatusEndpoint:
         assert response.status_code == 200
         data = response.json
 
+        # Verify response structure (new structured format)
+        assert "message" in data
+        assert "data" in data
+        assert data["message"] == "Docker Swarm status unavailable - cache not accessible"
+        
         swarm_data = data["data"]
         assert swarm_data["swarm_active"] is False
         assert "error" in swarm_data

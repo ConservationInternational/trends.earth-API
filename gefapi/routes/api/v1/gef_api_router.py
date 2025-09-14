@@ -2871,107 +2871,6 @@ def get_status_logs():
     )
 
 
-@endpoints.route("/status/swarm/cache", strict_slashes=False, methods=["GET"])
-@jwt_required()
-def get_swarm_cache_statistics():
-    """
-    Get Docker Swarm cache statistics and performance metrics.
-
-    **Authentication**: JWT token required
-    **Access**: Restricted to ADMIN and SUPERADMIN users only
-    **Purpose**: Monitor cache performance, hit rates, and health for optimization
-
-    **Response Schema**:
-    ```json
-    {
-      "data": {
-        "cache_status": "available",
-        "primary_cache": {
-          "key": "docker_swarm_status",
-          "exists": true,
-          "ttl_seconds": 267,
-          "data_available": true,
-          "age_seconds": 33.2
-        },
-        "backup_cache": {
-          "key": "docker_swarm_status_backup",
-          "exists": true,
-          "ttl_seconds": 1533,
-          "data_available": true,
-          "age_seconds": 33.2
-        },
-        "recommendations": [
-          "Cache is healthy and operating normally"
-        ]
-      }
-    }
-    ```
-
-    **Cache Status Values**:
-    - `available`: Redis cache is accessible and operational
-    - `unavailable`: Redis cache is not accessible
-
-    **Cache Fields**:
-    - `exists`: Whether the cache key exists in Redis
-    - `ttl_seconds`: Time to live in seconds (-1 if no TTL, -2 if key doesn't exist)
-    - `data_available`: Whether valid data is stored in the cache
-    - `age_seconds`: Age of cached data in seconds (if available)
-
-    **Recommendations**:
-    - Performance optimization suggestions
-    - Health warnings and error notifications
-    - Cache configuration recommendations
-
-    **Use Cases**:
-    - Monitor cache effectiveness and hit rates
-    - Debug cache-related performance issues
-    - Validate cache configuration and timing
-    - Capacity planning for cache infrastructure
-
-    **Error Responses**:
-    - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: Admin access required
-    - `500 Internal Server Error`: Failed to retrieve cache statistics
-    """
-    logger.info("[ROUTER]: Getting Docker Swarm cache statistics")
-
-    from flask_jwt_extended import get_jwt_identity
-
-    from gefapi.services import UserService
-
-    try:
-        # Check user permissions
-        user_id = get_jwt_identity()
-        user = UserService.get_user(user_id)
-
-        if not user or user.role not in ["ADMIN", "SUPERADMIN"]:
-            logger.error(f"[ROUTER]: Access denied for user {user_id}")
-            return error(status=403, detail="Access denied. Admin privileges required.")
-
-        # Get cache statistics
-        try:
-            from gefapi.tasks.status_monitoring import get_swarm_cache_statistics
-
-            cache_stats = get_swarm_cache_statistics()
-        except Exception as stats_error:
-            logger.warning(f"[ROUTER]: Failed to get cache statistics: {stats_error}")
-            cache_stats = {
-                "cache_status": "error",
-                "primary_cache": {"exists": False, "data_available": False},
-                "backup_cache": {"exists": False, "data_available": False},
-                "recommendations": [
-                    f"Error retrieving cache statistics: {str(stats_error)}"
-                ],
-                "error": str(stats_error),
-            }
-
-        logger.info("[ROUTER]: Successfully retrieved cache statistics")
-        return jsonify(data=cache_stats), 200
-
-    except Exception as e:
-        logger.error(f"[ROUTER]: Error getting cache statistics: {str(e)}")
-        return error(status=500, detail="Error retrieving cache statistics")
-
 
 @endpoints.route("/status/swarm", strict_slashes=False, methods=["GET"])
 @jwt_required()
@@ -2987,6 +2886,7 @@ def get_swarm_status():
     **Response Schema**:
     ```json
     {
+      "message": "Docker Swarm status retrieved successfully from cache",
       "data": {
         "swarm_active": true,              // Whether Docker is in swarm mode
         "total_nodes": 3,                  // Total number of nodes in swarm
@@ -2997,7 +2897,8 @@ def get_swarm_status():
           "cached_at": "2025-01-15T10:30:00Z",  // When data was cached/retrieved
           "cache_ttl": 300,                     // Cache TTL in seconds
           "cache_key": "docker_swarm_status",   // Redis cache key
-          "source": "cached"                    // Data source
+          "source": "cached",                   // Data source
+          "cache_hit": true                     // Whether cache was hit
         },
         "nodes": [
           {
@@ -3058,13 +2959,27 @@ def get_swarm_status():
     - Resource calculations based on actual Docker Swarm task reservations
     - Node capacity calculated from CPU/memory resources and current task load
 
+    **Response Messages**:
+    - `"Docker Swarm status retrieved successfully from cache"`: Data from primary cache
+    - `"Docker Swarm status retrieved from backup cache"`: Data from backup cache fallback
+    - `"Docker Swarm status unavailable - cache not accessible"`: Cache service unavailable
+    - `"Failed to retrieve Docker Swarm status"`: Error occurred during retrieval
+
+    **Cache Sources**:
+    - `cached`: Fresh data from primary cache (5-minute TTL)
+    - `backup_cache`: Fallback data from backup cache (30-minute TTL)
+    - `cache_unavailable`: Cache service not accessible
+    - `endpoint_error_fallback`: Error occurred, returning minimal data
+
     **Error Responses**:
-    - 403: Access denied (non-admin user)
-    - 500: Server error
+    - `401 Unauthorized`: Valid JWT token required
+    - `403 Forbidden`: Admin privileges required for Docker Swarm status
+    - `500 Internal Server Error`: Failed to retrieve swarm status
 
     **Note**: When Docker is not in swarm mode or unavailable, returns:
     ```json
     {
+      "message": "Docker Swarm status unavailable - cache not accessible",
       "data": {
         "swarm_active": false,
         "error": "Not in swarm mode" | "Docker unavailable",
@@ -3076,7 +2991,8 @@ def get_swarm_status():
           "cached_at": "2025-01-15T10:30:00Z",
           "cache_ttl": 0,
           "cache_key": "docker_swarm_status",
-          "source": "real_time_fallback" | "endpoint_error_fallback"
+          "source": "cache_unavailable",
+          "cache_hit": false
         }
       }
     }
@@ -3088,47 +3004,68 @@ def get_swarm_status():
 
     from gefapi.services import UserService
 
+    # Check user permissions
+    current_user_id = get_jwt_identity()
+    user = UserService.get_user(current_user_id)
+
+    if not user or user.role not in ["ADMIN", "SUPERADMIN"]:
+        logger.warning(
+            f"[ROUTER]: Non-admin user {user.email if user else 'unknown'} "
+            "attempted to access Docker Swarm status"
+        )
+        return error(status=403, detail="Admin privileges required for Docker Swarm status")
+
     try:
-        # Check user permissions
-        user_id = get_jwt_identity()
-        user = UserService.get_user(user_id)
+        from gefapi.tasks.status_monitoring import get_cached_swarm_status
 
-        if not user or user.role not in ["ADMIN", "SUPERADMIN"]:
-            logger.error(f"[ROUTER]: Access denied for user {user_id}")
-            return error(status=403, detail="Access denied. Admin privileges required.")
+        swarm_info = get_cached_swarm_status()
+        
+        # Determine appropriate response message based on cache source
+        cache_info = swarm_info.get("cache_info", {})
+        cache_source = cache_info.get("source", "unknown")
+        
+        if cache_source == "cached":
+            message = "Docker Swarm status retrieved successfully from cache"
+        elif cache_source == "backup_cache":
+            message = "Docker Swarm status retrieved from backup cache"
+        elif cache_source == "cache_unavailable":
+            message = "Docker Swarm status unavailable - cache not accessible"
+        else:
+            message = "Docker Swarm status retrieved successfully"
 
-        # Get cached Docker Swarm information (fast)
-        try:
-            from gefapi.tasks.status_monitoring import get_cached_swarm_status
-
-            swarm_info = get_cached_swarm_status()
-        except Exception as swarm_error:
-            import datetime
-
-            logger.warning(
-                f"[ROUTER]: Failed to get cached Docker Swarm info: {swarm_error}"
-            )
-            swarm_info = {
-                "error": f"Cache retrieval failed: {str(swarm_error)}",
-                "nodes": [],
-                "total_nodes": 0,
-                "total_managers": 0,
-                "total_workers": 0,
-                "swarm_active": False,
-                "cache_info": {
-                    "cached_at": datetime.datetime.now(datetime.UTC).isoformat(),
-                    "cache_ttl": 0,
-                    "cache_key": "docker_swarm_status",
-                    "source": "endpoint_error_fallback",
-                },
-            }
-
-        logger.info("[ROUTER]: Successfully retrieved swarm status")
-        return jsonify(data=swarm_info), 200
+        logger.info(f"[ROUTER]: {message} (source: {cache_source})")
+        
+        return jsonify({
+            "message": message,
+            "data": swarm_info
+        }), 200
 
     except Exception as e:
+        import datetime
+        
         logger.error(f"[ROUTER]: Error getting swarm status: {str(e)}")
-        return error(status=500, detail="Error retrieving swarm status")
+        
+        # Return structured error response with fallback data
+        fallback_data = {
+            "error": f"Failed to retrieve swarm status: {str(e)}",
+            "nodes": [],
+            "total_nodes": 0,
+            "total_managers": 0,
+            "total_workers": 0,
+            "swarm_active": False,
+            "cache_info": {
+                "cached_at": datetime.datetime.now(datetime.UTC).isoformat(),
+                "cache_ttl": 0,
+                "cache_key": "docker_swarm_status",
+                "source": "endpoint_error_fallback",
+                "cache_hit": False,
+            },
+        }
+        
+        return jsonify({
+            "message": "Failed to retrieve Docker Swarm status",
+            "data": fallback_data
+        }), 500
 
 
 @endpoints.route("/rate-limit/status", methods=["GET"])
