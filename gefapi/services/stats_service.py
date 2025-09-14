@@ -7,9 +7,10 @@ from datetime import datetime, timedelta
 import logging
 from typing import Any
 
+from flask import has_app_context
 from sqlalchemy import desc, func
 
-from gefapi import db
+from gefapi import app, db
 from gefapi.models import Execution, Script, User
 from gefapi.utils.redis_cache import get_redis_cache
 
@@ -67,7 +68,14 @@ class StatsService:
 
         # Execute function and cache result
         try:
-            result = execution_func()
+            # Ensure we have a Flask application context for database operations
+            if has_app_context():
+                # We already have an app context, execute directly
+                result = execution_func()
+            else:
+                # No app context available, create one
+                with app.app_context():
+                    result = execution_func()
 
             # Cache the result if Redis is available
             if redis_cache.is_available():

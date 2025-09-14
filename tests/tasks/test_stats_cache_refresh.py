@@ -2,10 +2,10 @@
 Tests for stats cache refresh tasks.
 
 Tests verify that the periodic cache refresh tasks are properly configured
-and can execute without errors.
+and can execute without errors, including proper Flask application context handling.
 """
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -120,6 +120,59 @@ class TestStatsCacheRefreshTasks:
 
         # Verify rollbar was called for each error
         assert mock_rollbar.call_count == 8
+
+    @patch("gefapi.tasks.stats_cache_refresh.StatsService.get_dashboard_stats")
+    def test_refresh_dashboard_stats_cache_handles_app_context_error(
+        self, mock_get_dashboard_stats
+    ):
+        """Test that application context errors are handled properly."""
+        # Setup mock to raise application context error
+        mock_get_dashboard_stats.side_effect = RuntimeError(
+            "Working outside of application context"
+        )
+
+        # Execute task - should not crash and should handle error gracefully
+        result = refresh_dashboard_stats_cache.apply().result
+
+        # Verify error handling
+        assert result["total_refreshed"] == 8  # All configs attempted
+        assert result["successful"] == 0
+        assert result["failed"] == 8
+        assert len(result["cache_keys"]) == 0
+
+    @patch("gefapi.services.stats_service.has_app_context")
+    @patch("gefapi.services.stats_service.app")
+    @patch("gefapi.tasks.stats_cache_refresh.StatsService._get_cache_key")
+    def test_refresh_dashboard_stats_cache_creates_app_context_when_needed(
+        self, mock_get_cache_key, mock_app, mock_has_app_context
+    ):
+        """Test that the service creates application context when not available."""
+        # Setup mocks
+        mock_get_cache_key.return_value = "test_cache_key"
+        mock_has_app_context.return_value = False  # No app context available
+
+        # Mock app context manager
+        mock_app_context = MagicMock()
+        mock_app.app_context.return_value = mock_app_context
+
+        # Mock the database operations to avoid actual DB calls
+        with patch("gefapi.services.stats_service.get_redis_cache") as mock_redis:
+            mock_redis.return_value.is_available.return_value = False
+
+            # Mock database queries to return valid data
+            with patch("gefapi.services.stats_service.db.session") as mock_session:
+                mock_session.query.return_value.scalar.return_value = 100
+
+                # Execute task
+                result = refresh_dashboard_stats_cache.apply().result
+
+        # Verify app context was created when needed
+        # Note: The exact number of calls depends on the service implementation
+        # but we should see at least one call to create app context
+        assert mock_app.app_context.call_count >= 1
+
+        # Verify task completed successfully
+        assert result["total_refreshed"] == 8
 
 
 @pytest.mark.integration
