@@ -29,6 +29,9 @@ def make_celery(app):
         "gefapi.services.docker_service.docker_run": {"queue": "build"},
         "docker.get_service_logs": {"queue": "build"},
         "gefapi.tasks.status_monitoring.refresh_swarm_cache_task": {"queue": "build"},
+        "gefapi.tasks.status_monitoring.warm_swarm_cache_on_startup": {
+            "queue": "build"
+        },
         # Route all scheduled tasks with Docker access to build queue
         "gefapi.tasks.execution_cleanup.cleanup_stale_executions": {"queue": "build"},
         "gefapi.tasks.execution_cleanup.cleanup_finished_executions": {
