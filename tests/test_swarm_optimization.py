@@ -33,7 +33,7 @@ class TestSwarmOptimizations:
                             "MemoryBytes": 536870912,  # 512MB
                         }
                     }
-                }
+                },
             }
         ]
         mock_service.attrs = {
@@ -75,7 +75,7 @@ class TestSwarmOptimizations:
             f"second={second_call_time:.4f}s"
         )
 
-    @patch('gefapi.tasks.status_monitoring.get_redis_cache')
+    @patch("gefapi.tasks.status_monitoring.get_redis_cache")
     def test_cache_warming_task(self, mock_get_cache):
         """Test the cache warming task."""
         mock_cache = Mock()
@@ -83,7 +83,7 @@ class TestSwarmOptimizations:
         mock_cache.set.return_value = True
         mock_get_cache.return_value = mock_cache
 
-        with patch('gefapi.tasks.status_monitoring.update_swarm_cache') as mock_update:
+        with patch("gefapi.tasks.status_monitoring.update_swarm_cache") as mock_update:
             mock_update.return_value = {
                 "swarm_active": True,
                 "total_nodes": 2,
@@ -91,14 +91,13 @@ class TestSwarmOptimizations:
                 "total_workers": 1,
                 "cache_info": {
                     "cached_at": "2025-01-15T10:30:00Z",
-                    "source": "startup_warm"
-                }
+                    "source": "startup_warm",
+                },
             }
 
             # Call the warming function
             result = warm_swarm_cache_on_startup.apply(
-                kwargs={},
-                task_id='test-warm-task'
+                kwargs={}, task_id="test-warm-task"
             )
 
             # Verify successful warming
@@ -106,7 +105,7 @@ class TestSwarmOptimizations:
             assert "Cache warmed successfully" in result.result["message"]
             assert result.result["swarm_data"]["swarm_active"] is True
 
-    @patch('gefapi.tasks.status_monitoring.get_redis_cache')
+    @patch("gefapi.tasks.status_monitoring.get_redis_cache")
     def test_performance_monitoring(self, mock_get_cache):
         """Test that performance metrics are stored."""
         mock_cache = Mock()
@@ -121,7 +120,7 @@ class TestSwarmOptimizations:
             "collection_time_seconds": 1.5,
             "node_count": 3,
             "task_collection_time_seconds": 0.8,
-            "cache_used": False
+            "cache_used": False,
         }
 
         # Store performance metrics
@@ -139,7 +138,7 @@ class TestSwarmOptimizations:
         assert stored_data["node_count"] == 3
         assert "timestamp" in stored_data
 
-    @patch('gefapi.tasks.status_monitoring.get_redis_cache')
+    @patch("gefapi.tasks.status_monitoring.get_redis_cache")
     def test_cached_swarm_status_fallback(self, mock_get_cache):
         """Test cached swarm status with unavailable cache."""
         mock_cache = Mock()
@@ -150,7 +149,9 @@ class TestSwarmOptimizations:
 
         # Should return unavailable status with proper structure
         assert result["swarm_active"] is False
-        assert result["error"] == "Docker Swarm status unavailable - cache not accessible"
+        assert (
+            result["error"] == "Docker Swarm status unavailable - cache not accessible"
+        )
         assert result["nodes"] == []
         assert result["total_nodes"] == 0
         assert result["cache_info"]["source"] == "cache_unavailable"
@@ -175,21 +176,21 @@ class TestSwarmOptimizations:
                     "available_capacity": 10,
                     "resource_usage": {
                         "used_cpu_percent": 15.0,
-                        "used_memory_percent": 25.0
-                    }
+                        "used_memory_percent": 25.0,
+                    },
                 }
             ],
             "_performance": {
                 "collection_time_seconds": 0.85,
                 "node_count": 2,
                 "task_collection_time_seconds": 0.42,
-                "cache_used": False
+                "cache_used": False,
             },
             "cache_info": {
                 "cached_at": "2025-01-15T10:30:00Z",
                 "cache_ttl": 300,
-                "source": "cached"
-            }
+                "source": "cached",
+            },
         }
 
         # Verify the structure is valid
@@ -214,6 +215,7 @@ class TestSwarmOptimizationIntegration:
         import inspect
 
         from gefapi.tasks.status_monitoring import _get_docker_swarm_info
+
         source = inspect.getsource(_get_docker_swarm_info)
 
         assert "_get_optimized_task_data" in source

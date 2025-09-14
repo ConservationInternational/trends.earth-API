@@ -60,11 +60,9 @@ def _get_optimized_task_data(docker_client):
     logger.debug("Collecting fresh task data for resource calculations")
 
     # Initialize result structure
-    tasks_by_node = defaultdict(lambda: {
-        'task_count': 0,
-        'used_cpu_nanos': 0,
-        'used_memory_bytes': 0
-    })
+    tasks_by_node = defaultdict(
+        lambda: {"task_count": 0, "used_cpu_nanos": 0, "used_memory_bytes": 0}
+    )
 
     try:
         start_time = time.time()
@@ -84,23 +82,21 @@ def _get_optimized_task_data(docker_client):
                 )
                 service_reservations = service_resources.get("Reservations", {})
                 # Default 10% CPU
-                service_cpu_nanos = service_reservations.get(
-                    "NanoCPUs", int(1e8)
-                )
+                service_cpu_nanos = service_reservations.get("NanoCPUs", int(1e8))
                 # Default ~95MB
-                service_memory_bytes = service_reservations.get(
-                    "MemoryBytes", int(1e8)
-                )
+                service_memory_bytes = service_reservations.get("MemoryBytes", int(1e8))
 
                 for task in service_tasks:
                     task_node_id = task.get("NodeID")
                     task_state = task.get("Status", {}).get("State", "")
 
                     # Only count running/active tasks
-                    if (task_state in ["running", "starting", "pending"]
-                            and task_node_id):
+                    if (
+                        task_state in ["running", "starting", "pending"]
+                        and task_node_id
+                    ):
                         node_data = tasks_by_node[task_node_id]
-                        node_data['task_count'] += 1
+                        node_data["task_count"] += 1
 
                         # Get task-specific reservations or fall back to service
                         # defaults
@@ -108,15 +104,13 @@ def _get_optimized_task_data(docker_client):
                         resources = task_spec.get("Resources", {})
                         reservations = resources.get("Reservations", {})
 
-                        task_cpu_nanos = reservations.get(
-                            "NanoCPUs", service_cpu_nanos
-                        )
+                        task_cpu_nanos = reservations.get("NanoCPUs", service_cpu_nanos)
                         task_memory_bytes = reservations.get(
                             "MemoryBytes", service_memory_bytes
                         )
 
-                        node_data['used_cpu_nanos'] += task_cpu_nanos
-                        node_data['used_memory_bytes'] += task_memory_bytes
+                        node_data["used_cpu_nanos"] += task_cpu_nanos
+                        node_data["used_memory_bytes"] += task_memory_bytes
 
             except Exception as service_error:
                 logger.debug(f"Error processing service {service.id}: {service_error}")
@@ -330,15 +324,14 @@ def _get_docker_swarm_info():
 
                 # OPTIMIZATION: Use pre-collected task data instead of nested loops
                 node_id = node_attrs.get("ID")
-                node_task_data = tasks_by_node.get(node_id, {
-                    'task_count': 0,
-                    'used_cpu_nanos': 0,
-                    'used_memory_bytes': 0
-                })
+                node_task_data = tasks_by_node.get(
+                    node_id,
+                    {"task_count": 0, "used_cpu_nanos": 0, "used_memory_bytes": 0},
+                )
 
-                tasks_on_node = node_task_data['task_count']
-                used_cpu_nanos = node_task_data['used_cpu_nanos']
-                used_memory_bytes = node_task_data['used_memory_bytes']
+                tasks_on_node = node_task_data["task_count"]
+                used_cpu_nanos = node_task_data["used_cpu_nanos"]
+                used_memory_bytes = node_task_data["used_memory_bytes"]
 
                 # Calculate remaining capacity
                 node_cpu_nanos = nano_cpus
@@ -415,7 +408,7 @@ def _get_docker_swarm_info():
         # Calculate performance metrics
         collection_time = time.time() - collection_start_time
         task_collection_time = getattr(
-            _get_optimized_task_data, '_last_collection_time', 0
+            _get_optimized_task_data, "_last_collection_time", 0
         )
         cache_used = collection_time < task_collection_time  # Approximation
 
@@ -430,8 +423,8 @@ def _get_docker_swarm_info():
                 "collection_time_seconds": round(collection_time, 3),
                 "node_count": len(nodes),
                 "task_collection_time_seconds": round(task_collection_time, 3),
-                "cache_used": cache_used
-            }
+                "cache_used": cache_used,
+            },
         }
 
         # Store performance data in cache for monitoring
@@ -454,8 +447,8 @@ def _get_docker_swarm_info():
                 "node_count": 0,
                 "task_collection_time_seconds": 0,
                 "cache_used": False,
-                "error": True
-            }
+                "error": True,
+            },
         }
 
 
@@ -580,7 +573,6 @@ def update_swarm_cache():
     return swarm_data
 
 
-
 @celery.task(base=StatusMonitoringTask, bind=True)
 def warm_swarm_cache_on_startup(self):
     """
@@ -610,7 +602,7 @@ def warm_swarm_cache_on_startup(self):
         return {
             "success": True,
             "swarm_data": swarm_data,
-            "message": "Cache warmed successfully on startup"
+            "message": "Cache warmed successfully on startup",
         }
 
     except Exception as error:
@@ -618,7 +610,7 @@ def warm_swarm_cache_on_startup(self):
         return {
             "success": False,
             "error": str(error),
-            "message": "Cache warming failed on startup"
+            "message": "Cache warming failed on startup",
         }
 
 
