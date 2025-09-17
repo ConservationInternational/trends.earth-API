@@ -55,7 +55,15 @@ SETTINGS = {
         "UPLOAD_FOLDER", os.path.join(tempfile.gettempdir(), "scripts")
     ),
     "ALLOWED_EXTENSIONS": {"tar.gz"},
-    "MAX_RESULTS_SIZE": int(os.getenv("MAX_RESULTS_SIZE", 300000)),  # 300KB default
+    "MAX_RESULTS_SIZE": int(
+        os.getenv("MAX_RESULTS_SIZE", 600000)
+    ),  # 600KB default (increased for compression-aware validation)
+    # Compression settings
+    "ENABLE_REQUEST_COMPRESSION": os.getenv(
+        "ENABLE_REQUEST_COMPRESSION", "true"
+    ).lower()
+    == "true",
+    "COMPRESSION_MIN_SIZE": int(os.getenv("COMPRESSION_MIN_SIZE", 1000)),  # 1KB minimum
     "JWT_ACCESS_TOKEN_EXPIRES": timedelta(
         seconds=60 * 60 * 1
     ),  # Reduced to 1 hour with refresh tokens

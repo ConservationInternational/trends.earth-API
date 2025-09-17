@@ -39,7 +39,59 @@ CORS(
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 )
 
+# Configure compression for better performance with large payloads
+app.config["COMPRESS_MIMETYPES"] = [
+    "text/html",
+    "text/css",
+    "text/xml",
+    "application/json",
+    "application/javascript",
+    "text/javascript",
+    "application/x-javascript",
+    "text/plain",
+]
+app.config["COMPRESS_LEVEL"] = 6  # Good balance of compression vs speed
+app.config["COMPRESS_MIN_SIZE"] = 500  # Default minimum size to compress
+app.config["COMPRESS_DEBUG"] = SETTINGS.get("logging", {}).get("level") == "DEBUG"
+
 Compress(app)
+
+
+# Add middleware to handle compressed request bodies
+@app.before_request
+def handle_compressed_request():
+    """Handle gzip-compressed request bodies."""
+    content_encoding = request.headers.get("Content-Encoding", "").lower()
+    if content_encoding == "gzip":
+        try:
+            import gzip
+
+            # Get the raw request data
+            compressed_data = request.get_data()
+
+            # Decompress the data
+            decompressed_data = gzip.decompress(compressed_data)
+
+            # Replace the input stream with decompressed data
+            from io import BytesIO
+
+            request._cached_data = decompressed_data
+            request.environ["wsgi.input"] = BytesIO(decompressed_data)
+            request.environ["CONTENT_LENGTH"] = str(len(decompressed_data))
+
+            # Remove the content encoding header since we've decompressed
+            if "HTTP_CONTENT_ENCODING" in request.environ:
+                del request.environ["HTTP_CONTENT_ENCODING"]
+
+            logger.debug(
+                f"Decompressed request: {len(compressed_data)} -> "
+                f"{len(decompressed_data)} bytes"
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to decompress request body: {e}")
+            # Let the request continue uncompressed if decompression fails
+
 
 logger = logging.getLogger()
 log_level = SETTINGS.get("logging", {}).get("level", "INFO")

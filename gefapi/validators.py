@@ -453,12 +453,55 @@ def validate_execution_update(func):
             # Sanitize results if provided
             if "results" in json_data and json_data["results"]:
                 # Limit results size to prevent abuse
+                import gzip
+                import json as json_lib
+
                 from gefapi.config import SETTINGS
 
                 max_results_size = SETTINGS.get("MAX_RESULTS_SIZE", 50000)
-                results_str = str(json_data["results"])
-                if len(results_str) > max_results_size:
-                    return error(status=400, detail="Results data too large")
+
+                # Try to estimate compressed size for more accurate validation
+                results_data = json_data["results"]
+                results_str = json_lib.dumps(
+                    results_data, separators=(",", ":")
+                )  # Compact JSON
+
+                # Check compressed size instead of raw string size
+                try:
+                    compressed_size = len(gzip.compress(results_str.encode("utf-8")))
+                    # Use compressed size * 2 as threshold to allow for some overhead
+                    size_threshold = max_results_size * 2
+
+                    if compressed_size > size_threshold:
+                        return error(
+                            status=400,
+                            detail="Results data too large (compressed: "
+                            f"{compressed_size} bytes, limit: {size_threshold} bytes)",
+                        )
+
+                    # Log compression ratio for monitoring
+                    compression_ratio = (
+                        len(results_str) / compressed_size if compressed_size > 0 else 1
+                    )
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.debug(
+                        f"Results compression: {len(results_str)} -> {compressed_size} "
+                        f"bytes (ratio: {compression_ratio:.2f}x)"
+                    )
+
+                except Exception as e:
+                    # Fallback to original string-based validation if compression fails
+                    if len(results_str) > max_results_size:
+                        return error(status=400, detail="Results data too large")
+
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"Could not compress results for size validation: {e}"
+                    )
 
         except ValueError as e:
             return error(status=400, detail=str(e))
