@@ -174,12 +174,14 @@ class TestValidationWithCompression:
 
         from gefapi.validators import validate_execution_update
 
-        # Create large, random (uncompressible) data
+        # Create data that's large enough to exceed even the compressed threshold
+        # We need to make data that exceeds max_results_size * 2 when compressed
+        # Default max_results_size is 50000, so threshold is 100000 bytes compressed
         random_data = {
             "results": {
                 "data": [
-                    ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(100))
-                    for _ in range(10000)  # 1MB of random data
+                    ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(200))
+                    for _ in range(25000)  # 5MB of truly random data to exceed compressed threshold
                 ]
             }
         }
@@ -194,11 +196,19 @@ class TestValidationWithCompression:
 
             wrapped_func = validate_execution_update(mock_func)
 
-            # Should reject very large uncompressible data
+            # Should reject very large data that exceeds compressed threshold
             result = wrapped_func()
 
-            # Should return an error response
-            assert "detail" in result or result.get("status") != "success"
+            # The error function returns a tuple (response, status_code)
+            # Check if it's an error response (tuple) or success response (dict)
+            if isinstance(result, tuple):
+                # It's an error response
+                response_data, status_code = result
+                assert status_code == 400
+                assert "detail" in response_data.get_json()
+            else:
+                # It's a success response - this should not happen with truly large data
+                raise AssertionError(f"Expected error response but got success: {result}")
 
     def test_validation_compression_fallback(self, client):
         """Test that validation falls back to string-based check if compression fails"""
@@ -223,6 +233,8 @@ class TestValidationWithCompression:
 
     def test_validation_compression_ratio_logging(self, client, caplog):
         """Test that compression ratio is logged for monitoring"""
+        import logging
+
         from gefapi.validators import validate_execution_update
 
         # Create moderately compressible data
@@ -238,11 +250,11 @@ class TestValidationWithCompression:
 
             wrapped_func = validate_execution_update(mock_func)
 
-            # Clear any existing log records
+            # Clear any existing log records and set DEBUG level
             caplog.clear()
-
-            # Execute the function
-            result = wrapped_func()
+            with caplog.at_level(logging.DEBUG, logger="gefapi.validators"):
+                # Execute the function
+                result = wrapped_func()
 
             # Check that compression ratio was logged
             assert any("compression" in record.message.lower() for record in caplog.records)
