@@ -48,6 +48,8 @@ google-api-python-client = ">=2.0.0"
 earthengine-api = ">=1.0.0"
 # Cryptography for secure credential storage
 cryptography = ">=3.4.8"
+# GeoAlchemy2 for PostGIS spatial database support
+geoalchemy2 = ">=0.14.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
