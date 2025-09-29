@@ -33,6 +33,13 @@ foreach ($arg in $PytestArgs) {
 }
 
 try {
+    Write-Host "Building Docker images if needed..." -ForegroundColor Green
+    docker compose -f docker-compose.develop.yml build
+    
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to build Docker images"
+    }
+
     Write-Host "Starting necessary services..." -ForegroundColor Green
     docker compose -f docker-compose.develop.yml up -d postgres redis
     
@@ -72,6 +79,14 @@ try {
     }
 
     Write-Host "Running tests..." -ForegroundColor Green
+
+    # Ensure test image is built before running tests
+    Write-Host "Building test image if needed..." -ForegroundColor Green
+    docker compose -f docker-compose.develop.yml build test
+    
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to build test image"
+    }
 
     if ($FilteredArgs.Count -eq 0) {
         Write-Host "No arguments provided, running all tests..." -ForegroundColor Cyan
