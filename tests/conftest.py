@@ -105,6 +105,22 @@ def app_no_rate_limiting():
         limiter.enabled = False
 
         try:
+            # Enable PostGIS extension for PostgreSQL databases before creating tables
+            if "postgresql" in app.config.get("SQLALCHEMY_DATABASE_URI", ""):
+                try:
+                    with db.engine.connect() as connection:
+                        connection.execute(
+                            db.text("CREATE EXTENSION IF NOT EXISTS postgis;")
+                        )
+                        connection.execute(
+                            db.text("CREATE EXTENSION IF NOT EXISTS postgis_topology;")
+                        )
+                        connection.commit()
+                except Exception as e:
+                    # Log but don't fail if extension creation fails
+                    # (might already exist or not needed)
+                    print(f"Warning: Could not create PostGIS extensions: {e}")
+
             db.create_all()
             yield app
         finally:
@@ -195,6 +211,22 @@ def app():
         reconfigure_limiter_for_testing()
 
         try:
+            # Enable PostGIS extension for PostgreSQL databases before creating tables
+            if "postgresql" in app.config.get("SQLALCHEMY_DATABASE_URI", ""):
+                try:
+                    with db.engine.connect() as connection:
+                        connection.execute(
+                            db.text("CREATE EXTENSION IF NOT EXISTS postgis;")
+                        )
+                        connection.execute(
+                            db.text("CREATE EXTENSION IF NOT EXISTS postgis_topology;")
+                        )
+                        connection.commit()
+                except Exception as e:
+                    # Log but don't fail if extension creation fails
+                    # (might already exist or not needed)
+                    print(f"Warning: Could not create PostGIS extensions: {e}")
+
             db.create_all()
             yield app
         finally:

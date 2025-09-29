@@ -148,7 +148,7 @@ services:
           memory: 100M
 
   postgres:
-    image: postgres:16
+    image: postgis/postgis:16-3.4
     container_name: trendsearth-api-postgres
     environment:
       POSTGRES_DB: trendsearth_develop_db
@@ -156,6 +156,7 @@ services:
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./config/db/init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql
     ports:
       - target: 5432
     env_file:
