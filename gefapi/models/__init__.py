@@ -46,6 +46,7 @@ class GUID(TypeDecorator):
         return value
 
 
+from gefapi.models.boundary import AdminBoundary0, AdminBoundary1  # noqa: E402
 from gefapi.models.execution import Execution  # noqa: E402
 from gefapi.models.execution_log import ExecutionLog  # noqa: E402
 from gefapi.models.refresh_token import RefreshToken  # noqa: E402
@@ -55,6 +56,8 @@ from gefapi.models.status_log import StatusLog  # noqa: E402
 from gefapi.models.user import User  # noqa: E402
 
 __all__ = [
+    "AdminBoundary0",
+    "AdminBoundary1",
     "Execution",
     "ExecutionLog",
     "RefreshToken",

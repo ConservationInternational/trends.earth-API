@@ -40,10 +40,7 @@ class TestCompressionMiddleware:
         response = client.post(
             "/api-health",  # Using health endpoint as it accepts any request
             data=compressed_data,
-            headers={
-                "Content-Type": "application/json",
-                "Content-Encoding": "gzip"
-            }
+            headers={"Content-Type": "application/json", "Content-Encoding": "gzip"},
         )
 
         # Should process without errors (even if endpoint doesn't accept POST)
@@ -59,10 +56,7 @@ class TestCompressionMiddleware:
         response = client.post(
             "/api-health",
             data=invalid_compressed_data,
-            headers={
-                "Content-Type": "application/json",
-                "Content-Encoding": "gzip"
-            }
+            headers={"Content-Type": "application/json", "Content-Encoding": "gzip"},
         )
 
         # Should not cause a 500 error - should fall back gracefully
@@ -79,10 +73,7 @@ class TestCompressionMiddleware:
             "/test",
             method="POST",
             data=compressed_data,
-            headers={
-                "Content-Type": "application/json",
-                "Content-Encoding": "gzip"
-            }
+            headers={"Content-Type": "application/json", "Content-Encoding": "gzip"},
         ) as ctx:
             # Manually trigger the before_request handler
             app.preprocess_request()
@@ -104,17 +95,21 @@ class TestCompressionConfiguration:
         assert SETTINGS.get("COMPRESSION_MIN_SIZE") == 1000
         assert SETTINGS.get("MAX_RESULTS_SIZE") == 600000  # 600KB
 
-    @patch.dict("os.environ", {
-        "ENABLE_REQUEST_COMPRESSION": "false",
-        "COMPRESSION_MIN_SIZE": "2000",
-        "MAX_RESULTS_SIZE": "1000000"
-    })
+    @patch.dict(
+        "os.environ",
+        {
+            "ENABLE_REQUEST_COMPRESSION": "false",
+            "COMPRESSION_MIN_SIZE": "2000",
+            "MAX_RESULTS_SIZE": "1000000",
+        },
+    )
     def test_compression_config_environment_overrides(self):
         """Test that environment variables override compression configuration"""
         # Reload config to pick up environment changes
         import importlib
 
         from gefapi.config import base
+
         importlib.reload(base)
 
         assert base.SETTINGS.get("ENABLE_REQUEST_COMPRESSION") is False
@@ -146,15 +141,13 @@ class TestValidationWithCompression:
         large_compressible_data = {
             "results": {
                 "data": ["same_value"] * 10000,  # Highly compressible
-                "metadata": {"type": "test", "count": 10000}
+                "metadata": {"type": "test", "count": 10000},
             }
         }
 
         # Test the validation function directly
         with app.test_request_context(
-            "/test",
-            method="POST",
-            json=large_compressible_data
+            "/test", method="POST", json=large_compressible_data
         ):
             # Create a mock function to wrap
             def mock_func(*args, **kwargs):
@@ -180,17 +173,19 @@ class TestValidationWithCompression:
         random_data = {
             "results": {
                 "data": [
-                    ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(200))
-                    for _ in range(25000)  # 5MB of truly random data to exceed compressed threshold
+                    "".join(
+                        secrets.choice(string.ascii_letters + string.digits)
+                        for _ in range(200)
+                    )
+                    for _ in range(
+                        25000
+                    )  # 5MB of truly random data to exceed compressed threshold
                 ]
             }
         }
 
-        with app.test_request_context(
-            "/test",
-            method="POST",
-            json=random_data
-        ):
+        with app.test_request_context("/test", method="POST", json=random_data):
+
             def mock_func(*args, **kwargs):
                 return {"status": "success"}
 
@@ -208,20 +203,22 @@ class TestValidationWithCompression:
                 assert "detail" in response_data.get_json()
             else:
                 # It's a success response - this should not happen with truly large data
-                raise AssertionError(f"Expected error response but got success: {result}")
+                raise AssertionError(
+                    f"Expected error response but got success: {result}"
+                )
 
     def test_validation_compression_fallback(self, client):
         """Test that validation falls back to string-based check if compression fails"""
         from gefapi.validators import validate_execution_update
 
         # Create data that will cause compression to fail
-        with app.test_request_context(
-            "/test",
-            method="POST",
-            json={
-                "results": {"test": "small data"}
-            }
-        ), patch("gzip.compress", side_effect=Exception("Compression failed")):
+        with (
+            app.test_request_context(
+                "/test", method="POST", json={"results": {"test": "small data"}}
+            ),
+            patch("gzip.compress", side_effect=Exception("Compression failed")),
+        ):
+
             def mock_func(*args, **kwargs):
                 return {"status": "success"}
 
@@ -238,13 +235,10 @@ class TestValidationWithCompression:
         from gefapi.validators import validate_execution_update
 
         # Create moderately compressible data
-        test_data = {
-            "results": {
-                "data": ["repeated_value"] * 1000
-            }
-        }
+        test_data = {"results": {"data": ["repeated_value"] * 1000}}
 
         with app.test_request_context("/test", method="POST", json=test_data):
+
             def mock_func(*args, **kwargs):
                 return {"status": "success"}
 
@@ -257,7 +251,9 @@ class TestValidationWithCompression:
                 result = wrapped_func()
 
             # Check that compression ratio was logged
-            assert any("compression" in record.message.lower() for record in caplog.records)
+            assert any(
+                "compression" in record.message.lower() for record in caplog.records
+            )
             assert result["status"] == "success"
 
 
@@ -283,8 +279,7 @@ class TestFlaskCompressIntegration:
         """Test that responses are compressed when client supports it"""
         # Make request with Accept-Encoding header
         response = client.get(
-            "/api-health",
-            headers={"Accept-Encoding": "gzip, deflate"}
+            "/api-health", headers={"Accept-Encoding": "gzip, deflate"}
         )
 
         # Response should include compression headers for large responses
