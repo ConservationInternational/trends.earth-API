@@ -55,18 +55,14 @@ SETTINGS = {
         "UPLOAD_FOLDER", os.path.join(tempfile.gettempdir(), "scripts")
     ),
     "ALLOWED_EXTENSIONS": {"tar.gz"},
-    "MAX_RESULTS_SIZE": int(
-        os.getenv("MAX_RESULTS_SIZE", 600000)
-    ),  # 600KB default
+    "MAX_RESULTS_SIZE": int(os.getenv("MAX_RESULTS_SIZE", 600000)),  # 600KB default
     # Compression settings
     "ENABLE_REQUEST_COMPRESSION": os.getenv(
         "ENABLE_REQUEST_COMPRESSION", "true"
     ).lower()
     == "true",
     "COMPRESSION_MIN_SIZE": int(os.getenv("COMPRESSION_MIN_SIZE", 1000)),  # 1KB minimum
-    "JWT_ACCESS_TOKEN_EXPIRES": timedelta(
-        seconds=60 * 60 * 1
-    ),
+    "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 1),
     "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=30),  # 30 days for refresh tokens
     "JWT_TOKEN_LOCATION": ["headers"],
     "CELERY_BROKER_URL": os.getenv("REDIS_URL")
