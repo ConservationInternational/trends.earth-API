@@ -193,9 +193,6 @@ def get_boundaries():
         return error(500, "Internal server error while fetching boundaries")
 
 
-
-
-
 @endpoints.route("/data/boundaries/stats", methods=["GET"])
 def get_boundary_statistics():
     """

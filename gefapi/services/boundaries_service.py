@@ -124,8 +124,6 @@ class BoundariesService:
 
         return result
 
-
-
     @staticmethod
     def validate_coordinates(lon: float, lat: float) -> bool:
         """Validate longitude and latitude coordinates."""
