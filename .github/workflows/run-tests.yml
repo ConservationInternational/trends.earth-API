@@ -20,7 +20,7 @@ jobs:
     
     services:
       postgres:
-        image: postgres:13
+        image: postgis/postgis:13-3.4
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
@@ -88,6 +88,10 @@ jobs:
     - name: Initialize test database
       run: |
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+        # Enable PostGIS extension first
+        PGPASSWORD=postgres psql -h localhost -U postgres -d gefapi_test -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+        PGPASSWORD=postgres psql -h localhost -U postgres -d gefapi_test -c "CREATE EXTENSION IF NOT EXISTS postgis_topology;"
+        # Initialize database schema
         poetry run python -c "
         import os
         os.environ['DATABASE_URL'] = 'postgresql://postgres:postgres@localhost:5432/gefapi_test'
@@ -226,7 +230,7 @@ jobs:
     
     services:
       postgres:
-        image: postgres:13
+        image: postgis/postgis:13-3.4
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
@@ -290,6 +294,10 @@ jobs:
     - name: Initialize integration test database
       run: |
         export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+        # Enable PostGIS extension first
+        PGPASSWORD=postgres psql -h localhost -U postgres -d gefapi_integration -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+        PGPASSWORD=postgres psql -h localhost -U postgres -d gefapi_integration -c "CREATE EXTENSION IF NOT EXISTS postgis_topology;"
+        # Initialize database schema
         poetry run python -c "
         import os
         os.environ['DATABASE_URL'] = 'postgresql://postgres:postgres@localhost:5432/gefapi_integration'

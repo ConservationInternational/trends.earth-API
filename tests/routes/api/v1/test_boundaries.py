@@ -190,10 +190,6 @@ class TestBoundariesAPIEndpoints:
             assert data["meta"]["total"] == 100
             assert data["meta"]["has_more"] is True
 
-
-
-
-
     def test_get_boundary_statistics_success(self, client):
         """Test successful boundary statistics endpoint."""
         expected_stats = {
@@ -225,8 +221,6 @@ class TestBoundariesAPIEndpoints:
             assert response.status_code == 500
             data = json.loads(response.data)
             assert "Internal server error" in data["detail"]
-
-
 
     def test_stats_service_exception_handling(self, client):
         """Test statistics API error handling when service raises exceptions."""
