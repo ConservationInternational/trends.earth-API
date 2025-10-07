@@ -187,7 +187,16 @@ class StagingEnvironmentSetup:
             conn.close()
 
     def copy_recent_scripts(self, superadmin_id):
-        """Copy recent scripts from production database with reassigned IDs."""
+        """Copy recent scripts from production database preserving GUIDs.
+
+        Scripts use GUID primary keys, not integer sequences. This method:
+        1. Queries production for scripts updated/created in the past year
+        2. Inserts them into staging with their original GUIDs preserved
+        3. Uses ON CONFLICT to update existing scripts
+        4. Returns ID mapping for use in script log import
+
+        Note: No sequence manipulation is needed since scripts use UUIDs.
+        """
         if not self.prod_db_config["password"]:
             logger.warning(
                 "No production database password provided, skipping script import"
