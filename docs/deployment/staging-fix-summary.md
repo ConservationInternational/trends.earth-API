@@ -2,7 +2,28 @@
 
 ## Issues Fixed
 
-### 1. Migration Multiple Heads Issue
+### 1. PostGIS Extension Missing (Latest Fix)
+
+**Problem**: Deployments were failing with:
+```
+(psycopg2.errors.UndefinedObject) type "geometry" does not exist
+LINE 7:  geometry geometry(MULTIPOLYGON,4326),
+```
+
+**Root Cause**: The PostGIS extension was not being installed in the database when the PostgreSQL volume persisted across deployments. The `init-postgis.sh` script only runs when a database is first created, not on subsequent container restarts.
+
+**Solution**: Enhanced `run_db_migrations.py` to:
+- Added `ensure_postgis_extensions()` function that runs before migrations
+- Automatically checks if PostGIS extension exists in the database
+- Creates `postgis` and `postgis_topology` extensions if missing
+- Fails fast in staging environment if extension cannot be created
+- Made `config/db/init-postgis.sh` executable for better Docker compatibility
+
+**Files Changed**:
+- `run_db_migrations.py`: Added 53 lines for PostGIS extension checking and installation
+- `config/db/init-postgis.sh`: Made executable and improved messaging
+
+### 2. Migration Multiple Heads Issue
 
 **Problem**: Deployments were failing with:
 ```
@@ -17,7 +38,7 @@ ERROR [alembic.env] Migration execution failed: Multiple head revisions are pres
 - Added multiple retry strategies with better error handling
 - Improved logging for debugging
 
-### 2. Docker Swarm Race Conditions
+### 3. Docker Swarm Race Conditions
 
 **Problem**: Services failing to update with:
 ```
