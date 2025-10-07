@@ -231,14 +231,11 @@ class StagingEnvironmentSetup:
             # Begin transaction for atomic script import
             staging_conn.autocommit = False
 
-            # Clear existing scripts to avoid conflicts
-            logger.info("Clearing existing scripts from staging...")
-            staging_cursor.execute("DELETE FROM script")
+            # Note: We don't delete existing scripts - we use ON CONFLICT to update them
+            # Scripts use GUID primary keys, not sequences, so no sequence reset needed
+            logger.info("Preparing to import/update scripts (using ON CONFLICT)...")
 
-            # Reset the script ID sequence
-            staging_cursor.execute("SELECT setval('script_id_seq', 1, false)")
-
-            # Get recent scripts from production (excluding ID for reassignment)
+            # Get recent scripts from production (including ID to preserve GUIDs)
             prod_cursor.execute(
                 """
                 SELECT id, name, slug, description, created_at, updated_at, status,
@@ -251,18 +248,23 @@ class StagingEnvironmentSetup:
                 (one_year_ago, one_year_ago),
             )
 
+            logger.info(
+                f"Querying production for scripts created/updated since {one_year_ago}"
+            )
+
             scripts = prod_cursor.fetchall()
             logger.info(f"Found {len(scripts)} recent scripts to import")
 
             imported_count = 0
+            updated_count = 0
             for script in scripts:
                 try:
-                    old_script_id = script[0]
+                    script_id = script[0]  # Keep original GUID from production
 
-                    # Insert script with conflict resolution for slug uniqueness
+                    # Insert script with GUID, using ON CONFLICT to update existing
                     staging_cursor.execute(
                         """
-                        INSERT INTO script (name, slug, description, created_at,
+                        INSERT INTO script (id, name, slug, description, created_at,
                                           updated_at, user_id, status, public,
                                           cpu_reservation, cpu_limit,
                                           memory_reservation, memory_limit,
@@ -270,6 +272,7 @@ class StagingEnvironmentSetup:
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                                 %s, %s)
                         ON CONFLICT (slug) DO UPDATE SET
+                            id = EXCLUDED.id,
                             name = EXCLUDED.name,
                             description = EXCLUDED.description,
                             updated_at = EXCLUDED.updated_at,
@@ -282,9 +285,10 @@ class StagingEnvironmentSetup:
                             memory_limit = EXCLUDED.memory_limit,
                             environment = EXCLUDED.environment,
                             environment_version = EXCLUDED.environment_version
-                        RETURNING id
+                        RETURNING id, (xmax = 0) AS inserted
                     """,
                         (
+                            script_id,  # id - keep original GUID
                             script[1],  # name
                             script[2],  # slug
                             script[3],  # description
@@ -302,12 +306,23 @@ class StagingEnvironmentSetup:
                         ),
                     )
 
-                    new_script_id = staging_cursor.fetchone()[0]
-                    id_mapping[old_script_id] = new_script_id
-                    imported_count += 1
+                    result = staging_cursor.fetchone()
+                    returned_id = result[0]
+                    was_inserted = result[1]
 
-                    if imported_count % 50 == 0:
-                        logger.info(f"Imported {imported_count} scripts so far...")
+                    # Map old ID to new ID (should be the same for GUIDs)
+                    id_mapping[script_id] = returned_id
+
+                    if was_inserted:
+                        imported_count += 1
+                    else:
+                        updated_count += 1
+
+                    if (imported_count + updated_count) % 50 == 0:
+                        logger.info(
+                            f"Processed {imported_count + updated_count} scripts "
+                            f"({imported_count} new, {updated_count} updated)..."
+                        )
 
                 except psycopg2.Error as e:
                     logger.warning(
@@ -326,24 +341,17 @@ class StagingEnvironmentSetup:
                         # Continue with other scripts rather than failing completely
                         continue
 
-            # Set sequence to start from a safe value after the imported scripts
-            staging_cursor.execute("SELECT MAX(id) FROM script")
-            max_id = staging_cursor.fetchone()[0]
-            if max_id:
-                # Set sequence to start from max_id + 1000 to provide buffer
-                next_val = max_id + 1000
-                staging_cursor.execute(
-                    f"SELECT setval('script_id_seq', {next_val}, false)"
-                )
-                logger.info(
-                    f"Reset script sequence to start from {next_val} "
-                    f"to avoid future conflicts"
-                )
+            # Scripts use GUIDs, not sequences, so no sequence manipulation needed
+            logger.info(
+                f"Script import completed: {imported_count} new, "
+                f"{updated_count} updated"
+            )
 
             staging_conn.commit()
             logger.info(
-                f"Successfully imported {imported_count} scripts "
-                f"with new sequential IDs"
+                f"Successfully imported/updated "
+                f"{imported_count + updated_count} scripts "
+                f"with preserved GUIDs from production"
             )
             logger.info(f"Script ID mapping created for {len(id_mapping)} scripts")
 
