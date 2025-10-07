@@ -4,9 +4,9 @@
 
 set -e
 
-echo "Creating PostGIS extensions in staging database..."
+echo "Creating PostGIS extensions in database $POSTGRES_DB..."
 
-# Add PostGIS extensions to the main database (staging database)
+# Add PostGIS extensions to the main database
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     CREATE EXTENSION IF NOT EXISTS postgis;
     CREATE EXTENSION IF NOT EXISTS postgis_topology;
