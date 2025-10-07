@@ -58,6 +58,56 @@ def wait_for_database(app):
     raise RuntimeError("Database did not become ready within timeout period")
 
 
+def ensure_postgis_extensions(app):
+    """Ensure PostGIS extensions are installed in the database"""
+    import os
+
+    from sqlalchemy import text
+
+    from gefapi import db
+
+    logger.info("Checking PostGIS extensions...")
+
+    try:
+        with app.app_context(), db.engine.connect() as connection:
+            # Check if PostGIS extension exists
+            result = connection.execute(
+                text(
+                    "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'postgis')"
+                )
+            )
+            postgis_exists = result.scalar()
+
+            if not postgis_exists:
+                logger.info("PostGIS extension not found, installing...")
+                print("📍 Installing PostGIS extension...")
+
+                # Create PostGIS extension
+                connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+                connection.execute(
+                    text("CREATE EXTENSION IF NOT EXISTS postgis_topology")
+                )
+                connection.commit()
+
+                logger.info("PostGIS extensions installed successfully")
+                print("✓ PostGIS extensions installed")
+            else:
+                logger.info("PostGIS extension already installed")
+                print("✓ PostGIS extension already installed")
+
+    except Exception as e:
+        logger.error(f"Failed to install PostGIS extensions: {e}")
+        print(f"✗ PostGIS extension installation failed: {e}")
+        # Only fail in staging where we control the environment
+        if os.getenv("ENVIRONMENT") == "staging":
+            raise RuntimeError(f"PostGIS extension required but failed to install: {e}")
+        else:
+            logger.warning(
+                "PostGIS extension installation failed but continuing "
+                "(not in staging environment)"
+            )
+
+
 def run_migrations():
     """Run database migrations"""
     print("Running database migrations...")
@@ -75,6 +125,9 @@ def run_migrations():
 
         # Wait for database to be ready
         wait_for_database(app)
+
+        # Ensure PostGIS extensions are installed (required for geometry columns)
+        ensure_postgis_extensions(app)
 
         print("Creating Flask app context...")
         logger.info("Creating Flask app context...")
