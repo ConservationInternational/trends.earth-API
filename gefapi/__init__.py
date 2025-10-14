@@ -115,6 +115,121 @@ rollbar.init(os.getenv("ROLLBAR_SERVER_TOKEN"), os.getenv("ENVIRONMENT"))
 with app.app_context():
     got_request_exception.connect(rollbar.contrib.flask.report_exception, app)
 
+
+# Validate CORS configuration on startup
+def validate_cors_origins():
+    """Validate CORS origins to prevent security misconfigurations."""
+    environment = os.getenv("ENVIRONMENT", "dev")
+    origins = cors_origins
+
+    logger.info(f"Validating CORS origins for environment: {environment}")
+    logger.info(f"CORS origins: {origins}")
+
+    if environment == "prod":
+        # In production, disallow localhost origins
+        for origin in origins:
+            if "localhost" in origin or "127.0.0.1" in origin:
+                error_msg = (
+                    f"Security Error: Localhost origin '{origin}' "
+                    f"not allowed in production"
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+        # Ensure origins are explicitly set (not empty or default)
+        if not origins or origins == [""]:
+            error_msg = (
+                "Security Error: CORS_ORIGINS must be explicitly "
+                "set in production environment"
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        logger.info("CORS configuration validated successfully for production")
+
+    else:
+        logger.info(
+            f"CORS validation passed for {environment} environment (localhost allowed)"
+        )
+
+
+# Validate CORS on startup
+try:
+    validate_cors_origins()
+except ValueError as e:
+    # In production, fail fast on CORS misconfiguration
+    if os.getenv("ENVIRONMENT") == "prod":
+        logger.critical(f"CORS validation failed: {e}")
+        raise
+    else:
+        logger.warning(f"CORS validation warning: {e}")
+
+
+# Add security headers middleware
+@app.after_request
+def set_security_headers(response):
+    """Add security headers to all responses."""
+    environment = os.getenv("ENVIRONMENT", "dev")
+
+    # Content Security Policy - restrict resource loading
+    # Special handling for API docs to allow iframe embedding
+    if request.path == "/api/docs/":
+        # Strict CSP for API documentation - only allow self-hosted resources
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "font-src 'self'; "
+            "img-src 'self' data:"
+        )
+    else:
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' data:; "
+            "connect-src 'self'"
+        )
+
+    # Prevent MIME type sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    # Prevent clickjacking (allow iframe from same origin for API docs)
+    if request.path == "/api/docs/":
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    else:
+        response.headers["X-Frame-Options"] = "DENY"
+
+    # Enable XSS protection (legacy browsers)
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+
+    # Referrer policy - limit referrer information
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    # Permissions policy - disable unnecessary browser features
+    response.headers["Permissions-Policy"] = (
+        "geolocation=(), microphone=(), camera=(), "
+        "payment=(), usb=(), magnetometer=(), gyroscope=()"
+    )
+
+    # HTTPS strict transport security (only in production or when using HTTPS)
+    if environment == "prod" or request.is_secure:
+        # Force HTTPS for 1 year, include subdomains
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains; preload"
+        )
+        logger.debug("HSTS header added for production environment")
+
+    # Additional security headers
+    response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+
+    return response
+
+
 app.config["SQLALCHEMY_DATABASE_URI"] = SETTINGS.get("SQLALCHEMY_DATABASE_URI")
 app.config["UPLOAD_FOLDER"] = SETTINGS.get("UPLOAD_FOLDER")
 
@@ -705,56 +820,3 @@ def request_entity_too_large(e):
 @app.errorhandler(500)
 def internal_server_error(e):
     return error(status=500, detail="Internal Server Error")
-
-
-@app.after_request
-def add_security_headers(response):
-    """Add security headers to all responses"""
-    # Prevent MIME type sniffing
-    response.headers["X-Content-Type-Options"] = "nosniff"
-
-    # Prevent clickjacking by denying iframe embedding (except for API docs)
-    if request.path == "/api/docs/":
-        # Allow iframe from same origin for Swagger UI
-        response.headers["X-Frame-Options"] = "SAMEORIGIN"
-    else:
-        response.headers["X-Frame-Options"] = "DENY"
-
-    # Enable XSS protection in browsers
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-
-    # Content Security Policy for any HTML content
-    if request.path == "/api/docs/":
-        # Strict CSP for API documentation - only allow self-hosted resources
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "font-src 'self'; "
-            "img-src 'self' data:"
-        )
-    else:
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'"
-        )
-
-    # Force HTTPS if the request is secure
-    if request.is_secure:
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains; preload"
-        )
-
-    # Prevent referrer information leakage
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-    # Control browser features and APIs
-    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
-
-    # Add additional security headers
-    response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
-    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
-    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
-
-    return response

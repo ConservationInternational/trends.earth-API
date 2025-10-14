@@ -33,13 +33,31 @@ class UserService:
         logger.info("[SERVICE]: Creating user")
         email = user.get("email", None)
         password = user.get("password", None)
-        password = (
-            "".join(
-                secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6)
-            )
-            if password is None
-            else password
-        )
+
+        # Generate secure random password if not provided
+        # Meets requirements: 12+ chars, upper, lower, digit, special char
+        if password is None:
+            # Generate 16-character password with all required character types
+            chars_upper = string.ascii_uppercase
+            chars_lower = string.ascii_lowercase
+            chars_digits = string.digits
+            chars_special = "!@#$%^&*"
+
+            # Ensure at least one of each required type
+            password_chars = [
+                secrets.choice(chars_upper),
+                secrets.choice(chars_lower),
+                secrets.choice(chars_digits),
+                secrets.choice(chars_special),
+            ]
+
+            # Fill remaining characters randomly from all character sets
+            all_chars = chars_upper + chars_lower + chars_digits + chars_special
+            password_chars.extend(secrets.choice(all_chars) for _ in range(12))
+
+            # Shuffle to avoid predictable pattern
+            secrets.SystemRandom().shuffle(password_chars)
+            password = "".join(password_chars)
         role = user.get("role", "USER")
         name = user.get("name", "notset")
         country = user.get("country", None)

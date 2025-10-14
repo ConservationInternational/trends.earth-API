@@ -111,10 +111,58 @@ def validate_email(email):
 
 def validate_password(password):
     """
-    Simple password validation - just check if it exists
+    Validate password with security requirements.
+
+    Requirements:
+    - Minimum 12 characters (NIST recommended minimum)
+    - Maximum 128 characters (prevents DoS via excessive hashing)
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one digit
+    - At least one special character
+
+    Args:
+        password: The password string to validate
+
+    Returns:
+        str: The validated password
+
+    Raises:
+        ValueError: If password doesn't meet security requirements
     """
     if not password:
         raise ValueError("Password is required")
+
+    # Check minimum length
+    # NIST SP 800-63B recommends at least 8, we use 12 for better security
+    if len(password) < 12:
+        raise ValueError("Password must be at least 12 characters long")
+
+    # Maximum length prevents DoS attacks via excessive hashing computation
+    # NIST SP 800-63B recommends supporting at least 64 characters
+    # 128 provides good balance between usability and DoS protection
+    if len(password) > 128:
+        raise ValueError("Password must not exceed 128 characters")
+
+    # Check for uppercase letter
+    if not re.search(r"[A-Z]", password):
+        raise ValueError("Password must contain at least one uppercase letter")
+
+    # Check for lowercase letter
+    if not re.search(r"[a-z]", password):
+        raise ValueError("Password must contain at least one lowercase letter")
+
+    # Check for digit
+    if not re.search(r"\d", password):
+        raise ValueError("Password must contain at least one digit")
+
+    # Check for special character
+    special_chars = r"[!@#$%^&*(),.?\":{}|<>\-_+=\[\]\\/;'`~]"
+    if not re.search(special_chars, password):
+        raise ValueError(
+            "Password must contain at least one special character "
+            r"(!@#$%^&*(),.?\":{}|<>-_+=[]\/;'`~)"
+        )
 
     return password
 

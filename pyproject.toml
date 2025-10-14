@@ -18,18 +18,18 @@ packages = [{ include = "gefapi" }]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"
-flask = "*"
+flask = ">=3.0.0"
 flask-cors = "*"
 flask-compress = "*"
 flask-jwt-extended = "*"
-flask-limiter = "*"
+flask-limiter = ">=3.13"
 flask-migrate = "*"
 flask-sqlalchemy = "*"
-psycopg2-binary = "*"
+psycopg2-binary = ">=2.9.11"
 celery = "*"
 redis = "*"
 rollbar = "*"
-sqlalchemy = "*"
+sqlalchemy = ">=2.0.44"
 werkzeug = "*"
 psutil = "*"
 boto3 = "*"
@@ -46,8 +46,8 @@ google-auth-httplib2 = ">=0.1.0"
 google-api-python-client = ">=2.0.0"
 # Google Earth Engine API
 earthengine-api = ">=1.0.0"
-# Cryptography for secure credential storage
-cryptography = ">=3.4.8"
+# Cryptography for secure credential storage - updated for security patches
+cryptography = ">=46.0.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
