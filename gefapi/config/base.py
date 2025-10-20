@@ -26,7 +26,7 @@ SETTINGS = {
         "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
         "CORS_ORIGINS": os.getenv("CORS_ORIGINS"),
         # API configuration required for trends.earth-Environment integration
-    "API_ENVIRONMENT_USER": _environment_user,
+        "API_ENVIRONMENT_USER": _environment_user,
         "API_ENVIRONMENT_USER_PASSWORD": os.getenv("API_ENVIRONMENT_USER_PASSWORD"),
         "API_URL": os.getenv("API_URL"),
         # OAuth client credentials for GEE authentication
