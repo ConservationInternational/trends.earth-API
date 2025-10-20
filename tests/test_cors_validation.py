@@ -48,8 +48,9 @@ class TestCORSValidation:
         # Manually call validation with specific origins
         origins = ["http://127.0.0.1:3000", "https://app.trends.earth"]
 
-        with patch.dict(os.environ, {"ENVIRONMENT": "prod"}), patch(
-            "gefapi.cors_origins", origins
+        with (
+            patch.dict(os.environ, {"ENVIRONMENT": "prod"}),
+            patch("gefapi.cors_origins", origins),
         ):
             from gefapi import validate_cors_origins
 
@@ -66,8 +67,9 @@ class TestCORSValidation:
         """Test that empty CORS origins are rejected in production."""
         origins = [""]
 
-        with patch.dict(os.environ, {"ENVIRONMENT": "prod"}), patch(
-            "gefapi.cors_origins", origins
+        with (
+            patch.dict(os.environ, {"ENVIRONMENT": "prod"}),
+            patch("gefapi.cors_origins", origins),
         ):
             from gefapi import validate_cors_origins
 
@@ -80,8 +82,9 @@ class TestCORSValidation:
         """Test that valid production origins are accepted."""
         origins = ["https://trends.earth", "https://app.trends.earth"]
 
-        with patch.dict(os.environ, {"ENVIRONMENT": "prod"}), patch(
-            "gefapi.cors_origins", origins
+        with (
+            patch.dict(os.environ, {"ENVIRONMENT": "prod"}),
+            patch("gefapi.cors_origins", origins),
         ):
             from gefapi import validate_cors_origins
 
@@ -216,21 +219,25 @@ class TestCORSSecurityScenarios:
         """Test CORS validation is case-insensitive for localhost."""
         from gefapi import validate_cors_origins
 
-        with patch.dict(
-            os.environ,
-            {
-                "ENVIRONMENT": "prod",
-                "CORS_ORIGINS": "http://LocalHost:3000,https://app.trends.earth",
-            },
-        ), pytest.raises(ValueError):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "ENVIRONMENT": "prod",
+                    "CORS_ORIGINS": "http://LocalHost:3000,https://app.trends.earth",
+                },
+            ),
+            pytest.raises(ValueError),
+        ):
             validate_cors_origins()
 
     def test_cors_validation_with_ports(self):
         """Test CORS validation handles origins with different ports."""
         origins = ["https://trends.earth:443", "https://app.trends.earth:8443"]
 
-        with patch.dict(os.environ, {"ENVIRONMENT": "prod"}), patch(
-            "gefapi.cors_origins", origins
+        with (
+            patch.dict(os.environ, {"ENVIRONMENT": "prod"}),
+            patch("gefapi.cors_origins", origins),
         ):
             from gefapi import validate_cors_origins
 

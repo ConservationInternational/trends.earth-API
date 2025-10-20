@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+import re
 import secrets
 import string
 from uuid import UUID
@@ -11,7 +12,13 @@ from sqlalchemy import func
 
 from gefapi import db
 from gefapi.config import SETTINGS
-from gefapi.errors import AuthError, EmailError, UserDuplicated, UserNotFound
+from gefapi.errors import (
+    AuthError,
+    EmailError,
+    PasswordValidationError,
+    UserDuplicated,
+    UserNotFound,
+)
 from gefapi.models import User
 from gefapi.services import EmailService
 from gefapi.utils.security_events import (
@@ -24,6 +31,54 @@ ROLES = SETTINGS.get("ROLES")
 
 logger = logging.getLogger()
 
+MIN_PASSWORD_LENGTH = 12
+SPECIAL_CHARACTERS = "!@#$%^&*()-_=+[]{}|;:,.<>?/"
+
+
+def _generate_secure_password(length: int = 16) -> str:
+    """Generate a password that satisfies the minimum complexity rules."""
+
+    chars_upper = string.ascii_uppercase
+    chars_lower = string.ascii_lowercase
+    chars_digits = string.digits
+    chars_special = SPECIAL_CHARACTERS
+
+    if length < 12:
+        length = 12
+
+    password_chars = [
+        secrets.choice(chars_upper),
+        secrets.choice(chars_lower),
+        secrets.choice(chars_digits),
+        secrets.choice(chars_special),
+    ]
+
+    all_chars = chars_upper + chars_lower + chars_digits + chars_special
+    password_chars.extend(secrets.choice(all_chars) for _ in range(length - 4))
+    secrets.SystemRandom().shuffle(password_chars)
+    return "".join(password_chars)
+
+
+def _validate_password_strength(password: str) -> None:
+    """Ensure passwords meet basic complexity requirements."""
+
+    if not password or len(password) < MIN_PASSWORD_LENGTH:
+        raise PasswordValidationError(
+            f"Password must be at least {MIN_PASSWORD_LENGTH} characters long"
+        )
+
+    if not re.search(r"[A-Z]", password):
+        raise PasswordValidationError("Password must include an uppercase letter")
+
+    if not re.search(r"[a-z]", password):
+        raise PasswordValidationError("Password must include a lowercase letter")
+
+    if not re.search(r"\d", password):
+        raise PasswordValidationError("Password must include a number")
+
+    if not re.search(f"[{re.escape(SPECIAL_CHARACTERS)}]", password):
+        raise PasswordValidationError("Password must include a special character")
+
 
 class UserService:
     """User Class"""
@@ -34,30 +89,10 @@ class UserService:
         email = user.get("email", None)
         password = user.get("password", None)
 
-        # Generate secure random password if not provided
-        # Meets requirements: 12+ chars, upper, lower, digit, special char
         if password is None:
-            # Generate 16-character password with all required character types
-            chars_upper = string.ascii_uppercase
-            chars_lower = string.ascii_lowercase
-            chars_digits = string.digits
-            chars_special = "!@#$%^&*"
-
-            # Ensure at least one of each required type
-            password_chars = [
-                secrets.choice(chars_upper),
-                secrets.choice(chars_lower),
-                secrets.choice(chars_digits),
-                secrets.choice(chars_special),
-            ]
-
-            # Fill remaining characters randomly from all character sets
-            all_chars = chars_upper + chars_lower + chars_digits + chars_special
-            password_chars.extend(secrets.choice(all_chars) for _ in range(12))
-
-            # Shuffle to avoid predictable pattern
-            secrets.SystemRandom().shuffle(password_chars)
-            password = "".join(password_chars)
+            password = _generate_secure_password()
+        else:
+            _validate_password_strength(password)
         role = user.get("role", "USER")
         name = user.get("name", "notset")
         country = user.get("country", None)
@@ -65,7 +100,7 @@ class UserService:
         if role not in ROLES:
             role = "USER"
         if email is None or password is None:
-            raise Exception
+            raise PasswordValidationError("Email and password are required")
         current_user = User.query.filter_by(email=user.get("email")).first()
         if current_user:
             raise UserDuplicated(message="User with email " + email + " already exists")
@@ -224,6 +259,11 @@ class UserService:
         logger.info(f"[SERVICE]: Changing password for user {user.email}")
         if not user.check_password(old_password):
             raise AuthError("Invalid current password")
+        if old_password == new_password:
+            raise PasswordValidationError(
+                "New password must be different from current password"
+            )
+        _validate_password_strength(new_password)
         user.password = user.set_password(new_password)
         try:
             db.session.add(user)
@@ -262,6 +302,7 @@ class UserService:
     def admin_change_password(user, new_password):
         """Admin change user password (no old password verification required)"""
         logger.info(f"[SERVICE]: Admin changing password for user {user.email}")
+        _validate_password_strength(new_password)
         user.password = user.set_password(new_password)
         try:
             db.session.add(user)
@@ -305,9 +346,7 @@ class UserService:
         user = UserService.get_user(user_id=user_id)
         if not user:
             raise UserNotFound(message="User with id " + user_id + " does not exist")
-        password = "".join(
-            secrets.choice(string.ascii_uppercase + string.digits) for _ in range(20)
-        )
+        password = _generate_secure_password()
         user.password = user.set_password(password=password)
         try:
             logger.info("[DB]: ADD")
@@ -335,6 +374,7 @@ class UserService:
     def update_profile_password(user, current_user):
         logger.info("[SERVICE]: Updating user password")
         password = user.get("password")
+        _validate_password_strength(password)
         current_user.password = current_user.set_password(password=password)
         try:
             logger.info("[DB]: ADD")

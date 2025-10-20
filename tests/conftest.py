@@ -22,10 +22,10 @@ if not os.environ.get("JWT_SECRET_KEY"):
     os.environ["JWT_SECRET_KEY"] = "test-jwt-secret-key-for-ci"
 if not os.environ.get("SECRET_KEY"):
     os.environ["SECRET_KEY"] = "test-secret-key-for-ci"
-if not os.environ.get("API_USER"):
-    os.environ["API_USER"] = "test_user"
-if not os.environ.get("API_PASSWORD"):
-    os.environ["API_PASSWORD"] = "test_password"
+if not os.environ.get("API_ENVIRONMENT_USER"):
+    os.environ["API_ENVIRONMENT_USER"] = "env-automation@test.com"
+if not os.environ.get("API_ENVIRONMENT_USER_PASSWORD"):
+    os.environ["API_ENVIRONMENT_USER_PASSWORD"] = "EnvUser1234!"
 if not os.environ.get("API_URL"):
     os.environ["API_URL"] = "http://localhost:3000"
 
@@ -53,7 +53,18 @@ from flask_jwt_extended import create_access_token
 
 from gefapi import app as flask_app
 from gefapi import db
+from gefapi.config import SETTINGS
 from gefapi.models import Execution, Script, StatusLog, User
+
+# Strong password values for test fixtures
+STRONG_GENERIC_PASSWORD = "ValidPass123!"
+USER_TEST_PASSWORD = "UserPass123!"
+ADMIN_TEST_PASSWORD = "AdminPass123!"
+SUPERADMIN_TEST_PASSWORD = "SuperAdmin1!"
+ENVIRONMENT_USER_TEST_PASSWORD = os.environ["API_ENVIRONMENT_USER_PASSWORD"]
+NEW_STRONG_PASSWORD = "NewStrong123!"
+
+ENVIRONMENT_USER_EMAIL = SETTINGS.get("API_ENVIRONMENT_USER")
 
 
 @pytest.fixture(scope="function")
@@ -263,7 +274,7 @@ def admin_user(app):
 
         user = User(
             email="admin@test.com",
-            password="admin123",
+            password=ADMIN_TEST_PASSWORD,
             name="Admin User",
             role="ADMIN",
             country="Test Country",
@@ -284,13 +295,13 @@ def regular_user(app):
         if user:
             # Ensure the existing user has the correct role and password
             user.role = "USER"
-            user.password = user.set_password("user123")
+            user.password = user.set_password(USER_TEST_PASSWORD)
             # Ensure email notifications are enabled for consistent testing
             user.email_notifications_enabled = True
         else:
             user = User(
                 email="user@test.com",
-                password="user123",
+                password=USER_TEST_PASSWORD,
                 name="Regular User",
                 role="USER",
                 country="Test Country",
@@ -313,7 +324,7 @@ def superadmin_user(app):
 
         user = User(
             email="superadmin@test.com",
-            password="superadmin123",
+            password=SUPERADMIN_TEST_PASSWORD,
             name="Super Admin User",
             role="SUPERADMIN",
             country="Test Country",
@@ -326,18 +337,18 @@ def superadmin_user(app):
 
 
 @pytest.fixture
-def gef_user(app):
-    """Create special GEF user for testing"""
+def environment_user(app):
+    """Create the configured automation user for testing"""
     with app.app_context():
         # Check if user already exists
-        existing_user = User.query.filter_by(email="gef@gef.com").first()
+        existing_user = User.query.filter_by(email=ENVIRONMENT_USER_EMAIL).first()
         if existing_user:
             return existing_user
 
         user = User(
-            email="gef@gef.com",
-            password="gef123",
-            name="GEF Special User",
+            email=ENVIRONMENT_USER_EMAIL,
+            password=ENVIRONMENT_USER_TEST_PASSWORD,
+            name="Automation User",
             role="USER",  # Note: role is USER but should have superadmin privileges
             country="Test Country",
             institution="Test Institution",
@@ -470,14 +481,14 @@ def superadmin_token(app, superadmin_user):
 
 
 @pytest.fixture
-def gef_token(app, gef_user):
-    """Generate token for GEF user"""
+def environment_user_token(app, environment_user):
+    """Generate token for the automation user"""
     with app.app_context():
         # Re-query the user to ensure it's attached to the current session
-        user = User.query.filter_by(email="gef@gef.com").first()
+        user = User.query.filter_by(email=ENVIRONMENT_USER_EMAIL).first()
         if not user:
             # If user doesn't exist, merge the fixture user to current session
-            user = db.session.merge(gef_user)
+            user = db.session.merge(environment_user)
         return create_access_token(identity=user.id)
 
 
@@ -500,9 +511,9 @@ def auth_headers_superadmin(superadmin_token):
 
 
 @pytest.fixture
-def auth_headers_gef(gef_token):
-    """Get authorization headers for GEF user"""
-    return {"Authorization": f"Bearer {gef_token}"}
+def auth_headers_environment_user(environment_user_token):
+    """Get authorization headers for the automation user"""
+    return {"Authorization": f"Bearer {environment_user_token}"}
 
 
 @pytest.fixture
@@ -514,13 +525,13 @@ def regular_user_no_rate_limiting(app_no_rate_limiting):
         if user:
             # Ensure the existing user has the correct role and password
             user.role = "USER"
-            user.password = user.set_password("user123")
+            user.password = user.set_password(USER_TEST_PASSWORD)
             # Ensure email notifications are enabled for consistent testing
             user.email_notifications_enabled = True
         else:
             user = User(
                 email="user@test.com",
-                password="user123",
+                password=USER_TEST_PASSWORD,
                 name="Regular User",
                 role="USER",
                 country="Test Country",
@@ -543,7 +554,7 @@ def admin_user_no_rate_limiting(app_no_rate_limiting):
 
         user = User(
             email="admin@test.com",
-            password="admin123",
+            password=ADMIN_TEST_PASSWORD,
             name="Admin User",
             role="ADMIN",
             country="Test Country",
@@ -611,7 +622,7 @@ def sample_user_data():
     unique_id = str(uuid.uuid4())[:8]
     return {
         "email": f"testuser-{unique_id}@test.com",
-        "password": "password",
+        "password": STRONG_GENERIC_PASSWORD,
         "name": "Test User",
         "role": "USER",
         "country": "Test Country",

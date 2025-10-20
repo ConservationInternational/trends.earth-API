@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 
-from flask import Flask, got_request_exception, jsonify, request
+from flask import Flask, abort, got_request_exception, jsonify, request
 from flask_compress import Compress
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
@@ -14,6 +14,7 @@ from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 import rollbar
 import rollbar.contrib.flask
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from gefapi.celery import make_celery
 from gefapi.config import SETTINGS
@@ -27,6 +28,18 @@ from gefapi.utils.rate_limiting import (
 
 # Flask App
 app = Flask(__name__)
+
+# Respect trusted proxy configuration for accurate client IP detection
+trusted_proxy_count = SETTINGS.get("TRUSTED_PROXY_COUNT", 0)
+if trusted_proxy_count:
+    app.wsgi_app = ProxyFix(  # type: ignore[assignment]
+        app.wsgi_app,
+        x_for=trusted_proxy_count,
+        x_proto=trusted_proxy_count,
+        x_host=trusted_proxy_count,
+        x_port=trusted_proxy_count,
+        x_prefix=trusted_proxy_count,
+    )
 
 # Configure CORS with specific origins for security
 cors_origins = os.getenv(
@@ -79,6 +92,23 @@ def handle_compressed_request():
             request.environ["wsgi.input"] = BytesIO(decompressed_data)
             request.environ["CONTENT_LENGTH"] = str(len(decompressed_data))
 
+            max_size = SETTINGS.get("MAX_DECOMPRESSED_REQUEST_SIZE", 5 * 1024 * 1024)
+            if len(decompressed_data) > max_size:
+                logger.warning(
+                    "Decompressed request body exceeded limit: %s bytes (limit %s)",
+                    len(decompressed_data),
+                    max_size,
+                )
+                return (
+                    jsonify(
+                        {
+                            "status": 413,
+                            "detail": "Decompressed request body too large",
+                        }
+                    ),
+                    413,
+                )
+
             # Remove the content encoding header since we've decompressed
             if "HTTP_CONTENT_ENCODING" in request.environ:
                 del request.environ["HTTP_CONTENT_ENCODING"]
@@ -91,6 +121,8 @@ def handle_compressed_request():
         except Exception as e:
             logger.warning(f"Failed to decompress request body: {e}")
             # Let the request continue uncompressed if decompression fails
+
+    return None
 
 
 logger = logging.getLogger()
@@ -185,11 +217,12 @@ def set_security_headers(response):
     else:
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; "
+            "style-src 'self'; "
             "img-src 'self' data: https:; "
             "font-src 'self' data:; "
-            "connect-src 'self'"
+            "connect-src 'self'; "
+            "frame-ancestors 'none'"
         )
 
     # Prevent MIME type sniffing
@@ -359,6 +392,12 @@ def debug_routes():
     """Debug endpoint to show all registered routes"""
     import os
 
+    if (
+        os.getenv("ENVIRONMENT") == "prod"
+        and os.getenv("DEBUG_ROUTES_ENABLED", "false").lower() != "true"
+    ):
+        abort(404)
+
     routes_info = []
     for rule in app.url_map.iter_rules():
         routes_info.append(
@@ -387,6 +426,9 @@ def swagger_spec():
     import os
 
     from flask import send_from_directory
+
+    if not SETTINGS.get("ENABLE_API_DOCS", True):
+        return jsonify({"status": 404, "detail": "Not Found"}), 404
 
     # Add debugging info
     environment = os.getenv("ENVIRONMENT", "unknown")
@@ -644,6 +686,8 @@ def swagger_ui_static(filename):
 @app.route("/api/docs/", methods=["GET"])
 def api_docs():
     """Serve Swagger UI for API documentation"""
+    if not SETTINGS.get("ENABLE_API_DOCS", True):
+        return "", 404
     return """
     <!DOCTYPE html>
     <html>

@@ -6,6 +6,8 @@ from io import BytesIO
 import tarfile
 from unittest.mock import MagicMock, patch
 
+from conftest import STRONG_GENERIC_PASSWORD
+
 from gefapi import db
 from gefapi.models import User
 
@@ -286,7 +288,7 @@ class TestAPIConsistency:
             "/api/v1/user",
             json={
                 "email": "test@test.com",
-                "password": "pass123",
+                "password": STRONG_GENERIC_PASSWORD,
                 "name": "Test",
                 "role": "USER",
             },
@@ -301,7 +303,9 @@ class TestAPIConsistency:
         response = client.post(
             "/api/v1/user",
             data=(
-                '{"email": "test2@test.com", "password": "pass123", '
+                '{"email": "test2@test.com", "password": "'
+                f"{STRONG_GENERIC_PASSWORD}"
+                '", '
                 '"name": "Test", "role": "USER"}'
             ),
             headers=auth_headers_admin,

@@ -4,6 +4,7 @@ Unit tests for permission utilities and SUPERADMIN role functionality
 
 from unittest.mock import Mock
 
+from gefapi.config import SETTINGS
 from gefapi.utils.permissions import (
     can_access_admin_features,
     can_change_user_password,
@@ -14,6 +15,8 @@ from gefapi.utils.permissions import (
     is_admin_or_higher,
     is_superadmin,
 )
+
+ENVIRONMENT_USER_EMAIL = SETTINGS["API_ENVIRONMENT_USER"]
 
 
 class TestPermissionUtilities:
@@ -31,9 +34,9 @@ class TestPermissionUtilities:
         user = self.create_mock_user("SUPERADMIN")
         assert is_superadmin(user) is True
 
-    def test_is_superadmin_with_gef_email(self):
-        """Test is_superadmin returns True for gef@gef.com email"""
-        user = self.create_mock_user("USER", "gef@gef.com")
+    def test_is_superadmin_with_environment_user_email(self):
+        """Test is_superadmin returns True for the automation account email"""
+        user = self.create_mock_user("USER", ENVIRONMENT_USER_EMAIL)
         assert is_superadmin(user) is True
 
     def test_is_superadmin_with_admin_role(self):
@@ -61,9 +64,9 @@ class TestPermissionUtilities:
         user = self.create_mock_user("USER")
         assert is_admin_or_higher(user) is False
 
-    def test_is_admin_or_higher_with_gef_email(self):
-        """Test is_admin_or_higher returns True for gef@gef.com"""
-        user = self.create_mock_user("USER", "gef@gef.com")
+    def test_is_admin_or_higher_with_environment_user_email(self):
+        """Test is_admin_or_higher returns True for the automation account email"""
+        user = self.create_mock_user("USER", ENVIRONMENT_USER_EMAIL)
         assert is_admin_or_higher(user) is True
 
     def test_can_manage_users_superadmin_only(self):
@@ -71,12 +74,12 @@ class TestPermissionUtilities:
         superadmin = self.create_mock_user("SUPERADMIN")
         admin = self.create_mock_user("ADMIN")
         user = self.create_mock_user("USER")
-        gef_user = self.create_mock_user("USER", "gef@gef.com")
+        env_user = self.create_mock_user("USER", ENVIRONMENT_USER_EMAIL)
 
         assert can_manage_users(superadmin) is True
         assert can_manage_users(admin) is False
         assert can_manage_users(user) is False
-        assert can_manage_users(gef_user) is True
+        assert can_manage_users(env_user) is True
 
     def test_can_change_user_role_superadmin_only(self):
         """Test can_change_user_role returns True only for SUPERADMIN"""
@@ -128,18 +131,18 @@ class TestPermissionUtilities:
         assert can_access_admin_features(admin) is True
         assert can_access_admin_features(user) is False
 
-    def test_all_superadmin_permissions_for_gef_email(self):
-        """Test that gef@gef.com has all superadmin permissions regardless of role"""
-        gef_user = self.create_mock_user("USER", "gef@gef.com")
+    def test_all_superadmin_permissions_for_environment_user_email(self):
+        """Test that the automation user has all superadmin permissions regardless of role"""
+        env_user = self.create_mock_user("USER", ENVIRONMENT_USER_EMAIL)
 
-        assert is_superadmin(gef_user) is True
-        assert is_admin_or_higher(gef_user) is True
-        assert can_manage_users(gef_user) is True
-        assert can_change_user_role(gef_user) is True
-        assert can_delete_user(gef_user) is True
-        assert can_change_user_password(gef_user) is True
-        assert can_update_user_profile(gef_user) is True
-        assert can_access_admin_features(gef_user) is True
+        assert is_superadmin(env_user) is True
+        assert is_admin_or_higher(env_user) is True
+        assert can_manage_users(env_user) is True
+        assert can_change_user_role(env_user) is True
+        assert can_delete_user(env_user) is True
+        assert can_change_user_password(env_user) is True
+        assert can_update_user_profile(env_user) is True
+        assert can_access_admin_features(env_user) is True
 
     def test_permission_hierarchy(self):
         """Test that permission hierarchy is correctly implemented"""

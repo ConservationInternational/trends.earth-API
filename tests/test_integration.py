@@ -31,7 +31,11 @@ class TestAPIIntegration:
 
         # Step 2: User logs in
         login_response = client.post(
-            "/auth", json={"email": sample_user_data["email"], "password": "password"}
+            "/auth",
+            json={
+                "email": sample_user_data["email"],
+                "password": sample_user_data["password"],
+            },
         )
         assert login_response.status_code == 200, (
             f"Login failed: {login_response.get_json()}"
