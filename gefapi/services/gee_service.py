@@ -7,6 +7,7 @@ import os
 import re
 import tempfile
 from typing import Any
+from urllib.parse import urlparse
 
 import rollbar
 
@@ -23,6 +24,26 @@ except ImportError:
 
 class GEEService:
     """Service for managing Google Earth Engine tasks"""
+
+    @staticmethod
+    def _oauth_token_uri() -> str:
+        """Return the configured OAuth token URI with sane defaults."""
+
+        env_settings = SETTINGS.get("environment") or {}
+        token_uri = (
+            env_settings.get("GOOGLE_OAUTH_TOKEN_URI")
+            or os.getenv("GOOGLE_OAUTH_TOKEN_URI")
+            or "https://oauth2.googleapis.com/token"
+        )
+
+        parsed = urlparse(token_uri)
+        if not parsed.scheme or not parsed.netloc:
+            logger.warning(
+                "Invalid GOOGLE_OAUTH_TOKEN_URI '%s'; falling back to default",
+                token_uri,
+            )
+            return "https://oauth2.googleapis.com/token"
+        return token_uri
 
     @staticmethod
     def _initialize_ee(user=None) -> bool:
@@ -184,7 +205,7 @@ class GEEService:
             credentials = Credentials(
                 token=access_token,
                 refresh_token=refresh_token,
-                token_uri="https://oauth2.googleapis.com/token",
+                token_uri=GEEService._oauth_token_uri(),
                 client_id=os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
                 client_secret=os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
                 scopes=["https://www.googleapis.com/auth/earthengine"],

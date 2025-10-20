@@ -1555,12 +1555,12 @@ def get_execution_logs(execution):
 @endpoints.route(
     "/execution/<execution>/download-results", strict_slashes=False, methods=["GET"]
 )
+@jwt_required()
 def get_download_results(execution):
-    """
-    Download execution results as a JSON file.
+    """Download execution results as a JSON file.
 
-    **Authentication**: Not required (public endpoint)
-    **Access**: Anyone can download execution results for monitoring purposes
+    **Authentication**: JWT token required
+    **Access**: Execution owners, admins, or superadmins
     **Format**: Returns results as downloadable JSON file
 
     **Path Parameters**:
@@ -1571,42 +1571,6 @@ def get_download_results(execution):
     - **Content-Disposition**: `attachment; filename=results.json`
     - **Body**: JSON-formatted execution results
 
-    **Results Content**:
-    ```json
-    {
-      "execution_id": "abc123-def456",
-      "script_id": "vegetation-analysis",
-      "status": "SUCCESS",
-      "results": {
-        "output_files": [
-          "vegetation_change_2020_2023.tif",
-          "analysis_summary.json",
-          "statistics.csv"
-        ],
-        "analysis_summary": {
-          "total_area_analyzed": "50000 km²",
-          "vegetation_loss": "5.2%",
-          "vegetation_gain": "2.1%",
-          "net_change": "-3.1%"
-        },
-        "processing_time": "45 minutes",
-        "completed_at": "2025-01-15T11:45:00Z"
-      },
-      "metadata": {
-        "parameters": {
-          "region": "africa",
-          "year_start": 2020,
-          "year_end": 2023
-        },
-        "execution_time": "2700 seconds",
-        "resource_usage": {
-          "peak_memory": "4.2 GB",
-          "cpu_time": "120 minutes"
-        }
-      }
-    }
-    ```
-
     **Use Cases**:
     - Download analysis results for offline processing
     - Archive execution outputs for record keeping
@@ -1614,18 +1578,23 @@ def get_download_results(execution):
     - Integrate with external reporting systems
 
     **Error Responses**:
-    - `404 Not Found`: Execution does not exist
+    - `404 Not Found`: Execution does not exist or user lacks access
     - `500 Internal Server Error`: Failed to retrieve results
     """
+
     logger.info(f"[ROUTER]: Download execution results of execution {execution} ")
     try:
-        execution = ExecutionService.get_execution(execution)
-    except Exception as e:
-        logger.error("[ROUTER]: " + str(e))
+        execution_obj = ExecutionService.get_execution(execution, current_user)
+    except ExecutionNotFound as exc:
+        logger.error("[ROUTER]: " + exc.message)
+        return error(status=404, detail=exc.message)
+    except Exception as exc:
+        logger.error("[ROUTER]: " + str(exc))
         return error(status=500, detail="Generic Error")
 
+    results_payload = execution_obj.results or {}
     return Response(
-        json.dumps(execution.results),
+        json.dumps(results_payload),
         mimetype="text/plain",
         headers={"Content-Disposition": "attachment;filename=results.json"},
     )
