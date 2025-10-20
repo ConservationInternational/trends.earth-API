@@ -4,6 +4,7 @@ Test cases for refresh token functionality
 
 from datetime import datetime, timedelta
 
+from conftest import USER_TEST_PASSWORD
 import pytest
 
 from gefapi import db
@@ -112,7 +113,8 @@ class TestRefreshTokenAPI:
     ):
         """Test that login returns both access and refresh tokens"""
         response = client_no_rate_limiting.post(
-            "/auth", json={"email": "user@test.com", "password": "user123"}
+            "/auth",
+            json={"email": "user@test.com", "password": USER_TEST_PASSWORD},
         )
 
         assert response.status_code == 200
@@ -129,7 +131,8 @@ class TestRefreshTokenAPI:
         """Test the refresh token endpoint"""
         # First login to get refresh token
         login_response = client_no_rate_limiting.post(
-            "/auth", json={"email": "user@test.com", "password": "user123"}
+            "/auth",
+            json={"email": "user@test.com", "password": USER_TEST_PASSWORD},
         )
 
         refresh_token = login_response.get_json()["refresh_token"]
@@ -155,7 +158,8 @@ class TestRefreshTokenAPI:
         """Test the logout endpoint"""
         # Login first to get refresh token
         login_response = client_no_rate_limiting.post(
-            "/auth", json={"email": "user@test.com", "password": "user123"}
+            "/auth",
+            json={"email": "user@test.com", "password": USER_TEST_PASSWORD},
         )
 
         refresh_token = login_response.get_json()["refresh_token"]

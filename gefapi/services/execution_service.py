@@ -195,6 +195,16 @@ class ExecutionService:
         environment = SETTINGS.get("environment", {}).copy()
         environment["EXECUTION_ID"] = execution_id
 
+        # Maintain backward compatibility for trends.earth-Environment by
+        # exposing legacy variable names alongside the new defaults.
+        environment_user = environment.get("API_ENVIRONMENT_USER")
+        if environment_user and "API_USER" not in environment:
+            environment["API_USER"] = environment_user
+
+        environment_password = environment.get("API_ENVIRONMENT_USER_PASSWORD")
+        if environment_password and "API_PASSWORD" not in environment:
+            environment["API_PASSWORD"] = environment_password
+
         # Add GEE authentication based on user's credential type
         if user and user.has_gee_credentials():
             if user.gee_credentials_type == "oauth":

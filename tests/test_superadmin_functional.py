@@ -4,13 +4,21 @@ Functional tests for SUPERADMIN role and user management operations
 
 import json
 
+from conftest import NEW_STRONG_PASSWORD
 import pytest
 
+from gefapi.config import SETTINGS
 from gefapi.models import User
+
+ENVIRONMENT_USER_EMAIL = SETTINGS["API_ENVIRONMENT_USER"]
 
 
 @pytest.mark.usefixtures(
-    "client", "superadmin_user", "admin_user", "regular_user", "gef_user"
+    "client",
+    "superadmin_user",
+    "admin_user",
+    "regular_user",
+    "environment_user",
 )
 class TestSuperAdminUserManagement:
     """Test SUPERADMIN exclusive user management operations"""
@@ -194,7 +202,7 @@ class TestSuperAdminUserManagement:
         with app.app_context():
             # Re-query user to ensure it's attached to current session
             user = User.query.filter_by(email=regular_user.email).first()
-            password_data = {"new_password": "newpassword123"}
+            password_data = {"new_password": NEW_STRONG_PASSWORD}
             response = client.patch(
                 f"/api/v1/user/{user.id}/change-password",
                 headers=auth_headers_superadmin,
@@ -210,7 +218,7 @@ class TestSuperAdminUserManagement:
         with app.app_context():
             # Re-query user to ensure it's attached to current session
             user = User.query.filter_by(email=regular_user.email).first()
-            password_data = {"new_password": "newpassword123"}
+            password_data = {"new_password": NEW_STRONG_PASSWORD}
             response = client.patch(
                 f"/api/v1/user/{user.id}/change-password",
                 headers=auth_headers_admin,
@@ -220,25 +228,25 @@ class TestSuperAdminUserManagement:
             assert response.status_code == 403
             assert "Forbidden" in response.json["detail"]
 
-    def test_gef_user_has_superadmin_privileges(
-        self, client, auth_headers_gef, sample_user_data
+    def test_environment_user_has_superadmin_privileges(
+        self, client, auth_headers_environment_user, sample_user_data
     ):
-        """Test that gef@gef.com has superadmin privileges regardless of role"""
+        """Test that the automation user has superadmin privileges regardless of role"""
         # Test user creation with admin role
         sample_user_data["role"] = "ADMIN"
         response = client.post(
             "/api/v1/user",
-            headers=auth_headers_gef,
+            headers=auth_headers_environment_user,
             data=json.dumps(sample_user_data),
             content_type="application/json",
         )
         assert response.status_code == 200
         assert response.json["data"]["role"] == "ADMIN"
 
-    def test_cannot_delete_gef_user(self, client, auth_headers_superadmin):
-        """Test that the special gef@gef.com user cannot be deleted"""
+    def test_cannot_delete_environment_user(self, client, auth_headers_superadmin):
+        """Test that the automation user cannot be deleted"""
         response = client.delete(
-            "/api/v1/user/gef@gef.com", headers=auth_headers_superadmin
+            f"/api/v1/user/{ENVIRONMENT_USER_EMAIL}", headers=auth_headers_superadmin
         )
         assert response.status_code == 403
         assert "Forbidden" in response.json["detail"]

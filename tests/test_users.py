@@ -1,5 +1,6 @@
 import json
 
+from conftest import STRONG_GENERIC_PASSWORD
 import pytest
 
 
@@ -111,7 +112,7 @@ class TestSuperAdminUserTests:
             unique_id = str(uuid.uuid4())[:8]
             user_data = {
                 "email": f"test-{role.lower()}-{unique_id}@example.com",
-                "password": "password123",
+                "password": STRONG_GENERIC_PASSWORD,
                 "name": f"Test {role} User",
                 "country": "Test Country",
                 "institution": "Test Institution",
@@ -142,7 +143,7 @@ class TestSuperAdminUserTests:
             unique_id = str(uuid.uuid4())[:8]
             user_data = {
                 "email": f"test-blocked-{role.lower()}-{unique_id}@example.com",
-                "password": "password123",
+                "password": STRONG_GENERIC_PASSWORD,
                 "name": f"Test {role} User",
                 "country": "Test Country",
                 "institution": "Test Institution",
@@ -172,7 +173,7 @@ class TestSuperAdminUserTests:
             unique_id = str(uuid.uuid4())[:8]
             user_data = {
                 "email": f"test-user-blocked-{role.lower()}-{unique_id}@example.com",
-                "password": "password123",
+                "password": STRONG_GENERIC_PASSWORD,
                 "name": f"Test {role} User",
                 "country": "Test Country",
                 "institution": "Test Institution",

@@ -303,7 +303,7 @@ class TestStatsService:
         # Test specific time calculation
         last_day_filter = StatsService._get_time_filter("last_day")
         expected_last_day = now - timedelta(days=1)
-        time_diff = abs((last_day_filter - expected_last_day).total_seconds())
+        time_diff = abs((last_day_filter - expected_last_day).total_seconds())  # type: ignore[operator]
         assert time_diff < 5  # Within 5 seconds
 
     def test_normalize_task_name(self):
@@ -330,7 +330,7 @@ class TestStatsService:
 
         # Test edge cases
         assert StatsService._normalize_task_name("") == "unknown"
-        assert StatsService._normalize_task_name(None) == "unknown"
+        assert StatsService._normalize_task_name(None) == "unknown"  # type: ignore[arg-type]
 
     def test_extract_version(self):
         """Test version extraction from script slugs."""
@@ -342,7 +342,7 @@ class TestStatsService:
         # Test no version
         assert StatsService._extract_version("productivity") == "unknown"
         assert StatsService._extract_version("") == "unknown"
-        assert StatsService._extract_version(None) == "unknown"
+        assert StatsService._extract_version(None) == "unknown"  # type: ignore[arg-type]
 
         # Test version with hyphens
         assert StatsService._extract_version("task-v2-1-0") == "2"
@@ -480,13 +480,15 @@ class TestStatsServiceIntegration:
             return {"data": "from_cache"}
 
         # Test performance difference
-        start_time = time.time()
-        slow_db_query()
-        db_time = time.time() - start_time
+        start_time = time.perf_counter()
+        for _ in range(5):
+            slow_db_query()
+        db_time = time.perf_counter() - start_time
 
-        start_time = time.time()
-        fast_cache_retrieval()
-        cache_time = time.time() - start_time
+        start_time = time.perf_counter()
+        for _ in range(5):
+            fast_cache_retrieval()
+        cache_time = time.perf_counter() - start_time
 
         # Verify cache is significantly faster
         assert cache_time < db_time / 10  # At least 10x faster

@@ -891,7 +891,7 @@ GET /api/v1/execution?include=user_email
 - `per_page` - Items per page (only used if pagination is requested, defaults to 20, max: 100)
 
 **Access Control:**
-- **Admin only**: Only administrators and the special `gef@gef.com` user can access this endpoint
+- **Admin only**: Only administrators and the special automation user can access this endpoint
 
 **Pagination:**
 By default, all users are returned without pagination. To enable pagination, include either `page` or `per_page` parameters in your request. When pagination is enabled, the response will include `page`, `per_page`, and `total` fields.

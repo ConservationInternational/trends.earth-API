@@ -14,6 +14,7 @@ from gefapi.errors import (
     ExecutionNotFound,
     InvalidFile,
     NotAllowed,
+    PasswordValidationError,
     ScriptDuplicated,
     ScriptNotFound,
     ScriptStateNotValid,
@@ -31,6 +32,7 @@ from gefapi.utils.permissions import (
     can_delete_user,
     can_update_user_profile,
     is_admin_or_higher,
+    is_protected_admin_email,
 )
 from gefapi.utils.rate_limiting import (
     RateLimitConfig,
@@ -1553,12 +1555,12 @@ def get_execution_logs(execution):
 @endpoints.route(
     "/execution/<execution>/download-results", strict_slashes=False, methods=["GET"]
 )
+@jwt_required()
 def get_download_results(execution):
-    """
-    Download execution results as a JSON file.
+    """Download execution results as a JSON file.
 
-    **Authentication**: Not required (public endpoint)
-    **Access**: Anyone can download execution results for monitoring purposes
+    **Authentication**: JWT token required
+    **Access**: Execution owners, admins, or superadmins
     **Format**: Returns results as downloadable JSON file
 
     **Path Parameters**:
@@ -1569,42 +1571,6 @@ def get_download_results(execution):
     - **Content-Disposition**: `attachment; filename=results.json`
     - **Body**: JSON-formatted execution results
 
-    **Results Content**:
-    ```json
-    {
-      "execution_id": "abc123-def456",
-      "script_id": "vegetation-analysis",
-      "status": "SUCCESS",
-      "results": {
-        "output_files": [
-          "vegetation_change_2020_2023.tif",
-          "analysis_summary.json",
-          "statistics.csv"
-        ],
-        "analysis_summary": {
-          "total_area_analyzed": "50000 km²",
-          "vegetation_loss": "5.2%",
-          "vegetation_gain": "2.1%",
-          "net_change": "-3.1%"
-        },
-        "processing_time": "45 minutes",
-        "completed_at": "2025-01-15T11:45:00Z"
-      },
-      "metadata": {
-        "parameters": {
-          "region": "africa",
-          "year_start": 2020,
-          "year_end": 2023
-        },
-        "execution_time": "2700 seconds",
-        "resource_usage": {
-          "peak_memory": "4.2 GB",
-          "cpu_time": "120 minutes"
-        }
-      }
-    }
-    ```
-
     **Use Cases**:
     - Download analysis results for offline processing
     - Archive execution outputs for record keeping
@@ -1612,18 +1578,23 @@ def get_download_results(execution):
     - Integrate with external reporting systems
 
     **Error Responses**:
-    - `404 Not Found`: Execution does not exist
+    - `404 Not Found`: Execution does not exist or user lacks access
     - `500 Internal Server Error`: Failed to retrieve results
     """
+
     logger.info(f"[ROUTER]: Download execution results of execution {execution} ")
     try:
-        execution = ExecutionService.get_execution(execution)
-    except Exception as e:
-        logger.error("[ROUTER]: " + str(e))
+        execution_obj = ExecutionService.get_execution(execution, current_user)
+    except ExecutionNotFound as exc:
+        logger.error("[ROUTER]: " + exc.message)
+        return error(status=404, detail=exc.message)
+    except Exception as exc:
+        logger.error("[ROUTER]: " + str(exc))
         return error(status=500, detail="Generic Error")
 
+    results_payload = execution_obj.results or {}
     return Response(
-        json.dumps(execution.results),
+        json.dumps(results_payload),
         mimetype="text/plain",
         headers={"Content-Disposition": "attachment;filename=results.json"},
     )
@@ -1863,6 +1834,9 @@ def create_user():
     except UserDuplicated as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=400, detail=e.message)
+    except PasswordValidationError as e:
+        logger.error("[ROUTER]: " + e.message)
+        return error(status=422, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
@@ -2213,6 +2187,9 @@ def update_profile():
     except UserNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
+    except PasswordValidationError as e:
+        logger.error("[ROUTER]: " + e.message)
+        return error(status=422, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
@@ -2295,6 +2272,9 @@ def change_password():
     except AuthError as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=401, detail=e.message)
+    except PasswordValidationError as e:
+        logger.error("[ROUTER]: " + e.message)
+        return error(status=422, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
@@ -2550,71 +2530,72 @@ def update_user(user):
 @jwt_required()
 def delete_user(user):
     """
-    Delete another user's account and all associated data (admin only).
+      Delete another user's account and all associated data (admin only).
 
-    **Authentication**: JWT token required
-    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
-    **Warning**: This action is irreversible and deletes all user data
+      **Authentication**: JWT token required
+      **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
+      **Warning**: This action is irreversible and deletes all user data
 
-    **Path Parameters**:
-    - `user`: User identifier (email address or numeric ID) to delete
+      **Path Parameters**:
+      - `user`: User identifier (email address or numeric ID) to delete
 
-    **Protection**: Cannot delete the system admin account ("gef@gef.com")
+    **Protection**: Cannot delete protected admin accounts configured via
+    API_ENVIRONMENT_USER
 
-    **Deletion Process**:
-    - Cancels all running executions for the target user
-    - Deletes all execution history and logs
-    - Removes user-created scripts (if user is owner)
-    - Deletes user profile and authentication data
-    - Revokes all active sessions and tokens
-    - Removes user from any Google Groups (if enabled)
-    - Transfers or deletes shared resources
+      **Deletion Process**:
+      - Cancels all running executions for the target user
+      - Deletes all execution history and logs
+      - Removes user-created scripts (if user is owner)
+      - Deletes user profile and authentication data
+      - Revokes all active sessions and tokens
+      - Removes user from any Google Groups (if enabled)
+      - Transfers or deletes shared resources
 
-    **Success Response Schema**:
-    ```json
-    {
-      "data": {
-        "id": "user-456",
-        "email": "user@example.com",
-        "name": "John Doe",
-        "role": "USER",
-        "created_at": "2025-01-15T10:30:00Z",
-        "updated_at": "2025-01-15T14:30:00Z",
-        "deleted_at": "2025-01-15T14:30:00Z",
-        "deleted_by": "admin-123",
-        "status": "DELETED"
+      **Success Response Schema**:
+      ```json
+      {
+        "data": {
+          "id": "user-456",
+          "email": "user@example.com",
+          "name": "John Doe",
+          "role": "USER",
+          "created_at": "2025-01-15T10:30:00Z",
+          "updated_at": "2025-01-15T14:30:00Z",
+          "deleted_at": "2025-01-15T14:30:00Z",
+          "deleted_by": "admin-123",
+          "status": "DELETED"
+        }
       }
-    }
-    ```
+      ```
 
-    **Administrative Features**:
-    - Action is logged with admin user who performed deletion
-    - All user data is permanently removed
-    - User's scripts and executions are cleaned up
-    - Email address becomes available for re-registration
+      **Administrative Features**:
+      - Action is logged with admin user who performed deletion
+      - All user data is permanently removed
+      - User's scripts and executions are cleaned up
+      - Email address becomes available for re-registration
 
-    **Data Cleanup**:
-    - User profile information permanently deleted
-    - Execution history and logs removed
-    - Script ownership transferred or scripts deleted
-    - Session tokens invalidated immediately
-    - Audit logs maintain record of deletion action
+      **Data Cleanup**:
+      - User profile information permanently deleted
+      - Execution history and logs removed
+      - Script ownership transferred or scripts deleted
+      - Session tokens invalidated immediately
+      - Audit logs maintain record of deletion action
 
-    **Use Cases**:
-    - Account cleanup and user management
-    - Compliance with data retention policies
-    - Removing inactive or problematic accounts
-    - GDPR "right to erasure" compliance
+      **Use Cases**:
+      - Account cleanup and user management
+      - Compliance with data retention policies
+      - Removing inactive or problematic accounts
+      - GDPR "right to erasure" compliance
 
-    **Error Responses**:
-    - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: Admin access required or cannot delete system admin
-    - `404 Not Found`: User does not exist
-    - `500 Internal Server Error`: Account deletion failed
+      **Error Responses**:
+      - `401 Unauthorized`: JWT token required
+      - `403 Forbidden`: Admin access required or cannot delete system admin
+      - `404 Not Found`: User does not exist
+      - `500 Internal Server Error`: Account deletion failed
     """
     logger.info("[ROUTER]: Deleting user" + user)
     identity = current_user
-    if user == "gef@gef.com":
+    if is_protected_admin_email(user):
         return error(status=403, detail="Forbidden")
     if not can_delete_user(identity):
         return error(status=403, detail="Forbidden")
@@ -2721,6 +2702,9 @@ def admin_change_password(user):
     except UserNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
+    except PasswordValidationError as e:
+        logger.error("[ROUTER]: " + e.message)
+        return error(status=422, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")

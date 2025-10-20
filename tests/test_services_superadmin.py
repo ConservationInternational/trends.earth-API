@@ -4,6 +4,7 @@ Tests for service layer with SUPERADMIN permissions
 
 from unittest.mock import Mock
 
+from conftest import SUPERADMIN_TEST_PASSWORD
 import pytest
 
 from gefapi import db
@@ -25,7 +26,7 @@ class TestUserServiceSuperAdmin:
             unique_email = f"service-superadmin-{uuid.uuid4().hex[:8]}@example.com"
             user_data = {
                 "email": unique_email,
-                "password": "password123",
+                "password": SUPERADMIN_TEST_PASSWORD,
                 "name": "Service SuperAdmin",
                 "country": "Test Country",
                 "institution": "Test Institution",
@@ -47,7 +48,7 @@ class TestUserServiceSuperAdmin:
             unique_email = f"service-invalid-role-{uuid.uuid4().hex[:8]}@example.com"
             user_data = {
                 "email": unique_email,
-                "password": "password123",
+                "password": SUPERADMIN_TEST_PASSWORD,
                 "name": "Service Invalid Role",
                 "country": "Test Country",
                 "institution": "Test Institution",
@@ -86,7 +87,7 @@ class TestUserServiceSuperAdmin:
             # Create test users
             superadmin_data = {
                 "email": unique_email,
-                "password": "password123",
+                "password": SUPERADMIN_TEST_PASSWORD,
                 "name": "Filter SuperAdmin",
                 "country": "Test Country",
                 "institution": "Test Institution",

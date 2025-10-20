@@ -133,8 +133,8 @@ setup_steps:
         sed -i 's/your_secret_key_here/dev-secret-key-change-in-production/' develop.env
         sed -i 's|postgresql://user:password@host:5432/database|postgresql://trendsearth_develop:postgres@postgres:5432/trendsearth_develop_db|' develop.env
         sed -i 's|redis://redis:6379/0|redis://redis:6379/0|' develop.env
-        sed -i 's/your_api_user/dev_user/' develop.env
-        sed -i 's/your_api_password/dev_password/' develop.env
+        sed -i 's/your_api_automation_user/dev_user/' develop.env
+        sed -i 's/your_api_automation_password/dev_password/' develop.env
         sed -i 's|your_api_url|http://localhost:3000|' develop.env
         
         echo "✅ Created develop.env"
@@ -152,6 +152,8 @@ setup_steps:
         sed -i 's|postgresql://user:password@host:5432/database|postgresql://trendsearth_develop:postgres@postgres:5432/gef_test|' test.env
         sed -i 's|redis://redis:6379/0|redis://redis:6379/2|' test.env
         sed -i 's|RATE_LIMIT_STORAGE_URI=redis://redis:6379/0|RATE_LIMIT_STORAGE_URI=memory://|' test.env
+        sed -i 's/your_api_automation_user/test_user/' test.env
+        sed -i 's/your_api_automation_password/test_password/' test.env
         
         echo "✅ Created test.env"
       fi

@@ -5,6 +5,11 @@ Tests the complete flow from user creation to permission enforcement
 
 import json
 
+from conftest import (
+    NEW_STRONG_PASSWORD,
+    STRONG_GENERIC_PASSWORD,
+    SUPERADMIN_TEST_PASSWORD,
+)
 import pytest
 
 from gefapi.models import User
@@ -22,7 +27,7 @@ class TestSuperAdminIntegration:
         # Step 1: Create a regular user as SUPERADMIN
         user_data = {
             "email": "integration-test@example.com",
-            "password": "password123",
+            "password": STRONG_GENERIC_PASSWORD,
             "name": "Integration Test User",
             "country": "Test Country",
             "institution": "Test Institution",
@@ -67,7 +72,7 @@ class TestSuperAdminIntegration:
         assert profile_response.json["data"]["country"] == "Updated Country"
 
         # Step 4: Change user password
-        password_data = {"new_password": "newpassword456"}
+        password_data = {"new_password": NEW_STRONG_PASSWORD}
         password_response = client.patch(
             f"/api/v1/user/{created_user_id}/change-password",
             headers=auth_headers_superadmin,
@@ -104,7 +109,7 @@ class TestSuperAdminIntegration:
         # Create a test user to work with
         user_data = {
             "email": "hierarchy-test@example.com",
-            "password": "password123",
+            "password": STRONG_GENERIC_PASSWORD,
             "name": "Hierarchy Test User",
             "country": "Test Country",
             "institution": "Test Institution",
@@ -159,7 +164,7 @@ class TestSuperAdminIntegration:
             assert user_update.status_code == 403
 
             # Test password changes (only SUPERADMIN should succeed)
-            password_data = {"new_password": "testpassword"}
+            password_data = {"new_password": NEW_STRONG_PASSWORD}
 
             superadmin_password = client.patch(
                 f"/api/v1/user/{test_user_id}/change-password",
@@ -227,22 +232,24 @@ class TestSuperAdminIntegration:
                 f"/api/v1/user/{test_user_id}", headers=auth_headers_superadmin
             )
 
-    def test_gef_user_special_privileges(self, client, auth_headers_gef):
-        """Test that gef@gef.com has superadmin privileges regardless of role"""
+    def test_environment_user_special_privileges(
+        self, client, auth_headers_environment_user
+    ):
+        """Test that the automation user has superadmin privileges regardless of role"""
 
-        # Create a test user using GEF account
+        # Create a test user using the automation account
         user_data = {
-            "email": "gef-privilege-test@example.com",
-            "password": "password123",
-            "name": "GEF Privilege Test",
+            "email": "automation-privilege-test@example.com",
+            "password": STRONG_GENERIC_PASSWORD,
+            "name": "Automation Privilege Test",
             "country": "Test Country",
             "institution": "Test Institution",
-            "role": "ADMIN",  # GEF user should be able to create admin
+            "role": "ADMIN",  # Automation user should be able to create admin
         }
 
         create_response = client.post(
             "/api/v1/user",
-            headers=auth_headers_gef,
+            headers=auth_headers_environment_user,
             data=json.dumps(user_data),
             content_type="application/json",
         )
@@ -251,41 +258,44 @@ class TestSuperAdminIntegration:
         assert create_response.json["data"]["role"] == "ADMIN"
 
         try:
-            # GEF user should be able to update roles
+            # Automation user should be able to update roles
             role_update = {"role": "SUPERADMIN"}
             role_response = client.patch(
                 f"/api/v1/user/{test_user_id}",
-                headers=auth_headers_gef,
+                headers=auth_headers_environment_user,
                 data=json.dumps(role_update),
                 content_type="application/json",
             )
             assert role_response.status_code == 200
             assert role_response.json["data"]["role"] == "SUPERADMIN"
 
-            # GEF user should be able to change passwords
-            password_data = {"new_password": "gefchangedpassword"}
+            # Automation user should be able to change passwords
+            password_data = {"new_password": SUPERADMIN_TEST_PASSWORD}
             password_response = client.patch(
                 f"/api/v1/user/{test_user_id}/change-password",
-                headers=auth_headers_gef,
+                headers=auth_headers_environment_user,
                 data=json.dumps(password_data),
                 content_type="application/json",
             )
             assert password_response.status_code == 200
 
-            # GEF user should be able to update profiles
-            profile_data = {"name": "Updated by GEF"}
+            # Automation user should be able to update profiles
+            profile_data = {"name": "Updated by Automation User"}
             profile_response = client.patch(
                 f"/api/v1/user/{test_user_id}",
-                headers=auth_headers_gef,
+                headers=auth_headers_environment_user,
                 data=json.dumps(profile_data),
                 content_type="application/json",
             )
             assert profile_response.status_code == 200
-            assert profile_response.json["data"]["name"] == "Updated by GEF"
+            assert profile_response.json["data"]["name"] == "Updated by Automation User"
 
         finally:
             # Clean up
-            client.delete(f"/api/v1/user/{test_user_id}", headers=auth_headers_gef)
+            client.delete(
+                f"/api/v1/user/{test_user_id}",
+                headers=auth_headers_environment_user,
+            )
 
     def test_role_creation_restrictions(
         self,
@@ -335,7 +345,7 @@ class TestSuperAdminIntegration:
 
                     user_data = {
                         "email": f"role-test-{creator_name}-creates-{target_role.lower()}@example.com",
-                        "password": "password123",
+                        "password": STRONG_GENERIC_PASSWORD,
                         "name": f"{creator_role} creates {target_role}",
                         "country": "Test Country",
                         "institution": "Test Institution",
@@ -379,7 +389,7 @@ class TestSuperAdminIntegration:
             # Create a user
             user_data = {
                 "email": "consistency-test@example.com",
-                "password": "password123",
+                "password": STRONG_GENERIC_PASSWORD,
                 "name": "Consistency Test User",
                 "country": "Test Country",
                 "institution": "Test Institution",

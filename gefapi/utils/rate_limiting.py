@@ -23,15 +23,10 @@ def is_internal_network_request():
     try:
         remote_ip = get_remote_address()
 
-        # Get network ranges from environment variables with defaults
+        # Get network ranges from configuration with optional overrides
         import os
 
-        # Default Docker network ranges
-        internal_networks = [
-            "10.0.0.0/8",  # Docker default networks
-            "172.16.0.0/12",  # Docker bridge networks
-            "192.168.0.0/16",  # Private networks
-        ]
+        internal_networks = list(SETTINGS.get("INTERNAL_NETWORKS", []))
 
         # Add execution network subnets from environment
         execution_subnet = os.getenv("EXECUTION_SUBNET")
@@ -47,7 +42,7 @@ def is_internal_network_request():
         additional_networks = os.getenv("INTERNAL_NETWORKS")
         if additional_networks:
             internal_networks.extend(
-                [net.strip() for net in additional_networks.split(",")]
+                [net.strip() for net in additional_networks.split(",") if net.strip()]
             )
 
         import ipaddress
@@ -102,8 +97,7 @@ def get_user_id_or_ip():
         verify_jwt_in_request(optional=True)
         current_user = get_current_user()
         if current_user:
-            # Exempt admin and superadmin users (including gef@gef.com)
-            # from rate limiting
+            # Exempt admin and superadmin users from rate limiting
             if is_admin_or_higher(current_user):
                 return None  # None indicates no rate limiting
             return f"user:{current_user.id}"
@@ -123,7 +117,7 @@ def get_rate_limit_key_for_auth():
         return None  # Exempt from rate limiting
 
     # Check if this is an authenticated admin/superadmin user
-    # (including gef@gef.com) trying to get a new token
+    # trying to get a new token
     try:
         verify_jwt_in_request(optional=True)
         current_user = get_current_user()
@@ -146,7 +140,7 @@ def get_rate_limit_key_for_auth():
 def get_admin_aware_key():
     """
     Key function that exempts admin and superadmin users
-    (including gef@gef.com) from rate limiting, as well as internal network requests.
+    from rate limiting, as well as internal network requests.
     Used for general API endpoints.
     """
     # Check if this is from an internal network (execution containers)
@@ -157,8 +151,7 @@ def get_admin_aware_key():
         verify_jwt_in_request(optional=True)
         current_user = get_current_user()
         if current_user:
-            # Exempt admin and superadmin users (including gef@gef.com)
-            # from rate limiting
+            # Exempt admin and superadmin users from rate limiting
             if is_admin_or_higher(current_user):
                 return None  # None indicates no rate limiting
             return f"user:{current_user.id}"

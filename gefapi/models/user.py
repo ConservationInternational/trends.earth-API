@@ -2,6 +2,7 @@
 
 import base64
 import datetime
+from functools import lru_cache
 import json
 import logging
 import os
@@ -179,12 +180,40 @@ class User(db.Model):
         return create_access_token(identity=self.id)
 
     @staticmethod
+    @lru_cache(maxsize=1)
     def _get_encryption_key() -> bytes:
         """Get encryption key for GEE credentials"""
-        key = os.getenv("GEE_ENCRYPTION_KEY") or os.getenv(
-            "SECRET_KEY", "default-key-change-in-production"
-        )
-        # Ensure key is 32 bytes for Fernet
+
+        key = os.getenv("GEE_ENCRYPTION_KEY")
+        if key:
+            source = "GEE_ENCRYPTION_KEY"
+        else:
+            key = os.getenv("SECRET_KEY")
+            source = "SECRET_KEY" if key else None
+
+        if not key:
+            logger.error(
+                "Encryption key for GEE credentials is not configured. Set "
+                "GEE_ENCRYPTION_KEY (recommended) or SECRET_KEY."
+            )
+            raise RuntimeError("Missing encryption key for GEE credentials")
+
+        if key == "default-key-change-in-production":
+            logger.error(
+                "Insecure default encryption key detected for GEE credentials. "
+                "Configure a strong, secret value for %s.",
+                source,
+            )
+            raise RuntimeError("Insecure encryption key configured for GEE credentials")
+
+        if source == "SECRET_KEY":
+            logger.warning(
+                "Falling back to SECRET_KEY for GEE credential encryption. Set "
+                "GEE_ENCRYPTION_KEY to avoid using the application secret."
+            )
+
+        # Ensure key is 32 bytes for Fernet while preserving compatibility with
+        # previously stored credentials.
         key_bytes = key.encode("utf-8")[:32].ljust(32, b"0")
         return base64.urlsafe_b64encode(key_bytes)
 

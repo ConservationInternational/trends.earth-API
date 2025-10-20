@@ -4,6 +4,7 @@ Integration tests for User model with SUPERADMIN role functionality
 
 import uuid
 
+from conftest import STRONG_GENERIC_PASSWORD
 import pytest
 
 from gefapi import db
@@ -27,7 +28,7 @@ class TestUserModelSuperAdmin:
 
             user = User(
                 email=email,
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Test SuperAdmin",
                 country="Test Country",
                 institution="Test Institution",
@@ -52,7 +53,7 @@ class TestUserModelSuperAdmin:
             # Valid role should be accepted
             user = User(
                 email=generate_unique_email("test-valid-role"),
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Test User",
                 country="Test Country",
                 institution="Test Institution",
@@ -63,7 +64,7 @@ class TestUserModelSuperAdmin:
             # Invalid role should default to USER
             user_invalid = User(
                 email=generate_unique_email("test-invalid-role"),
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Test User",
                 country="Test Country",
                 institution="Test Institution",
@@ -76,7 +77,7 @@ class TestUserModelSuperAdmin:
         with app.app_context():
             user = User(
                 email=generate_unique_email("test-default-role"),
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Test User",
                 country="Test Country",
                 institution="Test Institution",
@@ -88,7 +89,7 @@ class TestUserModelSuperAdmin:
         with app.app_context():
             user = User(
                 email=generate_unique_email("test-serialization"),
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Test User",
                 country="Test Country",
                 institution="Test Institution",
@@ -110,7 +111,7 @@ class TestUserModelSuperAdmin:
         with app.app_context():
             user = User(
                 email=generate_unique_email("test-exclude"),
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Test User",
                 country="Test Country",
                 institution="Test Institution",
@@ -141,7 +142,7 @@ class TestUserModelSuperAdmin:
         with app.app_context():
             user = User(
                 email=generate_unique_email("test-password"),
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Test User",
                 country="Test Country",
                 institution="Test Institution",
@@ -151,10 +152,10 @@ class TestUserModelSuperAdmin:
             db.session.commit()
 
             # Verify password is hashed
-            assert user.password != "password123"
+            assert user.password != STRONG_GENERIC_PASSWORD
 
             # Verify password checking works
-            assert user.check_password("password123") is True
+            assert user.check_password(STRONG_GENERIC_PASSWORD) is True
             assert user.check_password("wrongpassword") is False
 
             # Clean up
@@ -166,7 +167,7 @@ class TestUserModelSuperAdmin:
         with app.app_context():
             user = User(
                 email=generate_unique_email("test-token"),
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Test User",
                 country="Test Country",
                 institution="Test Institution",
@@ -193,7 +194,7 @@ class TestUserModelSuperAdmin:
             # Create first user
             user1 = User(
                 email=email,
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Test User 1",
                 country="Test Country",
                 institution="Test Institution",
@@ -205,7 +206,7 @@ class TestUserModelSuperAdmin:
             # Try to create second user with same email
             user2 = User(
                 email=email,
-                password="password456",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Test User 2",
                 country="Test Country",
                 institution="Test Institution",
@@ -233,7 +234,7 @@ class TestUserModelSuperAdmin:
             # Create test users with different roles
             superadmin = User(
                 email=superadmin_email,
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Query SuperAdmin",
                 country="Test Country",
                 institution="Test Institution",
@@ -241,7 +242,7 @@ class TestUserModelSuperAdmin:
             )
             admin = User(
                 email=admin_email,
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Query Admin",
                 country="Test Country",
                 institution="Test Institution",
@@ -249,7 +250,7 @@ class TestUserModelSuperAdmin:
             )
             user = User(
                 email=user_email,
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Query User",
                 country="Test Country",
                 institution="Test Institution",
@@ -285,7 +286,7 @@ class TestUserModelSuperAdmin:
             email = generate_unique_email("repr-test")
             user = User(
                 email=email,
-                password="password123",
+                password=STRONG_GENERIC_PASSWORD,
                 name="Repr Test User",
                 country="Test Country",
                 institution="Test Institution",

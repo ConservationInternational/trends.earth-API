@@ -5,6 +5,13 @@ import tempfile
 
 logger = logging.getLogger(__name__)
 
+_environment_user = os.getenv("API_ENVIRONMENT_USER")
+if _environment_user:
+    _environment_user = _environment_user.strip().lower()
+else:
+    _environment_user = "gef@gef.com"
+
+
 SETTINGS = {
     "logging": {"level": os.getenv("LOG_LEVEL", "INFO")},
     "service": {"port": 3000},
@@ -19,8 +26,8 @@ SETTINGS = {
         "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
         "CORS_ORIGINS": os.getenv("CORS_ORIGINS"),
         # API configuration required for trends.earth-Environment integration
-        "API_USER": os.getenv("API_USER"),
-        "API_PASSWORD": os.getenv("API_PASSWORD"),
+        "API_ENVIRONMENT_USER": _environment_user,
+        "API_ENVIRONMENT_USER_PASSWORD": os.getenv("API_ENVIRONMENT_USER_PASSWORD"),
         "API_URL": os.getenv("API_URL"),
         # OAuth client credentials for GEE authentication
         "GOOGLE_OAUTH_CLIENT_ID": os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
@@ -65,6 +72,19 @@ SETTINGS = {
     "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 1),
     "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=30),  # 30 days for refresh tokens
     "JWT_TOKEN_LOCATION": ["headers"],
+    "TRUSTED_PROXY_COUNT": int(os.getenv("TRUSTED_PROXY_COUNT", "0")),
+    "INTERNAL_NETWORKS": [
+        net.strip()
+        for net in os.getenv(
+            "INTERNAL_NETWORKS", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+        ).split(",")
+        if net.strip()
+    ],
+    "MAX_DECOMPRESSED_REQUEST_SIZE": int(
+        os.getenv("MAX_DECOMPRESSED_REQUEST_SIZE", 5 * 1024 * 1024)
+    ),
+    "ENABLE_API_DOCS": os.getenv("ENABLE_API_DOCS", "true").lower() == "true",
+    "API_ENVIRONMENT_USER": _environment_user,
     "CELERY_BROKER_URL": os.getenv("REDIS_URL")
     or (
         "redis://"
