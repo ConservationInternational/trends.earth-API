@@ -158,9 +158,10 @@ def validate_cors_origins():
     logger.info(f"CORS origins: {origins}")
 
     if environment == "prod":
-        # In production, disallow localhost origins
+        # In production, disallow localhost origins (case-insensitive)
         for origin in origins:
-            if "localhost" in origin or "127.0.0.1" in origin:
+            origin_lower = origin.lower()
+            if "localhost" in origin_lower or "127.0.0.1" in origin_lower:
                 error_msg = (
                     f"Security Error: Localhost origin '{origin}' "
                     f"not allowed in production"
