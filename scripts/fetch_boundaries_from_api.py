@@ -15,9 +15,6 @@ Key Features:
 - Supports batch processing and progress tracking
 - Handles API rate limiting and network errors gracefully
 
-SECURITY NOTICE: This tool requires ADMIN or SUPERADMIN privileges for database
-write operations.
-
 Usage examples:
 
 # Fetch all ADM0 boundaries (all countries)
