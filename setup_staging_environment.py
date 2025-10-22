@@ -224,7 +224,7 @@ class StagingEnvironmentSetup:
 
         try:
             # Calculate date one year ago
-            one_year_ago = datetime.now() - timedelta(days=365)
+            one_year_ago = datetime.now(UTC) - timedelta(days=365)
 
             prod_cursor = prod_conn.cursor()
             staging_cursor = staging_conn.cursor()
@@ -467,7 +467,7 @@ class StagingEnvironmentSetup:
             )
 
             # Calculate date one month ago
-            one_month_ago = datetime.now() - timedelta(days=30)
+            one_month_ago = datetime.now(UTC) - timedelta(days=30)
 
             # Get recent status logs from production (excluding ID for reassignment)
             prod_cursor.execute(
@@ -753,7 +753,7 @@ class StagingEnvironmentSetup:
             user_roles = cursor.fetchall()
 
             # Count recent scripts (last year)
-            one_year_ago = datetime.now() - timedelta(days=365)
+            one_year_ago = datetime.now(UTC) - timedelta(days=365)
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM script
