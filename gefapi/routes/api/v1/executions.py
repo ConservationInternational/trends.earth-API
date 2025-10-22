@@ -738,12 +738,13 @@ def cancel_execution(execution):
 
 
 @endpoints.route("/execution/<execution>/log", strict_slashes=False, methods=["GET"])
+@jwt_required()
 def get_execution_logs(execution):
     """
     Retrieve logs for a specific execution.
 
-    **Authentication**: Not required (public endpoint)
-    **Access**: Anyone can view execution logs for monitoring purposes
+    **Authentication**: JWT token required
+    **Access**: Execution owners, admins, or superadmins can view logs
 
     **Path Parameters**:
     - `execution`: Execution ID (UUID format)
@@ -794,11 +795,17 @@ def get_execution_logs(execution):
     - `ERROR`: Error messages about failures
 
     **Error Responses**:
+    - `401 Unauthorized`: JWT token required
+    - `403 Forbidden`: Cannot access execution (not yours and not admin)
     - `404 Not Found`: Execution does not exist
     - `500 Internal Server Error`: Server error
     """
     logger.info(f"[ROUTER]: Getting execution logs of execution {execution} ")
     try:
+        # First verify user has access to this execution
+        ExecutionService.get_execution(execution, current_user)
+
+        # If access check passed, get the logs
         start = request.args.get("start", None)
         if start:
             start = dateutil.parser.parse(start)
