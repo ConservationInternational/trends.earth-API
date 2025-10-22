@@ -15,7 +15,7 @@ class TestCORSValidation:
 
         # Must patch both environment and cors_origins
         origins = ["http://localhost:3000", "http://localhost:8080"]
-        
+
         with (
             patch.dict(os.environ, {"ENVIRONMENT": "dev"}),
             patch("gefapi.cors_origins", origins),
@@ -33,7 +33,7 @@ class TestCORSValidation:
         # Must patch both the environment AND the cors_origins since cors_origins
         # is computed at module import time
         origins = ["http://localhost:3000", "https://app.trends.earth"]
-        
+
         with (
             patch.dict(os.environ, {"ENVIRONMENT": "prod"}),
             patch("gefapi.cors_origins", origins),
@@ -101,7 +101,7 @@ class TestCORSValidation:
 
         # Must patch both environment and cors_origins
         origins = ["http://localhost:3000", "https://staging.trends.earth"]
-        
+
         with (
             patch.dict(os.environ, {"ENVIRONMENT": "staging"}),
             patch("gefapi.cors_origins", origins),
@@ -138,14 +138,14 @@ class TestCORSConfiguration:
         # CORS is configured at module import time with specific origins
         # Test that the Flask app has CORS configured
         from gefapi import cors_origins
-        
+
         # Verify cors_origins is configured with localhost in test environment
         assert cors_origins is not None, "CORS origins should be configured"
         assert len(cors_origins) > 0, "CORS origins should not be empty"
-        
+
         # Make an actual request to verify CORS doesn't block it
         response = client.get("/api-health")
-        
+
         # Request should succeed (CORS is working if we don't get blocked)
         assert response.status_code == 200, (
             f"Request should succeed with CORS configured, got: {response.status_code}"
@@ -195,11 +195,10 @@ class TestCORSConfiguration:
         # ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
         # However, the actual endpoint might not support all methods
         # We check that the endpoint either provides CORS headers or Allow headers
-        allowed_methods = (
-            response.headers.get("Access-Control-Allow-Methods", "")
-            or response.headers.get("Allow", "")
-        )
-        
+        allowed_methods = response.headers.get(
+            "Access-Control-Allow-Methods", ""
+        ) or response.headers.get("Allow", "")
+
         # Check that at least the core REST methods that the endpoint supports are present
         # The /api/v1/script endpoint supports at least GET and POST
         assert "GET" in allowed_methods, (
@@ -227,7 +226,7 @@ class TestCORSSecurityScenarios:
         for origin in localhost_variations:
             # Must patch both environment and cors_origins list
             origins = [origin, "https://app.trends.earth"]
-            
+
             with (
                 patch.dict(os.environ, {"ENVIRONMENT": "prod"}),
                 patch("gefapi.cors_origins", origins),
@@ -246,7 +245,7 @@ class TestCORSSecurityScenarios:
 
         # Patch both environment and cors_origins
         origins = ["http://LocalHost:3000", "https://app.trends.earth"]
-        
+
         with (
             patch.dict(os.environ, {"ENVIRONMENT": "prod"}),
             patch("gefapi.cors_origins", origins),
