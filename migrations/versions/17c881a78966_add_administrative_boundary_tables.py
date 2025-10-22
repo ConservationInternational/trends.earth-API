@@ -24,9 +24,6 @@ def upgrade():
     op.create_table(
         "admin_boundary_0",
         sa.Column("id", sa.String(10), primary_key=True),
-        sa.Column("shape_group", sa.String(100), nullable=True),
-        sa.Column("shape_type", sa.String(50), nullable=True),
-        sa.Column("shape_name", sa.String(255), nullable=True),
         sa.Column(
             "geometry",
             Geometry("MULTIPOLYGON", srid=4326, spatial_index=True),
@@ -51,9 +48,6 @@ def upgrade():
         "admin_boundary_1",
         sa.Column("shape_id", sa.String(100), primary_key=True),
         sa.Column("id", sa.String(10), nullable=True),
-        sa.Column("shape_name", sa.String(255), nullable=True),
-        sa.Column("shape_group", sa.String(100), nullable=True),
-        sa.Column("shape_type", sa.String(50), nullable=True),
         sa.Column(
             "geometry",
             Geometry("MULTIPOLYGON", srid=4326, spatial_index=True),
@@ -82,13 +76,7 @@ def upgrade():
         ["id"],
     )
 
-    # Create indexes for common queries
-    op.create_index(
-        "idx_admin_boundary_0_shape_name", "admin_boundary_0", ["shape_name"]
-    )
-    op.create_index(
-        "idx_admin_boundary_1_shape_name", "admin_boundary_1", ["shape_name"]
-    )
+    # Create index for country ID foreign key
     op.create_index("idx_admin_boundary_1_country_id", "admin_boundary_1", ["id"])
 
 

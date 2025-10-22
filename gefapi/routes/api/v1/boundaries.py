@@ -6,6 +6,7 @@ Provides access to administrative boundary data from geoBoundaries dataset.
 import logging
 
 from flask import jsonify, request
+from flask_jwt_extended import jwt_required
 
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.boundaries_service import BoundariesService
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @endpoints.route("/data/boundaries", methods=["GET"])
+@jwt_required()
 def get_boundaries():
     """
     Get administrative boundary data with flexible query options.
@@ -137,7 +139,8 @@ def get_boundaries():
         if iso_code:
             filters["iso_code"] = iso_code
         if name_filter:
-            filters["name_filter"] = name_filter
+            # Add wildcards for case-insensitive partial matching
+            filters["name_filter"] = f"%{name_filter}%"
         if lat is not None and lon is not None:
             filters["lat"] = lat
             filters["lon"] = lon
@@ -155,10 +158,8 @@ def get_boundaries():
             per_page=per_page,
         )
 
-        if not boundaries:
-            return error(404, "No boundaries found matching the specified criteria")
-
         # Build response with metadata
+        # Return 200 with empty data array when no results (RESTful convention)
         response_data = {
             "data": boundaries,
             "meta": {
@@ -194,6 +195,7 @@ def get_boundaries():
 
 
 @endpoints.route("/data/boundaries/stats", methods=["GET"])
+@jwt_required()
 def get_boundary_statistics():
     """
     Get statistics about available boundary data.

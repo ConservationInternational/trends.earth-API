@@ -50,6 +50,10 @@ earthengine-api = ">=1.0.0"
 cryptography = ">=46.0.2"
 # GeoAlchemy2 for PostGIS spatial database support
 geoalchemy2 = ">=0.14.0"
+# Shapely for geometry manipulation
+shapely = ">=2.0.0"
+# TopoJSON for converting TopoJSON to GeoJSON
+topojson = ">=1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"

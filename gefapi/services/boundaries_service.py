@@ -83,13 +83,24 @@ class BoundariesService:
     @staticmethod
     def _apply_filters(query: Query, model, filters: dict) -> Query:
         """Apply filters to query based on model type."""
+        # Map API filter names to model field names
+        field_mapping: dict[str, str] = {
+            "iso_code": "boundary_iso",
+            "name_filter": "boundary_name",
+        }
+
         for field, value in filters.items():
-            if field.endswith("_since") and hasattr(model, field.replace("_since", "")):
-                # Handle timestamp filters (e.g., created_at_since, updated_at_since)
-                column = getattr(model, field.replace("_since", ""))
-                query = query.filter(column >= value)
-            elif hasattr(model, field):
-                column = getattr(model, field)
+            # Map API field name to model field name (defaults to original field)
+            model_field: str = field_mapping.get(field, field)  # type: ignore
+
+            # Handle timestamp filters
+            if field.endswith("_since"):
+                timestamp_field = model_field.replace("_since", "")
+                if hasattr(model, timestamp_field):
+                    column = getattr(model, timestamp_field)
+                    query = query.filter(column >= value)
+            elif hasattr(model, model_field):
+                column = getattr(model, model_field)
                 if isinstance(value, list):
                     query = query.filter(column.in_(value))
                 elif isinstance(value, str) and "%" in value:
@@ -103,14 +114,14 @@ class BoundariesService:
         """Format boundary for API response."""
         result = {
             "id": boundary.id,
-            "shape_name": boundary.shape_name,
-            "shape_type": boundary.shape_type,
-            "shape_group": boundary.shape_group,
+            "boundaryName": boundary.boundary_name,
+            "boundaryType": boundary.boundary_type,
+            "boundaryISO": boundary.boundary_iso,
         }
 
         # Add shape_id for AdminBoundary1 objects
         if hasattr(boundary, "shape_id"):
-            result["shape_id"] = boundary.shape_id
+            result["shapeId"] = boundary.shape_id
 
         # Include geometry when format is 'full'
         if format_type == "full" and boundary.geometry is not None:
@@ -194,9 +205,9 @@ class BoundariesService:
                     {
                         "level": 0,
                         "id": boundary.id,
-                        "shape_name": boundary.shape_name,
-                        "shape_type": boundary.shape_type,
-                        "shape_group": boundary.shape_group,
+                        "boundaryName": boundary.boundary_name,
+                        "boundaryType": boundary.boundary_type,
+                        "boundaryISO": boundary.boundary_iso,
                     }
                 )
 
@@ -210,11 +221,11 @@ class BoundariesService:
                 results.append(
                     {
                         "level": 1,
-                        "shape_id": boundary.shape_id,
+                        "shapeId": boundary.shape_id,
                         "id": boundary.id,  # Country ID
-                        "shape_name": boundary.shape_name,
-                        "shape_type": boundary.shape_type,
-                        "shape_group": boundary.shape_group,
+                        "boundaryName": boundary.boundary_name,
+                        "boundaryType": boundary.boundary_type,
+                        "boundaryISO": boundary.boundary_iso,
                     }
                 )
 
