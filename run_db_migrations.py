@@ -73,7 +73,8 @@ def ensure_postgis_extensions(app):
             # Check if PostGIS extension exists
             result = connection.execute(
                 text(
-                    "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'postgis')"
+                    "SELECT EXISTS(SELECT 1 FROM pg_extension "
+                    "WHERE extname = 'postgis')"
                 )
             )
             postgis_exists = result.scalar()
@@ -100,12 +101,13 @@ def ensure_postgis_extensions(app):
         print(f"✗ PostGIS extension installation failed: {e}")
         # Only fail in staging where we control the environment
         if os.getenv("ENVIRONMENT") == "staging":
-            raise RuntimeError(f"PostGIS extension required but failed to install: {e}")
-        else:
-            logger.warning(
-                "PostGIS extension installation failed but continuing "
-                "(not in staging environment)"
-            )
+            raise RuntimeError(
+                f"PostGIS extension required but failed to install: {e}"
+            ) from e
+        logger.warning(
+            "PostGIS extension installation failed but continuing "
+            "(not in staging environment)"
+        )
 
 
 def run_migrations():
