@@ -208,7 +208,12 @@ class StagingEnvironmentSetup:
         prod_conn = self.connect_to_database(self.prod_db_config)
         if not prod_conn:
             logger.warning(
-                "Could not connect to production database, skipping script import"
+                "Could not connect to production database, skipping script import. "
+                f"Connection config (password hidden): "
+                f"host={self.prod_db_config['host']}, "
+                f"port={self.prod_db_config['port']}, "
+                f"database={self.prod_db_config['database']}, "
+                f"user={self.prod_db_config['user']}"
             )
             return {}
 
@@ -257,12 +262,24 @@ class StagingEnvironmentSetup:
                 (one_year_ago, one_year_ago),
             )
 
+            scripts = prod_cursor.fetchall()
             logger.info(
                 f"Querying production for scripts created/updated since {one_year_ago}"
             )
-
-            scripts = prod_cursor.fetchall()
             logger.info(f"Found {len(scripts)} recent scripts to import")
+
+            if len(scripts) == 0:
+                logger.warning(
+                    "No scripts found in production database with "
+                    f"created_at >= {one_year_ago} OR updated_at >= "
+                    f"{one_year_ago}. This may indicate an issue with the "
+                    "production database connection or that there are no "
+                    "recent scripts in production."
+                )
+            else:
+                logger.info(
+                    f"Sample of scripts to import: {[s[2] for s in scripts[:5]]}"
+                )
 
             imported_count = 0
             updated_count = 0
@@ -279,7 +296,7 @@ class StagingEnvironmentSetup:
                                           memory_reservation, memory_limit,
                                           environment, environment_version)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                                %s, %s)
+                                %s, %s, %s)
                         ON CONFLICT (slug) DO UPDATE SET
                             id = EXCLUDED.id,
                             name = EXCLUDED.name,
