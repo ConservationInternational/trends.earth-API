@@ -114,11 +114,13 @@ class StagingEnvironmentSetup:
 
     def create_test_users(self):
         """Create test users with properly hashed passwords."""
-        logger.info("Creating test users in staging database...")
+        logger.info("=" * 60)
+        logger.info("CREATING TEST USERS IN STAGING DATABASE")
+        logger.info("=" * 60)
 
         conn = self.connect_to_database(self.staging_db_config)
         if not conn:
-            logger.error("Could not connect to staging database")
+            logger.error("❌ CRITICAL: Could not connect to staging database")
             return None
 
         superadmin_id = None
@@ -174,7 +176,15 @@ class StagingEnvironmentSetup:
                 )
 
             conn.commit()
-            logger.info("Test users created successfully")
+            logger.info("=" * 60)
+            logger.info("TEST USER CREATION RESULTS")
+            logger.info("=" * 60)
+            logger.info(
+                f"✅ Successfully created/updated {len(self.test_users)} test users"
+            )
+            for user_data in self.test_users:
+                logger.info(f"   - {user_data['role']}: {user_data['email']}")
+            logger.info("=" * 60)
             return superadmin_id
 
         except psycopg2.Error as e:
@@ -197,31 +207,66 @@ class StagingEnvironmentSetup:
 
         Note: No sequence manipulation is needed since scripts use UUIDs.
         """
+        logger.info("=" * 60)
+        logger.info("STARTING SCRIPT IMPORT FROM PRODUCTION")
+        logger.info("=" * 60)
+
+        # Check for production database password
+        logger.info("Checking production database credentials...")
         if not self.prod_db_config["password"]:
-            logger.warning(
-                "No production database password provided, skipping script import"
+            logger.error(
+                "❌ CRITICAL: No production database password provided! "
+                "Scripts will NOT be imported."
+            )
+            logger.error(
+                "Check that PROD_DB_PASSWORD environment variable is set in "
+                "the deployment workflow."
             )
             return {}
+        logger.info("✅ Production database password is present")
 
-        logger.info("Copying recent scripts from production database...")
+        # Log connection attempt
+        logger.info(
+            f"Attempting to connect to production database: "
+            f"host={self.prod_db_config['host']}, "
+            f"port={self.prod_db_config['port']}, "
+            f"database={self.prod_db_config['database']}, "
+            f"user={self.prod_db_config['user']}"
+        )
 
         prod_conn = self.connect_to_database(self.prod_db_config)
         if not prod_conn:
-            logger.warning(
-                "Could not connect to production database, skipping script import. "
+            logger.error(
+                "❌ CRITICAL: Could not connect to production database! "
+                "Scripts will NOT be imported."
+            )
+            logger.error(
                 f"Connection config (password hidden): "
                 f"host={self.prod_db_config['host']}, "
                 f"port={self.prod_db_config['port']}, "
                 f"database={self.prod_db_config['database']}, "
                 f"user={self.prod_db_config['user']}"
             )
+            logger.error(
+                "Possible issues: "
+                "1) Network connectivity to production database, "
+                "2) Incorrect credentials, "
+                "3) Database not accessible from this server"
+            )
             return {}
 
+        logger.info("✅ Successfully connected to production database!")
+
+        logger.info("Connecting to staging database...")
         staging_conn = self.connect_to_database(self.staging_db_config)
         if not staging_conn:
-            logger.error("Could not connect to staging database")
+            logger.error(
+                "❌ CRITICAL: Could not connect to staging database! "
+                "Cannot import scripts."
+            )
             prod_conn.close()
             return {}
+        logger.info("✅ Successfully connected to staging database!")
 
         id_mapping = {}  # Maps old script IDs to new ones
         prod_cursor = None
@@ -230,6 +275,7 @@ class StagingEnvironmentSetup:
         try:
             # Calculate date one year ago
             one_year_ago = datetime.now(UTC) - timedelta(days=365)
+            logger.info(f"Filtering for scripts updated/created since: {one_year_ago}")
 
             prod_cursor = prod_conn.cursor()
             staging_cursor = staging_conn.cursor()
@@ -250,6 +296,12 @@ class StagingEnvironmentSetup:
             logger.info("Preparing to import/update scripts (using ON CONFLICT)...")
 
             # Get recent scripts from production (including ID to preserve GUIDs)
+            logger.info("Executing query to fetch scripts from production database...")
+            logger.info(
+                f"Query: SELECT scripts WHERE created_at >= {one_year_ago} "
+                f"OR updated_at >= {one_year_ago}"
+            )
+
             prod_cursor.execute(
                 """
                 SELECT id, name, slug, description, created_at, updated_at, status,
@@ -262,24 +314,38 @@ class StagingEnvironmentSetup:
                 (one_year_ago, one_year_ago),
             )
 
+            logger.info("Fetching query results...")
             scripts = prod_cursor.fetchall()
-            logger.info(
-                f"Querying production for scripts created/updated since {one_year_ago}"
-            )
-            logger.info(f"Found {len(scripts)} recent scripts to import")
+            logger.info(f"✅ Query completed. Found {len(scripts)} scripts to import.")
 
             if len(scripts) == 0:
-                logger.warning(
-                    "No scripts found in production database with "
-                    f"created_at >= {one_year_ago} OR updated_at >= "
-                    f"{one_year_ago}. This may indicate an issue with the "
-                    "production database connection or that there are no "
-                    "recent scripts in production."
+                logger.error("=" * 60)
+                logger.error("❌ CRITICAL: NO SCRIPTS FOUND IN PRODUCTION!")
+                logger.error("=" * 60)
+                logger.error(
+                    f"The query returned 0 scripts from production database with "
+                    f"created_at >= {one_year_ago} OR updated_at >= {one_year_ago}"
                 )
+                logger.error("Possible reasons:")
+                logger.error("  1) All scripts in production are older than 1 year")
+                logger.error("  2) The 'script' table is empty in production")
+                logger.error("  3) There's a timezone mismatch in the date comparison")
+                logger.error("  4) Connected to wrong database")
+                logger.error("")
+                logger.error("Please verify:")
+                logger.error(
+                    f"  - Production database: {self.prod_db_config['database']}"
+                )
+                logger.error(f"  - Production host: {self.prod_db_config['host']}")
+                logger.error(f"  - Filter date: {one_year_ago}")
+                logger.error("=" * 60)
             else:
-                logger.info(
-                    f"Sample of scripts to import: {[s[2] for s in scripts[:5]]}"
-                )
+                logger.info("Sample of scripts to import (first 5):")
+                for i, script in enumerate(scripts[:5]):
+                    logger.info(
+                        f"  {i + 1}. {script[2]} (slug) - "
+                        f"created: {script[4]}, updated: {script[5]}"
+                    )
 
             imported_count = 0
             updated_count = 0
@@ -368,10 +434,13 @@ class StagingEnvironmentSetup:
                         continue
 
             # Scripts use GUIDs, not sequences, so no sequence manipulation needed
-            logger.info(
-                f"Script import completed: {imported_count} new, "
-                f"{updated_count} updated"
-            )
+            logger.info("=" * 60)
+            logger.info("SCRIPT IMPORT RESULTS")
+            logger.info("=" * 60)
+            logger.info(f"✅ New scripts imported: {imported_count}")
+            logger.info(f"✅ Existing scripts updated: {updated_count}")
+            logger.info(f"✅ Total scripts processed: {imported_count + updated_count}")
+            logger.info("=" * 60)
 
             staging_conn.commit()
             logger.info(
