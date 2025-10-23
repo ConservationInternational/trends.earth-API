@@ -2,252 +2,290 @@
 
 import datetime
 
-from geoalchemy2 import Geometry
-
 from gefapi import db
 
 
-class AdminBoundary0(db.Model):
-    """Administrative Boundary Level 0 (Countries)
+class AdminBoundary0Metadata(db.Model):
+    """Administrative Boundary Level 0 (Countries) - GeoBoundaries API Metadata
 
-    This model stores administrative boundary data from GeoBoundaries API.
-    The schema is designed to be compatible with the GeoBoundaries API response
-    documented at: https://www.geoboundaries.org/api.html
+    This model stores the complete API response metadata for ADM0 boundaries.
+    The database column names exactly match the geoBoundaries API response fields.
 
+    API Documentation: https://www.geoboundaries.org/api.html
     API Endpoint: https://www.geoboundaries.org/api/current/gbOpen/[ISO]/ADM0/
     """
 
-    __tablename__ = "admin_boundary_0"
+    __tablename__ = "admin_boundary_0_metadata"
 
-    # Use the 'boundaryISO' field from geoBoundaries as primary key
-    # (ISO 3-letter codes like 'AFG', 'ALB')
-    id = db.Column(db.String(10), primary_key=True)
+    # Composite primary key: boundaryISO + releaseType
+    boundaryISO = db.Column(db.String(10), primary_key=True)
+    releaseType = db.Column(
+        db.String(20), primary_key=True
+    )  # gbOpen, gbHumanitarian, gbAuthoritative
 
-    # GeoBoundaries API metadata fields
-    boundary_id = db.Column(db.String(100))  # boundaryID from API
-    boundary_name = db.Column(db.String(255))  # boundaryName from API
-    boundary_iso = db.Column(db.String(10))  # boundaryISO from API
-    boundary_type = db.Column(db.String(10))  # boundaryType (e.g., "ADM0")
-    boundary_canonical = db.Column(db.String(255))  # Canonical name if available
-    boundary_source = db.Column(db.Text)  # Comma-separated list of sources
-    boundary_license = db.Column(db.Text)  # License information
-    license_detail = db.Column(db.Text)  # Additional license notes
-    license_source = db.Column(db.Text)  # URL of license source
-    source_data_update_date = db.Column(db.String(100))  # When data was integrated
-    build_date = db.Column(db.String(100))  # When data was built
+    # Core identification fields matching geoBoundaries API
+    boundaryID = db.Column(db.String(100))
+    boundaryName = db.Column(db.String(255))
+    boundaryType = db.Column(db.String(10))  # "ADM0"
+    boundaryCanonical = db.Column(db.String(255))
+    boundaryYearRepresented = db.Column(
+        db.String(50)
+    )  # Year or range like "2021" or "1995 to 2021"
+
+    # Data source and licensing fields
+    boundarySource = db.Column(db.Text)  # Maps to 'boundarySource-1' from API
+    boundaryLicense = db.Column(db.Text)
+    licenseDetail = db.Column(db.Text)
+    licenseSource = db.Column(db.Text)
+    sourceDataUpdateDate = db.Column(db.String(100))
+    buildDate = db.Column(db.String(100))
 
     # Geographic and political metadata
-    continent = db.Column(db.String(100))
-    unsdg_region = db.Column(db.String(100))  # UN SDG region
-    unsdg_subregion = db.Column(db.String(100))  # UN SDG subregion
-    world_bank_income_group = db.Column(db.String(100))
+    Continent = db.Column(db.String(100))
+    UNSDG_region = db.Column(db.String(100))
+    UNSDG_subregion = db.Column(db.String(100))
+    worldBankIncomeGroup = db.Column(db.String(100))
 
-    # Geometry statistics from API
-    adm_unit_count = db.Column(db.Integer)  # Number of admin units
-    mean_vertices = db.Column(db.Float)
-    min_vertices = db.Column(db.Integer)
-    max_vertices = db.Column(db.Integer)
-    mean_perimeter_km = db.Column(db.Float)
-    min_perimeter_km = db.Column(db.Float)
-    max_perimeter_km = db.Column(db.Float)
-    mean_area_sqkm = db.Column(db.Float)
-    min_area_sqkm = db.Column(db.Float)
-    max_area_sqkm = db.Column(db.Float)
+    # Geometry statistics from API (for ADM0 boundaries)
+    admUnitCount = db.Column(db.Integer)  # Should be 1 for ADM0
+    meanVertices = db.Column(db.Float)
+    minVertices = db.Column(db.Integer)
+    maxVertices = db.Column(db.Integer)
+    meanPerimeterLengthKM = db.Column(db.Float)
+    minPerimeterLengthKM = db.Column(db.Float)
+    maxPerimeterLengthKM = db.Column(db.Float)
+    meanAreaSqKM = db.Column(db.Float)
+    minAreaSqKM = db.Column(db.Float)
+    maxAreaSqKM = db.Column(db.Float)
 
-    # Download URLs from API (for reference/audit trail)
-    static_download_link = db.Column(db.Text)  # Aggregate zip file
-    geojson_download_url = db.Column(db.Text)  # GeoJSON download
-    topojson_download_url = db.Column(db.Text)  # TopoJSON download
-    simplified_geojson_url = db.Column(db.Text)  # Simplified geometry
-    image_preview_url = db.Column(db.Text)  # PNG preview
-
-    # PostGIS geometry column for proper spatial operations
-    geometry = db.Column(Geometry("MULTIPOLYGON", srid=4326, spatial_index=True))
+    # Download URLs from API
+    staticDownloadLink = db.Column(db.Text)
+    gjDownloadURL = db.Column(db.Text)  # GeoJSON download URL
+    tjDownloadURL = db.Column(db.Text)  # TopoJSON download URL
+    simplifiedGeometryGeoJSON = db.Column(db.Text)
+    imagePreview = db.Column(db.Text)
 
     created_at = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
     updated_at = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
 
     def __repr__(self):
-        return f"<AdminBoundary0(id='{self.id}', name='{self.boundary_name}')>"
+        return (
+            f"<AdminBoundary0Metadata(iso='{self.boundaryISO}', "
+            f"release='{self.releaseType}', name='{self.boundaryName}')>"
+        )
 
-    def to_dict(self, include_geometry=False, include_metadata=False):
-        """Convert to dictionary for API response
-
-        Args:
-            include_geometry: If True, include geometry data (requires special handling)
-            include_metadata: If True, include all GeoBoundaries metadata fields
-        """
-        result = {
-            "id": self.id,
-            "boundaryId": self.boundary_id,
-            "boundaryName": self.boundary_name,
-            "boundaryISO": self.boundary_iso,
-            "boundaryType": self.boundary_type,
+    def to_dict(self):
+        """Convert to dictionary for API response."""
+        return {
+            "boundaryISO": self.boundaryISO,
+            "releaseType": self.releaseType,
+            "boundaryID": self.boundaryID,
+            "boundaryName": self.boundaryName,
+            "boundaryType": self.boundaryType,
+            "boundaryCanonical": self.boundaryCanonical,
+            "boundaryYearRepresented": self.boundaryYearRepresented,
+            "Continent": self.Continent,
+            "buildDate": self.buildDate,
+            "gjDownloadURL": self.gjDownloadURL,
+            "staticDownloadLink": self.staticDownloadLink,
+            "tjDownloadURL": self.tjDownloadURL,
+            "simplifiedGeometryGeoJSON": self.simplifiedGeometryGeoJSON,
+            "imagePreview": self.imagePreview,
+            "boundarySource": self.boundarySource,
+            "boundaryLicense": self.boundaryLicense,
+            "licenseDetail": self.licenseDetail,
+            "licenseSource": self.licenseSource,
+            "sourceDataUpdateDate": self.sourceDataUpdateDate,
+            "UNSDG_region": self.UNSDG_region,
+            "UNSDG_subregion": self.UNSDG_subregion,
+            "worldBankIncomeGroup": self.worldBankIncomeGroup,
+            "admUnitCount": self.admUnitCount,
+            "meanVertices": self.meanVertices,
+            "minVertices": self.minVertices,
+            "maxVertices": self.maxVertices,
+            "meanPerimeterLengthKM": self.meanPerimeterLengthKM,
+            "minPerimeterLengthKM": self.minPerimeterLengthKM,
+            "maxPerimeterLengthKM": self.maxPerimeterLengthKM,
+            "meanAreaSqKM": self.meanAreaSqKM,
+            "minAreaSqKM": self.minAreaSqKM,
+            "maxAreaSqKM": self.maxAreaSqKM,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
             "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
         }
 
-        if include_metadata:
-            result.update(
-                {
-                    "boundaryCanonical": self.boundary_canonical,
-                    "boundarySource": self.boundary_source,
-                    "boundaryLicense": self.boundary_license,
-                    "licenseDetail": self.license_detail,
-                    "licenseSource": self.license_source,
-                    "sourceDataUpdateDate": self.source_data_update_date,
-                    "buildDate": self.build_date,
-                    "continent": self.continent,
-                    "unsdgRegion": self.unsdg_region,
-                    "unsdgSubregion": self.unsdg_subregion,
-                    "worldBankIncomeGroup": self.world_bank_income_group,
-                    "admUnitCount": self.adm_unit_count,
-                    "meanVertices": self.mean_vertices,
-                    "minVertices": self.min_vertices,
-                    "maxVertices": self.max_vertices,
-                    "meanPerimeterKm": self.mean_perimeter_km,
-                    "minPerimeterKm": self.min_perimeter_km,
-                    "maxPerimeterKm": self.max_perimeter_km,
-                    "meanAreaSqkm": self.mean_area_sqkm,
-                    "minAreaSqkm": self.min_area_sqkm,
-                    "maxAreaSqkm": self.max_area_sqkm,
-                    "staticDownloadLink": self.static_download_link,
-                    "geojsonDownloadUrl": self.geojson_download_url,
-                    "topojsonDownloadUrl": self.topojson_download_url,
-                    "simplifiedGeojsonUrl": self.simplified_geojson_url,
-                    "imagePreviewUrl": self.image_preview_url,
-                }
-            )
 
-        # Note: Geometry serialization would require special handling if needed
-        return result
+class AdminBoundary1Metadata(db.Model):
+    """Administrative Boundary Level 1 (States/Provinces) - GeoBoundaries API Metadata
 
+    This model stores the complete API response metadata for ADM1 boundaries.
+    The database column names exactly match the geoBoundaries API response fields.
 
-class AdminBoundary1(db.Model):
-    """Administrative Boundary Level 1 (States/Provinces)
-
-    This model stores administrative boundary data from GeoBoundaries API.
-    The schema is designed to be compatible with the GeoBoundaries API response
-    documented at: https://www.geoboundaries.org/api.html
-
+    API Documentation: https://www.geoboundaries.org/api.html
     API Endpoint: https://www.geoboundaries.org/api/current/gbOpen/[ISO]/ADM1/
     """
 
-    __tablename__ = "admin_boundary_1"
+    __tablename__ = "admin_boundary_1_metadata"
 
-    # Use the 'shapeID' field from geoBoundaries as primary key
-    # (unique identifiers like 'AFG-ADM1-3_0_0_B1')
-    shape_id = db.Column(db.String(100), primary_key=True)
-    id = db.Column(db.String(10))  # Country ISO code (e.g., 'AFG')
+    # Composite primary key: boundaryISO + releaseType
+    boundaryISO = db.Column(db.String(10), primary_key=True)
+    releaseType = db.Column(
+        db.String(20), primary_key=True
+    )  # gbOpen, gbHumanitarian, gbAuthoritative
 
-    # GeoBoundaries API metadata fields
-    boundary_id = db.Column(db.String(100))  # boundaryID from API
-    boundary_name = db.Column(db.String(255))  # boundaryName from API
-    boundary_iso = db.Column(db.String(10))  # boundaryISO from API
-    boundary_type = db.Column(db.String(10))  # boundaryType (e.g., "ADM1")
-    boundary_canonical = db.Column(db.String(255))  # Canonical name if available
-    boundary_source = db.Column(db.Text)  # Comma-separated list of sources
-    boundary_license = db.Column(db.Text)  # License information
-    license_detail = db.Column(db.Text)  # Additional license notes
-    license_source = db.Column(db.Text)  # URL of license source
-    source_data_update_date = db.Column(db.String(100))  # When data was integrated
-    build_date = db.Column(db.String(100))  # When data was built
+    # Core identification fields matching geoBoundaries API
+    boundaryID = db.Column(db.String(100))
+    boundaryName = db.Column(db.String(255))  # Country name from API
+    boundaryType = db.Column(db.String(10))  # "ADM1"
+    boundaryCanonical = db.Column(db.String(255))
+    boundaryYearRepresented = db.Column(
+        db.String(50)
+    )  # Year or range like "2021" or "1995 to 2021"
+
+    # Data source and licensing fields
+    boundarySource = db.Column(db.Text)  # Maps to 'boundarySource-1' from API
+    boundaryLicense = db.Column(db.Text)
+    licenseDetail = db.Column(db.Text)
+    licenseSource = db.Column(db.Text)
+    sourceDataUpdateDate = db.Column(db.String(100))
+    buildDate = db.Column(db.String(100))
 
     # Geographic and political metadata
-    continent = db.Column(db.String(100))
-    unsdg_region = db.Column(db.String(100))  # UN SDG region
-    unsdg_subregion = db.Column(db.String(100))  # UN SDG subregion
-    world_bank_income_group = db.Column(db.String(100))
+    Continent = db.Column(db.String(100))
+    UNSDG_region = db.Column(db.String(100))
+    UNSDG_subregion = db.Column(db.String(100))
+    worldBankIncomeGroup = db.Column(db.String(100))
 
-    # Geometry statistics from API
-    adm_unit_count = db.Column(db.Integer)  # Number of admin units
-    mean_vertices = db.Column(db.Float)
-    min_vertices = db.Column(db.Integer)
-    max_vertices = db.Column(db.Integer)
-    mean_perimeter_km = db.Column(db.Float)
-    min_perimeter_km = db.Column(db.Float)
-    max_perimeter_km = db.Column(db.Float)
-    mean_area_sqkm = db.Column(db.Float)
-    min_area_sqkm = db.Column(db.Float)
-    max_area_sqkm = db.Column(db.Float)
+    # Geometry statistics from API (for all ADM1 units in country)
+    admUnitCount = db.Column(db.Integer)  # Count of ADM1 units in this country
+    meanVertices = db.Column(db.Float)
+    minVertices = db.Column(db.Integer)
+    maxVertices = db.Column(db.Integer)
+    meanPerimeterLengthKM = db.Column(db.Float)
+    minPerimeterLengthKM = db.Column(db.Float)
+    maxPerimeterLengthKM = db.Column(db.Float)
+    meanAreaSqKM = db.Column(db.Float)
+    minAreaSqKM = db.Column(db.Float)
+    maxAreaSqKM = db.Column(db.Float)
 
-    # Download URLs from API (for reference/audit trail)
-    static_download_link = db.Column(db.Text)  # Aggregate zip file
-    geojson_download_url = db.Column(db.Text)  # GeoJSON download
-    topojson_download_url = db.Column(db.Text)  # TopoJSON download
-    simplified_geojson_url = db.Column(db.Text)  # Simplified geometry
-    image_preview_url = db.Column(db.Text)  # PNG preview
-
-    # PostGIS geometry column for proper spatial operations
-    geometry = db.Column(Geometry("MULTIPOLYGON", srid=4326, spatial_index=True))
+    # Download URLs from API
+    staticDownloadLink = db.Column(db.Text)
+    gjDownloadURL = db.Column(db.Text)  # GeoJSON download URL for all ADM1 units
+    tjDownloadURL = db.Column(db.Text)  # TopoJSON download URL for all ADM1 units
+    simplifiedGeometryGeoJSON = db.Column(db.Text)
+    imagePreview = db.Column(db.Text)
 
     created_at = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
     updated_at = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
 
-    # Foreign key relationship to AdminBoundary0
-    country = db.relationship(
-        "AdminBoundary0",
-        foreign_keys=[id],
-        primaryjoin="AdminBoundary1.id == AdminBoundary0.id",
-        backref="admin1_boundaries",
+    def __repr__(self):
+        return (
+            f"<AdminBoundary1Metadata(iso='{self.boundaryISO}', "
+            f"release='{self.releaseType}', name='{self.boundaryName}')>"
+        )
+
+    def to_dict(self):
+        """Convert to dictionary for API response."""
+        return {
+            "boundaryISO": self.boundaryISO,
+            "releaseType": self.releaseType,
+            "boundaryID": self.boundaryID,
+            "boundaryName": self.boundaryName,
+            "boundaryType": self.boundaryType,
+            "boundaryCanonical": self.boundaryCanonical,
+            "boundaryYearRepresented": self.boundaryYearRepresented,
+            "Continent": self.Continent,
+            "buildDate": self.buildDate,
+            "gjDownloadURL": self.gjDownloadURL,
+            "staticDownloadLink": self.staticDownloadLink,
+            "tjDownloadURL": self.tjDownloadURL,
+            "simplifiedGeometryGeoJSON": self.simplifiedGeometryGeoJSON,
+            "imagePreview": self.imagePreview,
+            "boundarySource": self.boundarySource,
+            "boundaryLicense": self.boundaryLicense,
+            "licenseDetail": self.licenseDetail,
+            "licenseSource": self.licenseSource,
+            "sourceDataUpdateDate": self.sourceDataUpdateDate,
+            "UNSDG_region": self.UNSDG_region,
+            "UNSDG_subregion": self.UNSDG_subregion,
+            "worldBankIncomeGroup": self.worldBankIncomeGroup,
+            "admUnitCount": self.admUnitCount,
+            "meanVertices": self.meanVertices,
+            "minVertices": self.minVertices,
+            "maxVertices": self.maxVertices,
+            "meanPerimeterLengthKM": self.meanPerimeterLengthKM,
+            "minPerimeterLengthKM": self.minPerimeterLengthKM,
+            "maxPerimeterLengthKM": self.maxPerimeterLengthKM,
+            "meanAreaSqKM": self.meanAreaSqKM,
+            "minAreaSqKM": self.minAreaSqKM,
+            "maxAreaSqKM": self.maxAreaSqKM,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class AdminBoundary1Unit(db.Model):
+    """Individual Administrative Boundary Level 1 Units
+
+    This model stores individual ADM1 units extracted from the GeoJSON data.
+    Each record represents one state/province with its shapeID and shapeName.
+
+    Data is extracted from the 'properties' of features in the GeoJSON file
+    available at the gjDownloadURL in AdminBoundary1Metadata.
+    """
+
+    __tablename__ = "admin_boundary_1_unit"
+
+    # Composite primary key: shapeID + releaseType
+    shapeID = db.Column(db.String(100), primary_key=True)
+    releaseType = db.Column(
+        db.String(20), primary_key=True
+    )  # gbOpen, gbHumanitarian, gbAuthoritative
+
+    # Foreign key to parent country
+    boundaryISO = db.Column(db.String(10), nullable=False)
+
+    # Unit identification from GeoJSON properties
+    shapeName = db.Column(db.String(255))  # State/province name from GeoJSON
+
+    created_at = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
+    updated_at = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
+
+    # Foreign key relationships
+    adm0_metadata = db.relationship(
+        "AdminBoundary0Metadata",
+        foreign_keys=[boundaryISO, releaseType],
+        primaryjoin=(
+            "and_(AdminBoundary1Unit.boundaryISO == AdminBoundary0Metadata.boundaryISO, "
+            "AdminBoundary1Unit.releaseType == AdminBoundary0Metadata.releaseType)"
+        ),
+        backref="adm1_units",
+        uselist=False,
+    )
+
+    adm1_metadata = db.relationship(
+        "AdminBoundary1Metadata",
+        foreign_keys=[boundaryISO, releaseType],
+        primaryjoin=(
+            "and_(AdminBoundary1Unit.boundaryISO == AdminBoundary1Metadata.boundaryISO, "
+            "AdminBoundary1Unit.releaseType == AdminBoundary1Metadata.releaseType)"
+        ),
+        backref="units",
         uselist=False,
     )
 
     def __repr__(self):
         return (
-            f"<AdminBoundary1(shape_id='{self.shape_id}', "
-            f"name='{self.boundary_name}', country='{self.id}')>"
+            f"<AdminBoundary1Unit(shapeID='{self.shapeID}', release='{self.releaseType}', "
+            f"name='{self.shapeName}', country='{self.boundaryISO}')>"
         )
 
-    def to_dict(self, include_geometry=False, include_metadata=False):
-        """Convert to dictionary for API response
-
-        Args:
-            include_geometry: If True, include geometry data (requires special handling)
-            include_metadata: If True, include all GeoBoundaries metadata fields
-        """
-        result = {
-            "shapeId": self.shape_id,
-            "id": self.id,
-            "boundaryId": self.boundary_id,
-            "boundaryName": self.boundary_name,
-            "boundaryISO": self.boundary_iso,
-            "boundaryType": self.boundary_type,
+    def to_dict(self):
+        """Convert to dictionary for API response."""
+        return {
+            "shapeID": self.shapeID,
+            "releaseType": self.releaseType,
+            "boundaryISO": self.boundaryISO,
+            "shapeName": self.shapeName,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
             "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
         }
-
-        if include_metadata:
-            result.update(
-                {
-                    "boundaryCanonical": self.boundary_canonical,
-                    "boundarySource": self.boundary_source,
-                    "boundaryLicense": self.boundary_license,
-                    "licenseDetail": self.license_detail,
-                    "licenseSource": self.license_source,
-                    "sourceDataUpdateDate": self.source_data_update_date,
-                    "buildDate": self.build_date,
-                    "continent": self.continent,
-                    "unsdgRegion": self.unsdg_region,
-                    "unsdgSubregion": self.unsdg_subregion,
-                    "worldBankIncomeGroup": self.world_bank_income_group,
-                    "admUnitCount": self.adm_unit_count,
-                    "meanVertices": self.mean_vertices,
-                    "minVertices": self.min_vertices,
-                    "maxVertices": self.max_vertices,
-                    "meanPerimeterKm": self.mean_perimeter_km,
-                    "minPerimeterKm": self.min_perimeter_km,
-                    "maxPerimeterKm": self.max_perimeter_km,
-                    "meanAreaSqkm": self.mean_area_sqkm,
-                    "minAreaSqkm": self.min_area_sqkm,
-                    "maxAreaSqkm": self.max_area_sqkm,
-                    "staticDownloadLink": self.static_download_link,
-                    "geojsonDownloadUrl": self.geojson_download_url,
-                    "topojsonDownloadUrl": self.topojson_download_url,
-                    "simplifiedGeojsonUrl": self.simplified_geojson_url,
-                    "imagePreviewUrl": self.image_preview_url,
-                }
-            )
-
-        # Note: Geometry serialization would require special handling if needed
-        return result

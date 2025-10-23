@@ -176,6 +176,11 @@ section-order = [
     "B007",  # Loop variable not used (acceptable in tests)
 ]
 
+# Models use mixedCase to match external API field names exactly
+"gefapi/models/boundary.py" = [
+    "N815",  # mixedCase variable names (matching geoBoundaries API fields)
+]
+
 # Allow print statements and specific patterns in debug scripts
 "debug_*.py" = [
     "T201",  # print statements
