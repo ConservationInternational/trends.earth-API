@@ -43,9 +43,9 @@ def is_internal_network_request():
         if additional_networks:
             internal_networks.extend(
                 [
-                    net.strip().strip('"\'')
+                    net.strip().strip("\"'")
                     for net in additional_networks.split(",")
-                    if net.strip().strip('"\'')
+                    if net.strip().strip("\"'")
                 ]
             )
 

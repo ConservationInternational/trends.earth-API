@@ -188,13 +188,17 @@ def get_boundaries():
             per_page=per_page,
         )
 
+        # Get the most recent update timestamp from the boundaries being returned
+        last_updated = BoundariesService.get_last_updated_from_boundaries(boundaries)
+
         # Build response with metadata
         # Return 200 with empty data array when no results (RESTful convention)
         response_data = {
-            "data": boundaries,
+            "boundaries": boundaries,
+            "release_type": release_type,
+            "last_updated": last_updated.isoformat() if last_updated else None,
             "meta": {
                 "levels": levels,
-                "release_type": release_type,
                 "total": total_count,
                 "page": page,
                 "per_page": per_page,
@@ -214,7 +218,7 @@ def get_boundaries():
         logger.info(
             f"Boundaries API query successful: levels={levels}, "
             f"release_type={release_type}, results={len(boundaries)}, "
-            f"total={total_count}"
+            f"total={total_count}, last_updated={last_updated}"
         )
 
         return jsonify(response_data), 200
@@ -224,40 +228,22 @@ def get_boundaries():
         return error(500, "Internal server error while fetching boundaries")
 
 
-@endpoints.route("/data/boundaries/stats", methods=["GET"])
+@endpoints.route("/data/boundaries/list", methods=["GET"])
 @jwt_required()
-def get_boundary_statistics():
-    """
-    Get statistics about available boundary data.
-
-    Returns:
-    Statistics including total boundaries per administrative level.
-    """
-    try:
-        stats = BoundariesService.get_boundary_statistics()
-
-        return jsonify({"data": stats}), 200
-
-    except Exception as e:
-        logger.error(f"Error getting boundary statistics: {str(e)}", exc_info=True)
-        return error(500, "Internal server error while fetching statistics")
-
-
-@endpoints.route("/data/boundaries/hierarchy", methods=["GET"])
-@jwt_required()
-def get_boundaries_hierarchy():
+def get_boundaries_list():
     """
     Get hierarchical list of all boundaries with ADM1 nested under ADM0.
 
-    Returns a complete list without pagination, showing only essential fields
-    (names and IDs). ADM1 boundaries are nested under their parent ADM0 country.
+    Returns a complete list without pagination, including GeoJSON and TopoJSON
+    download URLs for both ADM0 and ADM1 levels. ADM1 boundaries are nested
+    under their parent ADM0 country.
 
     Query Parameters:
     - release_type: geoBoundaries release type
       (gbOpen, gbHumanitarian, gbAuthoritative, default: gbOpen)
 
     Returns:
-    - 200: Hierarchical boundary list organized by country
+    - 200: Hierarchical boundary list with download links organized by country
     - 400: Invalid query parameters
     - 500: Server error
 
@@ -268,10 +254,14 @@ def get_boundaries_hierarchy():
                 "boundaryISO": "USA",
                 "boundaryName": "United States",
                 "releaseType": "gbOpen",
-                "admin1_boundaries": [
+                "adm0_geojson_url": "https://...",
+                "adm0_topojson_url": "https://...",
+                "adm1_geojson_url": "https://...",
+                "adm1_topojson_url": "https://...",
+                "admin1_units": [
                     {
-                        "shapeID": "USA-ADM1-CA",
-                        "boundaryName": "California"
+                        "shapeID": "66186276B98555229882405",
+                        "shapeName": "Washington"
                     },
                     ...
                 ]
@@ -292,14 +282,23 @@ def get_boundaries_hierarchy():
                 f"Must be one of: {', '.join(valid_release_types)}",
             )
 
-        # Get hierarchical boundary list
-        hierarchy = BoundariesService.get_boundaries_hierarchy(release_type)
+        # Get hierarchical boundary list with download links
+        boundaries_list = BoundariesService.get_boundaries_list(release_type)
 
-        return jsonify({"data": hierarchy, "meta": {"release_type": release_type}}), 200
+        # Get the most recent update timestamp for all boundaries of this release type
+        last_updated = BoundariesService.get_last_updated(release_type)
+
+        return jsonify(
+            {
+                "boundaries": boundaries_list,
+                "release_type": release_type,
+                "last_updated": last_updated.isoformat() if last_updated else None,
+            }
+        ), 200
 
     except Exception as e:
-        logger.error(f"Error getting boundaries hierarchy: {str(e)}", exc_info=True)
-        return error(500, "Internal server error while fetching boundaries hierarchy")
+        logger.error(f"Error getting boundaries list: {str(e)}", exc_info=True)
+        return error(500, "Internal server error while fetching boundaries list")
 
 
 @endpoints.route("/data/boundaries/last-updated", methods=["GET"])

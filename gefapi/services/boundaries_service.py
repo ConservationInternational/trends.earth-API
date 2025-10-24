@@ -184,57 +184,6 @@ class BoundariesService:
         return -90 <= lat <= 90 and -180 <= lon <= 180
 
     @staticmethod
-    def get_boundary_statistics() -> dict:
-        """Get statistics about available boundary data."""
-        try:
-            adm0_count = db.session.query(AdminBoundary0Metadata).count()
-            adm1_count = db.session.query(AdminBoundary1Unit).count()
-
-            levels_available = []
-            if adm0_count > 0:
-                levels_available.append(0)
-            if adm1_count > 1:
-                levels_available.append(1)
-
-            return {
-                "total_countries": adm0_count,
-                "total_admin1_units": adm1_count,
-                "levels_available": levels_available,
-            }
-        except Exception as e:
-            logger.error(f"Error getting boundary statistics: {str(e)}")
-            return {
-                "total_countries": 0,
-                "total_admin1_units": 0,
-                "levels_available": [],
-            }
-
-    @staticmethod
-    def find_boundaries_containing_point(
-        lon: float, lat: float, level: int | None = None
-    ) -> list[dict]:
-        """
-        Find boundaries that contain the given point.
-
-        DEPRECATED: This method cannot work without stored geometries.
-        Clients should use the gjDownloadURL to fetch the GeoJSON and perform
-        spatial queries client-side or use a dedicated spatial service.
-
-        Args:
-            lon: Longitude coordinate
-            lat: Latitude coordinate
-            level: Administrative level (0 or 1), if None search both
-
-        Returns:
-            Empty list (spatial queries not supported without geometries)
-        """
-        logger.warning(
-            "Spatial queries are not supported - geometries are not stored. "
-            "Use gjDownloadURL to fetch GeoJSON for client-side spatial operations."
-        )
-        return []
-
-    @staticmethod
     def get_boundary_by_id(
         boundary_id: str, release_type: str = "gbOpen"
     ) -> dict | None:
@@ -292,19 +241,20 @@ class BoundariesService:
         return None
 
     @staticmethod
-    def get_boundaries_hierarchy(release_type: str = "gbOpen") -> list[dict]:
+    def get_boundaries_list(release_type: str = "gbOpen") -> list[dict]:
         """
         Get hierarchical list of boundaries with ADM1 nested under ADM0.
 
-        Returns a complete list without pagination, showing only essential fields.
-        ADM1 boundaries are nested under their parent ADM0 country.
+        Returns a complete list without pagination, including GeoJSON download links
+        for both ADM0 and ADM1 boundaries. ADM1 boundaries are nested under their
+        parent ADM0 country.
 
         Args:
             release_type: The release type to filter by
                 (gbOpen, gbHumanitarian, gbAuthoritative)
 
         Returns:
-            List of ADM0 boundaries with nested ADM1 boundaries
+            List of ADM0 boundaries with nested ADM1 boundaries and download links
         """
         try:
             # Get all ADM0 boundaries for the specified release type
@@ -317,6 +267,16 @@ class BoundariesService:
 
             result = []
             for adm0 in adm0_boundaries:
+                # Get ADM1 metadata for this country to include download links
+                adm1_metadata = (
+                    db.session.query(AdminBoundary1Metadata)
+                    .filter(
+                        AdminBoundary1Metadata.boundaryISO == adm0.boundaryISO,
+                        AdminBoundary1Metadata.releaseType == release_type,
+                    )
+                    .first()
+                )
+
                 # Get all ADM1 units for this country and release type
                 adm1_units = (
                     db.session.query(AdminBoundary1Unit)
@@ -334,11 +294,19 @@ class BoundariesService:
                     for adm1 in adm1_units
                 ]
 
-                # Build hierarchy
+                # Build hierarchy with download links
                 country_data = {
                     "boundaryISO": adm0.boundaryISO,
                     "boundaryName": adm0.boundaryName,
                     "releaseType": adm0.releaseType,
+                    "adm0_geojson_url": adm0.gjDownloadURL,
+                    "adm0_topojson_url": adm0.tjDownloadURL,
+                    "adm1_geojson_url": (
+                        adm1_metadata.gjDownloadURL if adm1_metadata else None
+                    ),
+                    "adm1_topojson_url": (
+                        adm1_metadata.tjDownloadURL if adm1_metadata else None
+                    ),
                     "admin1_units": admin1_list,
                 }
                 result.append(country_data)
@@ -346,7 +314,7 @@ class BoundariesService:
             return result
 
         except Exception as e:
-            logger.error(f"Error getting boundaries hierarchy: {str(e)}", exc_info=True)
+            logger.error(f"Error getting boundaries list: {str(e)}", exc_info=True)
             raise
 
     @staticmethod
@@ -407,3 +375,42 @@ class BoundariesService:
                 f"Error getting last updated timestamp: {str(e)}", exc_info=True
             )
             raise
+
+    @staticmethod
+    def get_last_updated_from_boundaries(boundaries: list[dict]):
+        """
+        Get the most recent modification timestamp from a list of boundary objects.
+
+        Args:
+            boundaries: List of boundary dictionaries with updatedAt fields
+
+        Returns:
+            datetime or None if no boundaries have update timestamps
+        """
+        try:
+            timestamps = []
+            for boundary in boundaries:
+                updated_at = boundary.get("updatedAt")
+                if updated_at:
+                    try:
+                        from datetime import datetime
+
+                        # Parse ISO format timestamp
+                        timestamp = datetime.fromisoformat(
+                            updated_at.replace("Z", "+00:00")
+                        )
+                        timestamps.append(timestamp)
+                    except (ValueError, AttributeError):
+                        # Skip invalid timestamps
+                        continue
+
+            if timestamps:
+                return max(timestamps)
+            return None
+
+        except Exception as e:
+            logger.error(
+                f"Error getting last updated from boundaries list: {str(e)}",
+                exc_info=True,
+            )
+            return None

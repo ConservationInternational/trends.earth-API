@@ -542,10 +542,10 @@ class BoundaryFetcher:
             iso_code: ISO 3-letter country code
         """
         logger.info(f"Fetching all boundaries for {iso_code}")
-        
+
         adm0_found = self.fetch_country_adm0(iso_code)
         adm1_found = self.fetch_country_adm1(iso_code)
-        
+
         if not adm0_found and not adm1_found:
             logger.warning(
                 f"No boundary data available for {iso_code} in "
@@ -731,11 +731,11 @@ def main():
                         )
                         logger.info(f"=== Skipping {release_type} ===")
                         continue
-                
+
                 if success_count == 0:
                     logger.error("Failed to fetch boundaries for all release types")
                     return 1
-                elif success_count < len(RELEASE_TYPES):
+                if success_count < len(RELEASE_TYPES):
                     logger.warning(
                         f"Completed {success_count}/{len(RELEASE_TYPES)} release types"
                     )
@@ -761,13 +761,11 @@ def main():
                         )
                         logger.info(f"=== Skipping {release_type} ===")
                         continue
-                
+
                 if success_count == 0:
-                    logger.error(
-                        f"Failed to fetch {iso_code} for all release types"
-                    )
+                    logger.error(f"Failed to fetch {iso_code} for all release types")
                     return 1
-                elif success_count < len(RELEASE_TYPES):
+                if success_count < len(RELEASE_TYPES):
                     logger.warning(
                         f"Completed {success_count}/{len(RELEASE_TYPES)} release types"
                     )

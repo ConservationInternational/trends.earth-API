@@ -336,52 +336,6 @@ class TestBoundariesEndpoint:
         assert "geometry" not in data["data"][0]
 
 
-class TestBoundaryStatisticsEndpoint:
-    """Tests for GET /api/v1/data/boundaries/stats endpoint."""
-
-    def _auth_headers(self, token):
-        """Helper to create authorization headers."""
-        return {"Authorization": f"Bearer {token}"}
-
-    def test_requires_authentication(self, client):
-        """Test that the stats endpoint requires authentication."""
-        response = client.get("/api/v1/data/boundaries/stats")
-        assert response.status_code == 401
-
-    def test_get_boundary_statistics(
-        self,
-        client,
-        user_token,
-        sample_adm0_boundaries,
-        sample_adm1_boundaries,
-        db_session,
-    ):
-        """Test retrieving boundary statistics."""
-        response = client.get(
-            "/api/v1/data/boundaries/stats", headers=self._auth_headers(user_token)
-        )
-        assert response.status_code == 200
-        data = response.get_json()
-        assert "data" in data
-        stats = data["data"]
-        assert "total_countries" in stats
-        assert "total_admin1_units" in stats
-        assert stats["total_countries"] == 3
-        assert stats["total_admin1_units"] == 3
-
-    def test_get_statistics_empty_database(self, client, user_token):
-        """Test statistics endpoint with empty database."""
-        response = client.get(
-            "/api/v1/data/boundaries/stats", headers=self._auth_headers(user_token)
-        )
-        assert response.status_code == 200
-        data = response.get_json()
-        assert "data" in data
-        stats = data["data"]
-        assert stats["total_countries"] == 0
-        assert stats["total_admin1_units"] == 0
-
-
 class TestBoundaryIntegration:
     """Integration tests for boundary endpoints."""
 
@@ -397,7 +351,7 @@ class TestBoundaryIntegration:
         sample_adm1_boundaries,
         db_session,
     ):
-        """Test complete workflow: create, query, stats."""
+        """Test complete workflow: create and query boundaries."""
         # Get all boundaries (need to specify levels)
         response = client.get(
             "/api/v1/data/boundaries?level=0,1", headers=self._auth_headers(user_token)
@@ -405,14 +359,10 @@ class TestBoundaryIntegration:
         assert response.status_code == 200
         assert len(response.get_json()["data"]) == 6
 
-        # Get statistics
-        response = client.get(
-            "/api/v1/data/boundaries/stats", headers=self._auth_headers(user_token)
-        )
-        assert response.status_code == 200
-        stats = response.get_json()["data"]
-        assert stats["total_countries"] == 3
-        assert stats["total_admin1_units"] == 3
+        # Verify boundary data is accessible
+        data = response.get_json()["data"]
+        assert any(b["boundaryISO"] == "USA" for b in data)
+        assert any(b["boundaryISO"] == "GBR" for b in data)
 
         # Query specific boundary
         response = client.get(
