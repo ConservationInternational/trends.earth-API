@@ -42,7 +42,11 @@ def is_internal_network_request():
         additional_networks = os.getenv("INTERNAL_NETWORKS")
         if additional_networks:
             internal_networks.extend(
-                [net.strip() for net in additional_networks.split(",") if net.strip()]
+                [
+                    net.strip().strip('"\'')
+                    for net in additional_networks.split(",")
+                    if net.strip().strip('"\'')
+                ]
             )
 
         import ipaddress

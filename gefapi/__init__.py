@@ -42,9 +42,13 @@ if trusted_proxy_count:
     )
 
 # Configure CORS with specific origins for security
-cors_origins = os.getenv(
-    "CORS_ORIGINS", "http://localhost:3000,http://localhost:8080"
-).split(",")
+cors_origins = [
+    origin.strip().strip('"\'')
+    for origin in os.getenv(
+        "CORS_ORIGINS", "http://localhost:3000,http://localhost:8080"
+    ).split(",")
+    if origin.strip().strip('"\'')
+]
 CORS(
     app,
     origins=cors_origins,

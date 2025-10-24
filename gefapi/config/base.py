@@ -74,11 +74,11 @@ SETTINGS = {
     "JWT_TOKEN_LOCATION": ["headers"],
     "TRUSTED_PROXY_COUNT": int(os.getenv("TRUSTED_PROXY_COUNT", "0")),
     "INTERNAL_NETWORKS": [
-        net.strip()
+        net.strip().strip('"\'')  # Remove quotes and whitespace
         for net in os.getenv(
             "INTERNAL_NETWORKS", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
         ).split(",")
-        if net.strip()
+        if net.strip().strip('"\'')  # Only include non-empty networks after cleaning
     ],
     "MAX_DECOMPRESSED_REQUEST_SIZE": int(
         os.getenv("MAX_DECOMPRESSED_REQUEST_SIZE", 5 * 1024 * 1024)
@@ -121,40 +121,46 @@ SETTINGS = {
         "STORAGE_URI": os.getenv("RATE_LIMIT_STORAGE_URI") or os.getenv("REDIS_URL"),
         # DEFAULT_LIMITS: Applied automatically to ALL endpoints (global fallback)
         "DEFAULT_LIMITS": [
-            s.strip()
+            s.strip().strip('"\'')
             for s in (
                 os.getenv("DEFAULT_LIMITS") or "1000 per hour,100 per minute"
             ).split(",")
+            if s.strip().strip('"\'')
         ],
         # API_LIMITS: For specific endpoints needing moderate rate limiting
         # (manual application)
         "API_LIMITS": [
-            s.strip()
+            s.strip().strip('"\'')
             for s in (os.getenv("API_LIMITS") or "100 per hour,20 per minute").split(
                 ","
             )
+            if s.strip().strip('"\'')
         ],  # API endpoints
         "AUTH_LIMITS": [
-            s.strip()
+            s.strip().strip('"\'')
             for s in (os.getenv("AUTH_LIMITS") or "60 per minute,600 per hour").split(
                 ","
             )
+            if s.strip().strip('"\'')
         ],  # Stricter for auth - can reduce once refresh tokens are widely used
         "PASSWORD_RESET_LIMITS": [
-            s.strip()
+            s.strip().strip('"\'')
             for s in (
                 os.getenv("PASSWORD_RESET_LIMITS") or "3 per hour,1 per minute"
             ).split(",")
+            if s.strip().strip('"\'')
         ],  # Very strict for password reset
         "USER_CREATION_LIMITS": [
-            s.strip()
+            s.strip().strip('"\'')
             for s in (os.getenv("USER_CREATION_LIMITS") or "100 per hour").split(",")
+            if s.strip().strip('"\'')
         ],  # User registration limits
         "EXECUTION_RUN_LIMITS": [
-            s.strip()
+            s.strip().strip('"\'')
             for s in (
                 os.getenv("EXECUTION_RUN_LIMITS") or "10 per minute,40 per hour"
             ).split(",")
+            if s.strip().strip('"\'')
         ],  # Script execution limits
     },
     # Testing configuration for rate limiting
