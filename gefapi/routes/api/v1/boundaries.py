@@ -1,6 +1,8 @@
 """
 Administrative Boundaries API endpoints.
-Provides access to administrative boundary data from geoBoundaries dataset.
+Provides access to administrative boundary metadata and download URLs from
+geoBoundaries dataset. Does NOT return geometries directly - clients should
+use the gjDownloadURL to fetch GeoJSON.
 """
 
 import logging
@@ -18,25 +20,31 @@ logger = logging.getLogger(__name__)
 @jwt_required()
 def get_boundaries():
     """
-    Get administrative boundary data with flexible query options.
+    Get administrative boundary metadata with download URLs.
 
-    NOTE: This endpoint replaces the deprecated /data/boundaries/countries endpoint.
-    For country data only, use: ?level=0&format=table
+    Returns metadata and download URLs from geoBoundaries API responses.
+    Clients should use gjDownloadURL to fetch the actual GeoJSON geometry.
 
     Query Parameters:
     - level: Administrative level (0, 1, or 0,1 for mixed levels, default: 0)
-    - id: Filter by ID (country code for ADM0, shape_id for ADM1)
+    - release_type: geoBoundaries release type
+      (gbOpen, gbHumanitarian, gbAuthoritative, default: gbOpen)
+    - id: Filter by ID (boundaryISO for ADM0, shapeID for ADM1)
     - iso: Filter by ISO country code (applies to both levels)
     - name: Filter by name (partial match, case-insensitive)
-    - lat, lon: Filter by point location (requires both parameters)
-    - format: Response format ('full' includes geometries, 'table' excludes them)
     - page: Page number for pagination (default: 1)
     - per_page: Results per page (default: 100, max: 1000)
     - created_at_since: Filter boundaries created since this datetime (ISO format)
     - updated_at_since: Filter boundaries updated since this datetime (ISO format)
 
+    Release Types (as per geoBoundaries API):
+    - gbOpen: CC-BY 4.0 compliant, most open license (default)
+    - gbHumanitarian: Mirrored from UN OCHA, may have less open licensure
+    - gbAuthoritative: Mirrored from UN SALB, verified through in-country
+      processes, no commercial use
+
     Returns:
-    - 200: Boundary data matching query criteria
+    - 200: Boundary metadata matching query criteria
     - 400: Invalid query parameters
     - 404: No boundaries found matching criteria
 
@@ -44,13 +52,34 @@ def get_boundaries():
     - /api/v1/data/boundaries?level=0&iso=USA
     - /api/v1/data/boundaries?level=1&iso=USA&name=california
     - /api/v1/data/boundaries?level=0,1&iso=USA (mixed levels)
+    - /api/v1/data/boundaries?release_type=gbHumanitarian&iso=SYR
+    - /api/v1/data/boundaries?release_type=gbAuthoritative&level=0
     - /api/v1/data/boundaries?updated_at_since=2023-01-01T00:00:00Z
-    - /api/v1/data/boundaries?lat=40.7128&lon=-74.0060&level=0
-    - /api/v1/data/boundaries?format=table&per_page=50
+
+    Response includes:
+    - boundaryISO: ISO country code
+    - releaseType: Release type (gbOpen, gbHumanitarian, or gbAuthoritative)
+    - boundaryName: Name of the boundary
+    - boundaryType: "ADM0" or "ADM1"
+    - Continent: Continent name
+    - buildDate: Date the boundary was built (use for updated_at)
+    - gjDownloadURL: GeoJSON download URL (use this to fetch geometry)
+    - tjDownloadURL: TopoJSON download URL
+    - Other geoBoundaries metadata fields
     """
     try:
         # Parse query parameters with validation
         level_param = request.args.get("level", "0")
+        release_type = request.args.get("release_type", "gbOpen")
+
+        # Validate release_type
+        valid_release_types = ["gbOpen", "gbHumanitarian", "gbAuthoritative"]
+        if release_type not in valid_release_types:
+            return error(
+                400,
+                f"Invalid release_type parameter. "
+                f"Must be one of: {', '.join(valid_release_types)}",
+            )
 
         # Parse levels - support comma-separated values like "0,1"
         try:
@@ -71,15 +100,8 @@ def get_boundaries():
         boundary_id = request.args.get("id")
         iso_code = request.args.get("iso")
         name_filter = request.args.get("name")
-        lat = request.args.get("lat")
-        lon = request.args.get("lon")
-        response_format = request.args.get("format", "full")
         created_at_since = request.args.get("created_at_since")
         updated_at_since = request.args.get("updated_at_since")
-
-        # Validate response format
-        if response_format not in ["full", "table"]:
-            return error(400, "Invalid format parameter. Must be 'full' or 'table'")
 
         # Parse and validate timestamp parameters
         if created_at_since:
@@ -117,21 +139,6 @@ def get_boundaries():
         except ValueError:
             return error(400, "Invalid page or per_page parameter")
 
-        # Validate coordinate parameters
-        if (lat is None) != (lon is None):
-            return error(
-                400, "Both lat and lon parameters are required for point queries"
-            )
-
-        if lat is not None and lon is not None:
-            try:
-                lat = float(lat)
-                lon = float(lon)
-                if not BoundariesService.validate_point_coordinates(lat, lon):
-                    return error(400, "Invalid coordinate values")
-            except ValueError:
-                return error(400, "Invalid coordinate format")
-
         # Build filters dictionary
         filters = {}
         if boundary_id:
@@ -141,19 +148,19 @@ def get_boundaries():
         if name_filter:
             # Add wildcards for case-insensitive partial matching
             filters["name_filter"] = f"%{name_filter}%"
-        if lat is not None and lon is not None:
-            filters["lat"] = lat
-            filters["lon"] = lon
         if created_at_since:
             filters["created_at_since"] = created_at_since
         if updated_at_since:
             filters["updated_at_since"] = updated_at_since
 
-        # Use the unified boundaries method for all queries
+        # Always filter by release type
+        filters["release_type"] = release_type
+
+        # Get boundaries metadata and download URLs
         boundaries, total_count = BoundariesService.get_boundaries(
             levels=levels,
             filters=filters if filters else None,
-            format_type=response_format,
+            format_type="full",  # Kept for backwards compatibility but ignored
             page=page,
             per_page=per_page,
         )
@@ -164,11 +171,12 @@ def get_boundaries():
             "data": boundaries,
             "meta": {
                 "levels": levels,
-                "format": response_format,
+                "release_type": release_type,
                 "total": total_count,
                 "page": page,
                 "per_page": per_page,
                 "has_more": (page * per_page) < total_count,
+                "note": "Use gjDownloadURL field to fetch GeoJSON geometry data",
             },
         }
 
@@ -179,12 +187,11 @@ def get_boundaries():
             response_data["meta"]["filter_iso"] = iso_code.upper()
         if name_filter:
             response_data["meta"]["filter_name"] = name_filter
-        if lat is not None and lon is not None:
-            response_data["meta"]["filter_point"] = {"lat": lat, "lon": lon}
 
         logger.info(
             f"Boundaries API query successful: levels={levels}, "
-            f"format={response_format}, results={len(boundaries)}, total={total_count}"
+            f"release_type={release_type}, results={len(boundaries)}, "
+            f"total={total_count}"
         )
 
         return jsonify(response_data), 200
@@ -211,3 +218,129 @@ def get_boundary_statistics():
     except Exception as e:
         logger.error(f"Error getting boundary statistics: {str(e)}", exc_info=True)
         return error(500, "Internal server error while fetching statistics")
+
+
+@endpoints.route("/data/boundaries/hierarchy", methods=["GET"])
+@jwt_required()
+def get_boundaries_hierarchy():
+    """
+    Get hierarchical list of all boundaries with ADM1 nested under ADM0.
+
+    Returns a complete list without pagination, showing only essential fields
+    (names and IDs). ADM1 boundaries are nested under their parent ADM0 country.
+
+    Query Parameters:
+    - release_type: geoBoundaries release type
+      (gbOpen, gbHumanitarian, gbAuthoritative, default: gbOpen)
+
+    Returns:
+    - 200: Hierarchical boundary list organized by country
+    - 400: Invalid query parameters
+    - 500: Server error
+
+    Response Structure:
+    {
+        "data": [
+            {
+                "boundaryISO": "USA",
+                "boundaryName": "United States",
+                "releaseType": "gbOpen",
+                "admin1_boundaries": [
+                    {
+                        "shapeID": "USA-ADM1-CA",
+                        "boundaryName": "California"
+                    },
+                    ...
+                ]
+            },
+            ...
+        ]
+    }
+    """
+    try:
+        release_type = request.args.get("release_type", "gbOpen")
+
+        # Validate release_type
+        valid_release_types = ["gbOpen", "gbHumanitarian", "gbAuthoritative"]
+        if release_type not in valid_release_types:
+            return error(
+                400,
+                f"Invalid release_type parameter. "
+                f"Must be one of: {', '.join(valid_release_types)}",
+            )
+
+        # Get hierarchical boundary list
+        hierarchy = BoundariesService.get_boundaries_hierarchy(release_type)
+
+        return jsonify({"data": hierarchy, "meta": {"release_type": release_type}}), 200
+
+    except Exception as e:
+        logger.error(f"Error getting boundaries hierarchy: {str(e)}", exc_info=True)
+        return error(500, "Internal server error while fetching boundaries hierarchy")
+
+
+@endpoints.route("/data/boundaries/last-updated", methods=["GET"])
+@jwt_required()
+def get_boundaries_last_updated():
+    """
+    Get the most recent modification timestamp across all boundaries.
+
+    Returns the latest updated_at datetime from both ADM0 and ADM1 boundary
+    tables. Useful for cache invalidation and determining if boundary data
+    needs to be refreshed.
+
+    Query Parameters:
+    - release_type: geoBoundaries release type
+      (gbOpen, gbHumanitarian, gbAuthoritative, default: gbOpen)
+
+    Returns:
+    - 200: Last updated timestamp
+    - 400: Invalid query parameters
+    - 404: No boundary data found
+    - 500: Server error
+
+    Response Structure:
+    {
+        "data": {
+            "last_updated": "2025-01-26T10:30:00.000000",
+            "release_type": "gbOpen"
+        }
+    }
+    """
+    try:
+        release_type = request.args.get("release_type", "gbOpen")
+
+        # Validate release_type
+        valid_release_types = ["gbOpen", "gbHumanitarian", "gbAuthoritative"]
+        if release_type not in valid_release_types:
+            return error(
+                400,
+                f"Invalid release_type parameter. "
+                f"Must be one of: {', '.join(valid_release_types)}",
+            )
+
+        # Get last updated timestamp
+        last_updated = BoundariesService.get_last_updated(release_type)
+
+        if last_updated is None:
+            return error(
+                404, f"No boundary data found for release type: {release_type}"
+            )
+
+        return (
+            jsonify(
+                {
+                    "data": {
+                        "last_updated": last_updated.isoformat()
+                        if last_updated
+                        else None,
+                        "release_type": release_type,
+                    }
+                }
+            ),
+            200,
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting last updated timestamp: {str(e)}", exc_info=True)
+        return error(500, "Internal server error while fetching last updated timestamp")
