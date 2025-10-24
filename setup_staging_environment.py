@@ -214,16 +214,16 @@ class StagingEnvironmentSetup:
         # Check for production database password
         logger.info("Checking production database credentials...")
         if not self.prod_db_config["password"]:
-            logger.error(
-                "❌ CRITICAL: No production database password provided! "
-                "Scripts will NOT be imported."
+            logger.warning(
+                "No production database password provided - "
+                "scripts will NOT be imported from production"
             )
-            logger.error(
-                "Check that PROD_DB_PASSWORD environment variable is set in "
-                "the deployment workflow."
+            logger.info(
+                "To enable production data import, set PROD_DB_PASSWORD "
+                "environment variable in the deployment workflow"
             )
             return {}
-        logger.info("✅ Production database password is present")
+        logger.info("✅ Production database credentials are configured")
 
         # Log connection attempt
         logger.info(
@@ -241,11 +241,11 @@ class StagingEnvironmentSetup:
                 "Scripts will NOT be imported."
             )
             logger.error(
-                f"Connection config (password hidden): "
+                f"Connection config: "
                 f"host={self.prod_db_config['host']}, "
                 f"port={self.prod_db_config['port']}, "
                 f"database={self.prod_db_config['database']}, "
-                f"user={self.prod_db_config['user']}"
+                f"user={self.prod_db_config['user']} (password: [HIDDEN])"
             )
             logger.error(
                 "Possible issues: "
@@ -474,7 +474,7 @@ class StagingEnvironmentSetup:
     def copy_recent_status_logs(self):
         """Copy recent status logs from production database with reassigned IDs."""
         if not self.prod_db_config["password"]:
-            logger.warning(
+            logger.debug(
                 "No production database password provided, skipping status logs import"
             )
             return
@@ -654,7 +654,7 @@ class StagingEnvironmentSetup:
     def copy_script_logs(self, script_id_mapping):
         """Copy script logs for imported scripts using ID mapping."""
         if not self.prod_db_config["password"]:
-            logger.warning(
+            logger.debug(
                 "No production database password provided, skipping script logs import"
             )
             return
@@ -858,12 +858,12 @@ class StagingEnvironmentSetup:
             for role, count in user_roles:
                 logger.info(f"  {role}: {count}")
 
-            # Display test user credentials
-            logger.info("\nTest User Credentials:")
+            # Display test user credentials (passwords hidden for security)
+            logger.info("\nTest User Accounts Created:")
             for user_data in self.test_users:
                 logger.info(
                     f"  {user_data['role']}: {user_data['email']} "
-                    f"(password: {user_data['password']})"
+                    f"(password: [CONFIGURED])"
                 )
 
         except psycopg2.Error as e:
