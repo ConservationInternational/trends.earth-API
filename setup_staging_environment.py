@@ -20,10 +20,12 @@ import uuid
 import psycopg2
 from werkzeug.security import generate_password_hash
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+# Configure logging only if not already configured
+# This prevents duplicate log messages when imported from run_db_migrations.py
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
 logger = logging.getLogger(__name__)
 
 
