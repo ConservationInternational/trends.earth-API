@@ -105,14 +105,14 @@ jobs:
           cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
           
           # Ensure deployment utilities are executable
-          chmod +x scripts/deployment_utils.py
+          chmod +x deployment_utils.py
           
           # Determine which branch to deploy
           BRANCH="${{ github.ref_name == 'staging' && 'staging' || 'develop' }}"
-          echo "� Deploying branch: $BRANCH"
+          echo "📚 Deploying branch: $BRANCH"
           
           # Clean git workspace and checkout correct branch using deployment utilities
-          if ! python3 scripts/deployment_utils.py \
+          if ! python3 deployment_utils.py
             --registry "${{ env.REGISTRY }}" \
             --image-name "${{ env.IMAGE_NAME }}" \
             --app-path "${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}" \
@@ -122,7 +122,7 @@ jobs:
           fi
           
           # Configure Docker registry using deployment utilities
-          if ! python3 scripts/deployment_utils.py \
+          if ! python3 deployment_utils.py \
             --registry "${{ env.REGISTRY }}" \
             --image-name "${{ env.IMAGE_NAME }}" \
             --app-path "${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}" \
@@ -137,7 +137,7 @@ jobs:
           SHORT_SHA="${SHORT_SHA:0:7}"
           
           # Build and push images using deployment utilities
-          if ! python3 scripts/deployment_utils.py \
+          if ! python3 deployment_utils.py \
             --registry "${{ env.REGISTRY }}" \
             --image-name "${{ env.IMAGE_NAME }}" \
             --app-path "${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}" \
@@ -359,7 +359,7 @@ jobs:
           
           # Wait for all services to be ready using deployment utilities
           echo "📊 Waiting for all services to be running..."
-          if ! python3 scripts/deployment_utils.py \
+          if ! python3 deployment_utils.py \
             --registry "${{ secrets.DOCKER_REGISTRY }}" \
             --image-name "${{ env.IMAGE_NAME }}" \
             --app-path "${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}" \
@@ -373,7 +373,7 @@ jobs:
           
           # Health check using deployment utilities
           echo "🏥 Performing health check..."
-          if ! python3 scripts/deployment_utils.py \
+          if ! python3 deployment_utils.py \
             --registry "${{ secrets.DOCKER_REGISTRY }}" \
             --image-name "${{ env.IMAGE_NAME }}" \
             --app-path "${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}" \

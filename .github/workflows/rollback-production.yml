@@ -193,9 +193,9 @@ jobs:
             
             # Clean workspace using deployment utilities
             echo "🧹 Cleaning workspace..."
-            chmod +x scripts/deployment_utils.py
+            chmod +x deployment_utils.py
             
-            python3 scripts/deployment_utils.py \
+            python3 deployment_utils.py \
               --registry "${{ env.REGISTRY }}" \
               --image-name "${{ env.IMAGE_NAME }}" \
               --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
@@ -241,7 +241,7 @@ jobs:
             SHORT_SHA="${COMMIT_SHA:0:7}"
             ROLLBACK_TAG="rollback-$SHORT_SHA"
             
-            python3 scripts/deployment_utils.py \
+            python3 deployment_utils.py \
               --registry "${{ env.REGISTRY }}" \
               --image-name "${{ env.IMAGE_NAME }}" \
               --tag "$ROLLBACK_TAG" \
@@ -311,7 +311,7 @@ jobs:
           # Wait for all services to be ready after rollback
           echo "⏳ Waiting for all services to be ready after rollback..."
           
-          python3 scripts/deployment_utils.py \
+          python3 deployment_utils.py \
             --registry "${{ env.REGISTRY }}" \
             --image-name "${{ env.IMAGE_NAME }}" \
             --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
@@ -336,7 +336,7 @@ jobs:
           # Navigate to application directory
           cd ${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}
           
-          python3 scripts/deployment_utils.py \
+          python3 deployment_utils.py \
             --registry "${{ env.REGISTRY }}" \
             --image-name "${{ env.IMAGE_NAME }}" \
             --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
