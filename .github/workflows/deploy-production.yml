@@ -73,16 +73,39 @@ jobs:
           
           echo "🚀 Starting production deployment build process..."
           
-          # Clean git workspace and checkout master branch using deployment utilities
-          # Note: We run this before chmod to ensure deployment_utils.py exists
-          if ! python3 deployment_utils.py \
-            --registry "${{ env.REGISTRY }}" \
-            --image-name "${{ env.IMAGE_NAME }}" \
-            --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
-            clean-git --branch master; then
-            echo "❌ Git workspace cleaning failed"
+          # Clean git workspace manually first (deployment_utils.py may not exist yet)
+          echo "🧹 Cleaning git workspace..."
+          
+          # Clean untracked files and directories
+          git clean -fd || true
+          
+          # Reset to clean state
+          git reset --hard HEAD || true
+          
+          # Fetch latest changes
+          git fetch origin || {
+            echo "❌ Git fetch failed"
             exit 1
-          fi
+          }
+          
+          # Checkout and reset to origin/master branch
+          git checkout master || {
+            echo "❌ Git checkout failed for branch: master"
+            exit 1
+          }
+          
+          git reset --hard "origin/master" || {
+            echo "❌ Git reset failed for branch: master"
+            exit 1
+          }
+          
+          # Get current branch and commit for verification
+          current_branch=$(git branch --show-current)
+          current_commit=$(git rev-parse HEAD | cut -c1-7)
+          
+          echo "✅ Currently on branch: $current_branch"
+          echo "✅ Current commit: $current_commit"
+          echo "✅ Workspace cleaned and reset to latest commit"
           
           # Verify deployment utilities exist after git cleanup
           if [ ! -f "deployment_utils.py" ]; then

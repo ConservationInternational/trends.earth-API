@@ -179,6 +179,17 @@ jobs:
           # Navigate to application directory
           cd ${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}
           
+          # Verify deployment utilities exist
+          if [ ! -f "deployment_utils.py" ]; then
+            echo "❌ deployment_utils.py not found in application directory"
+            echo "📋 Current directory contents:"
+            ls -la
+            exit 1
+          fi
+          
+          # Ensure deployment utilities are executable
+          chmod +x deployment_utils.py
+          
           # Check current service status
           echo "📊 Current service status before rollback:"
           docker service ls --filter "name=trends-earth-prod"
@@ -191,15 +202,39 @@ jobs:
             COMMIT_SHA="${{ steps.rollback-target.outputs.commit-sha }}"
             echo "🔄 Rolling back to commit SHA: $COMMIT_SHA"
             
-            # Clean workspace using deployment utilities
+            # Clean workspace manually first (deployment_utils.py may not exist yet)
             echo "🧹 Cleaning workspace..."
-            chmod +x deployment_utils.py
             
-            python3 deployment_utils.py \
-              --registry "${{ env.REGISTRY }}" \
-              --image-name "${{ env.IMAGE_NAME }}" \
-              --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
-              clean-git
+            # Clean untracked files and directories
+            git clean -fd || true
+            
+            # Reset to clean state
+            git reset --hard HEAD || true
+            
+            # Fetch latest changes
+            git fetch origin || {
+              echo "❌ Git fetch failed"
+              exit 1
+            }
+            
+            # Get current branch and commit for verification
+            current_branch=$(git branch --show-current)
+            current_commit=$(git rev-parse HEAD | cut -c1-7)
+            
+            echo "✅ Currently on branch: $current_branch"
+            echo "✅ Current commit: $current_commit"
+            echo "✅ Workspace cleaned"
+            
+            # Verify deployment utilities exist after git cleanup
+            if [ ! -f "deployment_utils.py" ]; then
+              echo "❌ deployment_utils.py not found after git cleanup"
+              echo "📋 Current directory contents:"
+              ls -la
+              exit 1
+            fi
+            
+            # Ensure deployment utilities are executable after git cleanup
+            chmod +x deployment_utils.py
             
             echo "📥 Fetching latest changes from repository..."
             git fetch origin
@@ -226,28 +261,28 @@ jobs:
             echo "📋 Commit details:"
             git log --oneline -1
             
-            # Configure insecure registry on server if needed
-            echo "📋 Configuring insecure registry on server..."
-            sudo mkdir -p /etc/docker
-            if [ ! -f /etc/docker/daemon.json ] || ! grep -q "insecure-registries" /etc/docker/daemon.json; then
-              echo '{"insecure-registries":["${{ env.REGISTRY }}"]}' | sudo tee /etc/docker/daemon.json > /dev/null
-              sudo systemctl restart docker
-              sleep 10
-            fi
-            
             # Build new image from the rolled-back commit
             echo "🔨 Building Docker image from commit $COMMIT_SHA..."
             
             SHORT_SHA="${COMMIT_SHA:0:7}"
             ROLLBACK_TAG="rollback-$SHORT_SHA"
             
+            # Configure Docker registry using deployment utilities
             python3 deployment_utils.py \
               --registry "${{ env.REGISTRY }}" \
               --image-name "${{ env.IMAGE_NAME }}" \
-              --tag "$ROLLBACK_TAG" \
               --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
-              --additional-tags "latest" \
-              build-and-push
+              configure-registry
+            
+            # Build and push image using deployment utilities
+            python3 deployment_utils.py \
+              --registry "${{ env.REGISTRY }}" \
+              --image-name "${{ env.IMAGE_NAME }}" \
+              --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
+              build-image \
+              --tags "$ROLLBACK_TAG" "latest" \
+              --commit-sha "$COMMIT_SHA" \
+              --no-cache
             
             # Set the image tag for service updates
             FINAL_IMAGE_TAG="$ROLLBACK_TAG"
@@ -315,9 +350,7 @@ jobs:
             --registry "${{ env.REGISTRY }}" \
             --image-name "${{ env.IMAGE_NAME }}" \
             --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
-            --stack-name "trends-earth-prod" \
-            --timeout 120 \
-            wait-for-services
+            wait-services --stack-name "trends-earth-prod" --max-wait 120
           
           echo "🎉 Production rollback completed!"
 
@@ -336,13 +369,17 @@ jobs:
           # Navigate to application directory
           cd ${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}
           
+          # Verify deployment utilities exist
+          if [ ! -f "deployment_utils.py" ]; then
+            echo "❌ deployment_utils.py not found"
+            exit 1
+          fi
+          
           python3 deployment_utils.py \
             --registry "${{ env.REGISTRY }}" \
             --image-name "${{ env.IMAGE_NAME }}" \
             --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
-            --api-url "http://127.0.0.1:3001/api-health" \
-            --timeout 300 \
-            check-health
+            health-check --port 3001 --max-attempts 30
           
           echo "🎉 Rollback health verification completed successfully!"
 
