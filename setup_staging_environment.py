@@ -689,10 +689,10 @@ class StagingEnvironmentSetup:
 
         # Enable autocommit to avoid transaction isolation issues
         staging_conn.autocommit = True
-        
+
         prod_cursor = None
         staging_cursor = None
-        
+
         try:
             prod_cursor = prod_conn.cursor()
             staging_cursor = staging_conn.cursor()
