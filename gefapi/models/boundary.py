@@ -255,7 +255,8 @@ class AdminBoundary1Unit(db.Model):
         "AdminBoundary0Metadata",
         foreign_keys=[boundaryISO, releaseType],
         primaryjoin=(
-            "and_(AdminBoundary1Unit.boundaryISO == AdminBoundary0Metadata.boundaryISO, "
+            "and_(AdminBoundary1Unit.boundaryISO == "
+            "AdminBoundary0Metadata.boundaryISO, "
             "AdminBoundary1Unit.releaseType == AdminBoundary0Metadata.releaseType)"
         ),
         backref="adm1_units",
@@ -266,7 +267,8 @@ class AdminBoundary1Unit(db.Model):
         "AdminBoundary1Metadata",
         foreign_keys=[boundaryISO, releaseType],
         primaryjoin=(
-            "and_(AdminBoundary1Unit.boundaryISO == AdminBoundary1Metadata.boundaryISO, "
+            "and_(AdminBoundary1Unit.boundaryISO == "
+            "AdminBoundary1Metadata.boundaryISO, "
             "AdminBoundary1Unit.releaseType == AdminBoundary1Metadata.releaseType)"
         ),
         backref="units",
@@ -275,7 +277,8 @@ class AdminBoundary1Unit(db.Model):
 
     def __repr__(self):
         return (
-            f"<AdminBoundary1Unit(shapeID='{self.shapeID}', release='{self.releaseType}', "
+            f"<AdminBoundary1Unit(shapeID='{self.shapeID}', "
+            f"release='{self.releaseType}', "
             f"name='{self.shapeName}', country='{self.boundaryISO}')>"
         )
 
