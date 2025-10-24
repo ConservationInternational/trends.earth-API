@@ -357,26 +357,30 @@ class BoundaryFetcher:
 
         return unit
 
-    def fetch_country_adm0(self, iso_code: str) -> None:
+    def fetch_country_adm0(self, iso_code: str) -> bool:
         """Fetch and import ADM0 boundary metadata for a specific country.
 
         Args:
             iso_code: ISO 3-letter country code
 
-        Raises:
-            Exception: If fetch fails (no graceful error handling)
+        Returns:
+            True if data was found and imported, False if no data available
         """
         logger.info(f"Fetching ADM0 metadata for {iso_code}")
 
         api_data = self.api_client.get_boundary_metadata(iso_code, "ADM0")
         if not api_data:
-            raise Exception(f"Failed to fetch ADM0 metadata for {iso_code}")
+            logger.warning(
+                f"No ADM0 data available for {iso_code} in {self.api_client.release_type}"
+            )
+            return False
 
         self._create_or_update_adm0_metadata(api_data)
         db.session.commit()
         logger.info(f"Successfully saved ADM0 metadata for {iso_code}")
+        return True
 
-    def fetch_country_adm1(self, iso_code: str) -> None:
+    def fetch_country_adm1(self, iso_code: str) -> bool:
         """Fetch and import ADM1 metadata and units for a specific country.
 
         Downloads simplified GeoJSON to extract unit names (shapeID, shapeName).
@@ -384,15 +388,18 @@ class BoundaryFetcher:
         Args:
             iso_code: ISO 3-letter country code
 
-        Raises:
-            Exception: If fetch fails (no graceful error handling)
+        Returns:
+            True if data was found and imported, False if no data available
         """
         logger.info(f"Fetching ADM1 metadata and units for {iso_code}")
 
         # Fetch ADM1 metadata
         api_data = self.api_client.get_boundary_metadata(iso_code, "ADM1")
         if not api_data:
-            raise Exception(f"Failed to fetch ADM1 metadata for {iso_code}")
+            logger.warning(
+                f"No ADM1 data available for {iso_code} in {self.api_client.release_type}"
+            )
+            return False
 
         # Create/update ADM1 metadata
         self._create_or_update_adm1_metadata(api_data)
@@ -402,7 +409,8 @@ class BoundaryFetcher:
         # Download simplified GeoJSON to extract unit names
         simplified_geojson_url = api_data.get("simplifiedGeometryGeoJSON")
         if not simplified_geojson_url:
-            raise Exception(f"No simplified GeoJSON URL for {iso_code} ADM1")
+            logger.warning(f"No simplified GeoJSON URL for {iso_code} ADM1")
+            return True  # Metadata was saved, but no units available
 
         logger.info(f"Downloading simplified GeoJSON for {iso_code}...")
         response = self.api_client.session.get(simplified_geojson_url, timeout=120)
@@ -439,6 +447,7 @@ class BoundaryFetcher:
                 )
 
         logger.info(f"Successfully saved {len(features)} ADM1 units for {iso_code}")
+        return True
 
     def fetch_all_adm0(self) -> None:
         """Fetch ADM0 metadata for all countries.
@@ -526,12 +535,22 @@ class BoundaryFetcher:
     def fetch_country(self, iso_code: str) -> None:
         """Fetch both ADM0 and ADM1 boundaries for a specific country.
 
+        Gracefully handles cases where data is not available for the current
+        release type (e.g., gbHumanitarian might not have data for all countries).
+
         Args:
             iso_code: ISO 3-letter country code
         """
         logger.info(f"Fetching all boundaries for {iso_code}")
-        self.fetch_country_adm0(iso_code)
-        self.fetch_country_adm1(iso_code)
+        
+        adm0_found = self.fetch_country_adm0(iso_code)
+        adm1_found = self.fetch_country_adm1(iso_code)
+        
+        if not adm0_found and not adm1_found:
+            logger.warning(
+                f"No boundary data available for {iso_code} in "
+                f"{self.api_client.release_type}"
+            )
 
     def fetch_all(self) -> None:
         """Fetch all boundaries (ADM0 and ADM1) for all countries."""
@@ -698,11 +717,28 @@ def main():
                     "Fetching all boundaries (ADM0 + ADM1) for all release types: "
                     f"{', '.join(RELEASE_TYPES)}"
                 )
+                success_count = 0
                 for release_type in RELEASE_TYPES:
                     logger.info(f"=== Processing release type: {release_type} ===")
-                    fetcher = BoundaryFetcher(release_type=release_type)
-                    fetcher.fetch_all()
-                    logger.info(f"=== Completed {release_type} ===")
+                    try:
+                        fetcher = BoundaryFetcher(release_type=release_type)
+                        fetcher.fetch_all()
+                        logger.info(f"=== Completed {release_type} ===")
+                        success_count += 1
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to fetch all boundaries for {release_type}: {str(e)}"
+                        )
+                        logger.info(f"=== Skipping {release_type} ===")
+                        continue
+                
+                if success_count == 0:
+                    logger.error("Failed to fetch boundaries for all release types")
+                    return 1
+                elif success_count < len(RELEASE_TYPES):
+                    logger.warning(
+                        f"Completed {success_count}/{len(RELEASE_TYPES)} release types"
+                    )
 
             elif args.command == "fetch-country":
                 iso_code = args.iso_code.upper()
@@ -711,11 +747,30 @@ def main():
                     f"release types: {', '.join(RELEASE_TYPES)}"
                 )
 
+                success_count = 0
                 for release_type in RELEASE_TYPES:
                     logger.info(f"=== Processing release type: {release_type} ===")
-                    fetcher = BoundaryFetcher(release_type=release_type)
-                    fetcher.fetch_country(iso_code)
-                    logger.info(f"=== Completed {release_type} ===")
+                    try:
+                        fetcher = BoundaryFetcher(release_type=release_type)
+                        fetcher.fetch_country(iso_code)
+                        logger.info(f"=== Completed {release_type} ===")
+                        success_count += 1
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to fetch {iso_code} for {release_type}: {str(e)}"
+                        )
+                        logger.info(f"=== Skipping {release_type} ===")
+                        continue
+                
+                if success_count == 0:
+                    logger.error(
+                        f"Failed to fetch {iso_code} for all release types"
+                    )
+                    return 1
+                elif success_count < len(RELEASE_TYPES):
+                    logger.warning(
+                        f"Completed {success_count}/{len(RELEASE_TYPES)} release types"
+                    )
 
             elif args.command == "stats":
                 fetcher = BoundaryFetcher()

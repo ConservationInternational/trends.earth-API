@@ -45,10 +45,12 @@ The admin container uses `prod.env` by default. To use staging, edit `docker-com
 
 ## What Gets Imported
 
-For each country, the script automatically fetches:
+For each country, the script automatically attempts to fetch:
 - **3 release types**: gbOpen, gbHumanitarian, gbAuthoritative
 - **2 admin levels**: ADM0 (country) and ADM1 (states/provinces)
 - **Metadata only**: Download URLs are stored, geometries are NOT stored in the database
+
+**Important**: Not all countries have data for all release types. For example, the USA has `gbOpen` data but not `gbHumanitarian` or `gbAuthoritative`. The script gracefully skips release types that don't have data available and continues with the next one.
 
 Clients use the stored `gjDownloadURL` or `tjDownloadURL` fields to fetch geometries when needed.
 

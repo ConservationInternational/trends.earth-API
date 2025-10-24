@@ -261,6 +261,7 @@ class AdminBoundary1Unit(db.Model):
         ),
         backref="adm1_units",
         uselist=False,
+        overlaps="adm1_metadata,units",
     )
 
     adm1_metadata = db.relationship(
@@ -273,6 +274,7 @@ class AdminBoundary1Unit(db.Model):
         ),
         backref="units",
         uselist=False,
+        overlaps="adm0_metadata,adm1_units",
     )
 
     def __repr__(self):
