@@ -26,7 +26,9 @@ if not logging.getLogger().handlers:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
-logger = logging.getLogger(__name__)
+
+# Use a specific logger name to avoid conflicts with the main migration script
+logger = logging.getLogger("setup_staging_environment")
 
 
 class StagingEnvironmentSetup:
@@ -290,8 +292,9 @@ class StagingEnvironmentSetup:
                 "SELECT pg_advisory_lock(%s)", (staging_import_lock_id,)
             )
 
-            # Begin transaction for atomic script import
-            staging_conn.autocommit = False
+            # Enable autocommit for this connection to avoid transaction isolation issues
+            # This is needed because sequence operations may conflict with transaction isolation
+            staging_conn.autocommit = True
 
             # Note: We don't delete existing scripts - we use ON CONFLICT to update them
             # Scripts use GUID primary keys, not sequences, so no sequence reset needed
@@ -444,7 +447,7 @@ class StagingEnvironmentSetup:
             logger.info(f"✅ Total scripts processed: {imported_count + updated_count}")
             logger.info("=" * 60)
 
-            staging_conn.commit()
+            # No explicit commit needed since autocommit is enabled
             logger.info(
                 f"Successfully imported/updated "
                 f"{imported_count + updated_count} scripts "
@@ -456,7 +459,7 @@ class StagingEnvironmentSetup:
 
         except psycopg2.Error as e:
             logger.error(f"Error copying scripts: {e}")
-            staging_conn.rollback()
+            # No rollback needed since autocommit is enabled
             return {}
         finally:
             if staging_cursor:
@@ -511,8 +514,8 @@ class StagingEnvironmentSetup:
                 "SELECT pg_advisory_lock(%s)", (staging_status_import_lock_id,)
             )
 
-            # Begin transaction for atomic status log import
-            staging_conn.autocommit = False
+            # Enable autocommit to avoid transaction isolation issues with sequence operations
+            staging_conn.autocommit = True
 
             # Check if status_log table exists in both databases
             prod_cursor.execute(
@@ -629,7 +632,7 @@ class StagingEnvironmentSetup:
                 )
                 logger.info("No status logs imported, sequence remains at 100000")
 
-            staging_conn.commit()
+            # No explicit commit needed since autocommit is enabled
             logger.info(
                 f"Successfully imported {imported_count} status logs "
                 f"with new sequential IDs"
@@ -637,7 +640,7 @@ class StagingEnvironmentSetup:
 
         except psycopg2.Error as e:
             logger.error(f"Error copying status logs: {e}")
-            staging_conn.rollback()
+            # No rollback needed since autocommit is enabled
         finally:
             if staging_cursor:
                 # Release advisory lock
@@ -684,6 +687,12 @@ class StagingEnvironmentSetup:
             prod_conn.close()
             return
 
+        # Enable autocommit to avoid transaction isolation issues
+        staging_conn.autocommit = True
+        
+        prod_cursor = None
+        staging_cursor = None
+        
         try:
             prod_cursor = prod_conn.cursor()
             staging_cursor = staging_conn.cursor()
@@ -802,7 +811,7 @@ class StagingEnvironmentSetup:
                 # Sequence might not exist, that's okay
                 pass
 
-            staging_conn.commit()
+            # No explicit commit needed since autocommit is enabled
             logger.info(
                 f"Successfully imported {imported_count} script logs "
                 f"with remapped script IDs"
@@ -810,10 +819,12 @@ class StagingEnvironmentSetup:
 
         except psycopg2.Error as e:
             logger.error(f"Error copying script logs: {e}")
-            staging_conn.rollback()
+            # No rollback needed since autocommit is enabled
         finally:
-            prod_cursor.close()
-            staging_cursor.close()
+            if prod_cursor:
+                prod_cursor.close()
+            if staging_cursor:
+                staging_cursor.close()
             prod_conn.close()
             staging_conn.close()
 
