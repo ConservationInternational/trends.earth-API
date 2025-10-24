@@ -33,7 +33,14 @@ foreach ($arg in $PytestArgs) {
 }
 
 try {
-    Write-Host "Starting necessary services (building images only if needed)..." -ForegroundColor Green
+    Write-Host "Building images (only if changes detected)..." -ForegroundColor Green
+    docker compose -f docker-compose.develop.yml build test
+    
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to build test image"
+    }
+    
+    Write-Host "Starting necessary services..." -ForegroundColor Green
     docker compose -f docker-compose.develop.yml up -d --build postgres redis
     
     if ($LASTEXITCODE -ne 0) {

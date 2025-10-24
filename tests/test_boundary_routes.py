@@ -387,7 +387,7 @@ class TestBoundariesListEndpoint:
         )
         assert response.status_code == 200
         data = response.get_json()
-        assert "data" in data
+        assert "boundaries" in data
         assert "release_type" in data
         assert "last_updated" in data
         assert data["release_type"] == "gbOpen"
@@ -498,7 +498,7 @@ class TestBoundaryIntegration:
         )
         assert response2.status_code == 200
         data2 = response2.get_json()
-        assert "data" in data2
+        assert "boundaries" in data2
         assert "release_type" in data2
         assert "last_updated" in data2
 

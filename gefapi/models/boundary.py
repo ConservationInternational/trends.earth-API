@@ -272,7 +272,7 @@ class AdminBoundary1Unit(db.Model):
             "AdminBoundary1Metadata.boundaryISO, "
             "AdminBoundary1Unit.releaseType == AdminBoundary1Metadata.releaseType)"
         ),
-        backref="units",
+        backref=db.backref("units", overlaps="adm1_units"),
         uselist=False,
         overlaps="adm0_metadata,adm1_units",
     )

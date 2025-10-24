@@ -71,70 +71,50 @@ jobs:
           # Navigate to application directory
           cd ${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}
           
-          # Pull latest changes
-          git fetch origin
-          git reset --hard origin/master
+          echo "🚀 Starting production deployment build process..."
           
-          echo "✅ Currently on branch: $(git branch --show-current)"
+          # Ensure deployment utilities are executable
+          chmod +x scripts/deployment_utils.py
           
-          # Configure insecure registry on server if needed
-          echo "📋 Configuring insecure registry on server..."
-          sudo mkdir -p /etc/docker
-          if [ ! -f /etc/docker/daemon.json ] || ! grep -q "insecure-registries" /etc/docker/daemon.json; then
-            echo '{"insecure-registries":["${{ env.REGISTRY }}"]}' | sudo tee /etc/docker/daemon.json > /dev/null
-            sudo systemctl restart docker
-            sleep 10
+          # Clean git workspace and checkout master branch using deployment utilities
+          if ! python3 scripts/deployment_utils.py \
+            --registry "${{ env.REGISTRY }}" \
+            --image-name "${{ env.IMAGE_NAME }}" \
+            --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
+            clean-git --branch master; then
+            echo "❌ Git workspace cleaning failed"
+            exit 1
           fi
           
-          # Configure Docker client authentication
-          mkdir -p $HOME/.docker
+          # Configure Docker registry using deployment utilities
+          if ! python3 scripts/deployment_utils.py \
+            --registry "${{ env.REGISTRY }}" \
+            --image-name "${{ env.IMAGE_NAME }}" \
+            --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
+            configure-registry; then
+            echo "❌ Docker registry configuration failed"
+            exit 1
+          fi
           
-          # Create simplified Docker config without auth for production
-          echo "🔐 Creating Docker config for production..."
-          cat > $HOME/.docker/config.json <<'DOCKERCONFIG'
-          {
-            "insecure-registries": ["${{ env.REGISTRY }}"]
-          }
-          DOCKERCONFIG
-          echo "✅ Docker config created successfully"
-          
-          # Build the image with the appropriate tags
-          echo "🔨 Building Docker image..."
-          
-          # Create production-specific tags
-          REGISTRY="${{ env.REGISTRY }}"
-          IMAGE_NAME="${{ env.IMAGE_NAME }}"
+          # Create image tags for production deployment
           BRANCH_NAME="${{ github.ref_name }}"
           SHORT_SHA="${{ github.sha }}"
           SHORT_SHA="${SHORT_SHA:0:7}"
           
-          BUILT_TAGS="$REGISTRY/$IMAGE_NAME:$BRANCH_NAME
-          $REGISTRY/$IMAGE_NAME:$BRANCH_NAME-$SHORT_SHA
-          $REGISTRY/$IMAGE_NAME:latest"
+          # Build and push images using deployment utilities
+          if ! python3 scripts/deployment_utils.py \
+            --registry "${{ env.REGISTRY }}" \
+            --image-name "${{ env.IMAGE_NAME }}" \
+            --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
+            build-image \
+            --tags "$BRANCH_NAME" "$BRANCH_NAME-$SHORT_SHA" "latest" \
+            --commit-sha "${{ github.sha }}" \
+            --no-cache; then
+            echo "❌ Docker image build and push failed"
+            exit 1
+          fi
           
-          # Build with the first tag (primary tag)
-          PRIMARY_TAG="$REGISTRY/$IMAGE_NAME:$BRANCH_NAME"
-          echo "Building with primary tag: $PRIMARY_TAG"
-          docker build -t "$PRIMARY_TAG" .
-          
-          # Tag with additional tags
-          echo "$BUILT_TAGS" | while IFS= read -r tag; do
-            if [ -n "$tag" ] && [ "$tag" != "$PRIMARY_TAG" ]; then
-              echo "Tagging with: $tag"
-              docker tag "$PRIMARY_TAG" "$tag"
-            fi
-          done
-          
-          # Push all tags to the local registry
-          echo "🚀 Pushing images to local registry..."
-          echo "$BUILT_TAGS" | while IFS= read -r tag; do
-            if [ -n "$tag" ]; then
-              echo "Pushing: $tag"
-              docker push "$tag"
-            fi
-          done
-          
-          echo "✅ Image build and push completed!"
+          echo "✅ Production deployment build process completed!"
 
     - name: Deploy to EC2 Production
       uses: appleboy/ssh-action@v1.0.0
@@ -287,68 +267,25 @@ jobs:
           # Wait for services to be ready
           echo "⏳ Waiting for services to be ready..."
           
-          # Check that all services are running with desired replicas
+          # Wait for all services to be ready using deployment utilities
           echo "📊 Waiting for all services to be running..."
-          max_wait=120
-          wait_time=0
-          
-          while [ $wait_time -lt $max_wait ]; do
-            # Check if all services have desired replicas running
-            pending_services=$(docker service ls --filter "name=trends-earth-prod" --format "table {{.Name}}\t{{.Replicas}}" | grep -v "1/1" | wc -l)
-            
-            # Migrate when running correctly will run once then exit, so we expect 1 service to not be replicated
-            if [ $pending_services -eq 2 ]; then  # Only header line and migrate line should remain if all other services are 1/1
-              echo "✅ All services are running"
-              break
-            fi
-            
-            echo "⏳ Waiting for services to be ready... ($wait_time/$max_wait seconds)"
-            docker service ls --filter "name=trends-earth-prod"
-            sleep 10
-            wait_time=$((wait_time + 10))
-          done
-          
-          if [ $wait_time -ge $max_wait ]; then
-            echo "⚠️ Some services may not be fully ready after $max_wait seconds"
-          fi
+          python3 scripts/deployment_utils.py \
+            --registry "${{ secrets.DOCKER_REGISTRY }}" \
+            --image-name "${{ env.IMAGE_NAME }}" \
+            --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
+            wait-services --stack-name "trends-earth-prod" --max-wait 120 || echo "⚠️ Some services may not be fully ready, continuing..."
           
           # Check service status
           echo "📊 Final service status:"
           docker service ls | grep trends-earth-prod
           
-          # Health check
+          # Health check using deployment utilities
           echo "🏥 Performing health check..."
-          max_attempts=30
-          attempt=1
-          
-          while [ $attempt -le $max_attempts ]; do
-            echo "⏳ Health check attempt $attempt/$max_attempts..."
-            
-            # First check if port is listening
-            if ! nc -z 127.0.0.1 3001 2>/dev/null; then
-              echo "⚠️ Port 3001 is not listening yet"
-            else
-              echo "✅ Port 3001 is listening"
-            fi
-            
-            # Perform health check request
-            health_response=$(curl -f -s -w "HTTP_CODE:%{http_code}" http://127.0.0.1:3001/api-health 2>&1)
-            curl_exit_code=$?
-            
-            if [ $curl_exit_code -eq 0 ]; then
-              echo "✅ Health check passed"
-              echo "Response: $health_response"
-              break
-            else
-              echo "⏳ Health check failed with exit code $curl_exit_code"
-              echo "Response: $health_response"
-            fi
-            
-            sleep 10
-            attempt=$((attempt + 1))
-          done
-          
-          if [ $attempt -gt $max_attempts ]; then
+          if ! python3 scripts/deployment_utils.py \
+            --registry "${{ secrets.DOCKER_REGISTRY }}" \
+            --image-name "${{ env.IMAGE_NAME }}" \
+            --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
+            health-check --port 3001 --max-attempts 30; then
             echo "❌ Health check failed after $max_attempts attempts"
             echo "🔍 Final debugging information:"
             echo "  - All running containers:"

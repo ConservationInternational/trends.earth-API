@@ -34,6 +34,7 @@ COPY entrypoint.sh ./entrypoint.sh
 COPY main.py ./main.py
 COPY gunicorn.py ./gunicorn.py
 COPY run_db_migrations.py ./run_db_migrations.py
+COPY deployment_utils.py ./deployment_utils.py
 COPY ./migrations ./migrations
 COPY ./tests ./tests
 COPY setup_staging_environment.py ./setup_staging_environment.py

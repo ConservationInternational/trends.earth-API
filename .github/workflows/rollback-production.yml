@@ -191,7 +191,16 @@ jobs:
             COMMIT_SHA="${{ steps.rollback-target.outputs.commit-sha }}"
             echo "🔄 Rolling back to commit SHA: $COMMIT_SHA"
             
-            # Fetch latest changes and checkout the specific commit
+            # Clean workspace using deployment utilities
+            echo "🧹 Cleaning workspace..."
+            chmod +x scripts/deployment_utils.py
+            
+            python3 scripts/deployment_utils.py \
+              --registry "${{ env.REGISTRY }}" \
+              --image-name "${{ env.IMAGE_NAME }}" \
+              --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
+              clean-git
+            
             echo "📥 Fetching latest changes from repository..."
             git fetch origin
             
@@ -229,30 +238,16 @@ jobs:
             # Build new image from the rolled-back commit
             echo "🔨 Building Docker image from commit $COMMIT_SHA..."
             
-            REGISTRY="${{ env.REGISTRY }}"
-            IMAGE_NAME="${{ env.IMAGE_NAME }}"
             SHORT_SHA="${COMMIT_SHA:0:7}"
             ROLLBACK_TAG="rollback-$SHORT_SHA"
             
-            BUILT_TAGS="$REGISTRY/$IMAGE_NAME:$ROLLBACK_TAG
-            $REGISTRY/$IMAGE_NAME:latest"
-            
-            # Build with the rollback tag
-            PRIMARY_TAG="$REGISTRY/$IMAGE_NAME:$ROLLBACK_TAG"
-            echo "Building with tag: $PRIMARY_TAG"
-            docker build -t "$PRIMARY_TAG" .
-            
-            # Tag with latest as well
-            docker tag "$PRIMARY_TAG" "$REGISTRY/$IMAGE_NAME:latest"
-            
-            # Push the images to local registry
-            echo "🚀 Pushing rollback images to local registry..."
-            echo "$BUILT_TAGS" | while IFS= read -r tag; do
-              if [ -n "$tag" ]; then
-                echo "Pushing: $tag"
-                docker push "$tag"
-              fi
-            done
+            python3 scripts/deployment_utils.py \
+              --registry "${{ env.REGISTRY }}" \
+              --image-name "${{ env.IMAGE_NAME }}" \
+              --tag "$ROLLBACK_TAG" \
+              --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
+              --additional-tags "latest" \
+              build-and-push
             
             # Set the image tag for service updates
             FINAL_IMAGE_TAG="$ROLLBACK_TAG"
@@ -316,32 +311,13 @@ jobs:
           # Wait for all services to be ready after rollback
           echo "⏳ Waiting for all services to be ready after rollback..."
           
-          max_wait=120
-          wait_time=0
-          
-          while [ $wait_time -lt $max_wait ]; do
-            # Check if all services have desired replicas running
-            pending_services=$(docker service ls --filter "name=trends-earth-prod" --format "table {{.Name}}\t{{.Replicas}}" | grep -v "1/1\|0/1" | wc -l)
-            
-            # Account for migrate service which runs once and exits (expected to be 0/1)
-            if [ $pending_services -le 2 ]; then  # Header line and possibly migrate service
-              echo "✅ All services are running after rollback"
-              break
-            fi
-            
-            echo "⏳ Waiting for services to be ready... ($wait_time/$max_wait seconds)"
-            docker service ls --filter "name=trends-earth-prod"
-            sleep 10
-            wait_time=$((wait_time + 10))
-          done
-          
-          if [ $wait_time -ge $max_wait ]; then
-            echo "⚠️ Some services may not be fully ready after $max_wait seconds"
-          fi
-          
-          # Final service status
-          echo "📊 Final service status after rollback:"
-          docker service ls --filter "name=trends-earth-prod"
+          python3 scripts/deployment_utils.py \
+            --registry "${{ env.REGISTRY }}" \
+            --image-name "${{ env.IMAGE_NAME }}" \
+            --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
+            --stack-name "trends-earth-prod" \
+            --timeout 120 \
+            wait-for-services
           
           echo "🎉 Production rollback completed!"
 
@@ -360,47 +336,13 @@ jobs:
           # Navigate to application directory
           cd ${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}
           
-          max_attempts=20
-          attempt=1
-          
-          while [ $attempt -le $max_attempts ]; do
-            echo "⏳ Health check attempt $attempt/$max_attempts..."
-            
-            # First check if port is listening
-            if ! nc -z 127.0.0.1 3001 2>/dev/null; then
-              echo "⚠️ Port 3001 is not listening yet"
-            else
-              echo "✅ Port 3001 is listening"
-            fi
-            
-            # Perform health check request
-            health_response=$(curl -f -s -w "HTTP_CODE:%{http_code}" http://127.0.0.1:3001/api-health 2>&1)
-            curl_exit_code=$?
-            
-            if [ $curl_exit_code -eq 0 ]; then
-              echo "✅ Health check passed after rollback"
-              echo "Response: $health_response"
-              break
-            else
-              echo "⏳ Health check failed with exit code $curl_exit_code"
-              echo "Response: $health_response"
-            fi
-            
-            sleep 15
-            attempt=$((attempt + 1))
-          done
-          
-          if [ $attempt -gt $max_attempts ]; then
-            echo "❌ Health check failed after rollback - $max_attempts attempts"
-            echo "🔍 Debugging information:"
-            echo "  - All running containers:"
-            docker ps --filter "name=trends-earth-prod"
-            echo "  - API service details:"
-            docker service inspect trends-earth-prod_api --format="{{json .Spec.TaskTemplate.ContainerSpec}}" || echo "Service not found"
-            echo "  - Recent API service logs:"
-            docker service logs --tail 50 trends-earth-prod_api || echo "No logs available"
-            exit 1
-          fi
+          python3 scripts/deployment_utils.py \
+            --registry "${{ env.REGISTRY }}" \
+            --image-name "${{ env.IMAGE_NAME }}" \
+            --app-path "${{ secrets.PROD_APP_PATH || '/opt/trends-earth-api' }}" \
+            --api-url "http://127.0.0.1:3001/api-health" \
+            --timeout 300 \
+            check-health
           
           echo "🎉 Rollback health verification completed successfully!"
 

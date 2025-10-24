@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Database migration script - Simplified version
+Database migration script - Simplified version with enhanced debugging
 """
 
 import atexit
 import logging
+import os
 import sys
 import time
 
@@ -60,7 +61,6 @@ def wait_for_database(app):
 
 def ensure_postgis_extensions(app):
     """Ensure PostGIS extensions are installed in the database"""
-    import os
 
     from sqlalchemy import text
 
@@ -154,6 +154,22 @@ def run_migrations():
                 # Get current heads
                 heads = script.get_heads()
                 logger.info(f"Found {len(heads)} migration heads: {heads}")
+
+                # Additional debugging: list all revisions to help debug migration state
+                all_revisions = list(script.walk_revisions())
+                logger.info(
+                    f"Total revisions in migration directory: {len(all_revisions)}"
+                )
+                if all_revisions:
+                    latest_rev = all_revisions[0]
+                    doc_first_line = (
+                        latest_rev.doc.split(chr(10))[0]
+                        if latest_rev.doc
+                        else "No description"
+                    )
+                    logger.info(
+                        f"Latest revision: {latest_rev.revision} - {doc_first_line}"
+                    )
 
                 if len(heads) > 1:
                     logger.warning(f"Multiple heads detected: {heads}")
@@ -291,7 +307,6 @@ def run_migrations():
 
 def setup_staging_environment():
     """Set up complete staging environment including users, scripts, and logs"""
-    import os
 
     # Only run in staging environment
     if os.getenv("ENVIRONMENT") != "staging":
