@@ -134,10 +134,10 @@ class TestRateLimiting:
     def test_health_endpoint_exempt_from_rate_limiting(self, client):
         """Test that health endpoint is exempt from rate limiting"""
         response = client.get("/api-health")
-        
+
         # Should respond successfully
         assert response.status_code == 200
-        
+
         # Should NOT include rate limit headers because it's exempt
         assert "X-RateLimit-Limit" not in response.headers
         assert "RateLimit-Limit" not in response.headers

@@ -8,7 +8,13 @@ import sys
 from flask import Flask, abort, got_request_exception, jsonify, request
 from flask_compress import Compress
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, verify_jwt_in_request, get_current_user
+from flask_jwt_extended import (
+    JWTManager,
+    create_access_token,
+    get_current_user,
+    jwt_required,
+    verify_jwt_in_request,
+)
 from flask_limiter import Limiter
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
@@ -18,6 +24,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from gefapi.celery import make_celery
 from gefapi.config import SETTINGS
+from gefapi.utils.permissions import is_admin_or_higher
 from gefapi.utils.rate_limiting import (
     RateLimitConfig,
     get_rate_limit_key_for_auth,
@@ -26,7 +33,6 @@ from gefapi.utils.rate_limiting import (
     is_rate_limiting_disabled,
     rate_limit_error_handler,
 )
-from gefapi.utils.permissions import is_admin_or_higher
 
 # Flask App
 app = Flask(__name__)
@@ -319,9 +325,6 @@ celery = make_celery(app)
 # Rate Limiting (must be after db and celery)
 
 
-
-
-
 limiter = Limiter(
     app=app,
     key_func=get_user_id_or_ip,  # Use original key function
@@ -331,6 +334,7 @@ limiter = Limiter(
     enabled=True,
     on_breach=rate_limit_error_handler,
 )
+
 
 # Request filter to exempt internal network requests and admin users
 @limiter.request_filter
@@ -342,20 +346,20 @@ def should_skip_rate_limiting():
     # Check if rate limiting is disabled globally
     if not RateLimitConfig.is_enabled():
         return True
-    
+
     # Check if this is an internal network request (health checks, etc.)
     if is_internal_network_request():
         return True
-    
+
     # Check if this is an admin user
     try:
         verify_jwt_in_request(optional=True)
         current_user = get_current_user()
         if current_user and is_admin_or_higher(current_user):
             return True
-    except Exception:
-        pass
-    
+    except Exception as e:
+        logger.debug(f"Failed to check user for rate limit exemption: {e}")
+
     return False
 
 

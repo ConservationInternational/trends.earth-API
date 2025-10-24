@@ -185,9 +185,7 @@ def run_migrations():
                     logger.info(
                         f"✅ Database is already at head revision: {current_rev}"
                     )
-                    print(
-                        f"✅ Database is already current (revision: {current_rev})"
-                    )
+                    print(f"✅ Database is already current (revision: {current_rev})")
                     print("✓ Database migrations completed successfully")
                     return
 
@@ -299,10 +297,17 @@ def setup_staging_environment():
         from setup_staging_environment import StagingEnvironmentSetup
 
         setup = StagingEnvironmentSetup()
-        setup.run()
+        success = setup.run()
 
-        logger.info("Staging environment setup completed successfully")
-        print("✓ Staging environment setup completed successfully")
+        if success:
+            logger.info("Staging environment setup completed successfully")
+            print("✓ Staging environment setup completed successfully")
+        else:
+            logger.warning(
+                "Staging environment setup completed with some limitations "
+                "(likely missing production database credentials)"
+            )
+            print("⚠️ Staging environment setup completed with limitations")
 
     except Exception as e:
         logger.error(f"Failed to setup staging environment: {e}")
