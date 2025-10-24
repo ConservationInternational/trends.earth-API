@@ -158,7 +158,7 @@ jobs:
           # Build with the first tag (primary tag)
           PRIMARY_TAG="$REGISTRY/$IMAGE_NAME:$BRANCH_NAME"
           echo "Building with primary tag: $PRIMARY_TAG"
-          docker build -t "$PRIMARY_TAG" .
+          docker build --no-cache -t "$PRIMARY_TAG" .
           
           # Tag with additional tags
           echo "$BUILT_TAGS" | while IFS= read -r tag; do
