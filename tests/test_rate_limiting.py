@@ -118,7 +118,8 @@ class TestRateLimiting:
 
     def test_rate_limit_headers(self, client):
         """Test that rate limit headers are included in responses"""
-        response = client.get("/api-health")
+        # Use an endpoint that is subject to rate limiting
+        response = client.get("/api/v1/rate-limit/status")
 
         # Should include rate limit headers
         assert (
@@ -129,6 +130,19 @@ class TestRateLimiting:
             "X-RateLimit-Remaining" in response.headers
             or "RateLimit-Remaining" in response.headers
         )
+
+    def test_health_endpoint_exempt_from_rate_limiting(self, client):
+        """Test that health endpoint is exempt from rate limiting"""
+        response = client.get("/api-health")
+        
+        # Should respond successfully
+        assert response.status_code == 200
+        
+        # Should NOT include rate limit headers because it's exempt
+        assert "X-RateLimit-Limit" not in response.headers
+        assert "RateLimit-Limit" not in response.headers
+        assert "X-RateLimit-Remaining" not in response.headers
+        assert "RateLimit-Remaining" not in response.headers
 
     def test_rate_limit_config(self, client):
         """Test rate limiting configuration"""
