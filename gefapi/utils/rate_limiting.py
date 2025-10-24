@@ -91,19 +91,11 @@ def get_user_id_or_ip():
     """
     Get user ID for authenticated requests, IP address for anonymous requests.
     This provides better rate limiting granularity.
-    Returns None for requests that should be exempt from rate limiting.
     """
-    # Check if this is from an internal network (execution containers)
-    if is_internal_network_request():
-        return None  # Exempt from rate limiting
-
     try:
         verify_jwt_in_request(optional=True)
         current_user = get_current_user()
         if current_user:
-            # Exempt admin and superadmin users from rate limiting
-            if is_admin_or_higher(current_user):
-                return None  # Exempt from rate limiting
             return f"user:{current_user.id}"
     except Exception as e:
         logger.debug(f"Failed to get current user for rate limiting: {e}")

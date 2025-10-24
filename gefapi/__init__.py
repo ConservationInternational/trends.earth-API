@@ -8,7 +8,7 @@ import sys
 from flask import Flask, abort, got_request_exception, jsonify, request
 from flask_compress import Compress
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, verify_jwt_in_request, get_current_user
 from flask_limiter import Limiter
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
@@ -22,9 +22,11 @@ from gefapi.utils.rate_limiting import (
     RateLimitConfig,
     get_rate_limit_key_for_auth,
     get_user_id_or_ip,
+    is_internal_network_request,
     is_rate_limiting_disabled,
     rate_limit_error_handler,
 )
+from gefapi.utils.permissions import is_admin_or_higher
 
 # Flask App
 app = Flask(__name__)
@@ -317,24 +319,44 @@ celery = make_celery(app)
 # Rate Limiting (must be after db and celery)
 
 
-def _get_rate_limit_key():
-    """
-    Custom key function that returns None for exempt requests,
-    which Flask-Limiter treats as exempt from rate limiting.
-    """
-    # get_user_id_or_ip() already returns None for exempt requests
-    return get_user_id_or_ip()
+
 
 
 limiter = Limiter(
     app=app,
-    key_func=_get_rate_limit_key,  # Returns None for exempt requests
+    key_func=get_user_id_or_ip,  # Use original key function
     storage_uri=RateLimitConfig.get_storage_uri(),
     default_limits=RateLimitConfig.get_default_limits(),
     headers_enabled=True,  # Include rate limit info in response headers
-    enabled=True,  # Always enabled, but will exempt based on key function
+    enabled=True,
     on_breach=rate_limit_error_handler,
 )
+
+# Request filter to exempt internal network requests and admin users
+@limiter.request_filter
+def should_skip_rate_limiting():
+    """
+    Request filter to exempt internal network requests and admin users.
+    Returns True if the request should be skipped from rate limiting.
+    """
+    # Check if rate limiting is disabled globally
+    if not RateLimitConfig.is_enabled():
+        return True
+    
+    # Check if this is an internal network request (health checks, etc.)
+    if is_internal_network_request():
+        return True
+    
+    # Check if this is an admin user
+    try:
+        verify_jwt_in_request(optional=True)
+        current_user = get_current_user()
+        if current_user and is_admin_or_higher(current_user):
+            return True
+    except Exception:
+        pass
+    
+    return False
 
 
 # DB has to be ready!
@@ -354,6 +376,7 @@ for rule in app.url_map.iter_rules():
 
 
 @app.route("/api-health", methods=["GET"])
+@limiter.exempt
 def health_check():
     """Simple health check endpoint with deployment information"""
     health_status = "ok"
