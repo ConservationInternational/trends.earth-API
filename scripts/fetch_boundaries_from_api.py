@@ -371,7 +371,8 @@ class BoundaryFetcher:
         api_data = self.api_client.get_boundary_metadata(iso_code, "ADM0")
         if not api_data:
             logger.warning(
-                f"No ADM0 data available for {iso_code} in {self.api_client.release_type}"
+                f"No ADM0 data available for {iso_code} in "
+                f"{self.api_client.release_type}"
             )
             return False
 
@@ -397,7 +398,8 @@ class BoundaryFetcher:
         api_data = self.api_client.get_boundary_metadata(iso_code, "ADM1")
         if not api_data:
             logger.warning(
-                f"No ADM1 data available for {iso_code} in {self.api_client.release_type}"
+                f"No ADM1 data available for {iso_code} "
+                f"in {self.api_client.release_type}"
             )
             return False
 
@@ -727,7 +729,8 @@ def main():
                         success_count += 1
                     except Exception as e:
                         logger.error(
-                            f"Failed to fetch all boundaries for {release_type}: {str(e)}"
+                            f"Failed to fetch all boundaries for "
+                            f"{release_type}: {str(e)}"
                         )
                         logger.info(f"=== Skipping {release_type} ===")
                         continue

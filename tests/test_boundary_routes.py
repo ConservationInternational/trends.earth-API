@@ -3,24 +3,28 @@ Tests for boundary API routes (GET /api/v1/data/boundaries).
 
 These tests verify the boundary API endpoints including:
 - ADM0 and ADM1 boundary queries
-- Filtering by ISO code, name, coordinates, timestamps
-- Response formats (full with geometry, table without geometry)
+- Filtering by ISO code, name, release types, timestamps
+- Response formats with metadata and download URLs
 - Pagination
 - Error handling
 - Authentication requirements (all endpoints require JWT tokens)
 """
 
-from geoalchemy2 import WKTElement
 import pytest
 
-from gefapi.models.boundary import AdminBoundary0, AdminBoundary1
+from gefapi.models.boundary import (
+    AdminBoundary0Metadata,
+    AdminBoundary1Metadata,
+    AdminBoundary1Unit,
+)
 
 
 @pytest.fixture(autouse=True)
 def clear_boundaries_before_each_test(db_session):
     """Clear boundary tables before each test to prevent duplicate key errors."""
-    db_session.query(AdminBoundary1).delete()
-    db_session.query(AdminBoundary0).delete()
+    db_session.query(AdminBoundary1Unit).delete()
+    db_session.query(AdminBoundary1Metadata).delete()
+    db_session.query(AdminBoundary0Metadata).delete()
     db_session.commit()
     yield
     db_session.rollback()
@@ -28,44 +32,49 @@ def clear_boundaries_before_each_test(db_session):
 
 @pytest.fixture
 def sample_adm0_boundaries(db_session):
-    """Create sample ADM0 boundaries for testing."""
-    # Create sample countries with geometry
+    """Create sample ADM0 boundary metadata for testing."""
     countries = [
-        AdminBoundary0(
-            id="USA",
-            boundary_id="USA-ADM0",
-            boundary_name="United States",
-            boundary_iso="USA",
-            boundary_type="ADM0",
-            continent="North America",
-            geometry=WKTElement(
-                "MULTIPOLYGON(((-125 24, -125 49, -66 49, -66 24, -125 24)))",
-                srid=4326,
-            ),
+        AdminBoundary0Metadata(
+            boundaryISO="USA",
+            releaseType="gbOpen",
+            boundaryID="USA-ADM0-1_0",
+            boundaryName="United States of America",
+            boundaryType="ADM0",
+            Continent="North America",
+            buildDate="2021-01-01",
+            gjDownloadURL="https://geoboundaries.org/data/USA/ADM0.geojson",
+            tjDownloadURL="https://geoboundaries.org/data/USA/ADM0.topojson",
+            staticDownloadLink="https://geoboundaries.org/data/USA/ADM0.zip",
+            boundarySource="Natural Earth",
+            boundaryLicense="CC BY 4.0",
         ),
-        AdminBoundary0(
-            id="CAN",
-            boundary_id="CAN-ADM0",
-            boundary_name="Canada",
-            boundary_iso="CAN",
-            boundary_type="ADM0",
-            continent="North America",
-            geometry=WKTElement(
-                "MULTIPOLYGON(((-140 42, -140 83, -50 83, -50 42, -140 42)))",
-                srid=4326,
-            ),
+        AdminBoundary0Metadata(
+            boundaryISO="CAN",
+            releaseType="gbOpen",
+            boundaryID="CAN-ADM0-1_0",
+            boundaryName="Canada",
+            boundaryType="ADM0",
+            Continent="North America",
+            buildDate="2021-01-01",
+            gjDownloadURL="https://geoboundaries.org/data/CAN/ADM0.geojson",
+            tjDownloadURL="https://geoboundaries.org/data/CAN/ADM0.topojson",
+            staticDownloadLink="https://geoboundaries.org/data/CAN/ADM0.zip",
+            boundarySource="Natural Earth",
+            boundaryLicense="CC BY 4.0",
         ),
-        AdminBoundary0(
-            id="MEX",
-            boundary_id="MEX-ADM0",
-            boundary_name="Mexico",
-            boundary_iso="MEX",
-            boundary_type="ADM0",
-            continent="North America",
-            geometry=WKTElement(
-                "MULTIPOLYGON(((-117 14, -117 32, -86 32, -86 14, -117 14)))",
-                srid=4326,
-            ),
+        AdminBoundary0Metadata(
+            boundaryISO="GBR",
+            releaseType="gbOpen",
+            boundaryID="GBR-ADM0-1_0",
+            boundaryName="United Kingdom",
+            boundaryType="ADM0",
+            Continent="Europe",
+            buildDate="2021-01-01",
+            gjDownloadURL="https://geoboundaries.org/data/GBR/ADM0.geojson",
+            tjDownloadURL="https://geoboundaries.org/data/GBR/ADM0.topojson",
+            staticDownloadLink="https://geoboundaries.org/data/GBR/ADM0.zip",
+            boundarySource="Natural Earth",
+            boundaryLicense="CC BY 4.0",
         ),
     ]
 
@@ -78,46 +87,52 @@ def sample_adm0_boundaries(db_session):
 
 @pytest.fixture
 def sample_adm1_boundaries(db_session):
-    """Create sample ADM1 boundaries for testing."""
-    states = [
-        AdminBoundary1(
-            shape_id="USA-ADM1-CA",
-            id="USA",
-            boundary_name="California",
-            boundary_iso="USA",
-            boundary_type="ADM1",
-            geometry=WKTElement(
-                "MULTIPOLYGON(((-124 32, -124 42, -114 42, -114 32, -124 32)))",
-                srid=4326,
-            ),
+    """Create sample ADM1 boundary metadata and units for testing."""
+    # Create ADM1 metadata for USA
+    usa_adm1_metadata = AdminBoundary1Metadata(
+        boundaryISO="USA",
+        releaseType="gbOpen",
+        boundaryID="USA-ADM1-1_0",
+        boundaryName="United States of America",
+        boundaryType="ADM1",
+        Continent="North America",
+        buildDate="2021-01-01",
+        gjDownloadURL="https://geoboundaries.org/data/USA/ADM1.geojson",
+        tjDownloadURL="https://geoboundaries.org/data/USA/ADM1.topojson",
+        staticDownloadLink="https://geoboundaries.org/data/USA/ADM1.zip",
+        boundarySource="US Census Bureau",
+        boundaryLicense="CC BY 4.0",
+        admUnitCount=56,
+    )
+
+    # Create individual ADM1 units
+    adm1_units = [
+        AdminBoundary1Unit(
+            shapeID="USA-ADM1-3_0_0",
+            releaseType="gbOpen",
+            boundaryISO="USA",
+            shapeName="California",
         ),
-        AdminBoundary1(
-            shape_id="USA-ADM1-NY",
-            id="USA",
-            boundary_name="New York",
-            boundary_iso="USA",
-            boundary_type="ADM1",
-            geometry=WKTElement(
-                "MULTIPOLYGON(((-79 40, -79 45, -73 45, -73 40, -79 40)))", srid=4326
-            ),
+        AdminBoundary1Unit(
+            shapeID="USA-ADM1-36_0_0",
+            releaseType="gbOpen",
+            boundaryISO="USA",
+            shapeName="New York",
         ),
-        AdminBoundary1(
-            shape_id="CAN-ADM1-ON",
-            id="CAN",
-            boundary_name="Ontario",
-            boundary_iso="CAN",
-            boundary_type="ADM1",
-            geometry=WKTElement(
-                "MULTIPOLYGON(((-95 41, -95 57, -74 57, -74 41, -95 41)))", srid=4326
-            ),
+        AdminBoundary1Unit(
+            shapeID="CAN-ADM1-ON_0_0",
+            releaseType="gbOpen",
+            boundaryISO="CAN",
+            shapeName="Ontario",
         ),
     ]
 
-    for state in states:
-        db_session.add(state)
+    db_session.add(usa_adm1_metadata)
+    for unit in adm1_units:
+        db_session.add(unit)
     db_session.commit()
 
-    return states
+    return adm1_units
 
 
 class TestBoundariesEndpoint:
@@ -139,7 +154,9 @@ class TestBoundariesEndpoint:
         )
         assert response.status_code == 200
         data = response.get_json()
-        assert data["data"] == []
+        assert data["boundaries"] == []
+        assert data["release_type"] == "gbOpen"
+        assert data["last_updated"] is None
 
     def test_get_adm0_boundaries(
         self, client, user_token, sample_adm0_boundaries, db_session
@@ -150,8 +167,10 @@ class TestBoundariesEndpoint:
         )
         assert response.status_code == 200
         data = response.get_json()
-        assert len(data["data"]) == 3
-        assert all(b["boundaryType"] == "ADM0" for b in data["data"])
+        assert len(data["boundaries"]) == 3
+        assert all(b["boundaryType"] == "ADM0" for b in data["boundaries"])
+        assert data["release_type"] == "gbOpen"
+        assert "last_updated" in data
 
     def test_get_adm1_boundaries(
         self, client, user_token, sample_adm1_boundaries, db_session
@@ -162,8 +181,10 @@ class TestBoundariesEndpoint:
         )
         assert response.status_code == 200
         data = response.get_json()
-        assert len(data["data"]) == 3
-        assert all(b["boundaryType"] == "ADM1" for b in data["data"])
+        assert len(data["boundaries"]) == 3
+        # ADM1 units don't have boundaryType field, check shapeID instead
+        assert all("shapeID" in b for b in data["boundaries"])
+        assert data["release_type"] == "gbOpen"
 
     def test_get_boundaries_mixed_levels(
         self,
@@ -174,13 +195,13 @@ class TestBoundariesEndpoint:
         db_session,
     ):
         """Test retrieving boundaries from both levels."""
-        # Without level parameter, defaults to level=0 only
         response = client.get(
             "/api/v1/data/boundaries?level=0,1", headers=self._auth_headers(user_token)
         )
         assert response.status_code == 200
         data = response.get_json()
-        assert len(data["data"]) == 6  # 3 ADM0 + 3 ADM1
+        assert len(data["boundaries"]) == 6  # 3 ADM0 + 3 ADM1
+        assert data["release_type"] == "gbOpen"
 
     def test_filter_by_iso_code(
         self, client, user_token, sample_adm0_boundaries, db_session
@@ -191,8 +212,8 @@ class TestBoundariesEndpoint:
         )
         assert response.status_code == 200
         data = response.get_json()
-        assert len(data["data"]) == 1
-        assert data["data"][0]["id"] == "USA"
+        assert len(data["boundaries"]) == 1
+        assert data["boundaries"][0]["boundaryISO"] == "USA"
 
     def test_filter_by_name(
         self, client, user_token, sample_adm0_boundaries, db_session
@@ -204,60 +225,56 @@ class TestBoundariesEndpoint:
         )
         assert response.status_code == 200
         data = response.get_json()
-        assert len(data["data"]) == 1
-        assert data["data"][0]["boundaryName"] == "Canada"
+        assert len(data["boundaries"]) == 1
+        assert data["boundaries"][0]["boundaryName"] == "Canada"
 
-    def test_filter_by_partial_name(
+    def test_filter_by_name_adm1_not_supported(
         self, client, user_token, sample_adm1_boundaries, db_session
     ):
-        """Test filtering boundaries by partial name match."""
+        """Test that name filtering is not supported for ADM1 level."""
         response = client.get(
-            "/api/v1/data/boundaries?level=1&name=New",
+            "/api/v1/data/boundaries?level=1&name=California",
             headers=self._auth_headers(user_token),
         )
-        assert response.status_code == 200
+        assert response.status_code == 400
         data = response.get_json()
-        assert len(data["data"]) >= 1
-        assert any("New York" in b["boundaryName"] for b in data["data"])
+        assert "Name filtering is not supported for level=1" in data["detail"]
 
-    def test_filter_by_coordinates(
+    def test_filter_by_release_type(
         self, client, user_token, sample_adm0_boundaries, db_session
     ):
-        """Test filtering boundaries by coordinate point (spatial query)."""
-        # Point in USA (-100, 40)
+        """Test filtering boundaries by release type."""
         response = client.get(
-            "/api/v1/data/boundaries?lat=40&lon=-100",
+            "/api/v1/data/boundaries?release_type=gbOpen",
             headers=self._auth_headers(user_token),
         )
         assert response.status_code == 200
         data = response.get_json()
-        # May or may not find boundaries depending on PostGIS setup
-        # Just verify endpoint works without error
-        assert "data" in data
+        assert data["release_type"] == "gbOpen"
+        assert all(b["releaseType"] == "gbOpen" for b in data["boundaries"])
 
-    def test_response_format_full(
+    def test_invalid_release_type(self, client, user_token):
+        """Test handling of invalid release type."""
+        response = client.get(
+            "/api/v1/data/boundaries?release_type=invalid",
+            headers=self._auth_headers(user_token),
+        )
+        assert response.status_code == 400
+
+    def test_download_urls_present(
         self, client, user_token, sample_adm0_boundaries, db_session
     ):
-        """Test full response format includes geometry."""
+        """Test that download URLs are included in response."""
         response = client.get(
-            "/api/v1/data/boundaries?format=full&iso=USA",
+            "/api/v1/data/boundaries?iso=USA",
             headers=self._auth_headers(user_token),
         )
         assert response.status_code == 200
         data = response.get_json()
-        assert "geometry" in data["data"][0]
-
-    def test_response_format_table(
-        self, client, user_token, sample_adm0_boundaries, db_session
-    ):
-        """Test table response format excludes geometry."""
-        response = client.get(
-            "/api/v1/data/boundaries?format=table&iso=USA",
-            headers=self._auth_headers(user_token),
-        )
-        assert response.status_code == 200
-        data = response.get_json()
-        assert "geometry" not in data["data"][0]
+        boundary = data["boundaries"][0]
+        assert "gjDownloadURL" in boundary
+        assert "tjDownloadURL" in boundary
+        assert boundary["gjDownloadURL"] is not None
 
     def test_pagination(self, client, user_token, sample_adm0_boundaries, db_session):
         """Test pagination of boundary results."""
@@ -267,9 +284,12 @@ class TestBoundariesEndpoint:
         )
         assert response.status_code == 200
         data = response.get_json()
-        assert len(data["data"]) == 2
+        assert len(data["boundaries"]) == 2
         assert "meta" in data
-        assert "total" in data["meta"]
+        assert data["meta"]["total"] == 3
+        assert data["meta"]["page"] == 1
+        assert data["meta"]["per_page"] == 2
+        assert data["meta"]["has_more"] is True
 
     def test_invalid_level_parameter(self, client, user_token):
         """Test handling of invalid administrative level."""
@@ -278,17 +298,18 @@ class TestBoundariesEndpoint:
         )
         assert response.status_code == 400
 
-    def test_missing_coordinates_partial(self, client, user_token):
-        """Test handling of missing coordinate (only lat provided)."""
+    def test_invalid_level_format(self, client, user_token):
+        """Test handling of invalid level format."""
         response = client.get(
-            "/api/v1/data/boundaries?lat=40", headers=self._auth_headers(user_token)
+            "/api/v1/data/boundaries?level=invalid",
+            headers=self._auth_headers(user_token),
         )
         assert response.status_code == 400
 
-    def test_invalid_coordinate_format(self, client, user_token):
-        """Test handling of invalid coordinate format."""
+    def test_invalid_pagination_parameters(self, client, user_token):
+        """Test handling of invalid pagination parameters."""
         response = client.get(
-            "/api/v1/data/boundaries?lat=invalid&lng=-100",
+            "/api/v1/data/boundaries?page=invalid",
             headers=self._auth_headers(user_token),
         )
         assert response.status_code == 400
@@ -302,6 +323,8 @@ class TestBoundariesEndpoint:
             headers=self._auth_headers(user_token),
         )
         assert response.status_code == 200
+        data = response.get_json()
+        assert "boundaries" in data
 
     def test_filter_by_updated_timestamp(
         self, client, user_token, sample_adm0_boundaries, db_session
@@ -312,6 +335,8 @@ class TestBoundariesEndpoint:
             headers=self._auth_headers(user_token),
         )
         assert response.status_code == 200
+        data = response.get_json()
+        assert "boundaries" in data
 
     def test_invalid_timestamp_format(self, client, user_token):
         """Test handling of invalid timestamp format."""
@@ -326,14 +351,93 @@ class TestBoundariesEndpoint:
     ):
         """Test combining multiple filters."""
         response = client.get(
-            "/api/v1/data/boundaries?level=0&iso=USA&format=table",
+            "/api/v1/data/boundaries?level=0&iso=USA",
             headers=self._auth_headers(user_token),
         )
         assert response.status_code == 200
         data = response.get_json()
-        assert len(data["data"]) == 1
-        assert data["data"][0]["id"] == "USA"
-        assert "geometry" not in data["data"][0]
+        assert len(data["boundaries"]) == 1
+        assert data["boundaries"][0]["boundaryISO"] == "USA"
+        assert data["release_type"] == "gbOpen"
+
+
+class TestBoundariesListEndpoint:
+    """Tests for GET /api/v1/data/boundaries/list endpoint."""
+
+    def _auth_headers(self, token):
+        """Helper to create authorization headers."""
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_requires_authentication(self, client):
+        """Test that the list endpoint requires authentication."""
+        response = client.get("/api/v1/data/boundaries/list")
+        assert response.status_code == 401
+
+    def test_get_boundaries_list(
+        self,
+        client,
+        user_token,
+        sample_adm0_boundaries,
+        sample_adm1_boundaries,
+        db_session,
+    ):
+        """Test retrieving hierarchical boundaries list."""
+        response = client.get(
+            "/api/v1/data/boundaries/list", headers=self._auth_headers(user_token)
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "data" in data
+        assert "release_type" in data
+        assert "last_updated" in data
+        assert data["release_type"] == "gbOpen"
+
+    def test_list_with_release_type(
+        self, client, user_token, sample_adm0_boundaries, db_session
+    ):
+        """Test list endpoint with specific release type."""
+        response = client.get(
+            "/api/v1/data/boundaries/list?release_type=gbOpen",
+            headers=self._auth_headers(user_token),
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["release_type"] == "gbOpen"
+
+
+class TestBoundariesLastUpdatedEndpoint:
+    """Tests for GET /api/v1/data/boundaries/last-updated endpoint."""
+
+    def _auth_headers(self, token):
+        """Helper to create authorization headers."""
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_requires_authentication(self, client):
+        """Test that the last-updated endpoint requires authentication."""
+        response = client.get("/api/v1/data/boundaries/last-updated")
+        assert response.status_code == 401
+
+    def test_get_last_updated_no_data(self, client, user_token):
+        """Test last-updated endpoint with no data."""
+        response = client.get(
+            "/api/v1/data/boundaries/last-updated",
+            headers=self._auth_headers(user_token),
+        )
+        assert response.status_code == 404
+
+    def test_get_last_updated_with_data(
+        self, client, user_token, sample_adm0_boundaries, db_session
+    ):
+        """Test last-updated endpoint with data."""
+        response = client.get(
+            "/api/v1/data/boundaries/last-updated",
+            headers=self._auth_headers(user_token),
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "data" in data
+        assert "last_updated" in data["data"]
+        assert "release_type" in data["data"]
 
 
 class TestBoundaryIntegration:
@@ -357,10 +461,10 @@ class TestBoundaryIntegration:
             "/api/v1/data/boundaries?level=0,1", headers=self._auth_headers(user_token)
         )
         assert response.status_code == 200
-        assert len(response.get_json()["data"]) == 6
+        assert len(response.get_json()["boundaries"]) == 6
 
         # Verify boundary data is accessible
-        data = response.get_json()["data"]
+        data = response.get_json()["boundaries"]
         assert any(b["boundaryISO"] == "USA" for b in data)
         assert any(b["boundaryISO"] == "GBR" for b in data)
 
@@ -369,21 +473,42 @@ class TestBoundaryIntegration:
             "/api/v1/data/boundaries?iso=CAN", headers=self._auth_headers(user_token)
         )
         assert response.status_code == 200
-        data = response.get_json()["data"]
+        data = response.get_json()["boundaries"]
         assert len(data) == 1
         assert data[0]["boundaryName"] == "Canada"
 
-    def test_combined_level_and_spatial_query(
-        self, client, user_token, sample_adm1_boundaries, db_session
+    def test_response_structure_consistency(
+        self, client, user_token, sample_adm0_boundaries, db_session
     ):
-        """Test combining level and spatial filters."""
-        # Point in California (-120, 37) - using lon parameter
-        response = client.get(
-            "/api/v1/data/boundaries?level=1&lat=37&lon=-120",
+        """Test that all endpoints return consistent response structures."""
+        # Main boundaries endpoint
+        response1 = client.get(
+            "/api/v1/data/boundaries", headers=self._auth_headers(user_token)
+        )
+        assert response1.status_code == 200
+        data1 = response1.get_json()
+        assert "boundaries" in data1
+        assert "release_type" in data1
+        assert "last_updated" in data1
+        assert "meta" in data1
+
+        # List endpoint
+        response2 = client.get(
+            "/api/v1/data/boundaries/list", headers=self._auth_headers(user_token)
+        )
+        assert response2.status_code == 200
+        data2 = response2.get_json()
+        assert "data" in data2
+        assert "release_type" in data2
+        assert "last_updated" in data2
+
+        # Last updated endpoint
+        response3 = client.get(
+            "/api/v1/data/boundaries/last-updated",
             headers=self._auth_headers(user_token),
         )
-        assert response.status_code == 200
-        data = response.get_json()
-        # May or may not find boundaries depending on PostGIS setup
-        # Just verify endpoint works without error
-        assert "data" in data
+        assert response3.status_code == 200
+        data3 = response3.get_json()
+        assert "data" in data3
+        assert "last_updated" in data3["data"]
+        assert "release_type" in data3["data"]
