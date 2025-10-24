@@ -91,7 +91,7 @@ def get_user_id_or_ip():
     """
     Get user ID for authenticated requests, IP address for anonymous requests.
     This provides better rate limiting granularity.
-    Returns None if user should be exempt from rate limiting.
+    Returns None for requests that should be exempt from rate limiting.
     """
     # Check if this is from an internal network (execution containers)
     if is_internal_network_request():
@@ -103,7 +103,7 @@ def get_user_id_or_ip():
         if current_user:
             # Exempt admin and superadmin users from rate limiting
             if is_admin_or_higher(current_user):
-                return None  # None indicates no rate limiting
+                return None  # Exempt from rate limiting
             return f"user:{current_user.id}"
     except Exception as e:
         logger.debug(f"Failed to get current user for rate limiting: {e}")
@@ -114,7 +114,7 @@ def get_rate_limit_key_for_auth():
     """
     Special key function for authentication endpoints.
     Uses email + IP to prevent account enumeration while still allowing rate limiting.
-    Returns None if user should be exempt from rate limiting.
+    Returns None for requests that should be exempt from rate limiting.
     """
     # Check if this is from an internal network (execution containers)
     if is_internal_network_request():
@@ -157,7 +157,7 @@ def get_admin_aware_key():
         if current_user:
             # Exempt admin and superadmin users from rate limiting
             if is_admin_or_higher(current_user):
-                return None  # None indicates no rate limiting
+                return None  # Exempt from rate limiting
             return f"user:{current_user.id}"
     except Exception as e:
         logger.debug(f"Failed to get current user for admin-aware rate limiting: {e}")
@@ -279,34 +279,46 @@ class RateLimitConfig:
     @classmethod
     def get_default_limits(cls):
         """Get the global default rate limits."""
-        return cls._get_config().get("DEFAULT_LIMITS", ["1000 per hour"])
+        limits = cls._get_config().get("DEFAULT_LIMITS", ["1000 per hour"])
+        # Filter out any empty strings to prevent Flask-Limiter errors
+        return [limit for limit in limits if limit and limit.strip()]
 
     @classmethod
     def get_auth_limits(cls):
         """Get rate limits for authentication endpoints."""
-        return cls._get_config().get("AUTH_LIMITS", ["5 per minute"])
+        limits = cls._get_config().get("AUTH_LIMITS", ["5 per minute"])
+        # Filter out any empty strings to prevent Flask-Limiter errors
+        return [limit for limit in limits if limit and limit.strip()]
 
     @classmethod
     def get_password_reset_limits(cls):
         """Get rate limits for password reset endpoints."""
-        return cls._get_config().get("PASSWORD_RESET_LIMITS", ["3 per hour"])
+        limits = cls._get_config().get("PASSWORD_RESET_LIMITS", ["3 per hour"])
+        # Filter out any empty strings to prevent Flask-Limiter errors
+        return [limit for limit in limits if limit and limit.strip()]
 
     @classmethod
     def get_api_limits(cls):
         """Get general API rate limits."""
-        return cls._get_config().get("API_LIMITS", ["500 per hour"])
+        limits = cls._get_config().get("API_LIMITS", ["500 per hour"])
+        # Filter out any empty strings to prevent Flask-Limiter errors
+        return [limit for limit in limits if limit and limit.strip()]
 
     @classmethod
     def get_user_creation_limits(cls):
         """Get user creation rate limits."""
-        return cls._get_config().get("USER_CREATION_LIMITS", ["10 per hour"])
+        limits = cls._get_config().get("USER_CREATION_LIMITS", ["10 per hour"])
+        # Filter out any empty strings to prevent Flask-Limiter errors
+        return [limit for limit in limits if limit and limit.strip()]
 
     @classmethod
     def get_execution_run_limits(cls):
         """Get script execution endpoints."""
-        return cls._get_config().get(
+        limits = cls._get_config().get(
             "EXECUTION_RUN_LIMITS", ["10 per minute", "40 per hour"]
         )
+        # Filter out any empty strings to prevent Flask-Limiter errors
+        return [limit for limit in limits if limit and limit.strip()]
 
 
 def bypass_rate_limiting():

@@ -28,7 +28,7 @@ logger = logging.getLogger()
 # SCRIPT EXECUTION
 @endpoints.route("/script/<script>/run", strict_slashes=False, methods=["POST"])
 @limiter.limit(
-    lambda: ";".join(RateLimitConfig.get_execution_run_limits()),
+    lambda: ";".join(RateLimitConfig.get_execution_run_limits()) or "10 per hour",
     key_func=get_admin_aware_key,
     exempt_when=is_rate_limiting_disabled,
 )  # Rate limit script execution

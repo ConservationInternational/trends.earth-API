@@ -35,7 +35,7 @@ logger = logging.getLogger()
 
 @endpoints.route("/user", strict_slashes=False, methods=["POST"])
 @limiter.limit(
-    lambda: ";".join(RateLimitConfig.get_user_creation_limits()),
+    lambda: ";".join(RateLimitConfig.get_user_creation_limits()) or "10 per hour",
     key_func=get_admin_aware_key,
     exempt_when=is_rate_limiting_disabled,
 )
@@ -641,7 +641,7 @@ def delete_profile():
     "/user/<user>/recover-password", strict_slashes=False, methods=["POST"]
 )
 @limiter.limit(
-    lambda: ";".join(RateLimitConfig.get_password_reset_limits()),
+    lambda: ";".join(RateLimitConfig.get_password_reset_limits()) or "3 per hour",
     key_func=get_admin_aware_key,
     exempt_when=is_rate_limiting_disabled,
 )

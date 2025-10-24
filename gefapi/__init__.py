@@ -316,13 +316,23 @@ celery = make_celery(app)
 
 # Rate Limiting (must be after db and celery)
 
+
+def _get_rate_limit_key():
+    """
+    Custom key function that returns None for exempt requests,
+    which Flask-Limiter treats as exempt from rate limiting.
+    """
+    # get_user_id_or_ip() already returns None for exempt requests
+    return get_user_id_or_ip()
+
+
 limiter = Limiter(
     app=app,
-    key_func=get_user_id_or_ip,  # Default key function that exempts admin users
+    key_func=_get_rate_limit_key,  # Returns None for exempt requests
     storage_uri=RateLimitConfig.get_storage_uri(),
     default_limits=RateLimitConfig.get_default_limits(),
     headers_enabled=True,  # Include rate limit info in response headers
-    enabled=True,  # Always enabled, but we'll check dynamically via exempt_when
+    enabled=True,  # Always enabled, but will exempt based on key function
     on_breach=rate_limit_error_handler,
 )
 
@@ -733,7 +743,7 @@ from gefapi.services import UserService  # noqa:E402
 
 @app.route("/auth", methods=["POST"])
 @limiter.limit(
-    lambda: ";".join(RateLimitConfig.get_auth_limits()),
+    lambda: ";".join(RateLimitConfig.get_auth_limits()) or "100 per hour",
     key_func=get_rate_limit_key_for_auth,
     exempt_when=is_rate_limiting_disabled,
 )
@@ -776,7 +786,7 @@ def create_token():
 
 @app.route("/auth/refresh", methods=["POST"])
 @limiter.limit(
-    lambda: ";".join(RateLimitConfig.get_auth_limits()),
+    lambda: ";".join(RateLimitConfig.get_auth_limits()) or "100 per hour",
     key_func=get_rate_limit_key_for_auth,
     exempt_when=is_rate_limiting_disabled,
 )
