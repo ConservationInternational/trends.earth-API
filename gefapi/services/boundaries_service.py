@@ -89,15 +89,30 @@ class BoundariesService:
 
     @staticmethod
     def _apply_filters(query: Query, model, filters: dict) -> Query:
-        """Apply filters to query based on model type."""
+        """Apply filters to query based on model type.
+
+        Note: name_filter is only supported for AdminBoundary0Metadata (ADM0).
+        For AdminBoundary1Unit (ADM1), name filtering is not supported as there
+        are no download links for individual admin1 units - only country-level
+        downloads are available.
+        """
         # Map API filter names to model field names
         field_mapping: dict[str, str] = {
             "iso_code": "boundaryISO",
-            "name_filter": "shapeName" if hasattr(model, "shapeName") else "boundaryName",
+            "name_filter": "boundaryName",  # Only for ADM0
             "release_type": "releaseType",
         }
 
         for field, value in filters.items():
+            # Skip name_filter for AdminBoundary1Unit (admin1 level)
+            # Names are only used in hierarchy endpoint, not for filtering
+            if field == "name_filter" and hasattr(model, "shapeName"):
+                logger.debug(
+                    "Skipping name_filter for AdminBoundary1Unit - "
+                    "name filtering only supported for ADM0"
+                )
+                continue
+
             # Map API field name to model field name (defaults to original field)
             model_field: str = field_mapping.get(field, field)  # type: ignore
 
@@ -132,20 +147,23 @@ class BoundariesService:
             "releaseType": boundary.releaseType,
         }
 
-        # Add metadata fields if available (AdminBoundary0Metadata or AdminBoundary1Metadata)
+        # Add metadata fields if available
+        # (AdminBoundary0Metadata or AdminBoundary1Metadata)
         if hasattr(boundary, "gjDownloadURL"):
-            result.update({
-                "boundaryName": boundary.boundaryName,
-                "boundaryType": boundary.boundaryType,
-                "boundaryID": boundary.boundaryID,
-                "Continent": boundary.Continent,
-                "buildDate": boundary.buildDate,
-                "gjDownloadURL": boundary.gjDownloadURL,
-                "tjDownloadURL": boundary.tjDownloadURL,
-                "staticDownloadLink": boundary.staticDownloadLink,
-                "simplifiedGeometryGeoJSON": boundary.simplifiedGeometryGeoJSON,
-                "imagePreview": boundary.imagePreview,
-            })
+            result.update(
+                {
+                    "boundaryName": boundary.boundaryName,
+                    "boundaryType": boundary.boundaryType,
+                    "boundaryID": boundary.boundaryID,
+                    "Continent": boundary.Continent,
+                    "buildDate": boundary.buildDate,
+                    "gjDownloadURL": boundary.gjDownloadURL,
+                    "tjDownloadURL": boundary.tjDownloadURL,
+                    "staticDownloadLink": boundary.staticDownloadLink,
+                    "simplifiedGeometryGeoJSON": boundary.simplifiedGeometryGeoJSON,
+                    "imagePreview": boundary.imagePreview,
+                }
+            )
 
         # Add unit-specific fields (AdminBoundary1Unit)
         if hasattr(boundary, "shapeID"):
@@ -336,8 +354,8 @@ class BoundariesService:
         """
         Get the most recent modification timestamp across all boundaries.
 
-        Returns the latest updated_at datetime from ADM0, ADM1 metadata, and ADM1 unit tables
-        for the specified release type.
+        Returns the latest updated_at datetime from ADM0, ADM1 metadata,
+        and ADM1 unit tables for the specified release type.
 
         Args:
             release_type: The release type to filter by

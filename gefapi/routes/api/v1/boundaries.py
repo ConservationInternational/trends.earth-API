@@ -31,7 +31,9 @@ def get_boundaries():
       (gbOpen, gbHumanitarian, gbAuthoritative, default: gbOpen)
     - id: Filter by ID (boundaryISO for ADM0, shapeID for ADM1)
     - iso: Filter by ISO country code (applies to both levels)
-    - name: Filter by name (partial match, case-insensitive)
+    - name: Filter by name (partial match, case-insensitive) - ONLY works for level=0
+      (ADM0). Not supported for level=1 as there are no download links for
+      individual admin1 units, only country-level downloads.
     - page: Page number for pagination (default: 1)
     - per_page: Results per page (default: 100, max: 1000)
     - created_at_since: Filter boundaries created since this datetime (ISO format)
@@ -50,11 +52,16 @@ def get_boundaries():
 
     Example Requests:
     - /api/v1/data/boundaries?level=0&iso=USA
-    - /api/v1/data/boundaries?level=1&iso=USA&name=california
+    - /api/v1/data/boundaries?level=0&name=united (name filter only for ADM0)
+    - /api/v1/data/boundaries?level=1&iso=USA (ADM1 by country)
     - /api/v1/data/boundaries?level=0,1&iso=USA (mixed levels)
     - /api/v1/data/boundaries?release_type=gbHumanitarian&iso=SYR
     - /api/v1/data/boundaries?release_type=gbAuthoritative&level=0
     - /api/v1/data/boundaries?updated_at_since=2023-01-01T00:00:00Z
+
+    Note: Name filtering is NOT supported for level=1 (ADM1) because geoBoundaries
+    only provides country-level downloads for admin1 units, not individual polygon
+    downloads. Use the hierarchy endpoint to see admin1 unit names.
 
     Response includes:
     - boundaryISO: ISO country code
@@ -146,6 +153,22 @@ def get_boundaries():
         if iso_code:
             filters["iso_code"] = iso_code
         if name_filter:
+            # Name filtering only supported for ADM0 (level 0)
+            # For ADM1, use the hierarchy endpoint to see unit names
+            if 1 in levels and 0 not in levels:
+                logger.warning(
+                    "Name filter requested for level=1 (ADM1) - "
+                    "name filtering only supported for level=0. "
+                    "Use /hierarchy endpoint to see admin1 unit names."
+                )
+                return error(
+                    400,
+                    "Name filtering is not supported for level=1 (ADM1). "
+                    "GeoBoundaries only provides country-level downloads for "
+                    "admin1 units, not individual polygon downloads. "
+                    "Use the /hierarchy endpoint to see admin1 unit names, "
+                    "or filter by ISO country code.",
+                )
             # Add wildcards for case-insensitive partial matching
             filters["name_filter"] = f"%{name_filter}%"
         if created_at_since:

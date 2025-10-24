@@ -7,7 +7,7 @@ Fetches administrative boundary data from the [GeoBoundaries API](https://www.ge
 ### 1. Start the Admin Container
 
 ```bash
-docker compose -f docker-compose.admin.yml up -d
+docker compose -f docker-compose.admin.yml up --build -d
 ```
 
 ### 2. Run Commands
