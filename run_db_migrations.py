@@ -155,6 +155,14 @@ def run_migrations():
                 heads = script.get_heads()
                 logger.info(f"Found {len(heads)} migration heads: {heads}")
 
+                # Check current database revision
+                from alembic.runtime.migration import MigrationContext
+
+                with db.engine.connect() as connection:
+                    context = MigrationContext.configure(connection)
+                    current_rev = context.get_current_revision()
+                    logger.info(f"Current database revision: {current_rev}")
+
                 # Additional debugging: list all revisions to help debug migration state
                 all_revisions = list(script.walk_revisions())
                 logger.info(
@@ -171,84 +179,25 @@ def run_migrations():
                         f"Latest revision: {latest_rev.revision} - {doc_first_line}"
                     )
 
+                # If current database revision is already at the expected head,
+                # no migration needed
+                if current_rev in heads:
+                    logger.info(
+                        f"✅ Database is already at head revision: {current_rev}"
+                    )
+                    print(
+                        f"✅ Database is already current (revision: {current_rev})"
+                    )
+                    print("✓ Database migrations completed successfully")
+                    return
+
                 if len(heads) > 1:
                     logger.warning(f"Multiple heads detected: {heads}")
                     print(f"⚠️  Multiple migration heads detected: {heads}")
 
-                    # Check if database is already at the target state
-                    try:
-                        # Test if all expected columns exist by querying models
-                        from gefapi.models.script import Script
-                        from gefapi.models.status_log import StatusLog
-                        from gefapi.models.user import User
-
-                        # Check User model for new columns
-                        user = db.session.query(User).first()
-                        if user is not None:
-                            # Try to access the new columns to verify they exist
-                            _ = user.gee_oauth_token
-                            _ = user.email_notifications_enabled
-                            logger.info("✅ Database schema appears to be up-to-date")
-                            print(
-                                "✅ Database schema is already current - "
-                                "no migration needed"
-                            )
-                            _ = (
-                                user.email_notifications_enabled
-                                if hasattr(user, "email_notifications_enabled")
-                                else None
-                            )
-                            _ = (
-                                user.google_groups_trends_earth_users
-                                if hasattr(user, "google_groups_trends_earth_users")
-                                else None
-                            )
-
-                        # Check status_log for new columns
-                        status_log = db.session.query(StatusLog).first()
-                        if status_log is not None:
-                            _ = (
-                                status_log.status_from
-                                if hasattr(status_log, "status_from")
-                                else None
-                            )
-                            _ = (
-                                status_log.status_to
-                                if hasattr(status_log, "status_to")
-                                else None
-                            )
-                            _ = (
-                                status_log.execution_id
-                                if hasattr(status_log, "execution_id")
-                                else None
-                            )
-
-                        # Check script for build_error column
-                        script = db.session.query(Script).first()
-                        if script is not None:
-                            _ = (
-                                script.build_error
-                                if hasattr(script, "build_error")
-                                else None
-                            )
-
-                        logger.info("✅ Database schema appears to be up-to-date")
-                        print(
-                            "✅ Database schema is already current - "
-                            "no migration needed"
-                        )
-                        print("✓ Database migrations completed successfully")
-                        return
-                    except Exception as schema_check_error:
-                        logger.info(
-                            "Schema check indicated migration needed: "
-                            f"{schema_check_error}"
-                        )
-
-                    # Try to upgrade to the known good merged head
+                    # For multiple heads, attempt to upgrade to all heads
                     logger.info(
-                        "Attempting to resolve multiple heads by upgrading to "
-                        "the latest merged head..."
+                        "Attempting to resolve multiple heads by upgrading to all heads"
                     )
                     print("🔧 Resolving multiple heads...")
 
@@ -279,6 +228,31 @@ def run_migrations():
                 print(
                     f"⚠️  Head check failed, trying direct upgrade: {head_check_error}"
                 )
+
+                # Check if this is a "Can't locate revision" error
+                if "Can't locate revision" in str(head_check_error):
+                    logger.info(
+                        "Revision location error - likely database/migration mismatch"
+                    )
+                    print("⚠️  Migration revision mismatch detected")
+
+                    # Try to get current database revision for debugging
+                    try:
+                        from alembic.runtime.migration import MigrationContext
+
+                        with db.engine.connect() as connection:
+                            context = MigrationContext.configure(connection)
+                            current_rev = context.get_current_revision()
+                            logger.info(f"Current database revision: {current_rev}")
+                            print(f"📋 Database is at revision: {current_rev}")
+
+                    except Exception as db_check_error:
+                        logger.warning(
+                            f"Could not check database revision: {db_check_error}"
+                        )
+
+                    # Don't try to fix this automatically - let it fall through
+                    # to other migration attempts
 
                 # Fallback: try direct upgrade to head
                 try:
