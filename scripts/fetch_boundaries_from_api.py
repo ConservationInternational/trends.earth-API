@@ -25,8 +25,7 @@ Database Schema:
 Key Features:
 - Fetches ADM0 and ADM1 metadata via REST API
 - Downloads simplified GeoJSON to extract ADM1 unit names
-- Stores metadata with exact API field names
-- No graceful failures - all operations must succeed
+- Stores metadata with exact API field names geom geoBoundaries
 - Supports batch processing and progress tracking
 
 Usage examples:
