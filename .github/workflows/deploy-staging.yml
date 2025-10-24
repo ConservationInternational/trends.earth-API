@@ -104,15 +104,13 @@ jobs:
           # Navigate to application directory
           cd ${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}
           
-          # Ensure deployment utilities are executable
-          chmod +x deployment_utils.py
-          
           # Determine which branch to deploy
           BRANCH="${{ github.ref_name == 'staging' && 'staging' || 'develop' }}"
           echo "📚 Deploying branch: $BRANCH"
           
           # Clean git workspace and checkout correct branch using deployment utilities
-          if ! python3 deployment_utils.py
+          # Note: We run this before chmod to ensure deployment_utils.py exists
+          if ! python3 deployment_utils.py \
             --registry "${{ env.REGISTRY }}" \
             --image-name "${{ env.IMAGE_NAME }}" \
             --app-path "${{ secrets.STAGING_APP_PATH || '/opt/trends-earth-api-staging' }}" \
@@ -120,6 +118,17 @@ jobs:
             echo "❌ Git workspace cleaning failed"
             exit 1
           fi
+          
+          # Verify deployment utilities exist after git cleanup
+          if [ ! -f "deployment_utils.py" ]; then
+            echo "❌ deployment_utils.py not found after git cleanup"
+            echo "📋 Current directory contents:"
+            ls -la
+            exit 1
+          fi
+          
+          # Ensure deployment utilities are executable after git cleanup
+          chmod +x deployment_utils.py
           
           # Configure Docker registry using deployment utilities
           if ! python3 deployment_utils.py \
