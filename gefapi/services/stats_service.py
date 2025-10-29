@@ -8,7 +8,7 @@ import logging
 from typing import Any
 
 from flask import has_app_context
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, text
 
 from gefapi import app, db
 from gefapi.models import Execution, Script, User
@@ -199,16 +199,18 @@ class StatsService:
 
         Args:
             period: Time period filter
-            group_by: Grouping interval
+            group_by: Grouping interval (quarter_hour, hour, day, week, month)
             country: Filter by specific country
         Returns:
             Dictionary containing user statistics
         """
         # Generate cache key
+        normalized_group_by = StatsService.normalize_user_group_by(group_by)
+
         cache_key = StatsService._get_cache_key(
             "get_user_stats",
             period=period,
-            group_by=group_by,
+            group_by=normalized_group_by,
             country=country or "none",
         )
 
@@ -216,7 +218,7 @@ class StatsService:
             try:
                 result = {
                     "registration_trends": StatsService._get_registration_trends(
-                        period, group_by, country
+                        period, normalized_group_by, country
                     ),
                     "geographic_distribution": StatsService._get_geographic_data(
                         period
@@ -722,18 +724,64 @@ class StatsService:
         return sorted(result, key=lambda x: x["total_executions"], reverse=True)
 
     @staticmethod
+    def normalize_user_group_by(group_by: str | None) -> str:
+        """Normalize user stats group_by parameter to supported values."""
+
+        if not group_by:
+            return "day"
+
+        normalized = group_by.lower()
+
+        alias_map = {
+            "15min": "quarter_hour",
+            "15_min": "quarter_hour",
+            "15-minute": "quarter_hour",
+            "15-min": "quarter_hour",
+            "quarterhour": "quarter_hour",
+            "quarter-hour": "quarter_hour",
+        }
+
+        return alias_map.get(normalized, normalized)
+
+    @staticmethod
+    def _get_registration_time_bucket(group_by: str):
+        """Return the SQL expression used to bucket user registrations."""
+
+        normalized = StatsService.normalize_user_group_by(group_by)
+
+        if normalized == "quarter_hour":
+            return (
+                func.date_trunc("hour", User.created_at)
+                + func.floor(func.extract("minute", User.created_at) / 15)
+                * text("interval '15 minutes'")
+            ), "datetime"
+
+        if normalized == "hour":
+            return func.date_trunc("hour", User.created_at), "datetime"
+
+        trunc_format = {
+            "day": "day",
+            "week": "week",
+            "month": "month",
+        }.get(normalized, "day")
+
+        return func.date_trunc(trunc_format, User.created_at), "date"
+
+    @staticmethod
     def _get_registration_trends(
         period: str, group_by: str, country: str | None
     ) -> list[dict[str, Any]]:
         """Get user registration trends."""
         cutoff_date = StatsService._get_time_filter(period)
 
-        trunc_format = {"day": "day", "week": "week", "month": "month"}.get(
-            group_by, "day"
+        bucket_expression, bucket_type = StatsService._get_registration_time_bucket(
+            group_by
         )
 
+        date_column = bucket_expression.label("date")
+
         query = db.session.query(
-            func.date_trunc(trunc_format, User.created_at).label("date"),
+            date_column,
             func.count(User.id).label("new_users"),
         )
 
@@ -743,20 +791,24 @@ class StatsService:
         if country:
             query = query.filter(User.country == country)
 
-        trends_data = (
-            query.group_by(func.date_trunc(trunc_format, User.created_at))
-            .order_by("date")
-            .all()
-        )
+        trends_data = query.group_by(date_column).order_by(date_column).all()
 
         # Calculate cumulative totals
         result = []
         total_users = 0
         for row in trends_data:
             total_users += row.new_users
+
+            if row.date is None:
+                formatted_date = None
+            elif bucket_type == "datetime":
+                formatted_date = row.date.replace(microsecond=0).isoformat()
+            else:
+                formatted_date = row.date.date().isoformat()
+
             result.append(
                 {
-                    "date": row.date.date().isoformat() if row.date else None,
+                    "date": formatted_date,
                     "new_users": row.new_users,
                     "total_users": total_users,
                 }

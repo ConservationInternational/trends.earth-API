@@ -383,6 +383,60 @@ class TestStatsAPIEndpoints:
             period="last_month", group_by="week", country="USA"
         )
 
+    @patch("gefapi.utils.permissions.is_superadmin")
+    @patch.object(StatsService, "get_user_stats")
+    def test_user_stats_with_quarter_hour_grouping(
+        self, mock_get_stats, mock_is_superadmin, client, auth_headers_superadmin
+    ):
+        """Test user stats accepts quarter-hour grouping."""
+        mock_is_superadmin.return_value = True
+        mock_get_stats.return_value = self.sample_user_stats
+
+        response = client.get(
+            "/api/v1/stats/users?group_by=quarter_hour",
+            headers=auth_headers_superadmin,
+        )
+
+        assert response.status_code == 200
+        mock_get_stats.assert_called_once_with(
+            period="last_year", group_by="quarter_hour", country=None
+        )
+
+    @patch("gefapi.utils.permissions.is_superadmin")
+    @patch.object(StatsService, "get_user_stats")
+    def test_user_stats_with_group_by_alias(
+        self, mock_get_stats, mock_is_superadmin, client, auth_headers_superadmin
+    ):
+        """Test that group_by alias is normalized to supported value."""
+        mock_is_superadmin.return_value = True
+        mock_get_stats.return_value = self.sample_user_stats
+
+        response = client.get(
+            "/api/v1/stats/users?group_by=15min",
+            headers=auth_headers_superadmin,
+        )
+
+        assert response.status_code == 200
+        mock_get_stats.assert_called_once_with(
+            period="last_year", group_by="quarter_hour", country=None
+        )
+
+    @patch("gefapi.utils.permissions.is_superadmin")
+    def test_user_stats_invalid_group_by(
+        self, mock_is_superadmin, client, auth_headers_superadmin
+    ):
+        """Test user stats rejects unsupported group_by value."""
+        mock_is_superadmin.return_value = True
+
+        response = client.get(
+            "/api/v1/stats/users?group_by=invalid",
+            headers=auth_headers_superadmin,
+        )
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert "Invalid group_by" in data["detail"]
+
     # Health Check Endpoint Tests
 
     @patch("gefapi.utils.permissions.is_superadmin")

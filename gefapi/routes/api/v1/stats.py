@@ -309,7 +309,7 @@ def get_user_stats():
 
     Query Parameters:
     - period: Time period filter (last_day, last_week, last_month, last_year, all)
-    - group_by: Grouping interval (day, week, month)
+    - group_by: Grouping interval (quarter_hour, hour, day, week, month)
     - country: Filter by specific country
 
     Example Response:
@@ -369,7 +369,8 @@ def get_user_stats():
     try:
         # Parse query parameters
         period = request.args.get("period", "last_year")
-        group_by = request.args.get("group_by", "month")
+        raw_group_by = request.args.get("group_by", "month")
+        group_by = StatsService.normalize_user_group_by(raw_group_by)
         country = request.args.get("country")
 
         # Validate parameters
@@ -380,11 +381,13 @@ def get_user_stats():
                 detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}",
             )
 
-        valid_group_by = ["day", "week", "month"]
+        valid_group_by = ["quarter_hour", "hour", "day", "week", "month"]
         if group_by not in valid_group_by:
             return error(
                 status=400,
-                detail=f"Invalid group_by. Must be one of: {', '.join(valid_group_by)}",
+                detail=(
+                    f"Invalid group_by. Must be one of: {', '.join(valid_group_by)}"
+                ),
             )
 
         # Get statistics from service

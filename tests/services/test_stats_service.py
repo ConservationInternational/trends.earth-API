@@ -4,6 +4,7 @@ Tests caching, data aggregation, and error handling.
 """
 
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -331,6 +332,55 @@ class TestStatsService:
         # Test edge cases
         assert StatsService._normalize_task_name("") == "unknown"
         assert StatsService._normalize_task_name(None) == "unknown"  # type: ignore[arg-type]
+
+    def test_normalize_user_group_by_alias(self):
+        """Group by aliases should normalize to canonical values."""
+        assert StatsService.normalize_user_group_by("15min") == "quarter_hour"
+        assert StatsService.normalize_user_group_by("QUARTER-HOUR") == "quarter_hour"
+        assert StatsService.normalize_user_group_by(None) == "day"
+        assert StatsService.normalize_user_group_by("day") == "day"
+
+    @patch("gefapi.services.stats_service.db")
+    def test_registration_trends_hourly(self, mock_db):
+        """Hourly group_by should preserve timestamp granularity."""
+        query_mock = MagicMock()
+        mock_db.session.query.return_value = query_mock
+
+        query_mock.filter.return_value = query_mock
+        query_mock.group_by.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = [
+            SimpleNamespace(date=datetime(2025, 1, 1, 10, 0, 0), new_users=2),
+            SimpleNamespace(date=datetime(2025, 1, 1, 11, 0, 0), new_users=3),
+        ]
+
+        result = StatsService._get_registration_trends("all", "hour", None)
+
+        assert result == [
+            {"date": "2025-01-01T10:00:00", "new_users": 2, "total_users": 2},
+            {"date": "2025-01-01T11:00:00", "new_users": 3, "total_users": 5},
+        ]
+
+    @patch("gefapi.services.stats_service.db")
+    def test_registration_trends_quarter_hour(self, mock_db):
+        """Quarter-hour grouping should return ISO timestamps."""
+        query_mock = MagicMock()
+        mock_db.session.query.return_value = query_mock
+
+        query_mock.filter.return_value = query_mock
+        query_mock.group_by.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = [
+            SimpleNamespace(date=datetime(2025, 1, 1, 10, 0, 0), new_users=1),
+            SimpleNamespace(date=datetime(2025, 1, 1, 10, 15, 0), new_users=4),
+        ]
+
+        result = StatsService._get_registration_trends("last_day", "quarter_hour", None)
+
+        assert result == [
+            {"date": "2025-01-01T10:00:00", "new_users": 1, "total_users": 1},
+            {"date": "2025-01-01T10:15:00", "new_users": 4, "total_users": 5},
+        ]
 
     def test_extract_version(self):
         """Test version extraction from script slugs."""
