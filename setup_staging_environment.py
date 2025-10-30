@@ -292,8 +292,9 @@ class StagingEnvironmentSetup:
                 "SELECT pg_advisory_lock(%s)", (staging_import_lock_id,)
             )
 
-            # Enable autocommit for this connection to avoid transaction isolation issues
-            # This is needed because sequence operations may conflict with transaction isolation
+            # Enable autocommit for this connection to avoid transaction isolation
+            # issues. This is needed because sequence operations may conflict with
+            # transaction isolation
             staging_conn.autocommit = True
 
             # Note: We don't delete existing scripts - we use ON CONFLICT to update them
@@ -514,7 +515,8 @@ class StagingEnvironmentSetup:
                 "SELECT pg_advisory_lock(%s)", (staging_status_import_lock_id,)
             )
 
-            # Enable autocommit to avoid transaction isolation issues with sequence operations
+            # Enable autocommit to avoid transaction isolation issues with
+            # sequence operations
             staging_conn.autocommit = True
 
             # Check if status_log table exists in both databases
