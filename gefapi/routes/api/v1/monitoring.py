@@ -114,17 +114,54 @@ def get_status_logs():
     if not can_access_admin_features(identity):
         return error(status=403, detail="Forbidden")
 
-    # Parse date filters
-    start_date = request.args.get("start_date", None)
-    if start_date:
-        start_date = dateutil.parser.parse(start_date)
+    period = request.args.get("period")
+    if period:
+        valid_periods = ["last_day", "last_week", "last_month", "last_year", "all"]
+        if period not in valid_periods:
+            return error(
+                status=400,
+                detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}",
+            )
 
-    end_date = request.args.get("end_date", None)
-    if end_date:
-        end_date = dateutil.parser.parse(end_date)
+    aggregate_param = request.args.get("aggregate", "false").lower()
+    aggregate = aggregate_param in {"true", "1", "yes"}
+    group_by = request.args.get("group_by")
+    if group_by:
+        group_by = group_by.lower()
+
+    # Parse date filters
+    start_date_raw = request.args.get("start_date")
+    start_date = dateutil.parser.parse(start_date_raw) if start_date_raw else None
+
+    end_date_raw = request.args.get("end_date")
+    end_date = dateutil.parser.parse(end_date_raw) if end_date_raw else None
+
+    if period:
+        period_start, period_end = StatusService.resolve_period_bounds(period)
+        if period_start and start_date is None:
+            start_date = period_start
+        if period_end and end_date is None:
+            end_date = period_end
+
+    if aggregate:
+        if not group_by:
+            return error(
+                status=400,
+                detail="group_by parameter is required when aggregate=true",
+            )
+
+        valid_group_by = {"hour", "day", "week", "month"}
+        if group_by not in valid_group_by:
+            return error(
+                status=400,
+                detail=(
+                    "Invalid group_by. Must be one of: "
+                    f"{', '.join(sorted(valid_group_by))}"
+                ),
+            )
 
     # Parse sorting
-    sort = request.args.get("sort", None)
+    sort = request.args.get("sort")
 
     # Parse pagination
     try:
@@ -134,6 +171,25 @@ def get_status_logs():
         per_page = min(max(per_page, 1), 10000)
     except ValueError:
         page, per_page = 1, 100
+
+    if aggregate:
+        grouped_logs = StatusService.get_status_logs_grouped(
+            group_by=group_by,
+            start_date=start_date,
+            end_date=end_date,
+            sort=sort,
+        )
+
+        total = len(grouped_logs)
+        return (
+            jsonify(
+                data=grouped_logs,
+                page=1,
+                per_page=total,
+                total=total,
+            ),
+            200,
+        )
 
     try:
         status_logs, total = StatusService.get_status_logs(

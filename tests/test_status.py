@@ -4,6 +4,8 @@ Tests for status endpoint functionality.
 Tests the /api/v1/status endpoint and StatusService.
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from gefapi import db
@@ -108,6 +110,43 @@ class TestStatusEndpoint:
             timestamps = [entry["timestamp"] for entry in data["data"]]
             assert timestamps == sorted(timestamps, reverse=True)
 
+    def test_status_endpoint_aggregated_weekly(self, client, auth_headers_admin):
+        """Ensure aggregated weekly status data is returned for last-year period."""
+
+        with client.application.app_context():
+            db.session.query(StatusLog).delete()
+            base = datetime.now(UTC) - timedelta(days=28)
+
+            for week_offset, pending_count in enumerate([1, 3]):
+                status_log = StatusLog(
+                    executions_pending=pending_count,
+                    executions_ready=pending_count,
+                    executions_running=pending_count,
+                    executions_finished=pending_count * 2,
+                    executions_failed=0,
+                    executions_cancelled=0,
+                )
+                status_log.timestamp = base + timedelta(days=7 * week_offset)
+                db.session.add(status_log)
+
+            db.session.commit()
+
+        response = client.get(
+            "/api/v1/status?aggregate=true&period=last_year&group_by=week",
+            headers=auth_headers_admin,
+        )
+
+        assert response.status_code == 200
+        payload = response.json
+
+        assert payload["total"] == 2
+        first_entry = payload["data"][0]
+        assert "executions_active" in first_entry
+        assert first_entry["executions_pending"] == 1
+        assert first_entry["executions_ready"] == 1
+        assert first_entry["executions_running"] == 1
+        assert first_entry["executions_active"] == 3
+
 
 @pytest.mark.usefixtures("app")
 class TestStatusService:
@@ -166,3 +205,34 @@ class TestStatusService:
             # Should not error and return results ordered by timestamp desc
             assert isinstance(logs, list)
             assert isinstance(total, int)
+
+    def test_get_status_logs_grouped_week(self, app):
+        """Test grouping status logs by week produces aggregated counts."""
+        with app.app_context():
+            db.session.query(StatusLog).delete()
+            base = datetime.now(UTC) - timedelta(days=21)
+
+            for week_offset, pending_count in enumerate([2, 4]):
+                log_entry = StatusLog(
+                    executions_pending=pending_count,
+                    executions_ready=pending_count,
+                    executions_running=pending_count,
+                    executions_finished=pending_count,
+                    executions_failed=0,
+                    executions_cancelled=0,
+                )
+                log_entry.timestamp = base + timedelta(days=7 * week_offset)
+                db.session.add(log_entry)
+
+            db.session.commit()
+
+            grouped = StatusService.get_status_logs_grouped(
+                group_by="week",
+                start_date=base,
+                end_date=base + timedelta(days=21),
+                sort="timestamp",
+            )
+
+            assert len(grouped) == 2
+            assert grouped[0]["executions_pending"] == 2
+            assert grouped[0]["executions_active"] == 6
