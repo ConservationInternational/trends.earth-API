@@ -289,6 +289,53 @@ class TestStatsService:
         assert result["available"] is False
         assert "error" in result
 
+    @patch("gefapi.services.stats_service.db")
+    def test_execution_time_series_aggregates_totals(self, mock_db):
+        """Total counts should reflect aggregated values from the query."""
+        query_mock = MagicMock()
+        mock_db.session.query.return_value = query_mock
+
+        query_mock.join.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.group_by.return_value = query_mock
+        query_mock.all.return_value = [
+            SimpleNamespace(
+                timestamp=datetime(2025, 1, 1, 10, 0, 0),
+                total=5,
+                status="FINISHED",
+                slug="productivity-v2.0.0",
+            ),
+            SimpleNamespace(
+                timestamp=datetime(2025, 1, 1, 10, 0, 0),
+                total=2,
+                status="FAILED",
+                slug="productivity-v2.0.0",
+            ),
+            SimpleNamespace(
+                timestamp=datetime(2025, 1, 2, 12, 0, 0),
+                total=4,
+                status="CANCELLED",
+                slug="land-cover-v1.5",
+            ),
+        ]
+
+        result = StatsService._get_execution_time_series("all", "day", None, None)
+
+        assert result == [
+            {
+                "timestamp": "2025-01-01T10:00:00",
+                "total": 7,
+                "by_status": {"FINISHED": 5, "FAILED": 2},
+                "by_task": {"productivity": 7},
+            },
+            {
+                "timestamp": "2025-01-02T12:00:00",
+                "total": 4,
+                "by_status": {"CANCELLED": 4},
+                "by_task": {"land-cover": 4},
+            },
+        ]
+
     def test_time_filter_generation(self):
         """Test _get_time_filter method."""
         now = datetime.utcnow()

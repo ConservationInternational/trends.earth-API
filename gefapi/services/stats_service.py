@@ -8,7 +8,7 @@ import logging
 from typing import Any
 
 from flask import has_app_context
-from sqlalchemy import desc, func, text
+from sqlalchemy import and_, case, desc, func, text
 
 from gefapi import app, db
 from gefapi.models import Execution, Script, User
@@ -562,15 +562,33 @@ class StatsService:
             "month": "month",
         }.get(group_by, "day")
 
+        completion_statuses = ("FINISHED", "FAILED", "CANCELLED")
+
+        # Use the completion timestamp when available so completed task counts are
+        # attributed to when they finished rather than when they started. This keeps
+        # the UI cumulative chart aligned with the "Completed" concept.
+        event_timestamp = case(
+            (
+                and_(
+                    Execution.end_date.isnot(None),
+                    Execution.status.in_(completion_statuses),
+                ),
+                Execution.end_date,
+            ),
+            else_=Execution.start_date,
+        )
+
+        timestamp_bucket = func.date_trunc(trunc_format, event_timestamp)
+
         query = db.session.query(
-            func.date_trunc(trunc_format, Execution.start_date).label("timestamp"),
+            timestamp_bucket.label("timestamp"),
             func.count(Execution.id).label("total"),
             Execution.status,
             Script.slug,
         ).join(Script, Script.id == Execution.script_id)
 
         if cutoff_date:
-            query = query.filter(Execution.start_date >= cutoff_date)
+            query = query.filter(event_timestamp >= cutoff_date)
 
         if task_type:
             query = query.filter(Script.slug.like(f"%{task_type}%"))
@@ -579,7 +597,7 @@ class StatsService:
             query = query.filter(Execution.status == status)
 
         data = query.group_by(
-            func.date_trunc(trunc_format, Execution.start_date),
+            timestamp_bucket,
             Execution.status,
             Script.slug,
         ).all()
@@ -596,18 +614,22 @@ class StatsService:
                     "by_task": {},
                 }
 
-            time_series[timestamp]["total"] += 1
+            count = int(row.total or 0)
+            if count <= 0:
+                continue
+
+            time_series[timestamp]["total"] += count
 
             # Count by status
             status_key = row.status or "UNKNOWN"
             time_series[timestamp]["by_status"][status_key] = (
-                time_series[timestamp]["by_status"].get(status_key, 0) + 1
+                time_series[timestamp]["by_status"].get(status_key, 0) + count
             )
 
             # Count by task (normalized)
             task_name = StatsService._normalize_task_name(row.slug)
             time_series[timestamp]["by_task"][task_name] = (
-                time_series[timestamp]["by_task"].get(task_name, 0) + 1
+                time_series[timestamp]["by_task"].get(task_name, 0) + count
             )
 
         return sorted(time_series.values(), key=lambda x: x["timestamp"] or "")
