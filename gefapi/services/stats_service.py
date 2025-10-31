@@ -434,17 +434,13 @@ class StatsService:
                 query = query.filter(User.created_at >= cutoff_date)
 
             country_data = (
-                query.group_by(User.country)
-                .order_by(desc("user_count"))
-                .all()
+                query.group_by(User.country).order_by(desc("user_count")).all()
             )
 
             total_users = sum(row.user_count for row in country_data)
 
             return {
-                "countries": {
-                    row.country: row.user_count for row in country_data
-                },
+                "countries": {row.country: row.user_count for row in country_data},
                 "total_users": total_users,
             }
 
