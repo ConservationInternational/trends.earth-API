@@ -106,7 +106,17 @@ class StatusService:
         end_date: datetime | None = None,
         sort: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Aggregate status log snapshots by the requested interval."""
+        """Aggregate status log snapshots by the requested interval.
+
+        Args:
+            group_by: Aggregation interval (hour, day, week, month)
+            start_date: Optional start timestamp filter
+            end_date: Optional end timestamp filter
+            sort: Sort direction (prefixed with '-' for descending)
+
+        Returns:
+            list of dictionaries containing aggregated status metrics
+        """
 
         valid_groupings = {"hour", "day", "week", "month"}
         if group_by not in valid_groupings:
@@ -119,9 +129,9 @@ class StatusService:
             func.avg(StatusLog.executions_pending).label("avg_pending"),
             func.avg(StatusLog.executions_ready).label("avg_ready"),
             func.avg(StatusLog.executions_running).label("avg_running"),
-            func.avg(StatusLog.executions_finished).label("avg_finished"),
-            func.avg(StatusLog.executions_failed).label("avg_failed"),
-            func.avg(StatusLog.executions_cancelled).label("avg_cancelled"),
+            func.sum(StatusLog.executions_finished).label("total_finished"),
+            func.sum(StatusLog.executions_failed).label("total_failed"),
+            func.sum(StatusLog.executions_cancelled).label("total_cancelled"),
         )
 
         if start_date:
@@ -139,7 +149,7 @@ class StatusService:
 
         rows = query.all()
 
-        results: list[dict[str, Any]] = []
+        temp_results: list[dict[str, Any]] = []
         for row in rows:
             bucket_ts = row.bucket
             if bucket_ts and bucket_ts.tzinfo is None:
@@ -148,21 +158,57 @@ class StatusService:
             pending = int(round(float(row.avg_pending or 0)))
             ready = int(round(float(row.avg_ready or 0)))
             running = int(round(float(row.avg_running or 0)))
-            finished = int(round(float(row.avg_finished or 0)))
-            failed = int(round(float(row.avg_failed or 0)))
-            cancelled = int(round(float(row.avg_cancelled or 0)))
+            finished_total = int(round(float(row.total_finished or 0)))
+            failed_total = int(round(float(row.total_failed or 0)))
+            cancelled_total = int(round(float(row.total_cancelled or 0)))
 
             entry = {
                 "timestamp": bucket_ts.isoformat() if bucket_ts else None,
                 "executions_pending": pending,
                 "executions_ready": ready,
                 "executions_running": running,
-                "executions_finished": finished,
-                "executions_failed": failed,
-                "executions_cancelled": cancelled,
+                "executions_finished": finished_total,
+                "executions_failed": failed_total,
+                "executions_cancelled": cancelled_total,
             }
             entry["executions_active"] = pending + ready + running
+            entry["_bucket_dt"] = bucket_ts
+            entry["_total_finished"] = finished_total
+            entry["_total_failed"] = failed_total
+            entry["_total_cancelled"] = cancelled_total
 
+            temp_results.append(entry)
+
+        if temp_results:
+            cumulative_totals: dict[str, int] = {
+                "_total_finished": 0,
+                "_total_failed": 0,
+                "_total_cancelled": 0,
+            }
+
+            sorted_entries = sorted(
+                temp_results,
+                key=lambda item: item.get("_bucket_dt")
+                or datetime.min.replace(tzinfo=UTC),
+            )
+
+            cumulative_key_map = {
+                "_total_finished": "cumulative_finished",
+                "_total_failed": "cumulative_failed",
+                "_total_cancelled": "cumulative_cancelled",
+            }
+
+            for item in sorted_entries:
+                for temp_key, cumulative_key in cumulative_key_map.items():
+                    cumulative_totals[temp_key] += item.get(temp_key, 0)
+                    item[cumulative_key] = cumulative_totals[temp_key]
+
+        results: list[dict[str, Any]] = []
+        for entry in temp_results:
+            entry.pop("_bucket_dt", None)
+            entry.pop("_total_finished", None)
+            entry.pop("_total_failed", None)
+            entry.pop("_total_cancelled", None)
             results.append(entry)
 
         return results

@@ -146,6 +146,9 @@ class TestStatusEndpoint:
         assert first_entry["executions_ready"] == 1
         assert first_entry["executions_running"] == 1
         assert first_entry["executions_active"] == 3
+        assert first_entry.get("cumulative_finished") == 2
+        second_entry = payload["data"][1]
+        assert second_entry.get("cumulative_finished") == 8
 
 
 @pytest.mark.usefixtures("app")
@@ -236,3 +239,81 @@ class TestStatusService:
             assert len(grouped) == 2
             assert grouped[0]["executions_pending"] == 2
             assert grouped[0]["executions_active"] == 6
+
+    def test_get_status_logs_grouped_with_cumulative(self, app):
+        """Ensure cumulative totals are always returned for grouped results."""
+        with app.app_context():
+            db.session.query(StatusLog).delete()
+            base = datetime.now(UTC) - timedelta(days=14)
+
+            for offset, finished_count in enumerate([2, 5]):
+                log_entry = StatusLog(
+                    executions_pending=0,
+                    executions_ready=0,
+                    executions_running=0,
+                    executions_finished=finished_count,
+                    executions_failed=offset,
+                    executions_cancelled=0,
+                )
+                log_entry.timestamp = base + timedelta(days=7 * offset)
+                db.session.add(log_entry)
+
+            db.session.commit()
+
+            grouped = StatusService.get_status_logs_grouped(
+                group_by="week",
+                start_date=base,
+                end_date=base + timedelta(days=14),
+                sort="timestamp",
+            )
+
+            assert grouped[0]["cumulative_finished"] == 2
+            assert grouped[1]["cumulative_finished"] == 7
+            assert grouped[0]["cumulative_failed"] == 0
+            assert grouped[0]["cumulative_cancelled"] == 0
+            assert grouped[1]["cumulative_failed"] == 1
+
+    def test_get_status_logs_grouped_uses_totals_for_completed_states(self, app):
+        """Finished, failed, and cancelled counts should return totals for the period."""
+        with app.app_context():
+            db.session.query(StatusLog).delete()
+            bucket = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+            first_entry = StatusLog(
+                executions_pending=1,
+                executions_ready=1,
+                executions_running=1,
+                executions_finished=5,
+                executions_failed=2,
+                executions_cancelled=1,
+            )
+            first_entry.timestamp = bucket
+
+            second_entry = StatusLog(
+                executions_pending=1,
+                executions_ready=1,
+                executions_running=1,
+                executions_finished=9,
+                executions_failed=4,
+                executions_cancelled=3,
+            )
+            second_entry.timestamp = bucket + timedelta(hours=2)
+
+            db.session.add_all([first_entry, second_entry])
+            db.session.commit()
+
+            grouped = StatusService.get_status_logs_grouped(
+                group_by="day",
+                start_date=bucket,
+                end_date=bucket + timedelta(days=1),
+            )
+
+            # The grouped values should surface the total counts observed within the bucket.
+            assert grouped[0]["executions_finished"] == 14
+            assert grouped[0]["executions_failed"] == 6
+            assert grouped[0]["executions_cancelled"] == 4
+
+            # Cumulative totals should be populated automatically without additional parameters.
+            assert grouped[0]["cumulative_finished"] == 14
+            assert grouped[0]["cumulative_failed"] == 6
+            assert grouped[0]["cumulative_cancelled"] == 4
