@@ -193,7 +193,7 @@ def get_execution_stats():
 
     Query Parameters:
     - period: Time period filter (last_day, last_week, last_month, last_year, all)
-    - group_by: Grouping interval (hour, day, week, month)
+    - group_by: Grouping interval (quarter_hour, hour, day, week, month)
     - task_type: Filter by specific task type
     - status: Filter by execution status (PENDING, RUNNING, FINISHED, FAILED, CANCELLED)
 
@@ -270,7 +270,7 @@ def get_execution_stats():
                 detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}",
             )
 
-        valid_group_by = ["hour", "day", "week", "month"]
+        valid_group_by = ["quarter_hour", "hour", "day", "week", "month"]
         if group_by not in valid_group_by:
             return error(
                 status=400,

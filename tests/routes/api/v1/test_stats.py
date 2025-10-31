@@ -332,6 +332,28 @@ class TestStatsAPIEndpoints:
         )
 
     @patch("gefapi.utils.permissions.is_superadmin")
+    @patch.object(StatsService, "get_execution_stats")
+    def test_execution_stats_quarter_hour_group_by(
+        self, mock_get_stats, mock_is_superadmin, client, auth_headers_superadmin
+    ):
+        """Execution stats should accept quarter-hour grouping."""
+        mock_is_superadmin.return_value = True
+        mock_get_stats.return_value = self.sample_execution_stats
+
+        response = client.get(
+            "/api/v1/stats/executions?period=last_day&group_by=quarter_hour",
+            headers=auth_headers_superadmin,
+        )
+
+        assert response.status_code == 200
+        mock_get_stats.assert_called_once_with(
+            period="last_day",
+            group_by="quarter_hour",
+            task_type=None,
+            status=None,
+        )
+
+    @patch("gefapi.utils.permissions.is_superadmin")
     def test_execution_stats_invalid_status(
         self, mock_is_superadmin, client, auth_headers_superadmin
     ):
