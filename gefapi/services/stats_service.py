@@ -436,24 +436,17 @@ class StatsService:
             country_data = (
                 query.group_by(User.country)
                 .order_by(desc("user_count"))
-                .limit(20)
                 .all()
             )
 
             total_users = sum(row.user_count for row in country_data)
 
-            top_countries = [
-                {
-                    "country": row.country,
-                    "user_count": row.user_count,
-                    "percentage": round((row.user_count / total_users * 100), 1)
-                    if total_users > 0
-                    else 0,
-                }
-                for row in country_data
-            ]
-
-            return {"top_countries": top_countries}
+            return {
+                "countries": {
+                    row.country: row.user_count for row in country_data
+                },
+                "total_users": total_users,
+            }
 
         return StatsService._get_from_cache_or_execute(cache_key, execute_geographic)
 

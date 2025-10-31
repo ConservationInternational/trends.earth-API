@@ -122,7 +122,7 @@ class TestStatsService:
         expected_result = {
             "summary": self.sample_summary_data,
             "trends": {"hourly_jobs": [], "daily_jobs": []},
-            "geographic": {"top_countries": []},
+            "geographic": {"countries": {}, "total_users": 0},
             "tasks": {"by_type": [], "by_version": []},
         }
 
@@ -179,7 +179,10 @@ class TestStatsService:
 
         expected_result = {
             "registration_trends": [{"date": "2025-08-08", "new_users": 5}],
-            "geographic_distribution": [{"country": "USA", "user_count": 100}],
+            "geographic_distribution": {
+                "countries": {"USA": 100},
+                "total_users": 100,
+            },
             "activity_stats": {"active_last_day": 10, "active_last_week": 50},
         }
 
@@ -196,6 +199,34 @@ class TestStatsService:
             "stats_service:get_user_stats:country=USA_group_by=month_period=last_year"
         )
         self.mock_redis.get.assert_called_once_with(expected_cache_key)
+
+    @patch("gefapi.services.stats_service.get_redis_cache")
+    @patch("gefapi.services.stats_service.db")
+    def test_geographic_data_returns_full_country_map(
+        self, mock_db, mock_get_redis_cache
+    ):
+        """_get_geographic_data should expose full per-country counts."""
+
+        mock_get_redis_cache.return_value = self.mock_redis
+        self.mock_redis.is_available.return_value = False
+
+        query_mock = MagicMock()
+        mock_db.session.query.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.group_by.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = [
+            SimpleNamespace(country="USA", user_count=100),
+            SimpleNamespace(country="Brazil", user_count=25),
+            SimpleNamespace(country="Kenya", user_count=10),
+        ]
+
+        result = StatsService._get_geographic_data("all")
+
+        assert result == {
+            "countries": {"USA": 100, "Brazil": 25, "Kenya": 10},
+            "total_users": 135,
+        }
 
     @patch("gefapi.services.stats_service.get_redis_cache")
     def test_clear_cache_all(self, mock_get_redis_cache):

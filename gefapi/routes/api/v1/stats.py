@@ -82,11 +82,12 @@ def get_dashboard_stats():
     {
         "data": {
             "geographic": {
-                "top_countries": [
-                    {"country": "USA", "user_count": 100, "percentage": 40.0},
-                    {"country": "Brazil", "user_count": 75, "percentage": 30.0},
-                    {"country": "Germany", "user_count": 50, "percentage": 20.0}
-                ]
+                "countries": {
+                    "USA": 100,
+                    "Brazil": 75,
+                    "Germany": 50
+                },
+                "total_users": 225
             }
         }
     }
