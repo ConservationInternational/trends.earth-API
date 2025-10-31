@@ -578,7 +578,14 @@ class StatsService:
             else_=Execution.start_date,
         )
 
-        timestamp_bucket = func.date_trunc(trunc_format, event_timestamp)
+        if group_by == "quarter_hour":
+            interval_seconds = 900  # 15 minutes
+            timestamp_bucket = func.to_timestamp(
+                func.floor(func.extract("epoch", event_timestamp) / interval_seconds)
+                * interval_seconds
+            )
+        else:
+            timestamp_bucket = func.date_trunc(trunc_format, event_timestamp)
 
         query = db.session.query(
             timestamp_bucket.label("timestamp"),

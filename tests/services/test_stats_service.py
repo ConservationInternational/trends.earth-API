@@ -290,6 +290,37 @@ class TestStatsService:
         assert "error" in result
 
     @patch("gefapi.services.stats_service.db")
+    def test_execution_time_series_quarter_hour_bucket(self, mock_db):
+        """Quarter-hour grouping should return 15 minute buckets."""
+        query_mock = MagicMock()
+        mock_db.session.query.return_value = query_mock
+
+        query_mock.join.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.group_by.return_value = query_mock
+        query_mock.all.return_value = [
+            SimpleNamespace(
+                timestamp=datetime(2025, 1, 1, 10, 15, 0),
+                total=3,
+                status="FINISHED",
+                slug="productivity-v2.0.0",
+            )
+        ]
+
+        result = StatsService._get_execution_time_series(
+            "last_day", "quarter_hour", None, None
+        )
+
+        assert result == [
+            {
+                "timestamp": "2025-01-01T10:15:00",
+                "total": 3,
+                "by_status": {"FINISHED": 3},
+                "by_task": {"productivity": 3},
+            }
+        ]
+
+    @patch("gefapi.services.stats_service.db")
     def test_execution_time_series_aggregates_totals(self, mock_db):
         """Total counts should reflect aggregated values from the query."""
         query_mock = MagicMock()
