@@ -277,7 +277,9 @@ class TestStatusService:
         """Finished, failed, and cancelled counts should return totals for the period."""
         with app.app_context():
             db.session.query(StatusLog).delete()
-            bucket = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+            bucket = datetime.now(UTC).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
 
             first_entry = StatusLog(
                 executions_pending=1,
