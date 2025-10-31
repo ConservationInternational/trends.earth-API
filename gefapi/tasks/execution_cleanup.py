@@ -61,6 +61,8 @@ def cleanup_stale_executions(self):
                 return {"cleaned_up": 0, "docker_services_removed": 0}
 
             cleaned_up_count = 0
+            marked_failed_count = 0
+            cancelled_count = 0
             docker_services_removed = 0
 
             for execution in stale_executions:
@@ -74,20 +76,35 @@ def cleanup_stale_executions(self):
                         execution.start_date,
                     )
 
-                    # Set execution status to FAILED
-                    execution.status = "FAILED"
-                    execution.end_date = datetime.datetime.utcnow()
-                    execution.progress = 100
+                    status_changed = False
+                    log_entry = None
 
-                    # Add log entry
-                    log_entry = ExecutionLog(
-                        text="Cancelled by celery stale execution cleanup task.",
-                        level="ERROR",
-                        execution_id=execution.id,
-                    )
+                    if execution.status == "CANCELLED":
+                        cancelled_count += 1
+                        logger.info(
+                            "[TASK]: Execution %s already CANCELLED; "
+                            "skipping status update",
+                            execution.id,
+                        )
+                    else:
+                        # Set execution status to FAILED for stale non-terminal states
+                        execution.status = "FAILED"
+                        execution.end_date = datetime.datetime.utcnow()
+                        execution.progress = 100
+                        status_changed = True
+                        marked_failed_count += 1
 
-                    db.session.add(execution)
-                    db.session.add(log_entry)
+                        # Add log entry describing the forced failure
+                        log_entry = ExecutionLog(
+                            text="Marked as FAILED by stale execution cleanup task.",
+                            level="ERROR",
+                            execution_id=execution.id,
+                        )
+
+                    if status_changed:
+                        db.session.add(execution)
+                    if log_entry is not None:
+                        db.session.add(log_entry)
 
                     # Try to clean up associated Docker service
                     docker_service_name = f"execution-{execution.id}"
@@ -152,7 +169,9 @@ def cleanup_stale_executions(self):
                     cleaned_up_count += 1
 
                     logger.info(
-                        f"[TASK]: Successfully cleaned up execution {execution.id}"
+                        "[TASK]: Successfully cleaned up execution %s (status: %s)",
+                        execution.id,
+                        execution.status,
                     )
 
                 except Exception as execution_error:
@@ -181,6 +200,8 @@ def cleanup_stale_executions(self):
             result = {
                 "cleaned_up": cleaned_up_count,
                 "docker_services_removed": docker_services_removed,
+                "marked_failed": marked_failed_count,
+                "cancelled_processed": cancelled_count,
                 "cutoff_date": cutoff_date.isoformat(),
             }
 

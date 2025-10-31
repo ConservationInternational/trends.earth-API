@@ -1,6 +1,7 @@
 """Tests for execution cleanup tasks"""
 
 import datetime
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from gefapi import db
@@ -10,9 +11,21 @@ from gefapi.models import Execution, ExecutionLog
 from gefapi.tasks import execution_cleanup
 
 
+def _run_task(task: Any):  # type: ignore[no-untyped-def]
+    return task.apply().result  # type: ignore[attr-defined]
+
+
 def run_cleanup_stale_executions():
     # Call the Celery task using .apply().result for testing
-    return execution_cleanup.cleanup_stale_executions.apply().result
+    return _run_task(execution_cleanup.cleanup_stale_executions)
+
+
+def run_cleanup_finished_executions():
+    return _run_task(execution_cleanup.cleanup_finished_executions)
+
+
+def run_cleanup_old_failed_executions():
+    return _run_task(execution_cleanup.cleanup_old_failed_executions)
 
 
 class TestExecutionCleanup:
@@ -54,7 +67,7 @@ class TestExecutionCleanup:
                 mock_client.services.list.return_value = []
                 mock_client.containers.list.return_value = []
 
-                result = execution_cleanup.cleanup_stale_executions.apply().result
+                result = run_cleanup_stale_executions()
 
                 assert result["cleaned_up"] == 1
                 assert result["docker_services_removed"] == 0
@@ -104,7 +117,7 @@ class TestExecutionCleanup:
                 mock_client.services.list.return_value = [mock_service]
                 mock_client.containers.list.return_value = []
 
-                result = execution_cleanup.cleanup_stale_executions.apply().result
+                result = run_cleanup_stale_executions()
 
                 assert result["cleaned_up"] == 1
                 assert result["docker_services_removed"] == 1
@@ -120,6 +133,72 @@ class TestExecutionCleanup:
 
                 # Verify Docker service was removed
                 mock_service.remove.assert_called_once()
+
+    def test_cleanup_stale_executions_preserves_cancelled_execution(
+        self, app, db_session, regular_user, sample_script
+    ):
+        """Ensure CANCELLED executions keep their status while resources are cleaned"""
+        with app.app_context():
+            four_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=4)
+            script = db_session.merge(sample_script)
+            user = db_session.merge(regular_user)
+
+            execution = Execution(
+                script_id=script.id,
+                user_id=user.id,
+                params={"test_param": "cancelled_execution"},
+            )
+            execution.start_date = four_days_ago
+            execution.end_date = four_days_ago + datetime.timedelta(hours=1)
+            execution.status = "CANCELLED"
+            execution.progress = 47
+            db_session.add(execution)
+            db_session.commit()
+
+            execution_id = execution.id
+            expected_end_date = execution.end_date
+
+            with patch(
+                "gefapi.tasks.execution_cleanup.get_docker_client"
+            ) as mock_docker:
+                mock_client = MagicMock()
+                mock_docker.return_value = mock_client
+                mock_client.services.list.return_value = []
+                mock_client.containers.list.return_value = []
+
+                result = run_cleanup_stale_executions()
+
+            assert result["cleaned_up"] == 1
+            assert result.get("marked_failed", 0) == 0
+            assert result.get("cancelled_processed", 0) == 1
+
+            db.session.expire_all()
+            updated_execution = db.session.get(Execution, execution_id)
+            assert updated_execution is not None
+            assert updated_execution.status == "CANCELLED"
+            assert updated_execution.progress == 47
+            assert updated_execution.end_date == expected_end_date
+
+            failure_log_count = (
+                db.session.query(ExecutionLog)
+                .filter_by(
+                    execution_id=execution_id,
+                    text="Marked as FAILED by stale execution cleanup task.",
+                )
+                .count()
+            )
+            assert failure_log_count == 0
+
+            mock_client.services.list.assert_called_once_with(
+                filters={"name": f"execution-{execution_id}"}
+            )
+            mock_client.containers.list.assert_called_once_with(
+                filters={"name": f"execution-{execution_id}"}, all=True
+            )
+
+            # Cleanup the temporary execution to avoid affecting other tests
+            db_session.delete(updated_execution)
+            db_session.commit()
 
     def test_cleanup_stale_executions_ignores_finished_executions(
         self, app, db_session, sample_execution
@@ -143,7 +222,7 @@ class TestExecutionCleanup:
                 mock_client = MagicMock()
                 mock_docker.return_value = mock_client
 
-                result = execution_cleanup.cleanup_stale_executions.apply().result
+                result = run_cleanup_stale_executions()
 
                 assert result["cleaned_up"] == 0
                 assert result["docker_services_removed"] == 0
@@ -179,7 +258,7 @@ class TestExecutionCleanup:
                 mock_client = MagicMock()
                 mock_docker.return_value = mock_client
 
-                result = execution_cleanup.cleanup_stale_executions.apply().result
+                result = run_cleanup_stale_executions()
 
                 assert result["cleaned_up"] == 0
                 assert result["docker_services_removed"] == 0
@@ -215,7 +294,7 @@ class TestExecutionCleanup:
                 mock_client = MagicMock()
                 mock_docker.return_value = mock_client
 
-                result = execution_cleanup.cleanup_stale_executions.apply().result
+                result = run_cleanup_stale_executions()
 
                 assert result["cleaned_up"] == 0
                 assert result["docker_services_removed"] == 0
@@ -250,7 +329,7 @@ class TestExecutionCleanup:
             ) as mock_docker:
                 mock_docker.return_value = None
 
-                result = execution_cleanup.cleanup_stale_executions.apply().result
+                result = run_cleanup_stale_executions()
 
                 assert result["cleaned_up"] == 1
                 assert result["docker_services_removed"] == 0
@@ -285,7 +364,7 @@ class TestExecutionCleanup:
                 mock_docker.return_value = mock_client
                 mock_client.services.list.side_effect = Exception("Docker error")
 
-                result = execution_cleanup.cleanup_stale_executions.apply().result
+                result = run_cleanup_stale_executions()
 
                 assert result["cleaned_up"] == 1
                 # Docker removal failed but execution was still cleaned up
@@ -337,7 +416,7 @@ class TestExecutionCleanup:
                 mock_client.services.list.return_value = [mock_service]
                 mock_client.containers.list.return_value = []
 
-                result = execution_cleanup.cleanup_finished_executions.apply().result
+                result = run_cleanup_finished_executions()
 
                 assert result["cleaned_up"] == 1
                 assert result["docker_services_removed"] == 1
@@ -396,31 +475,7 @@ class TestExecutionCleanup:
                 mock_client = MagicMock()
                 mock_docker.return_value = mock_client
 
-                result = execution_cleanup.cleanup_finished_executions.apply().result
-
-                assert result["cleaned_up"] == 0
-                assert result["docker_services_removed"] == 0
-
-    def test_cleanup_finished_executions_ignores_running_executions(
-        self, app, db_session, sample_execution
-    ):
-        """Test that running executions are ignored by finished cleanup"""
-        with app.app_context():
-            # Make the execution running (started recently)
-            one_hour_ago = datetime.datetime.utcnow() - datetime.timedelta(hours=1)
-            sample_execution.start_date = one_hour_ago
-            sample_execution.end_date = None
-            sample_execution.status = "RUNNING"
-            db_session.add(sample_execution)
-            db_session.commit()
-
-            with patch(
-                "gefapi.tasks.execution_cleanup.get_docker_client"
-            ) as mock_docker:
-                mock_client = MagicMock()
-                mock_docker.return_value = mock_client
-
-                result = execution_cleanup.cleanup_finished_executions.apply().result
+                result = run_cleanup_finished_executions()
 
                 assert result["cleaned_up"] == 0
                 assert result["docker_services_removed"] == 0
@@ -446,7 +501,7 @@ class TestExecutionCleanup:
             ) as mock_docker:
                 mock_docker.return_value = None
 
-                result = execution_cleanup.cleanup_finished_executions.apply().result
+                result = run_cleanup_finished_executions()
 
                 assert result["cleaned_up"] == 1
                 assert result["docker_services_removed"] == 0
@@ -486,7 +541,7 @@ class TestExecutionCleanup:
                 mock_client.services.list.return_value = [mock_service]
                 mock_client.containers.list.return_value = []
 
-                result = execution_cleanup.cleanup_old_failed_executions.apply().result
+                result = run_cleanup_old_failed_executions()
 
                 # We expect to clean up at least 1 execution (the one we just created)
                 # but there might be others from previous tests, so use >=
@@ -533,7 +588,7 @@ class TestExecutionCleanup:
                 mock_client = MagicMock()
                 mock_docker.return_value = mock_client
 
-                result = execution_cleanup.cleanup_old_failed_executions.apply().result
+                result = run_cleanup_old_failed_executions()
 
                 assert result["cleaned_up"] == 0
                 assert result["docker_services_removed"] == 0
@@ -557,7 +612,7 @@ class TestExecutionCleanup:
                 mock_client = MagicMock()
                 mock_docker.return_value = mock_client
 
-                result = execution_cleanup.cleanup_old_failed_executions.apply().result
+                result = run_cleanup_old_failed_executions()
 
                 assert result["cleaned_up"] == 0
                 assert result["docker_services_removed"] == 0
@@ -597,7 +652,7 @@ class TestExecutionCleanup:
             ) as mock_docker:
                 mock_docker.return_value = None
 
-                result = execution_cleanup.cleanup_old_failed_executions.apply().result
+                result = run_cleanup_old_failed_executions()
 
                 assert result["cleaned_up"] == 1
                 assert result["docker_services_removed"] == 0
@@ -652,7 +707,7 @@ class TestExecutionCleanup:
                 mock_client.services.list.return_value = [mock_service]
                 mock_client.containers.list.return_value = [mock_container]
 
-                result = execution_cleanup.cleanup_old_failed_executions.apply().result
+                result = run_cleanup_old_failed_executions()
 
                 assert result["cleaned_up"] == 1
                 assert result["docker_services_removed"] == 2  # 1 service + 1 container
@@ -705,7 +760,7 @@ class TestExecutionCleanup:
                 mock_docker.return_value = mock_client
                 mock_client.services.list.side_effect = Exception("Docker error")
 
-                result = execution_cleanup.cleanup_old_failed_executions.apply().result
+                result = run_cleanup_old_failed_executions()
 
                 assert result["cleaned_up"] == 1
                 # Docker removal failed but execution was still processed
