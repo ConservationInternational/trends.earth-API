@@ -528,7 +528,7 @@ def get_current_rate_limits():
                     limit_info["identifier"] = rate_key
 
                 # Only include limits that have a current count > 0 (actively limiting)
-                if current_count_numeric is not None and current_count_numeric > 0:
+                if current_count_numeric is not None:
                     active_limits.append(limit_info)
 
             except Exception as e:
