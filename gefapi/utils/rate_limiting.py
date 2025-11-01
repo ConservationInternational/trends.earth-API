@@ -1,6 +1,7 @@
 """Rate limiting utilities and decorators for the GEF API"""
 
 import logging
+import re
 
 from flask import current_app, jsonify, request
 from flask_jwt_extended import get_current_user, verify_jwt_in_request
@@ -427,22 +428,72 @@ def get_current_rate_limits():
                     continue
 
                 rate_key = parts[1]  # e.g., "user:12345", "ip:192.168.1.1"
-                time_window = parts[2]  # e.g., "60", "3600"
+                time_window_segment = parts[2]  # e.g., "60", "3600"
+
+                # Normalize time window to an integer number of seconds when possible
+                time_window = time_window_segment
+                if isinstance(time_window_segment, bytes):
+                    time_window_segment = time_window_segment.decode(errors="ignore")
+
+                if isinstance(time_window_segment, str):
+                    match = re.search(r"\d+", time_window_segment)
+                    if match:
+                        try:
+                            time_window = int(match.group())
+                        except ValueError:
+                            time_window = time_window_segment
+                elif isinstance(time_window_segment, (int, float)):
+                    time_window = int(time_window_segment)
 
                 # Get the current value/count from storage
                 try:
                     if hasattr(storage, "get"):
-                        current_count = storage.get(key) or 0
+                        raw_count = storage.get(key)
                     else:
-                        current_count = "unknown"
+                        raw_count = None
                 except Exception:
-                    current_count = "unknown"
+                    raw_count = None
+
+                # Normalize the stored count to a numeric value where possible
+                current_count_numeric = None
+                current_count_display = raw_count
+
+                if isinstance(raw_count, (int, float)):
+                    current_count_numeric = float(raw_count)
+                    if current_count_numeric.is_integer():
+                        current_count_numeric = int(current_count_numeric)
+                    current_count_display = current_count_numeric
+                elif isinstance(raw_count, bytes):
+                    try:
+                        decoded = raw_count.decode()
+                        match = re.search(r"-?\d+(?:\.\d+)?", decoded)
+                        if match:
+                            current_count_numeric = float(match.group())
+                            if current_count_numeric.is_integer():
+                                current_count_numeric = int(current_count_numeric)
+                            current_count_display = current_count_numeric
+                        else:
+                            current_count_display = decoded
+                    except Exception:
+                        current_count_display = raw_count
+                elif isinstance(raw_count, str):
+                    match = re.search(r"-?\d+(?:\.\d+)?", raw_count)
+                    if match:
+                        try:
+                            current_count_numeric = float(match.group())
+                            if current_count_numeric.is_integer():
+                                current_count_numeric = int(current_count_numeric)
+                            current_count_display = current_count_numeric
+                        except ValueError:
+                            current_count_display = raw_count
+                    else:
+                        current_count_display = raw_count
 
                 # Parse the rate key to determine if it's a user or IP
                 limit_info = {
                     "key": rate_key,
                     "time_window_seconds": time_window,
-                    "current_count": current_count,
+                    "current_count": current_count_display,
                     "type": "unknown",
                     "identifier": None,
                     "user_info": None,
@@ -477,7 +528,7 @@ def get_current_rate_limits():
                     limit_info["identifier"] = rate_key
 
                 # Only include limits that have a current count > 0 (actively limiting)
-                if isinstance(current_count, int | float) and current_count > 0:
+                if current_count_numeric is not None and current_count_numeric > 0:
                     active_limits.append(limit_info)
 
             except Exception as e:
