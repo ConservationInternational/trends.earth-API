@@ -1,7 +1,7 @@
 """Add table for tracking rate limit events
 
 Revision ID: 2b1a0f5c3e9d
-Revises: 2c4f8e1a9b3d
+Revises: 2e5c4ea7824a
 Create Date: 2025-11-01 10:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from gefapi.models import GUID
 
 # revision identifiers, used by Alembic.
 revision = "2b1a0f5c3e9d"
-down_revision = "2c4f8e1a9b3d"
+down_revision = "2e5c4ea7824a"
 branch_labels = None
 depends_on = None
 
