@@ -100,6 +100,61 @@ def get_rate_limit_status():
         return jsonify({"error": "Failed to retrieve rate limiting status"}), 500
 
 
+@endpoints.route("/rate-limit/reset/<string:identifier>", methods=["POST"])
+@jwt_required()
+def reset_rate_limit_by_identifier(identifier):
+    """
+    Reset a specific rate limit by its identifier.
+
+    **Access**: Restricted to users with `role: "SUPERADMIN"`
+    **Purpose**: Clears rate limit counters for a specific user or IP address
+
+    **Path Parameters**:
+    - `identifier`: The rate limit identifier (e.g., "user:123", "ip:192.168.1.1",
+      "auth:hash:ip")
+
+    **Success Response Schema**:
+    ```json
+    {
+      "message": "Rate limit reset for identifier: user:123"
+    }
+    ```
+
+    **Use Cases**:
+    - Clear rate limit for specific user who was legitimately rate limited
+    - Remove rate limit for specific IP address
+    - Targeted rate limit management without affecting all users
+
+    **Error Responses**:
+    - `403 Forbidden`: User does not have SUPERADMIN privileges
+    - `401 Unauthorized`: Valid JWT token required
+    - `404 Not Found`: No rate limit found for the specified identifier
+    - `500 Internal Server Error`: Failed to reset rate limit
+    """
+    current_user_id = get_jwt_identity()
+    user = UserService.get_user(current_user_id)
+
+    if not user or user.role != "SUPERADMIN":
+        return jsonify({"msg": "Superadmin access required"}), 403
+
+    try:
+        from gefapi.utils.rate_limiting import reset_rate_limit_by_key
+
+        success = reset_rate_limit_by_key(identifier)
+
+        if success:
+            return jsonify(
+                {"message": f"Rate limit reset for identifier: {identifier}"}
+            ), 200
+        return jsonify(
+            {"error": f"No rate limit found for identifier: {identifier}"}
+        ), 404
+
+    except Exception as e:
+        app.logger.error(f"Failed to reset rate limit for {identifier}: {e}")
+        return jsonify({"error": "Failed to reset rate limit"}), 500
+
+
 @endpoints.route("/rate-limit/reset", methods=["POST"])
 @jwt_required()
 def reset_rate_limits():
