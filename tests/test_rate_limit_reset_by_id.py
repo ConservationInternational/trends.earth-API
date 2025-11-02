@@ -1,5 +1,7 @@
 """Tests for rate limit reset by identifier functionality"""
 
+import jwt
+
 
 class TestRateLimitResetByIdentifier:
     """Test resetting specific rate limits by identifier"""
@@ -26,8 +28,6 @@ class TestRateLimitResetByIdentifier:
             return
 
         # Get the user ID from auth headers
-        import jwt
-
         token = auth_headers_user["Authorization"].replace("Bearer ", "")
         decoded = jwt.decode(token, options={"verify_signature": False})
         user_id = decoded["sub"]

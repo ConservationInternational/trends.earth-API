@@ -572,7 +572,7 @@ def get_current_rate_limits():
                 # Redis storage - get all keys matching rate limit patterns
                 pattern = "LIMITER/*"
                 keys = storage.storage.keys(pattern)
-                if isinstance(keys, list | tuple):
+                if isinstance(keys, (list, tuple)):
                     rate_limit_keys = [
                         key.decode() if isinstance(key, bytes) else key for key in keys
                     ]
@@ -712,7 +712,7 @@ def get_current_rate_limits():
                     limit_info["identifier"] = rate_key
 
                 # Only include limits that have a current count > 0 (actively limiting)
-                # Include all limits with valid counts to show tracking status
+                # This filters out keys that are tracked but have no current activity
                 if current_count_numeric is not None and current_count_numeric > 0:
                     active_limits.append(limit_info)
 
@@ -764,7 +764,7 @@ def reset_rate_limit_by_key(limit_key: str) -> bool:
                 # Redis storage - find all keys matching this identifier
                 pattern = f"LIMITER/{limit_key}/*"
                 keys = storage.storage.keys(pattern)
-                if isinstance(keys, list | tuple):
+                if isinstance(keys, (list, tuple)):
                     for key in keys:
                         key_str = key.decode() if isinstance(key, bytes) else key
                         try:
@@ -789,9 +789,7 @@ def reset_rate_limit_by_key(limit_key: str) -> bool:
             elif hasattr(storage, "storage") and isinstance(storage.storage, dict):
                 # Memory storage - direct dictionary access
                 keys_to_delete = [
-                    k
-                    for k in storage.storage
-                    if k.startswith(f"LIMITER/{limit_key}/")
+                    k for k in storage.storage if k.startswith(f"LIMITER/{limit_key}/")
                 ]
                 for key in keys_to_delete:
                     try:
