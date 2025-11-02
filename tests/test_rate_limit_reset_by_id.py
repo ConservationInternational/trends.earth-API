@@ -1,13 +1,16 @@
 """Tests for rate limit reset by identifier functionality"""
 
-import jwt
-
 
 class TestRateLimitResetByIdentifier:
     """Test resetting specific rate limits by identifier"""
 
     def test_reset_rate_limit_by_identifier_superadmin_access(
-        self, client, auth_headers_user, auth_headers_superadmin, reset_rate_limits
+        self,
+        client,
+        auth_headers_user,
+        auth_headers_superadmin,
+        reset_rate_limits,
+        regular_user,
     ):
         """Test that superadmin can reset a specific rate limit by identifier"""
         # First, reset all rate limits to start fresh
@@ -27,10 +30,9 @@ class TestRateLimitResetByIdentifier:
             # If not rate limited, skip this part of the test
             return
 
-        # Get the user ID from auth headers
-        token = auth_headers_user["Authorization"].replace("Bearer ", "")
-        decoded = jwt.decode(token, options={"verify_signature": False})
-        user_id = decoded["sub"]
+        # Get the user ID from the fixture
+        # The regular_user fixture provides the user object with known ID
+        user_id = regular_user.id
 
         # Reset the rate limit for this specific user
         response = client.post(
@@ -46,7 +48,7 @@ class TestRateLimitResetByIdentifier:
         if response.status_code == 200:
             data = response.json
             assert "message" in data
-            assert user_id in data["message"]
+            assert str(user_id) in data["message"]
 
     def test_reset_rate_limit_by_identifier_admin_forbidden(
         self, client, auth_headers_admin
