@@ -1,8 +1,9 @@
 """Admin routes for rate limiting and session management."""
 
+from datetime import UTC, datetime, timedelta
 import logging
 
-from flask import jsonify
+from flask import jsonify, request
 from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 
 from gefapi import app, limiter
@@ -168,6 +169,93 @@ def reset_rate_limits():
     except Exception as e:
         app.logger.error(f"Failed to reset rate limits: {e}")
         return jsonify({"error": "Failed to reset rate limits"}), 500
+
+
+@endpoints.route("/rate-limit/events", methods=["GET"])
+@jwt_required()
+def get_rate_limit_events():
+    """Retrieve historical rate limit breach events for auditing."""
+
+    current_user_id = get_jwt_identity()
+    user = UserService.get_user(current_user_id)
+
+    if not user or user.role not in ("ADMIN", "SUPERADMIN"):
+        return jsonify({"msg": "Admin or superadmin access required"}), 403
+
+    try:
+        page = max(request.args.get("page", default=1, type=int) or 1, 1)
+        per_page = request.args.get("per_page", default=100, type=int) or 100
+        per_page = max(1, min(per_page, 500))
+        offset = (page - 1) * per_page
+
+        since = None
+        since_param = request.args.get("since")
+        if since_param:
+            try:
+                parsed = datetime.fromisoformat(since_param)
+                since = parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+            except ValueError:
+                app.logger.warning(
+                    "Invalid 'since' parameter supplied to rate limit events: %s",
+                    since_param,
+                )
+
+        if since is None:
+            since_hours = request.args.get("since_hours", type=int)
+            if since_hours is not None:
+                since = datetime.now(UTC) - timedelta(hours=max(since_hours, 0))
+
+        if since is None:
+            since_days = request.args.get("since_days", type=int)
+            if since_days is not None:
+                since = datetime.now(UTC) - timedelta(days=max(since_days, 0))
+
+        if since is None:
+            since = datetime.now(UTC) - timedelta(hours=24)
+
+        rate_limit_type = request.args.get("type")
+        user_filter = request.args.get("user_id")
+        ip_filter = request.args.get("ip")
+
+        from gefapi.services import RateLimitEventService
+
+        events, total = RateLimitEventService.list_events(
+            limit=per_page,
+            offset=offset,
+            since=since,
+            rate_limit_type=rate_limit_type,
+            user_id=user_filter,
+            ip_address=ip_filter,
+        )
+
+        total_pages = (total + per_page - 1) // per_page if per_page else 0
+
+        data = {
+            "events": [event.serialize() for event in events],
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "since": since.isoformat() if since else None,
+            "filters": {
+                "type": rate_limit_type,
+                "user_id": user_filter,
+                "ip": ip_filter,
+            },
+        }
+
+        return (
+            jsonify(
+                {
+                    "message": "Rate limit events retrieved successfully",
+                    "data": data,
+                }
+            ),
+            200,
+        )
+    except Exception as exc:  # pragma: no cover - defensive logging path
+        app.logger.error(f"Failed to retrieve rate limit events: {exc}")
+        return jsonify({"error": "Failed to retrieve rate limit events"}), 500
 
 
 @endpoints.route("/user/me/sessions", strict_slashes=False, methods=["GET"])

@@ -2,6 +2,7 @@
 
 import logging
 import re
+import uuid
 
 from flask import current_app, jsonify, request
 from flask_jwt_extended import get_current_user, verify_jwt_in_request
@@ -13,6 +14,139 @@ from gefapi.utils.permissions import is_admin_or_higher
 from gefapi.utils.security_events import log_rate_limit_exceeded
 
 logger = logging.getLogger(__name__)
+
+
+_LIMIT_UNIT_SECONDS = {
+    "second": 1,
+    "seconds": 1,
+    "minute": 60,
+    "minutes": 60,
+    "hour": 3600,
+    "hours": 3600,
+    "day": 86400,
+    "days": 86400,
+    "week": 604800,
+    "weeks": 604800,
+}
+
+
+def _coerce_uuid(value):
+    """Try to coerce a value to a UUID string, returning None on failure."""
+
+    if value in (None, ""):
+        return None
+
+    try:
+        return str(uuid.UUID(str(value)))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def _parse_time_window_seconds(description):
+    """Extract a time window (seconds) from a limiter description string."""
+
+    if not description or not isinstance(description, str):
+        return None
+
+    match = re.search(r"per\s+(\d+)\s+([a-zA-Z]+)", description)
+    if not match:
+        return None
+
+    amount = int(match.group(1))
+    unit = match.group(2).lower()
+    multiplier = _LIMIT_UNIT_SECONDS.get(unit)
+    if not multiplier:
+        return None
+
+    return amount * multiplier
+
+
+def _normalise_limit_count(value):
+    """Convert limiter count representations into integers when possible."""
+
+    if value is None:
+        return None
+
+    if isinstance(value, (int, float)):
+        return int(value)
+
+    if isinstance(value, str):
+        match = re.search(r"\d+", value)
+        if match:
+            try:
+                return int(match.group())
+            except ValueError:
+                return None
+
+    return None
+
+
+def _parse_limit_metadata(limit_details):
+    """Derive structured rate limit metadata from limiter error objects."""
+
+    metadata: dict[str, object | None] = {
+        "limit_definition": None,
+        "limit_count": None,
+        "time_window_seconds": None,
+        "limit_key": None,
+    }
+
+    if not limit_details:
+        return metadata
+
+    metadata["limit_key"] = getattr(limit_details, "limit_key", None) or getattr(
+        limit_details, "key", None
+    )
+
+    limit_obj = getattr(limit_details, "limit", None)
+
+    if limit_obj is not None:
+        description = getattr(limit_obj, "description", None)
+        if not description:
+            description = str(limit_obj)
+
+        metadata["limit_definition"] = description
+        metadata["limit_count"] = _normalise_limit_count(
+            getattr(limit_obj, "limit", None)
+        )
+
+        granularity = getattr(limit_obj, "granularity", None)
+        if granularity is not None:
+            for attribute in ("value", "expiry", "amount", "delta", "seconds"):
+                candidate = getattr(granularity, attribute, None)
+                if isinstance(candidate, (int, float)):
+                    metadata["time_window_seconds"] = int(candidate)
+                    break
+
+    if metadata["limit_definition"] is None:
+        description = getattr(limit_details, "description", None)
+        if description:
+            metadata["limit_definition"] = description
+
+    if metadata["limit_definition"] and metadata["time_window_seconds"] is None:
+        metadata["limit_count"] = metadata["limit_count"] or _normalise_limit_count(
+            metadata["limit_definition"]
+        )
+        metadata["time_window_seconds"] = _parse_time_window_seconds(
+            metadata["limit_definition"]
+        )
+
+    return metadata
+
+
+def _classify_rate_limit(endpoint, user_info):
+    """Categorise the breached rate limit for reporting."""
+
+    endpoint_str = (endpoint or "").lower()
+
+    auth_tokens = ["/auth", "login", "logout", "token", "recovery", "password"]
+    if any(token in endpoint_str for token in auth_tokens):
+        return "AUTH"
+
+    if user_info:
+        return "USER"
+
+    return "IP"
 
 
 def is_internal_network_request():
@@ -157,7 +291,7 @@ def get_admin_aware_key():
     return f"ip:{get_remote_address()}"
 
 
-def create_rate_limit_response(retry_after=None):
+def create_rate_limit_response(retry_after=None, limit_details=None):
     """
     Create a standardized rate limit exceeded response and send security event
     notification
@@ -220,6 +354,56 @@ def create_rate_limit_response(retry_after=None):
     except Exception as e:
         # Don't let Rollbar errors prevent the rate limit response
         logger.error(f"Failed to send rate limit notification to Rollbar: {e}")
+
+    # Persist rate limit event for observability
+    try:
+        from gefapi.services import RateLimitEventService
+
+        metadata = _parse_limit_metadata(limit_details)
+        rate_limit_type = _classify_rate_limit(endpoint, user_info)
+        user_uuid = _coerce_uuid(user_id)
+
+        raw_definition = metadata.get("limit_definition")
+        limit_definition = (
+            raw_definition
+            if isinstance(raw_definition, str)
+            else (str(raw_definition) if raw_definition is not None else None)
+        )
+
+        raw_count = metadata.get("limit_count")
+        limit_count = (
+            int(raw_count)
+            if isinstance(raw_count, (int, float)) and not isinstance(raw_count, bool)
+            else None
+        )
+
+        raw_window = metadata.get("time_window_seconds")
+        time_window_seconds = (
+            int(raw_window)
+            if isinstance(raw_window, (int, float)) and not isinstance(raw_window, bool)
+            else None
+        )
+
+        raw_limit_key = metadata.get("limit_key")
+        limit_key = raw_limit_key if isinstance(raw_limit_key, str) else None
+
+        RateLimitEventService.record_event(
+            rate_limit_type=rate_limit_type,
+            endpoint=endpoint or request.endpoint or "unknown",
+            method=request.method,
+            user_id=user_uuid,
+            user_role=user_info.get("role") if user_info else None,
+            user_email=user_info.get("email") if user_info else None,
+            limit_definition=limit_definition,
+            limit_count=limit_count,
+            time_window_seconds=time_window_seconds,
+            retry_after_seconds=retry_after,
+            limit_key=limit_key,
+            ip_address=ip_address,
+            user_agent=request.headers.get("User-Agent"),
+        )
+    except Exception as exc:
+        logger.debug("Failed to record rate limit event: %s", exc)
 
     # Create the response
     response_data = {
@@ -358,7 +542,7 @@ def rate_limit_error_handler(error):
     # Log the error for debugging
     logger.info(f"Rate limit exceeded: {error}")
 
-    return create_rate_limit_response(retry_after=retry_after)
+    return create_rate_limit_response(retry_after=retry_after, limit_details=error)
 
 
 def get_current_rate_limits():

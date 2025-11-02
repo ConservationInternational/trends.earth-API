@@ -54,7 +54,7 @@ from flask_jwt_extended import create_access_token
 from gefapi import app as flask_app
 from gefapi import db
 from gefapi.config import SETTINGS
-from gefapi.models import Execution, Script, StatusLog, User
+from gefapi.models import Execution, RateLimitEvent, Script, StatusLog, User
 
 # Strong password values for test fixtures
 STRONG_GENERIC_PASSWORD = "ValidPass123!"
@@ -695,6 +695,26 @@ def cleanup_xss_test_users(app):
             db.session.commit()
         except Exception:
             db.session.rollback()
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limit_events(app):
+    """Ensure rate limit event history does not leak between tests."""
+
+    def _clear_events() -> None:
+        try:
+            RateLimitEvent.query.delete()
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    with app.app_context():
+        _clear_events()
+
+    yield
+
+    with app.app_context():
+        _clear_events()
 
 
 @pytest.fixture(autouse=True)

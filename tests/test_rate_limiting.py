@@ -573,3 +573,66 @@ class TestRateLimitReset:
         assert len(successful_responses) > 40, (
             "Environment automation user should have many successful requests"
         )
+
+
+class TestRateLimitEvents:
+    """Ensure rate limit events are persisted and retrievable."""
+
+    @staticmethod
+    def _trigger_auth_rate_limit(client):
+        responses = []
+        for _ in range(10):
+            response = client.post(
+                "/auth",
+                json={"email": "missing@example.com", "password": "invalid"},
+            )
+            responses.append(response)
+            if response.status_code == 429:
+                break
+        return responses
+
+    def test_rate_limit_events_superadmin_access(self, client, auth_headers_superadmin):
+        responses = self._trigger_auth_rate_limit(client)
+        assert any(resp.status_code == 429 for resp in responses)
+
+        response = client.get(
+            "/api/v1/rate-limit/events", headers=auth_headers_superadmin
+        )
+        assert response.status_code == 200
+        payload = response.json["data"]
+        assert "events" in payload
+        assert "total" in payload
+        assert isinstance(payload["events"], list)
+        assert payload["total"] >= len(payload["events"])
+
+        if payload["events"]:
+            event = payload["events"][0]
+            assert "occurred_at" in event
+            assert event["rate_limit_type"] in {"AUTH", "USER", "IP"}
+
+    def test_rate_limit_events_admin_access(self, client, auth_headers_admin):
+        self._trigger_auth_rate_limit(client)
+
+        response = client.get("/api/v1/rate-limit/events", headers=auth_headers_admin)
+        assert response.status_code == 200
+
+    def test_rate_limit_events_user_forbidden(self, client, auth_headers_user):
+        response = client.get("/api/v1/rate-limit/events", headers=auth_headers_user)
+        assert response.status_code == 403
+        assert "Admin or superadmin access required" in response.json["msg"]
+
+    def test_rate_limit_events_deduplicated(self, client, auth_headers_superadmin):
+        all_responses = []
+        for _ in range(2):
+            all_responses.extend(self._trigger_auth_rate_limit(client))
+
+        assert any(resp.status_code == 429 for resp in all_responses)
+
+        response = client.get(
+            "/api/v1/rate-limit/events", headers=auth_headers_superadmin
+        )
+        assert response.status_code == 200
+        payload = response.json["data"]
+        assert payload["total"] == len(payload["events"])
+        # Should only record a single transition for the current limiter window
+        assert payload["total"] == 1

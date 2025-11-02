@@ -168,7 +168,9 @@ class TestRateLimitingRollbarNotifications:
             result = rate_limit_error_handler(mock_error)
 
             # Verify it called create_rate_limit_response with correct retry_after
-            mock_create_response.assert_called_once_with(retry_after=120)
+            mock_create_response.assert_called_once_with(
+                retry_after=120, limit_details=mock_error
+            )
             assert result == mock_response
 
     @patch("gefapi.utils.rate_limiting.create_rate_limit_response")
@@ -190,7 +192,9 @@ class TestRateLimitingRollbarNotifications:
             result = rate_limit_error_handler(mock_error)
 
             # Verify it called create_rate_limit_response with None retry_after
-            mock_create_response.assert_called_once_with(retry_after=None)
+            mock_create_response.assert_called_once_with(
+                retry_after=None, limit_details=mock_error
+            )
             assert result == mock_response
 
     @patch("gefapi.utils.rate_limiting.rollbar")
