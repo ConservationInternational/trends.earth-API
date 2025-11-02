@@ -712,7 +712,8 @@ def get_current_rate_limits():
                     limit_info["identifier"] = rate_key
 
                 # Only include limits that have a current count > 0 (actively limiting)
-                if current_count_numeric is not None:
+                # Include all limits with valid counts to show tracking status
+                if current_count_numeric is not None and current_count_numeric > 0:
                     active_limits.append(limit_info)
 
             except Exception as e:
@@ -734,6 +735,90 @@ def get_current_rate_limits():
             "message": str(e),
             "active_limits": [],
         }
+
+
+def reset_rate_limit_by_key(limit_key: str) -> bool:
+    """
+    Reset a specific rate limit by its key identifier.
+
+    Args:
+        limit_key: The rate limit key to reset (e.g., "user:123", "ip:192.168.1.1")
+
+    Returns:
+        True if the rate limit was reset successfully, False otherwise.
+    """
+    try:
+        from gefapi import limiter
+
+        if not limiter.enabled or not RateLimitConfig.is_enabled():
+            logger.warning("Rate limiting is disabled, cannot reset rate limit")
+            return False
+
+        storage = limiter._storage
+        keys_deleted = 0
+
+        # Try to find and delete all keys matching this rate limit identifier
+        try:
+            # For Redis storage
+            if hasattr(storage, "storage") and hasattr(storage.storage, "keys"):
+                # Redis storage - find all keys matching this identifier
+                pattern = f"LIMITER/{limit_key}/*"
+                keys = storage.storage.keys(pattern)
+                if isinstance(keys, list | tuple):
+                    for key in keys:
+                        key_str = key.decode() if isinstance(key, bytes) else key
+                        try:
+                            storage.storage.delete(key)
+                            keys_deleted += 1
+                            logger.info(f"Deleted rate limit key: {key_str}")
+                        except Exception as e:
+                            logger.warning(f"Failed to delete key {key_str}: {e}")
+
+            elif hasattr(storage, "storage") and hasattr(storage.storage, "scan_iter"):
+                # Redis storage with scan_iter method
+                pattern = f"LIMITER/{limit_key}/*"
+                for key in storage.storage.scan_iter(match=pattern):
+                    key_str = key.decode() if isinstance(key, bytes) else key
+                    try:
+                        storage.storage.delete(key)
+                        keys_deleted += 1
+                        logger.info(f"Deleted rate limit key: {key_str}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete key {key_str}: {e}")
+
+            elif hasattr(storage, "storage") and isinstance(storage.storage, dict):
+                # Memory storage - direct dictionary access
+                keys_to_delete = [
+                    k
+                    for k in storage.storage
+                    if k.startswith(f"LIMITER/{limit_key}/")
+                ]
+                for key in keys_to_delete:
+                    try:
+                        del storage.storage[key]
+                        keys_deleted += 1
+                        logger.info(f"Deleted rate limit key: {key}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete key {key}: {e}")
+            else:
+                logger.warning("Unable to determine storage type for rate limit reset")
+                return False
+
+        except Exception as e:
+            logger.error(f"Failed to reset rate limit for key {limit_key}: {e}")
+            return False
+
+        if keys_deleted > 0:
+            logger.info(
+                f"Successfully reset {keys_deleted} rate limit keys for {limit_key}"
+            )
+            return True
+        logger.warning(f"No rate limit keys found for {limit_key}")
+        return False
+
+    except Exception as e:
+        logger.error(f"Failed to reset rate limit by key: {e}")
+        return False
 
 
 def reconfigure_limiter_for_testing():
