@@ -551,7 +551,15 @@ def get_current_rate_limits():
     try:
         from gefapi.services import RateLimitEventService, UserService
 
-        if not RateLimitConfig.is_enabled():
+        limiter_enabled = True
+        try:
+            from gefapi import limiter as limiter_instance
+
+            limiter_enabled = getattr(limiter_instance, "enabled", True)
+        except Exception:  # pragma: no cover - defensive
+            limiter_enabled = True
+
+        if not RateLimitConfig.is_enabled() or not limiter_enabled:
             return {
                 "enabled": False,
                 "message": "Rate limiting is currently disabled",
