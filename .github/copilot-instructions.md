@@ -118,6 +118,7 @@ docker compose -f docker-compose.develop.yml up
 ```
 
 #### 3. Testing
+> **Windows requirement:** Always execute tests via `./run_tests.ps1`. This script provisions Docker containers, databases, and environment variables. Do **not** run `pytest` directly on Windows; those commands will fail because the required services are absent.
 **ALWAYS use the test script for reliable results:**
 ```bash
 # Run all tests (recommended approach - handles service dependencies)
