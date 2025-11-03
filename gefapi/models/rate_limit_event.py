@@ -27,6 +27,11 @@ class RateLimitEvent(db.Model):
         nullable=False,
         default=lambda: datetime.datetime.now(datetime.UTC),
     )
+    expires_at = db.Column(
+        db.DateTime(),
+        nullable=True,
+        index=True,  # Index for efficient querying of active rate limits
+    )
     user_id = db.Column(db.GUID(), db.ForeignKey("user.id"), nullable=True)
     user_role = db.Column(db.String(20), nullable=True)
     user_email = db.Column(db.String(255), nullable=True)
@@ -51,6 +56,7 @@ class RateLimitEvent(db.Model):
         return {
             "id": str(self.id) if self.id else None,
             "occurred_at": self.occurred_at.isoformat() if self.occurred_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "user_id": str(self.user_id) if self.user_id else None,
             "user_role": self.user_role,
             "user_email": self.user_email,

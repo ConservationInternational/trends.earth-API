@@ -546,193 +546,96 @@ def rate_limit_error_handler(error):
 
 
 def get_current_rate_limits():
-    """
-    Query the current rate limiting status from Flask-Limiter storage.
-    Returns information about which users/IPs are currently rate limited.
-    """
-    try:
-        from gefapi import limiter
-        from gefapi.services import UserService
+    """Return the current rate limit status leveraging persisted events."""
 
-        if not limiter.enabled or not RateLimitConfig.is_enabled():
+    try:
+        from gefapi.services import RateLimitEventService, UserService
+
+        if not RateLimitConfig.is_enabled():
             return {
                 "enabled": False,
                 "message": "Rate limiting is currently disabled",
                 "active_limits": [],
             }
 
-        storage = limiter._storage
-        active_limits = []
+        active_events = RateLimitEventService.list_active_rate_limits()
+        active_limits: list[dict[str, object]] = []
 
-        # Try to get all active rate limit keys from storage
-        # The method to get keys varies by storage backend
-        try:
-            # For Redis storage
-            if hasattr(storage, "storage") and hasattr(storage.storage, "keys"):
-                # Redis storage - get all keys matching rate limit patterns
-                pattern = "LIMITER/*"
-                keys = storage.storage.keys(pattern)
-                if isinstance(keys, (list, tuple)):
-                    rate_limit_keys = [
-                        key.decode() if isinstance(key, bytes) else key for key in keys
-                    ]
-                else:
-                    rate_limit_keys = []
-            elif hasattr(storage, "storage") and hasattr(storage.storage, "scan_iter"):
-                # Redis storage with scan_iter method
-                rate_limit_keys = [
-                    key.decode() if isinstance(key, bytes) else key
-                    for key in storage.storage.scan_iter(match="LIMITER/*")
-                ]
-            elif hasattr(storage, "storage") and isinstance(storage.storage, dict):
-                # Memory storage - direct dictionary access
-                rate_limit_keys = list(storage.storage.keys())
-            else:
-                logger.warning("Unable to determine storage type for rate limit query")
-                rate_limit_keys = []
+        for event in active_events:
+            limit_key = event.limit_key
+            identifier = None
+            user_details = None
 
-        except Exception as e:
-            logger.warning(f"Failed to get rate limit keys from storage: {e}")
-            rate_limit_keys = []
-
-        # Process each rate limit key to extract user/IP information
-        for key in rate_limit_keys:
-            try:
-                # Rate limit keys typically follow patterns like:
-                # LIMITER/user:12345/60 (per minute limits)
-                # LIMITER/ip:192.168.1.1/3600 (per hour limits)
-                # LIMITER/auth:hash:ip/60 (auth endpoint limits)
-
-                if not key.startswith("LIMITER/"):
-                    continue
-
-                # Extract the rate limit key and time window
-                parts = key.split("/")
-                if len(parts) < 3:
-                    continue
-
-                rate_key = parts[1]  # e.g., "user:12345", "ip:192.168.1.1"
-                time_window_segment = parts[2]  # e.g., "60", "3600"
-
-                # Normalize time window to an integer number of seconds when possible
-                time_window = time_window_segment
-                if isinstance(time_window_segment, bytes):
-                    time_window_segment = time_window_segment.decode(errors="ignore")
-
-                if isinstance(time_window_segment, str):
-                    match = re.search(r"\d+", time_window_segment)
-                    if match:
-                        try:
-                            time_window = int(match.group())
-                        except ValueError:
-                            time_window = time_window_segment
-                elif isinstance(time_window_segment, (int, float)):
-                    time_window = int(time_window_segment)
-
-                # Get the current value/count from storage
+            if event.user_id:
+                identifier = f"user:{event.user_id}"
+                limit_key = limit_key or identifier
                 try:
-                    if hasattr(storage, "get"):
-                        raw_count = storage.get(key)
-                    else:
-                        raw_count = None
-                except Exception:
-                    raw_count = None
+                    user = UserService.get_user(event.user_id)
+                    if user:
+                        user_details = {
+                            "id": user.id,
+                            "email": user.email,
+                            "name": user.name,
+                            "role": user.role,
+                        }
+                except Exception as exc:  # pragma: no cover - defensive logging
+                    logger.debug("Failed to load user %s: %s", event.user_id, exc)
 
-                # Normalize the stored count to a numeric value where possible
-                current_count_numeric = None
-                current_count_display = raw_count
-
-                if isinstance(raw_count, (int, float)):
-                    current_count_numeric = float(raw_count)
-                    if current_count_numeric.is_integer():
-                        current_count_numeric = int(current_count_numeric)
-                    current_count_display = current_count_numeric
-                elif isinstance(raw_count, bytes):
-                    try:
-                        decoded = raw_count.decode()
-                        match = re.search(r"-?\d+(?:\.\d+)?", decoded)
-                        if match:
-                            current_count_numeric = float(match.group())
-                            if current_count_numeric.is_integer():
-                                current_count_numeric = int(current_count_numeric)
-                            current_count_display = current_count_numeric
-                        else:
-                            current_count_display = decoded
-                    except Exception:
-                        current_count_display = raw_count
-                elif isinstance(raw_count, str):
-                    match = re.search(r"-?\d+(?:\.\d+)?", raw_count)
-                    if match:
-                        try:
-                            current_count_numeric = float(match.group())
-                            if current_count_numeric.is_integer():
-                                current_count_numeric = int(current_count_numeric)
-                            current_count_display = current_count_numeric
-                        except ValueError:
-                            current_count_display = raw_count
-                    else:
-                        current_count_display = raw_count
-
-                # Parse the rate key to determine if it's a user or IP
-                limit_info = {
-                    "key": rate_key,
-                    "time_window_seconds": time_window,
-                    "current_count": current_count_display,
-                    "type": "unknown",
-                    "identifier": None,
-                    "user_info": None,
+            if user_details is None and (event.user_email or event.user_role):
+                user_details = {
+                    "id": str(event.user_id) if event.user_id else None,
+                    "email": event.user_email,
+                    "name": event.user_email,
+                    "role": event.user_role,
                 }
 
-                if rate_key.startswith("user:"):
-                    user_id = rate_key.split("user:")[1]
-                    limit_info["type"] = "user"
-                    limit_info["identifier"] = user_id
+            if event.ip_address and identifier is None:
+                identifier = f"ip:{event.ip_address}"
+                limit_key = limit_key or identifier
 
-                    # Try to get user information
-                    try:
-                        user = UserService.get_user(user_id)
-                        if user:
-                            limit_info["user_info"] = {
-                                "id": user.id,
-                                "email": user.email,
-                                "name": user.name,
-                                "role": user.role,
-                            }
-                    except Exception as e:
-                        logger.debug(f"Failed to get user info for {user_id}: {e}")
+            if identifier is None:
+                identifier = limit_key or (event.rate_limit_type or "unknown")
+                limit_key = limit_key or identifier
 
-                elif rate_key.startswith("ip:"):
-                    ip_address = rate_key.split("ip:")[1]
-                    limit_info["type"] = "ip"
-                    limit_info["identifier"] = ip_address
+            limit_info = {
+                "key": limit_key,
+                "identifier": identifier,
+                "type": (event.rate_limit_type or "unknown").lower(),
+                "endpoint": event.endpoint,
+                "method": event.method,
+                "occurred_at": event.occurred_at.isoformat()
+                if event.occurred_at
+                else None,
+                "expires_at": (
+                    event.expires_at.isoformat() if event.expires_at else None
+                ),
+                "limit": event.limit_count,
+                "limit_count": event.limit_count,
+                "current_count": None,
+                "time_window_seconds": event.time_window_seconds,
+                "retry_after_seconds": event.retry_after_seconds,
+                "limit_definition": event.limit_definition,
+                "limit_key": event.limit_key,
+                "ip_address": event.ip_address,
+                "user_agent": event.user_agent,
+                "user_info": user_details,
+            }
 
-                elif rate_key.startswith("auth:"):
-                    # Auth keys are hashed, so we can't identify specific users
-                    limit_info["type"] = "auth"
-                    limit_info["identifier"] = rate_key
-
-                # Only include limits that have a current count > 0 (actively limiting)
-                # This filters out keys that are tracked but have no current activity
-                if current_count_numeric is not None and current_count_numeric > 0:
-                    active_limits.append(limit_info)
-
-            except Exception as e:
-                logger.debug(f"Failed to process rate limit key {key}: {e}")
-                continue
+            active_limits.append(limit_info)
 
         return {
             "enabled": True,
-            "storage_type": type(storage).__name__,
+            "storage_type": "database",
             "total_active_limits": len(active_limits),
             "active_limits": active_limits,
         }
 
-    except Exception as e:
-        logger.error(f"Failed to query rate limits: {e}")
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.error("Failed to query rate limits: %s", exc)
         return {
             "enabled": False,
             "error": "Failed to query rate limiting status",
-            "message": str(e),
+            "message": str(exc),
             "active_limits": [],
         }
 
@@ -749,6 +652,7 @@ def reset_rate_limit_by_key(limit_key: str) -> bool:
     """
     try:
         from gefapi import limiter
+        from gefapi.services import RateLimitEventService
 
         if not limiter.enabled or not RateLimitConfig.is_enabled():
             logger.warning("Rate limiting is disabled, cannot reset rate limit")
@@ -806,12 +710,26 @@ def reset_rate_limit_by_key(limit_key: str) -> bool:
             logger.error(f"Failed to reset rate limit for key {limit_key}: {e}")
             return False
 
+        expired_events = RateLimitEventService.expire_events_for_identifier(limit_key)
+
         if keys_deleted > 0:
             logger.info(
-                f"Successfully reset {keys_deleted} rate limit keys for {limit_key}"
+                "Successfully reset %s rate limit keys for %s",
+                keys_deleted,
+                limit_key,
             )
+
+        if expired_events:
+            logger.info(
+                "Expired %s active rate limit events for %s",
+                expired_events,
+                limit_key,
+            )
+
+        if keys_deleted > 0 or expired_events > 0:
             return True
-        logger.warning(f"No rate limit keys found for {limit_key}")
+
+        logger.warning("No active rate limit entries found for %s", limit_key)
         return False
 
     except Exception as e:

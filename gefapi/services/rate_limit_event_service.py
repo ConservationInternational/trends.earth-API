@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import datetime
 import logging
+import uuid
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from gefapi import db
 from gefapi.models import RateLimitEvent
@@ -56,6 +57,21 @@ class RateLimitEventService:
         """
 
         occurred_at = datetime.datetime.now(datetime.UTC)
+
+        # Calculate when this rate limit will expire
+        # Use retry_after_seconds if available (most accurate), otherwise fall back
+        # to the configured time window
+        expires_in_seconds = retry_after_seconds or time_window_seconds
+        expires_at = None
+        if expires_in_seconds:
+            try:
+                expires_at = occurred_at + datetime.timedelta(
+                    seconds=int(expires_in_seconds)
+                )
+            except (TypeError, ValueError):
+                logger.debug(
+                    "Could not calculate expires_at from: %s", expires_in_seconds
+                )
 
         dedupe_window_seconds = time_window_seconds or retry_after_seconds or 60
         try:
@@ -120,6 +136,7 @@ class RateLimitEventService:
             ip_address=ip_address,
             user_agent=user_agent,
             occurred_at=occurred_at,
+            expires_at=expires_at,
         )
 
         try:
@@ -130,6 +147,110 @@ class RateLimitEventService:
             logger.error("Failed to record rate limit event: %s", exc, exc_info=True)
             db.session.rollback()
             return None
+
+    @staticmethod
+    def list_active_rate_limits(
+        *,
+        rate_limit_type: str | None = None,
+        user_id: str | None = None,
+        ip_address: str | None = None,
+    ) -> list[RateLimitEvent]:
+        """Fetch currently active rate limits (not yet expired).
+
+        Args:
+            rate_limit_type: Filter by a specific rate limit category.
+            user_id: Filter by associated user identifier.
+            ip_address: Filter by originating IP address.
+
+        Returns:
+            List of RateLimitEvent instances that are still active.
+        """
+        now = datetime.datetime.now(datetime.UTC)
+
+        base_query = RateLimitEvent.query.filter(
+            RateLimitEvent.expires_at.isnot(None),
+            RateLimitEvent.expires_at > now,
+        )
+
+        if rate_limit_type:
+            base_query = base_query.filter(
+                RateLimitEvent.rate_limit_type == rate_limit_type
+            )
+
+        if user_id:
+            base_query = base_query.filter(RateLimitEvent.user_id == user_id)
+
+        if ip_address:
+            base_query = base_query.filter(RateLimitEvent.ip_address == ip_address)
+
+        # Order by expires_at descending to show most recently imposed limits first
+        return list(base_query.order_by(RateLimitEvent.expires_at.desc()).all())
+
+    @staticmethod
+    def expire_events_for_identifier(identifier: str | None) -> int:
+        """Force expire any active events tied to a specific identifier."""
+
+        if not identifier:
+            return 0
+
+        identifier = identifier.strip()
+        if not identifier:
+            return 0
+
+        now = datetime.datetime.now(datetime.UTC)
+        filters = [RateLimitEvent.limit_key == identifier]
+
+        if identifier.startswith("user:"):
+            candidate = identifier.split("user:", 1)[1]
+            try:
+                user_uuid = uuid.UUID(candidate)
+                filters.append(RateLimitEvent.user_id == user_uuid)
+                filters.append(RateLimitEvent.user_id == str(user_uuid))
+            except (ValueError, TypeError, AttributeError):
+                if candidate:
+                    filters.append(RateLimitEvent.user_id == candidate)
+
+        if identifier.startswith("ip:"):
+            ip_address = identifier.split("ip:", 1)[1]
+            if ip_address:
+                filters.append(RateLimitEvent.ip_address == ip_address)
+
+        try:
+            updated = (
+                RateLimitEvent.query.filter(
+                    RateLimitEvent.expires_at.isnot(None),
+                    RateLimitEvent.expires_at > now,
+                    or_(*filters),
+                ).update({"expires_at": now}, synchronize_session=False)
+            )
+            db.session.commit()
+            return int(updated or 0)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.debug(
+                "Failed to expire rate limit events for %s: %s", identifier, exc
+            )
+            db.session.rollback()
+            return 0
+
+    @staticmethod
+    def expire_all_active_events() -> int:
+        """Force expire all currently active rate limit events."""
+
+        now = datetime.datetime.now(datetime.UTC)
+
+        try:
+            updated = (
+                RateLimitEvent.query.filter(
+                    RateLimitEvent.expires_at.isnot(None),
+                    RateLimitEvent.expires_at > now,
+                ).update({"expires_at": now}, synchronize_session=False)
+            )
+            db.session.commit()
+            return int(updated or 0)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.debug("Failed to expire all active rate limit events: %s", exc)
+            db.session.rollback()
+            return 0
 
     @staticmethod
     def list_events(

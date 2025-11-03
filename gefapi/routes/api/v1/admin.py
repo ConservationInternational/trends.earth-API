@@ -9,7 +9,7 @@ from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 from gefapi import app, limiter
 from gefapi.models.refresh_token import RefreshToken
 from gefapi.routes.api.v1 import endpoints, error
-from gefapi.services import UserService
+from gefapi.services import RateLimitEventService, UserService
 from gefapi.services.refresh_token_service import RefreshTokenService
 
 logger = logging.getLogger()
@@ -23,7 +23,7 @@ def get_rate_limit_status():
 
     **Access**: Restricted to users with `role: "SUPERADMIN"`
     **Purpose**: Provides visibility into current rate limiting state for monitoring
-      and debugging
+      and debugging.
 
     **Response Schema**:
     ```json
@@ -31,29 +31,26 @@ def get_rate_limit_status():
       "message": "Rate limiting status retrieved successfully",
       "data": {
         "enabled": true,
-        "storage_type": "RedisStorage",
-        "total_active_limits": 5,
+        "storage_type": "database",
+        "total_active_limits": 1,
         "active_limits": [
           {
             "key": "user:123",
+            "identifier": "user:123",
             "type": "user",
-            "identifier": "123",
-            "current_count": 8,
-            "time_window_seconds": "60",
+            "occurred_at": "2025-11-02T10:15:30+00:00",
+            "expires_at": "2025-11-02T10:16:30+00:00",
+            "limit_definition": "5 per minute",
+            "limit": 5,
+            "current_count": null,
+            "time_window_seconds": 60,
+            "retry_after_seconds": 60,
             "user_info": {
               "id": "123",
               "email": "user@example.com",
               "name": "John Doe",
               "role": "USER"
             }
-          },
-          {
-            "key": "ip:192.168.1.100",
-            "type": "ip",
-            "identifier": "192.168.1.100",
-            "current_count": 15,
-            "time_window_seconds": "3600",
-            "user_info": null
           }
         ]
       }
@@ -61,16 +58,22 @@ def get_rate_limit_status():
     ```
 
     **Response Fields**:
-    - `enabled`: Boolean indicating if rate limiting is active
-    - `storage_type`: Backend storage type (RedisStorage, MemoryStorage, etc.)
-    - `total_active_limits`: Count of currently active rate limit entries
-    - `active_limits`: Array of active rate limit entries with:
-      - `key`: Internal rate limit identifier
-      - `type`: Limit type ("user", "ip", "auth")
-      - `identifier`: User ID or IP address being limited
-      - `current_count`: Current request count against the limit
-      - `time_window_seconds`: Time window for the rate limit (60=1min, 3600=1hr)
-      - `user_info`: User details for user-type limits (null for IP limits)
+    - `enabled`: Whether rate limiting is active.
+        - `storage_type`: Backend storage type reported by the status endpoint.
+        - `total_active_limits`: Count of currently active rate limit entries.
+        - `active_limits`: Array with metadata for each active rate limit, including:
+      - `key`: Identifier used by the limiter storage (e.g., `user:<uuid>`).
+      - `identifier`: User or IP identifier associated with the limit.
+      - `type`: Limit category such as `user`, `ip`, or `auth`.
+      - `occurred_at`: Timestamp when the most recent 429 was recorded.
+      - `expires_at`: Timestamp when the limit will automatically expire.
+      - `limit_definition`: Human-readable description of the breached rule.
+            - `limit`: Parsed numeric request limit when available.
+      - `current_count`: Latest known request count (may be null).
+      - `time_window_seconds`: Time window for the limit in seconds.
+      - `retry_after_seconds`: Retry hint provided by the limiter, if available.
+            - `user_info`: Contextual user information for user-type limits
+                (null otherwise).
 
     **Error Responses**:
     - `403 Forbidden`: User does not have SUPERADMIN privileges
@@ -95,8 +98,8 @@ def get_rate_limit_status():
             }
         ), 200
 
-    except Exception as e:
-        app.logger.error(f"Failed to get rate limit status: {e}")
+    except Exception as exc:  # pragma: no cover - defensive logging
+        app.logger.error(f"Failed to get rate limit status: {exc}")
         return jsonify({"error": "Failed to retrieve rate limiting status"}), 500
 
 
@@ -220,6 +223,13 @@ def reset_rate_limits():
                 limiter.enabled = False
                 limiter.enabled = was_enabled
 
+        expired_events = RateLimitEventService.expire_all_active_events()
+        if expired_events:
+            app.logger.info(
+                "Expired %s active rate limit events during bulk reset",
+                expired_events,
+            )
+
         return jsonify({"message": "All rate limits have been reset."}), 200
     except Exception as e:
         app.logger.error(f"Failed to reset rate limits: {e}")
@@ -271,8 +281,6 @@ def get_rate_limit_events():
         rate_limit_type = request.args.get("type")
         user_filter = request.args.get("user_id")
         ip_filter = request.args.get("ip")
-
-        from gefapi.services import RateLimitEventService
 
         events, total = RateLimitEventService.list_events(
             limit=per_page,
