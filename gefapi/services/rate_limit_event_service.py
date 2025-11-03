@@ -216,13 +216,11 @@ class RateLimitEventService:
                 filters.append(RateLimitEvent.ip_address == ip_address)
 
         try:
-            updated = (
-                RateLimitEvent.query.filter(
-                    RateLimitEvent.expires_at.isnot(None),
-                    RateLimitEvent.expires_at > now,
-                    or_(*filters),
-                ).update({"expires_at": now}, synchronize_session=False)
-            )
+            updated = RateLimitEvent.query.filter(
+                RateLimitEvent.expires_at.isnot(None),
+                RateLimitEvent.expires_at > now,
+                or_(*filters),
+            ).update({"expires_at": now}, synchronize_session=False)
             db.session.commit()
             return int(updated or 0)
         except Exception as exc:  # pragma: no cover - defensive logging
@@ -239,12 +237,10 @@ class RateLimitEventService:
         now = datetime.datetime.now(datetime.UTC)
 
         try:
-            updated = (
-                RateLimitEvent.query.filter(
-                    RateLimitEvent.expires_at.isnot(None),
-                    RateLimitEvent.expires_at > now,
-                ).update({"expires_at": now}, synchronize_session=False)
-            )
+            updated = RateLimitEvent.query.filter(
+                RateLimitEvent.expires_at.isnot(None),
+                RateLimitEvent.expires_at > now,
+            ).update({"expires_at": now}, synchronize_session=False)
             db.session.commit()
             return int(updated or 0)
         except Exception as exc:  # pragma: no cover - defensive logging
