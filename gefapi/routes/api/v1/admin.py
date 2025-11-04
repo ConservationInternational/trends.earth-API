@@ -275,9 +275,6 @@ def get_rate_limit_events():
             if since_days is not None:
                 since = datetime.now(UTC) - timedelta(days=max(since_days, 0))
 
-        if since is None:
-            since = datetime.now(UTC) - timedelta(hours=24)
-
         rate_limit_type = request.args.get("type")
         user_filter = request.args.get("user_id")
         ip_filter = request.args.get("ip")
