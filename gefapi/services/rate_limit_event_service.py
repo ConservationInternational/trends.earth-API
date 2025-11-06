@@ -6,7 +6,7 @@ import datetime
 import logging
 import uuid
 
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 
 from gefapi import db
 from gefapi.models import RateLimitEvent
@@ -288,7 +288,9 @@ class RateLimitEventService:
         if ip_address:
             base_query = base_query.filter(RateLimitEvent.ip_address == ip_address)
 
-        total = base_query.with_entities(func.count()).scalar() or 0
+        # Count must ignore any ordering or pagination applied later so the
+        # API reports the actual number of matching events.
+        total = base_query.order_by(None).count()
 
         events_query = base_query.order_by(RateLimitEvent.occurred_at.desc())
         events = list(events_query.offset(offset).limit(limit).all())
