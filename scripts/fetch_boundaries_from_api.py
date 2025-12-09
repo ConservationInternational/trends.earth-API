@@ -488,6 +488,44 @@ class BoundaryFetcher:
             f"Updated: {self.stats['adm0_metadata_updated']}"
         )
 
+        # Fetch countries that are missing from /ALL/ endpoint but available directly
+        # Note: Some countries (like India) are excluded from the bulk /ALL/ API response
+        # but are still available via direct ISO code requests
+        KNOWN_MISSING_COUNTRIES = [
+            "IND"
+        ]  # India is not in /ALL/ but available directly
+
+        if KNOWN_MISSING_COUNTRIES:
+            logger.info(
+                f"Fetching {len(KNOWN_MISSING_COUNTRIES)} known missing countries "
+                f"not included in /ALL/ endpoint"
+            )
+
+            for iso_code in KNOWN_MISSING_COUNTRIES:
+                logger.info(f"Fetching missing country: {iso_code}")
+                try:
+                    api_data = self.api_client.get_boundary_metadata(iso_code, "ADM0")
+                    if api_data:
+                        self._create_or_update_adm0_metadata(api_data)
+                        db.session.commit()
+                        logger.info(f"Successfully fetched and saved {iso_code}")
+                    else:
+                        logger.warning(
+                            f"No ADM0 data available for {iso_code} in "
+                            f"{self.api_client.release_type}"
+                        )
+                except Exception as e:
+                    logger.error(f"Error fetching missing country {iso_code}: {e}")
+                    continue
+
+                time.sleep(0.5)  # Rate limiting
+
+            logger.info(
+                f"Missing countries fetch completed. "
+                f"Total created: {self.stats['adm0_metadata_created']}, "
+                f"Total updated: {self.stats['adm0_metadata_updated']}"
+            )
+
     def fetch_all_adm1(self) -> None:
         """Fetch ADM1 metadata and units for all countries.
 
@@ -533,6 +571,37 @@ class BoundaryFetcher:
             f"Units created: {self.stats['adm1_units_created']}, "
             f"Units updated: {self.stats['adm1_units_updated']}"
         )
+
+        # Fetch ADM1 data for countries missing from /ALL/ endpoint
+        KNOWN_MISSING_COUNTRIES = [
+            "IND"
+        ]  # India is not in /ALL/ but available directly
+
+        if KNOWN_MISSING_COUNTRIES:
+            logger.info(
+                f"Fetching ADM1 data for {len(KNOWN_MISSING_COUNTRIES)} known missing countries"
+            )
+
+            for iso_code in KNOWN_MISSING_COUNTRIES:
+                logger.info(f"Fetching ADM1 for missing country: {iso_code}")
+                try:
+                    self.fetch_country_adm1(iso_code)
+                except Exception as e:
+                    if "404" in str(e) or "No ADM1" in str(e):
+                        logger.info(f"No ADM1 data available for {iso_code}")
+                    else:
+                        logger.error(f"Error fetching ADM1 for {iso_code}: {e}")
+                        continue
+
+                time.sleep(1)  # Rate limiting
+
+            logger.info(
+                f"Missing countries ADM1 fetch completed. "
+                f"Total metadata created: {self.stats['adm1_metadata_created']}, "
+                f"Total metadata updated: {self.stats['adm1_metadata_updated']}, "
+                f"Total units created: {self.stats['adm1_units_created']}, "
+                f"Total units updated: {self.stats['adm1_units_updated']}"
+            )
 
     def fetch_country(self, iso_code: str) -> None:
         """Fetch both ADM0 and ADM1 boundaries for a specific country.
