@@ -72,6 +72,9 @@ SETTINGS = {
     "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 1),
     "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=30),  # 30 days for refresh tokens
     "JWT_TOKEN_LOCATION": ["headers"],
+    "JWT_IDENTITY_CLAIM": "sub",  # Standard JWT subject claim for identity
+    "JWT_BLOCKLIST_ENABLED": True,  # Enable token blocklist for revocation
+    "JWT_BLOCKLIST_TOKEN_CHECKS": ["access"],  # Check access tokens against blocklist
     "TRUSTED_PROXY_COUNT": int(os.getenv("TRUSTED_PROXY_COUNT", "0")),
     "INTERNAL_NETWORKS": [
         net.strip().strip("\"'")  # Remove quotes and whitespace

@@ -20,7 +20,9 @@ class RefreshToken(db.Model):
     token = db.Column(db.String(255), nullable=False, index=True)
     expires_at = db.Column(db.DateTime, nullable=False, index=True)
     created_at = db.Column(
-        db.DateTime, default=datetime.datetime.utcnow, nullable=False
+        db.DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        nullable=False,
     )
     is_revoked = db.Column(db.Boolean, default=False, nullable=False)
     device_info = db.Column(db.String(500))  # Store user agent, IP, etc.
@@ -48,11 +50,54 @@ class RefreshToken(db.Model):
     @staticmethod
     def default_expiry():
         """Default expiry time (30 days from now)"""
-        return datetime.datetime.utcnow() + datetime.timedelta(days=30)
+        return datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=30)
 
-    def is_valid(self):
-        """Check if token is valid (not expired and not revoked)"""
-        return not self.is_revoked and self.expires_at > datetime.datetime.utcnow()
+    def is_valid(self, verify_client_ip=False, current_ip=None):
+        """Check if token is valid (not expired and not revoked).
+
+        Args:
+            verify_client_ip: If True, optionally verify the client IP matches
+            current_ip: Current client IP address for verification
+
+        Returns:
+            bool: True if token is valid, False otherwise
+        """
+        if self.is_revoked or self.expires_at <= datetime.datetime.now(datetime.UTC):
+            return False
+
+        # Optional client IP verification for additional security
+        if verify_client_ip and current_ip and self.device_info:
+            stored_ip = self._extract_ip_from_device_info()
+            if stored_ip and stored_ip != current_ip:
+                # Log suspicious activity but don't fail by default
+                # This provides visibility without breaking existing clients
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Token IP mismatch: stored={stored_ip}, current={current_ip}, "
+                    f"token_id={self.id}"
+                )
+
+        return True
+
+    def _extract_ip_from_device_info(self):
+        """Extract IP address from stored device_info string."""
+        if not self.device_info:
+            return None
+        # device_info format: "IP: x.x.x.x | UA: ..."
+        if self.device_info.startswith("IP: "):
+            parts = self.device_info.split(" | ")
+            if parts:
+                return parts[0].replace("IP: ", "").strip()
+        return None
+
+    def get_client_fingerprint(self):
+        """Get a fingerprint of the client that created this token."""
+        return {
+            "ip_address": self._extract_ip_from_device_info(),
+            "device_info": self.device_info,
+        }
 
     def revoke(self):
         """Revoke the refresh token"""
@@ -60,7 +105,7 @@ class RefreshToken(db.Model):
 
     def update_last_used(self):
         """Update last used timestamp"""
-        self.last_used_at = datetime.datetime.utcnow()
+        self.last_used_at = datetime.datetime.now(datetime.UTC)
 
     def serialize(self):
         """Return object data in easily serializable format"""

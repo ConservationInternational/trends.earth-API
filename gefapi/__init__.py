@@ -763,6 +763,58 @@ def api_docs():
 
 jwt = JWTManager(app)
 
+# Token blocklist storage for revoked access tokens
+# Uses Redis for production scalability, falls back to in-memory for testing
+_revoked_tokens = set()
+
+
+def get_revoked_tokens_storage():
+    """Get the revoked tokens storage (Redis or in-memory fallback)."""
+    try:
+        import redis
+
+        redis_url = SETTINGS.get("CELERY_BROKER_URL")
+        if redis_url:
+            return redis.from_url(redis_url)
+    except Exception as e:
+        logger.debug(f"Redis not available for token blocklist, using in-memory: {e}")
+    return None
+
+
+def add_token_to_blocklist(jti: str, expires_in_seconds: int = 3600) -> None:
+    """Add a token JTI to the blocklist."""
+    redis_client = get_revoked_tokens_storage()
+    if redis_client:
+        try:
+            # Store in Redis with expiration matching token lifetime
+            redis_client.setex(f"blocklist:{jti}", expires_in_seconds, "revoked")
+            return
+        except Exception as e:
+            logger.warning(f"Failed to add token to Redis blocklist: {e}")
+    # Fallback to in-memory (note: not shared across workers)
+    _revoked_tokens.add(jti)
+
+
+def is_token_in_blocklist(jti: str) -> bool:
+    """Check if a token JTI is in the blocklist."""
+    redis_client = get_revoked_tokens_storage()
+    if redis_client:
+        try:
+            return redis_client.exists(f"blocklist:{jti}") > 0
+        except Exception as e:
+            logger.warning(f"Failed to check Redis blocklist: {e}")
+    # Fallback to in-memory
+    return jti in _revoked_tokens
+
+
+@jwt.token_in_blocklist_loader
+def check_if_token_in_blocklist(jwt_header, jwt_payload):
+    """Check if JWT access token has been revoked."""
+    jti = jwt_payload.get("jti")
+    if not jti:
+        return False
+    return is_token_in_blocklist(jti)
+
 
 from gefapi.models import User  # noqa:E402
 from gefapi.services import UserService  # noqa:E402
@@ -845,7 +897,27 @@ def refresh_token():
 @jwt_required()
 def logout():
     logger.info("[JWT]: User logout...")
-    refresh_token_string = request.json.get("refresh_token", None)
+    from flask_jwt_extended import get_jwt
+
+    # Revoke the current access token by adding its JTI to blocklist
+    try:
+        jwt_data = get_jwt()
+        jti = jwt_data.get("jti")
+        if jti:
+            # Get remaining token lifetime for blocklist expiration
+            exp = jwt_data.get("exp", 0)
+            import time
+
+            remaining_seconds = max(int(exp - time.time()), 0) + 60  # Add buffer
+            add_token_to_blocklist(jti, remaining_seconds)
+            logger.info(f"[JWT]: Access token {jti[:8]}... added to blocklist")
+    except Exception as e:
+        logger.warning(f"[JWT]: Failed to revoke access token: {e}")
+
+    # Revoke refresh token if provided
+    refresh_token_string = None
+    if request.json:
+        refresh_token_string = request.json.get("refresh_token", None)
 
     if refresh_token_string:
         # Import here to avoid circular imports
@@ -876,6 +948,47 @@ def logout_all():
 def user_lookup_callback(_jwt_header, jwt_data):
     identity = jwt_data["sub"]
     return User.query.filter_by(id=identity).one_or_none()
+
+
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    """Handle expired JWT tokens with consistent error response."""
+    logger.debug("[JWT]: Expired token detected")
+    return jsonify(
+        {"status": 401, "detail": "Token has expired", "error": "token_expired"}
+    ), 401
+
+
+@jwt.invalid_token_loader
+def invalid_token_callback(error_message):
+    """Handle invalid JWT tokens with consistent error response."""
+    logger.warning(f"[JWT]: Invalid token: {error_message}")
+    return jsonify(
+        {"status": 401, "detail": "Invalid token", "error": "invalid_token"}
+    ), 401
+
+
+@jwt.unauthorized_loader
+def missing_token_callback(error_message):
+    """Handle missing JWT tokens with consistent error response."""
+    logger.debug(f"[JWT]: Missing token: {error_message}")
+    return jsonify(
+        {
+            "status": 401,
+            "detail": "Authorization token required",
+            "error": "authorization_required",
+        }
+    ), 401
+
+
+@jwt.revoked_token_loader
+def revoked_token_callback(jwt_header, jwt_payload):
+    """Handle revoked JWT tokens with consistent error response."""
+    jti = jwt_payload.get("jti", "unknown")
+    logger.info(f"[JWT]: Revoked token access attempt: {jti[:8]}...")
+    return jsonify(
+        {"status": 401, "detail": "Token has been revoked", "error": "token_revoked"}
+    ), 401
 
 
 @app.errorhandler(403)
