@@ -95,9 +95,20 @@ def create_user():
     - `403 Forbidden`: Insufficient privileges to create the requested role
     - `429 Too Many Requests`: Rate limit exceeded
     - `500 Internal Server Error`: User creation failed
+
+    **Query Parameters**:
+    - `legacy`: If "true" (default), emails the password directly for backwards
+      compatibility with the QGIS plugin. If "false", sends a password reset
+      link instead (more secure).
     """
     logger.info("[ROUTER]: Creating user")
     body = request.get_json()
+
+    # Check for legacy query parameter (defaults to true for backwards
+    # compatibility with QGIS plugin)
+    legacy_param = request.args.get("legacy", "true")
+    legacy = legacy_param.lower() != "false"
+
     if request.headers.get("Authorization", None) is not None:
 
         @jwt_required()
@@ -114,7 +125,7 @@ def create_user():
     else:
         body["role"] = "USER"
     try:
-        user = UserService.create_user(body)
+        user = UserService.create_user(body, legacy=legacy)
     except UserDuplicated as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=400, detail=e.message)
@@ -656,13 +667,27 @@ def recover_password(user):
     **Path Parameters**:
     - `user`: User identifier (email address or numeric ID)
 
+    **Query Parameters**:
+    - `legacy`: (optional, default=true) Password recovery mode:
+        - `true` (default): Legacy mode - generates new password and emails it
+          directly. Maintained for backwards compatibility with older QGIS
+          plugin versions.
+        - `false`: Secure mode - sends a password reset link that expires after
+          1 hour. Recommended for new integrations.
+
     **Request**: No request body required
 
-    **Recovery Process**:
+    **Recovery Process (legacy=true, default)**:
+    1. Validates user exists
+    2. Generates a new secure password
+    3. Updates user's password in database
+    4. Emails the new password to user
+
+    **Recovery Process (legacy=false)**:
     1. Validates user exists and account is active
-    2. Generates secure password reset token with expiration
+    2. Generates secure password reset token with 1-hour expiration
     3. Sends password recovery email with reset link
-    4. Logs recovery attempt for security monitoring
+    4. User clicks link and sets new password via /user/reset-password endpoint
 
     **Success Response Schema**:
     ```json
@@ -671,39 +696,30 @@ def recover_password(user):
         "id": "user-123",
         "email": "user@example.com",
         "name": "John Doe",
-        "role": "USER",
-        "recovery_initiated": true,
-        "recovery_token_expires": "2025-01-15T16:00:00Z"
+        "role": "USER"
       }
     }
     ```
 
-    **Email Content**:
-    - Secure reset link with time-limited token
-    - Clear instructions for password reset process
-    - Security notice about unsolicited requests
-    - Link expiration time (typically 1-2 hours)
-
-    **Security Features**:
-    - Rate limiting prevents email flooding attacks
-    - Tokens expire automatically for security
-    - Email delivery doesn't reveal if account exists (privacy)
-    - Multiple recovery attempts are logged and monitored
-
-    **Use Cases**:
-    - User forgot their password
-    - Account recovery after security incident
-    - Password reset for inactive accounts
-    - Initial password setup (in some configurations)
+    **Security Notes**:
+    - Legacy mode (default) is DEPRECATED but maintained for backwards
+      compatibility. It sends passwords via email which is less secure.
+    - New integrations should use `legacy=false` for better security.
+    - Rate limiting prevents email flooding attacks in both modes.
 
     **Error Responses**:
-    - `404 Not Found`: User does not exist (for security, may return success)
+    - `404 Not Found`: User does not exist
     - `429 Too Many Requests`: Rate limit exceeded
     - `500 Internal Server Error`: Email delivery failed or system error
     """
     logger.info("[ROUTER]: Recovering password")
+
+    # Parse legacy parameter - defaults to True for backwards compatibility
+    legacy_param = request.args.get("legacy", "true").lower()
+    use_legacy = legacy_param not in ("false", "0", "no")
+
     try:
-        user = UserService.recover_password(user)
+        user = UserService.recover_password(user, legacy=use_legacy)
     except UserNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
@@ -714,6 +730,84 @@ def recover_password(user):
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
     return jsonify(data=user.serialize()), 200
+
+
+@endpoints.route("/user/reset-password", strict_slashes=False, methods=["POST"])
+@limiter.limit(
+    lambda: ";".join(RateLimitConfig.get_password_reset_limits()) or "3 per hour",
+    key_func=get_admin_aware_key,
+    exempt_when=is_rate_limiting_disabled,
+)
+def reset_password_with_token():
+    """
+    Reset password using a secure token from password recovery email.
+
+    **Rate Limited**: Subject to password recovery rate limits (configurable)
+    **Access**: Public endpoint - no authentication required
+    **Security**: Token-based authentication, tokens expire after 1 hour
+
+    **Request Body Schema**:
+    ```json
+    {
+      "token": "secure-reset-token-from-email",
+      "password": "new-secure-password"
+    }
+    ```
+
+    **Password Requirements**:
+    - Minimum 8 characters
+    - Must contain at least one uppercase letter
+    - Must contain at least one lowercase letter
+    - Must contain at least one digit
+
+    **Success Response Schema**:
+    ```json
+    {
+      "data": {
+        "message": "Password reset successful"
+      }
+    }
+    ```
+
+    **Security Features**:
+    - Tokens are single-use (marked as used after successful reset)
+    - Tokens expire after 1 hour
+    - Rate limiting prevents brute force attacks
+    - Password strength validation enforced
+
+    **Error Responses**:
+    - `400 Bad Request`: Missing token or password
+    - `404 Not Found`: Invalid or expired token
+    - `422 Unprocessable Entity`: Password doesn't meet requirements
+    - `429 Too Many Requests`: Rate limit exceeded
+    - `500 Internal Server Error`: System error
+    """
+    logger.info("[ROUTER]: Reset password with token")
+    try:
+        body = request.get_json()
+        if not body:
+            return error(status=400, detail="Request body required")
+
+        token = body.get("token")
+        password = body.get("password")
+
+        if not token:
+            return error(status=400, detail="Reset token is required")
+        if not password:
+            return error(status=400, detail="New password is required")
+
+        UserService.reset_password_with_token(token, password)
+        return jsonify(data={"message": "Password reset successful"}), 200
+
+    except UserNotFound as e:
+        logger.error("[ROUTER]: " + e.message)
+        return error(status=404, detail=e.message)
+    except PasswordValidationError as e:
+        logger.error("[ROUTER]: " + e.message)
+        return error(status=422, detail=e.message)
+    except Exception as e:
+        logger.error("[ROUTER]: " + str(e))
+        return error(status=500, detail="Generic Error")
 
 
 @endpoints.route("/user/<user>", strict_slashes=False, methods=["PATCH"])

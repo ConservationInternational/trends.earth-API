@@ -84,28 +84,81 @@ class UserService:
     """User Class"""
 
     @staticmethod
-    def create_user(user):
-        logger.info("[SERVICE]: Creating user")
-        email = user.get("email", None)
-        password = user.get("password", None)
+    def create_user(user, legacy=True):
+        """Create a new user account.
 
-        if password is None:
-            password = _generate_secure_password()
-        else:
-            _validate_password_strength(password)
+        Args:
+            user: Dictionary with user data (email, password, name, etc.)
+            legacy: If True (default), emails the password directly for
+                backwards compatibility with existing QGIS plugin.
+                If False, sends a password reset link instead.
+
+        Returns:
+            User object
+
+        When legacy=True (default):
+            - Generates password if not provided
+            - Emails the plain-text password to the user
+            - Maintains backwards compatibility with QGIS plugin
+
+        When legacy=False (secure mode):
+            - Creates user with a temporary locked password
+            - Sends a password reset email with a secure token link
+            - User must click the link to set their own password
+            - Token expires after 1 hour
+        """
+        logger.info("[SERVICE]: Creating user")
+        email_addr = user.get("email", None)
+        password = user.get("password", None)
         role = user.get("role", "USER")
         name = user.get("name", "notset")
         country = user.get("country", None)
         institution = user.get("institution", None)
+
         if role not in ROLES:
             role = "USER"
-        if email is None or password is None:
-            raise PasswordValidationError("Email and password are required")
-        current_user = User.query.filter_by(email=user.get("email")).first()
+        if email_addr is None:
+            raise PasswordValidationError("Email is required")
+
+        # Check for existing user
+        current_user = User.query.filter_by(email=email_addr).first()
         if current_user:
-            raise UserDuplicated(message="User with email " + email + " already exists")
+            raise UserDuplicated(
+                message="User with email " + email_addr + " already exists"
+            )
+
+        if legacy:
+            return UserService._create_user_legacy(
+                email_addr=email_addr,
+                password=password,
+                role=role,
+                name=name,
+                country=country,
+                institution=institution,
+            )
+        return UserService._create_user_secure(
+            email_addr=email_addr,
+            password=password,
+            role=role,
+            name=name,
+            country=country,
+            institution=institution,
+        )
+
+    @staticmethod
+    def _create_user_legacy(email_addr, password, role, name, country, institution):
+        """Legacy user creation - emails plain-text password.
+
+        This maintains backwards compatibility with the QGIS plugin
+        which expects the password to be included in the welcome email.
+        """
+        if password is None:
+            password = _generate_secure_password()
+        else:
+            _validate_password_strength(password)
+
         user = User(
-            email=email,
+            email=email_addr,
             password=password,
             role=role,
             name=name,
@@ -117,7 +170,7 @@ class UserService:
             db.session.add(user)
             db.session.commit()
             try:
-                email = EmailService.send_html_email(
+                EmailService.send_html_email(
                     recipients=[user.email],
                     html="<p>User: "
                     + user.email
@@ -132,6 +185,97 @@ class UserService:
         except Exception as error:
             rollbar.report_exc_info()
             raise error
+        return user
+
+    @staticmethod
+    def _create_user_secure(email_addr, password, role, name, country, institution):
+        """Secure user creation - sends password reset link.
+
+        Instead of emailing the password directly, this method:
+        1. Creates the user with a temporary secure password
+        2. Generates a password reset token
+        3. Sends an email with a link to set their password
+        4. The token expires after 1 hour
+
+        If a password is provided, it is validated but the user must still
+        use the reset link to set it (the provided password is ignored for
+        security - we don't want passwords transmitted via the API).
+        """
+        from gefapi.models import PasswordResetToken
+
+        # Validate password if provided (but don't use it)
+        if password is not None:
+            _validate_password_strength(password)
+            logger.info(
+                "[SERVICE]: Password provided but using secure flow - "
+                "user will set password via email link"
+            )
+
+        # Create user with a temporary password (user can't use this directly)
+        temp_password = _generate_secure_password(length=32)
+        user = User(
+            email=email_addr,
+            password=temp_password,
+            role=role,
+            name=name,
+            country=country,
+            institution=institution,
+        )
+
+        try:
+            logger.info("[DB]: ADD user")
+            db.session.add(user)
+            db.session.commit()
+
+            # Create password reset token
+            reset_token = PasswordResetToken(user_id=user.id)
+            logger.info("[DB]: ADD password reset token")
+            db.session.add(reset_token)
+            db.session.commit()
+
+            # Build the reset URL
+            api_url = SETTINGS.get("API_URL", "https://api.trends.earth")
+            reset_url = (
+                f"{api_url}/api/v1/user/reset-password?token={reset_token.token}"
+            )
+
+            # Send welcome email with reset link
+            email_html = f"""
+            <p>Hello {user.name},</p>
+
+            <p>Welcome to Trends.Earth! Your account has been created.</p>
+
+            <p>To complete your registration, please set your password by
+            clicking the link below. This link will expire in 1 hour.</p>
+
+            <p><a href="{reset_url}">Set Your Password</a></p>
+
+            <p>If you cannot click the link, copy and paste this URL into your
+            browser:</p>
+            <p>{reset_url}</p>
+
+            <p>If you did not create this account, please ignore this email.</p>
+
+            <p>Best regards,<br>The Trends.Earth Team</p>
+            """
+
+            try:
+                EmailService.send_html_email(
+                    recipients=[user.email],
+                    html=email_html,
+                    subject="[trends.earth] Welcome - Set Your Password",
+                )
+                logger.info(
+                    f"[SERVICE]: Secure registration email sent to {user.email}"
+                )
+            except EmailError as error:
+                rollbar.report_exc_info()
+                raise error
+
+        except Exception as error:
+            rollbar.report_exc_info()
+            raise error
+
         return user
 
     @staticmethod
@@ -340,12 +484,58 @@ class UserService:
         return user
 
     @staticmethod
-    def recover_password(user_id):
-        logger.info("[SERVICE]: Recovering password" + user_id)
+    def recover_password(user_id, legacy=True):
+        """Initiate password recovery for a user account.
+
+        Supports two modes:
+        - Legacy mode (default): Generates a new password and emails it directly.
+          This maintains backwards compatibility with existing QGIS plugin
+          installations.
+        - Secure mode (legacy=False): Sends a secure reset link that expires
+          after 1 hour. More secure but requires client support.
+
+        Args:
+            user_id: User identifier (email or ID)
+            legacy: If True (default), use legacy password-email flow for
+                backwards compatibility. If False, use secure token-based flow.
+
+        Returns:
+            User object
+
+        Raises:
+            UserNotFound: If user doesn't exist
+            EmailError: If email delivery fails
+        """
+        logger.info(f"[SERVICE]: Initiating password recovery for {user_id}")
         logger.info("[DB]: QUERY")
         user = UserService.get_user(user_id=user_id)
         if not user:
             raise UserNotFound(message="User with id " + user_id + " does not exist")
+
+        if legacy:
+            # Legacy mode: Generate password and email directly
+            # DEPRECATED: This method is less secure as passwords are sent via email
+            logger.warning(
+                f"[SERVICE]: Using LEGACY password recovery for {user_id}. "
+                "Consider migrating to token-based recovery (legacy=false)."
+            )
+            return UserService._recover_password_legacy(user)
+        # Secure mode: Send reset token link
+        return UserService._recover_password_secure(user)
+
+    @staticmethod
+    def _recover_password_legacy(user):
+        """Legacy password recovery - generates and emails password directly.
+
+        DEPRECATED: This method is maintained for backwards compatibility with
+        older QGIS plugin versions. New integrations should use token-based
+        recovery (legacy=False).
+
+        Security concerns:
+        - Password is transmitted via email (can be intercepted)
+        - Password is stored in email history
+        - No verification that requester controls the email
+        """
         password = _generate_secure_password()
         user.password = user.set_password(password=password)
         try:
@@ -369,6 +559,132 @@ class UserService:
             rollbar.report_exc_info()
             raise error
         return user
+
+    @staticmethod
+    def _recover_password_secure(user):
+        """Secure password recovery using time-limited reset tokens.
+
+        This is the recommended method for password recovery:
+        1. Generates a cryptographically secure reset token
+        2. Invalidates any existing tokens for the user
+        3. Sends an email with a secure reset link
+        4. The link expires after 1 hour
+        """
+        from gefapi.models import PasswordResetToken
+
+        try:
+            # Invalidate any existing tokens for this user
+            PasswordResetToken.invalidate_user_tokens(user.id)
+
+            # Create new reset token
+            reset_token = PasswordResetToken(user_id=user.id)
+            logger.info("[DB]: ADD password reset token")
+            db.session.add(reset_token)
+            db.session.commit()
+
+            # Build the reset URL
+            api_url = SETTINGS.get("API_URL", "https://api.trends.earth")
+            reset_url = (
+                f"{api_url}/api/v1/user/reset-password?token={reset_token.token}"
+            )
+
+            # Send email with reset link (not the password itself)
+            email_html = f"""
+            <p>Hello {user.name},</p>
+
+            <p>A password reset was requested for your Trends.Earth account.</p>
+
+            <p>Click the link below to reset your password. This link will expire
+            in 1 hour.</p>
+
+            <p><a href="{reset_url}">Reset Your Password</a></p>
+
+            <p>If you cannot click the link, copy and paste this URL into your
+            browser:</p>
+            <p>{reset_url}</p>
+
+            <p>If you did not request this password reset, please ignore this email.
+            Your password will remain unchanged.</p>
+
+            <p>For security, do not share this link with anyone.</p>
+
+            <p>Best regards,<br>The Trends.Earth Team</p>
+            """
+
+            try:
+                EmailService.send_html_email(
+                    recipients=[user.email],
+                    html=email_html,
+                    subject="[trends.earth] Password Reset Request",
+                )
+                logger.info(f"[SERVICE]: Password reset email sent to {user.email}")
+            except EmailError as error:
+                rollbar.report_exc_info()
+                raise error
+
+        except Exception as error:
+            rollbar.report_exc_info()
+            raise error
+
+        return user
+
+    @staticmethod
+    def reset_password_with_token(token_string, new_password):
+        """Reset a user's password using a valid reset token.
+
+        Args:
+            token_string: The password reset token from the email link
+            new_password: The new password to set
+
+        Returns:
+            User object if successful
+
+        Raises:
+            UserNotFound: If token is invalid, expired, or already used
+            PasswordValidationError: If new password doesn't meet requirements
+        """
+        from gefapi.models import PasswordResetToken
+
+        logger.info("[SERVICE]: Attempting password reset with token")
+
+        # Find and validate token
+        reset_token = PasswordResetToken.get_valid_token(token_string)
+        if not reset_token:
+            logger.warning("[SERVICE]: Invalid or expired password reset token used")
+            raise UserNotFound(message="Invalid or expired password reset token")
+
+        # Validate new password strength
+        _validate_password_strength(new_password)
+
+        # Get the user
+        user = User.query.get(reset_token.user_id)
+        if not user:
+            raise UserNotFound(message="User not found")
+
+        try:
+            # Set new password
+            user.password = user.set_password(password=new_password)
+
+            # Mark token as used
+            reset_token.mark_used()
+
+            logger.info("[DB]: ADD")
+            db.session.add(user)
+            db.session.add(reset_token)
+            db.session.commit()
+
+            logger.info(f"[SERVICE]: Password reset successful for {user.email}")
+
+            # Log security event
+            log_password_event(
+                "PASSWORD_RESET", str(user.id), user.email, admin_action=False
+            )
+
+            return user
+
+        except Exception as error:
+            rollbar.report_exc_info()
+            raise error
 
     @staticmethod
     def update_profile_password(user, current_user):
