@@ -16,6 +16,7 @@ from gefapi.errors import (
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services import UserService
 from gefapi.utils.permissions import (
+    can_admin_change_user_password,
     can_change_user_password,
     can_change_user_role,
     can_delete_user,
@@ -1057,7 +1058,8 @@ def admin_change_password(user):
     **Error Responses**:
     - `400 Bad Request`: Missing new_password field
     - `401 Unauthorized`: JWT token required
-    - `403 Forbidden`: Admin access required
+    - `403 Forbidden`: Admin access required, or ADMIN trying to change
+      SUPERADMIN password
     - `404 Not Found`: User does not exist
     - `422 Unprocessable Entity`: Password doesn't meet requirements
     - `500 Internal Server Error`: Password change failed
@@ -1066,7 +1068,7 @@ def admin_change_password(user):
     body = request.get_json()
     identity = current_user
 
-    # Check if user can change other user's password
+    # First check if user has basic permission to change passwords
     if not can_change_user_password(identity):
         return error(status=403, detail="Forbidden")
 
@@ -1076,6 +1078,19 @@ def admin_change_password(user):
 
     try:
         target_user = UserService.get_user(user)
+
+        # Check if admin can change this specific user's password
+        # (ADMIN cannot change SUPERADMIN passwords)
+        if not can_admin_change_user_password(identity, target_user):
+            logger.warning(
+                f"[ROUTER]: Admin {identity.email} attempted to change "
+                f"SUPERADMIN {target_user.email}'s password"
+            )
+            return error(
+                status=403,
+                detail="Administrators cannot change superadmin passwords",
+            )
+
         user = UserService.admin_change_password(target_user, new_password)
     except UserNotFound as e:
         logger.error("[ROUTER]: " + e.message)

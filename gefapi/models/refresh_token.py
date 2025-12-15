@@ -62,7 +62,13 @@ class RefreshToken(db.Model):
         Returns:
             bool: True if token is valid, False otherwise
         """
-        if self.is_revoked or self.expires_at <= datetime.datetime.now(datetime.UTC):
+        # Make expires_at timezone-aware (assume UTC) if it's naive from the database
+        expires_at = (
+            self.expires_at.replace(tzinfo=datetime.UTC)
+            if self.expires_at.tzinfo is None
+            else self.expires_at
+        )
+        if self.is_revoked or expires_at <= datetime.datetime.now(datetime.UTC):
             return False
 
         # Optional client IP verification for additional security

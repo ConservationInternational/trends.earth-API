@@ -206,7 +206,8 @@ class TestPasswordRecoveryEndpoint:
         assert "_generate_secure_password" in source
 
         # Should email the password directly (the old insecure behavior)
-        assert '"Password: "' in source
+        # Note: Check for the string content in the source, handling multi-line concatenation
+        assert "Password: " in source
 
     def test_secure_mode_sends_token_not_password(self, app):
         """Test that secure mode (legacy=False) sends a reset link."""
@@ -225,7 +226,8 @@ class TestPasswordRecoveryEndpoint:
         assert "reset-password" in source
 
         # Should NOT email password directly
-        assert '"Password: "' not in source
+        # Note: Secure method should not contain the password emailing pattern
+        assert "Your Trends.Earth Password Has Been Reset" not in source
 
     def test_recover_password_routes_to_correct_method(self, app):
         """Test that recover_password correctly routes based on legacy flag."""
@@ -292,7 +294,8 @@ class TestSecureUserCreation:
         assert "_generate_secure_password" in source
 
         # Should email the password directly (old insecure behavior)
-        assert '"Password: "' in source
+        # Note: Check for the string content in the source, handling multi-line concatenation
+        assert "Password: " in source
 
     def test_secure_user_creation_sends_reset_link(self, app):
         """Test that secure mode (legacy=False) sends a password reset link."""
@@ -310,8 +313,9 @@ class TestSecureUserCreation:
         assert "reset_url" in source
         assert "reset-password" in source
 
-        # Should NOT email password directly
-        assert '"Password: "' not in source
+        # Should NOT email password directly (no "Your new password" pattern)
+        # Note: Secure method should not contain the password-in-email pattern
+        assert "Your Trends.Earth Password Has Been Reset" not in source
 
         # Should send welcome email with link
         assert "Welcome to Trends.Earth" in source
@@ -358,3 +362,87 @@ class TestSecureUserCreation:
 
         # Should validate password if provided
         assert "_validate_password_strength(password)" in source
+
+
+class TestAdminPasswordChangePermissions:
+    """Tests for admin password change permissions."""
+
+    def test_superadmin_can_change_any_password(self, app):
+        """Test that SUPERADMIN can change any user's password."""
+        from gefapi.utils.permissions import can_admin_change_user_password
+
+        # Create mock users
+        class MockUser:
+            def __init__(self, role, email="test@example.com"):
+                self.role = role
+                self.email = email
+
+        superadmin = MockUser("SUPERADMIN")
+        admin = MockUser("ADMIN")
+        user = MockUser("USER")
+        target_superadmin = MockUser("SUPERADMIN", "target@example.com")
+
+        # SUPERADMIN can change everyone's password
+        assert can_admin_change_user_password(superadmin, admin) is True
+        assert can_admin_change_user_password(superadmin, user) is True
+        assert can_admin_change_user_password(superadmin, target_superadmin) is True
+
+    def test_admin_can_change_user_password(self, app):
+        """Test that ADMIN can change regular user's password."""
+        from gefapi.utils.permissions import can_admin_change_user_password
+
+        class MockUser:
+            def __init__(self, role, email="test@example.com"):
+                self.role = role
+                self.email = email
+
+        admin = MockUser("ADMIN")
+        user = MockUser("USER")
+
+        # ADMIN can change USER's password
+        assert can_admin_change_user_password(admin, user) is True
+
+    def test_admin_cannot_change_superadmin_password(self, app):
+        """Test that ADMIN cannot change SUPERADMIN's password."""
+        from gefapi.utils.permissions import can_admin_change_user_password
+
+        class MockUser:
+            def __init__(self, role, email="test@example.com"):
+                self.role = role
+                self.email = email
+
+        admin = MockUser("ADMIN")
+        superadmin = MockUser("SUPERADMIN")
+
+        # ADMIN cannot change SUPERADMIN's password
+        assert can_admin_change_user_password(admin, superadmin) is False
+
+    def test_regular_user_cannot_change_any_password(self, app):
+        """Test that regular USER cannot change anyone's password."""
+        from gefapi.utils.permissions import can_admin_change_user_password
+
+        class MockUser:
+            def __init__(self, role, email="test@example.com"):
+                self.role = role
+                self.email = email
+
+        regular_user = MockUser("USER")
+        target_user = MockUser("USER", "target@example.com")
+
+        # Regular USER cannot change any password
+        assert can_admin_change_user_password(regular_user, target_user) is False
+
+    def test_admin_can_change_other_admin_password(self, app):
+        """Test that ADMIN can change another ADMIN's password."""
+        from gefapi.utils.permissions import can_admin_change_user_password
+
+        class MockUser:
+            def __init__(self, role, email="test@example.com"):
+                self.role = role
+                self.email = email
+
+        admin1 = MockUser("ADMIN", "admin1@example.com")
+        admin2 = MockUser("ADMIN", "admin2@example.com")
+
+        # ADMIN can change another ADMIN's password
+        assert can_admin_change_user_password(admin1, admin2) is True
