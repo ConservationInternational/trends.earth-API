@@ -62,8 +62,43 @@ def can_delete_user(user):
 
 
 def can_change_user_password(user):
-    """Check if user can change another user's password"""
-    return is_superadmin(user)
+    """Check if user can change another user's password.
+
+    SUPERADMIN can change any user's password.
+    ADMIN can change passwords, but must be prevented from changing SUPERADMIN
+    passwords (this is checked at the route level with can_admin_change_user_password).
+    """
+    return is_admin_or_higher(user)
+
+
+def can_admin_change_user_password(admin_user, target_user):
+    """Check if admin can change a specific user's password.
+
+    Rules:
+    - SUPERADMIN can change any user's password
+    - ADMIN can change any user's password EXCEPT SUPERADMIN's
+    - Non-admins cannot change other users' passwords
+
+    Args:
+        admin_user: The admin attempting the password change
+        target_user: The user whose password is being changed
+
+    Returns:
+        bool: True if the password change is allowed
+    """
+    if admin_user is None or target_user is None:
+        return False
+
+    # SUPERADMINs can change anyone's password
+    if is_superadmin(admin_user):
+        return True
+
+    # ADMINs can change passwords, but not for SUPERADMINs
+    if is_admin_or_higher(admin_user):
+        # Check if target is a SUPERADMIN
+        return target_user.role != "SUPERADMIN"
+
+    return False
 
 
 def can_update_user_profile(user):
