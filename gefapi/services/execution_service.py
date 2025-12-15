@@ -15,6 +15,23 @@ from gefapi.models import Execution, ExecutionLog, Script, StatusLog, User
 from gefapi.services import EmailService, ScriptService, UserService, docker_run
 from gefapi.utils.permissions import is_admin_or_higher
 
+# Security: Explicitly allowed fields for filter and sort operations
+# to prevent unauthorized access to sensitive model fields
+EXECUTION_ALLOWED_FILTER_FIELDS = {
+    "id",
+    "status",
+    "progress",
+    "start_date",
+    "end_date",
+    "script_id",
+    "script_name",  # Via join
+}
+# Fields that require admin privileges to filter/sort
+EXECUTION_ADMIN_ONLY_FIELDS = {"user_name", "user_email", "user_id"}
+EXECUTION_ALLOWED_SORT_FIELDS = (
+    EXECUTION_ALLOWED_FILTER_FIELDS | EXECUTION_ADMIN_ONLY_FIELDS | {"duration"}
+)
+
 # Import celery at module level for testing
 try:
     from gefapi import celery as celery_app
@@ -375,6 +392,16 @@ class ExecutionService:
                     op = op.strip().lower()
                     value = value.strip().strip("'\"")
 
+                    # Security: Validate field against allowlist
+                    all_allowed = (
+                        EXECUTION_ALLOWED_FILTER_FIELDS | EXECUTION_ADMIN_ONLY_FIELDS
+                    )
+                    if field not in all_allowed:
+                        logger.warning(
+                            f"[SERVICE]: Rejected filter on disallowed field: {field}"
+                        )
+                        continue
+
                     if field == "script_name":
                         join_scripts = True
                         col = Script.name
@@ -449,6 +476,14 @@ class ExecutionService:
                 parts = sort_expr.split()
                 field = parts[0].lower()
                 direction = parts[1].lower() if len(parts) > 1 else "asc"
+
+                # Security: Validate field against allowlist
+                if field not in EXECUTION_ALLOWED_SORT_FIELDS:
+                    logger.warning(
+                        f"[SERVICE]: Rejected sort on disallowed field: {field}"
+                    )
+                    continue
+
                 col = getattr(Execution, field, None)
                 if col is not None:
                     if direction == "desc":
