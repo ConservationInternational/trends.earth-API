@@ -9,7 +9,7 @@ from uuid import UUID
 
 import rollbar
 from slugify import slugify
-from sqlalchemy import func
+from sqlalchemy import String, cast, func
 from werkzeug.utils import secure_filename
 
 from gefapi import db
@@ -19,6 +19,24 @@ from gefapi.models import Script, ScriptLog, User
 from gefapi.s3 import push_script_to_s3
 from gefapi.services import docker_build
 from gefapi.utils.permissions import is_admin_or_higher
+
+# Security: Explicitly allowed fields for filter and sort operations
+# to prevent unauthorized access to sensitive model fields
+SCRIPT_ALLOWED_FILTER_FIELDS = {
+    "id",
+    "name",
+    "slug",
+    "status",
+    "public",
+    "restricted",
+    "created_at",
+    "updated_at",
+    "environment",
+    "environment_version",
+}
+# Fields that require admin privileges to filter/sort
+SCRIPT_ADMIN_ONLY_FIELDS = {"user_name", "user_email"}
+SCRIPT_ALLOWED_SORT_FIELDS = SCRIPT_ALLOWED_FILTER_FIELDS | SCRIPT_ADMIN_ONLY_FIELDS
 
 ROLES = SETTINGS.get("ROLES")
 
@@ -184,7 +202,7 @@ class ScriptService:
             # 2. Public scripts
             # 3. Scripts they have explicit access to (restricted scripts with
             #    role/user access)
-            from sqlalchemy import and_, or_, text
+            from sqlalchemy import and_, or_
 
             # Build access conditions
             access_conditions = [
@@ -194,19 +212,23 @@ class ScriptService:
             ]
 
             # Add restricted script access based on role
+            # Use parameterized queries to prevent SQL injection
             if user.role in ["USER", "ADMIN", "SUPERADMIN"]:
+                role_pattern = f'%"{user.role}"%'
                 access_conditions.append(
                     and_(
                         Script.restricted,
-                        text(f"allowed_roles::text LIKE '%\"{user.role}\"%'"),
+                        cast(Script.allowed_roles, String).like(role_pattern),
                     )
                 )
 
             # Add restricted script access based on user ID
+            # Use parameterized queries to prevent SQL injection
+            user_id_pattern = f'%"{user.id}"%'
             access_conditions.append(
                 and_(
                     Script.restricted,
-                    text(f"allowed_users::text LIKE '%\"{user.id}\"%'"),
+                    cast(Script.allowed_users, String).like(user_id_pattern),
                 )
             )
 
@@ -232,6 +254,16 @@ class ScriptService:
                     field = field.strip().lower()
                     op = op.strip().lower()
                     value = value.strip().strip("'\"")
+
+                    # Security: Validate field against allowlist
+                    allowed_fields = (
+                        SCRIPT_ALLOWED_FILTER_FIELDS | SCRIPT_ADMIN_ONLY_FIELDS
+                    )
+                    if field not in allowed_fields:
+                        logger.warning(
+                            f"[SERVICE]: Rejected filter on disallowed field: {field}"
+                        )
+                        continue
 
                     if field == "user_name":
                         if not is_admin_or_higher(user):
@@ -295,6 +327,14 @@ class ScriptService:
                 parts = sort_expr.split()
                 field = parts[0].lower()
                 direction = parts[1].lower() if len(parts) > 1 else "asc"
+
+                # Security: Validate field against allowlist
+                if field not in SCRIPT_ALLOWED_SORT_FIELDS:
+                    logger.warning(
+                        f"[SERVICE]: Rejected sort on disallowed field: {field}"
+                    )
+                    continue
+
                 col = getattr(Script, field, None)
                 if col is not None:
                     if direction == "desc":
