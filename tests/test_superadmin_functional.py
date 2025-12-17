@@ -242,7 +242,7 @@ class TestSuperAdminUserManagement:
                 content_type="application/json",
             )
             assert response.status_code == 403
-            assert "Forbidden" in response.json["detail"]
+            assert "cannot change superadmin" in response.json["detail"].lower()
 
     def test_environment_user_has_superadmin_privileges(
         self, client, auth_headers_environment_user, sample_user_data
