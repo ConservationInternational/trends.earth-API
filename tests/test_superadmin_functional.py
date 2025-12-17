@@ -211,16 +211,32 @@ class TestSuperAdminUserManagement:
             )
         assert response.status_code == 200
 
-    def test_admin_cannot_change_user_password(
+    def test_admin_can_change_regular_user_password(
         self, client, auth_headers_admin, regular_user, app
     ):
-        """Test that ADMIN cannot change user passwords"""
+        """Test that ADMIN can change regular user passwords"""
         with app.app_context():
             # Re-query user to ensure it's attached to current session
             user = User.query.filter_by(email=regular_user.email).first()
             password_data = {"new_password": NEW_STRONG_PASSWORD}
             response = client.patch(
                 f"/api/v1/user/{user.id}/change-password",
+                headers=auth_headers_admin,
+                data=json.dumps(password_data),
+                content_type="application/json",
+            )
+            assert response.status_code == 200
+
+    def test_admin_cannot_change_superadmin_password(
+        self, client, auth_headers_admin, superadmin_user, app
+    ):
+        """Test that ADMIN cannot change SUPERADMIN passwords"""
+        with app.app_context():
+            # Re-query superadmin user to ensure it's attached to current session
+            superadmin = User.query.filter_by(email=superadmin_user.email).first()
+            password_data = {"new_password": NEW_STRONG_PASSWORD}
+            response = client.patch(
+                f"/api/v1/user/{superadmin.id}/change-password",
                 headers=auth_headers_admin,
                 data=json.dumps(password_data),
                 content_type="application/json",

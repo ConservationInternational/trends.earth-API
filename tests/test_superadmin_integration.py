@@ -163,7 +163,7 @@ class TestSuperAdminIntegration:
             assert admin_update.status_code == 403
             assert user_update.status_code == 403
 
-            # Test password changes (only SUPERADMIN should succeed)
+            # Test password changes (SUPERADMIN and ADMIN can change regular user passwords)
             password_data = {"new_password": NEW_STRONG_PASSWORD}
 
             superadmin_password = client.patch(
@@ -186,7 +186,9 @@ class TestSuperAdminIntegration:
             )
 
             assert superadmin_password.status_code == 200
-            assert admin_password.status_code == 403
+            assert (
+                admin_password.status_code == 200
+            )  # ADMIN can change regular user passwords
             assert user_password.status_code == 403
 
             # Test role changes (only SUPERADMIN should succeed)

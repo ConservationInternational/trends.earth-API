@@ -101,14 +101,18 @@ class TestPermissionUtilities:
         assert can_delete_user(admin) is False
         assert can_delete_user(user) is False
 
-    def test_can_change_user_password_superadmin_only(self):
-        """Test can_change_user_password returns True only for SUPERADMIN"""
+    def test_can_change_user_password_admin_or_higher(self):
+        """Test can_change_user_password returns True for ADMIN and SUPERADMIN
+
+        Note: ADMIN can change passwords, but the route-level check
+        (can_admin_change_user_password) prevents them from changing SUPERADMIN's.
+        """
         superadmin = self.create_mock_user("SUPERADMIN")
         admin = self.create_mock_user("ADMIN")
         user = self.create_mock_user("USER")
 
         assert can_change_user_password(superadmin) is True
-        assert can_change_user_password(admin) is False
+        assert can_change_user_password(admin) is True
         assert can_change_user_password(user) is False
 
     def test_can_update_user_profile_superadmin_only(self):
@@ -164,13 +168,14 @@ class TestPermissionUtilities:
         assert all(superadmin_permissions)
 
         # ADMIN should have admin features but not user management
+        # Note: ADMIN can change passwords (but not SUPERADMIN's - checked at route level)
         admin_permissions = [
             not is_superadmin(admin),
             is_admin_or_higher(admin),
             not can_manage_users(admin),
             not can_change_user_role(admin),
             not can_delete_user(admin),
-            not can_change_user_password(admin),
+            can_change_user_password(admin),  # ADMIN can change passwords
             not can_update_user_profile(admin),
             can_access_admin_features(admin),
         ]
