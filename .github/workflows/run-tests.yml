@@ -393,7 +393,7 @@ jobs:
         echo "- **Main job**: Complete test suite with \`pytest tests/\` (Docker approach, show all failures)" >> $GITHUB_STEP_SUMMARY
         echo "- **Integration job**: Additional comprehensive integration + slow performance tests (show all failures)" >> $GITHUB_STEP_SUMMARY
         echo "- **No test duplication**: Streamlined to avoid redundancy" >> $GITHUB_STEP_SUMMARY
-        echo "- **Multi-Python testing**: (3.10, 3.11, 3.12)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Multi-Python testing**: (3.11, 3.12, 3.13)" >> $GITHUB_STEP_SUMMARY
         echo "- **Coverage reporting**: Separate coverage run on Python 3.11" >> $GITHUB_STEP_SUMMARY
         echo "- **Enhanced reliability**: Database status checks, proper timeouts" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
