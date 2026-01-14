@@ -141,7 +141,7 @@ The application uses a multi-container architecture with specialized services:
 - **Migration Container**: Dedicated service for database schema migrations
 
 #### Infrastructure Containers
-- **PostgreSQL**: Primary database (version 9.6)
+- **PostgreSQL**: Primary database (version 16)
 - **Redis**: Message broker and caching layer
 - **Registry**: Local Docker registry for development images
 
