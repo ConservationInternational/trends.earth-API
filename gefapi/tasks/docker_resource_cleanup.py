@@ -110,10 +110,10 @@ def cleanup_docker_build_cache(self):
                     len(caches_deleted),
                     cache_space,
                 )
-            except AttributeError:
-                # Fallback: If _post is not available, try using requests directly
+            except Exception as inner_error:
+                # Fallback: If build cache prune fails, try using containers prune
                 logger.warning(
-                    "[TASK]: Low-level API not available for build prune, "
+                    f"[TASK]: Failed to prune build cache ({inner_error}), "
                     "trying alternative method..."
                 )
 
