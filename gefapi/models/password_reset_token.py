@@ -40,7 +40,7 @@ class PasswordResetToken(db.Model):
     token = db.Column(db.String(128), unique=True, nullable=False, index=True)
     user_id = db.Column(db.GUID(), db.ForeignKey("user.id"), nullable=False)
     created_at = db.Column(
-        db.DateTime(), default=datetime.datetime.utcnow
+        db.DateTime(), default=lambda: datetime.datetime.now(datetime.UTC)
     )
     expires_at = db.Column(db.DateTime(), nullable=False)
     used_at = db.Column(db.DateTime(), nullable=True)  # Track when token was used
@@ -51,7 +51,7 @@ class PasswordResetToken(db.Model):
     def __init__(self, user_id):
         self.user_id = user_id
         self.token = self._generate_secure_token()
-        self.created_at = datetime.datetime.utcnow()
+        self.created_at = datetime.datetime.now(datetime.UTC)
         self.expires_at = self.created_at + datetime.timedelta(
             hours=PASSWORD_RESET_TOKEN_EXPIRY_HOURS
         )
@@ -66,12 +66,17 @@ class PasswordResetToken(db.Model):
 
     def is_valid(self):
         """Check if the token is valid (not expired and not used)."""
-        now = datetime.datetime.utcnow()
-        return self.used_at is None and self.expires_at > now
+        # Make expires_at timezone-aware (assume UTC) if it's naive from the database
+        expires_at = (
+            self.expires_at.replace(tzinfo=datetime.UTC)
+            if self.expires_at.tzinfo is None
+            else self.expires_at
+        )
+        return self.used_at is None and expires_at > datetime.datetime.now(datetime.UTC)
 
     def mark_used(self):
         """Mark the token as used."""
-        self.used_at = datetime.datetime.utcnow()
+        self.used_at = datetime.datetime.now(datetime.UTC)
 
     @classmethod
     def get_valid_token(cls, token_string):
@@ -95,7 +100,7 @@ class PasswordResetToken(db.Model):
         Called when creating a new reset token to ensure only one
         valid token exists per user at a time.
         """
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.UTC)
         cls.query.filter(
             cls.user_id == user_id,
             cls.used_at.is_(None),
@@ -112,7 +117,7 @@ class PasswordResetToken(db.Model):
         Returns:
             Number of tokens deleted
         """
-        cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=days_old)
+        cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=days_old)
         result = cls.query.filter(cls.created_at < cutoff).delete(
             synchronize_session=False
         )
