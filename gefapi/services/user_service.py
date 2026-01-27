@@ -761,10 +761,53 @@ class UserService:
                 message="User with ID " + str(user_id) + " does not exist"
             )
         try:
-            logger.info("[DB]: DELETE")
+            # Import models for explicit deletion
+            from gefapi.models import Execution, Script, StatusLog
+            from gefapi.models.password_reset_token import PasswordResetToken
+            from gefapi.models.refresh_token import RefreshToken
+
+            user_uuid = user.id
+
+            # Batch delete related records for performance
+            # Delete status logs for user's executions first
+            logger.info("[DB]: Deleting status logs for user's executions")
+            execution_ids = db.session.query(Execution.id).filter(
+                Execution.user_id == user_uuid
+            )
+            StatusLog.query.filter(
+                StatusLog.execution_id.in_(execution_ids)
+            ).delete(synchronize_session=False)
+
+            # Delete executions
+            logger.info("[DB]: Deleting executions")
+            Execution.query.filter(Execution.user_id == user_uuid).delete(
+                synchronize_session=False
+            )
+
+            # Delete scripts
+            logger.info("[DB]: Deleting scripts")
+            Script.query.filter(Script.user_id == user_uuid).delete(
+                synchronize_session=False
+            )
+
+            # Delete password reset tokens
+            logger.info("[DB]: Deleting password reset tokens")
+            PasswordResetToken.query.filter(
+                PasswordResetToken.user_id == user_uuid
+            ).delete(synchronize_session=False)
+
+            # Delete refresh tokens
+            logger.info("[DB]: Deleting refresh tokens")
+            RefreshToken.query.filter(RefreshToken.user_id == user_uuid).delete(
+                synchronize_session=False
+            )
+
+            # Now delete the user
+            logger.info("[DB]: DELETE user")
             db.session.delete(user)
             db.session.commit()
         except Exception as error:
+            db.session.rollback()
             rollbar.report_exc_info()
             raise error
         return user
