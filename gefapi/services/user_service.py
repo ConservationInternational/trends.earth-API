@@ -764,26 +764,50 @@ class UserService:
             # Import models for explicit deletion
             from sqlalchemy import String, cast
 
-            from gefapi.models import Execution, Script, StatusLog
+            from gefapi.models import Execution, ExecutionLog, Script, StatusLog
             from gefapi.models.password_reset_token import PasswordResetToken
             from gefapi.models.refresh_token import RefreshToken
+            from gefapi.models.script_log import ScriptLog
 
             user_uuid = user.id
 
-            # Batch delete related records for performance
-            # Delete status logs for user's executions first
-            # StatusLog.execution_id is String(36), so cast UUID to string
-            logger.info("[DB]: Deleting status logs for user's executions")
-            execution_ids = db.session.query(cast(Execution.id, String)).filter(
+            # Get execution IDs for this user (needed for related table deletions)
+            execution_ids_uuid = db.session.query(Execution.id).filter(
                 Execution.user_id == user_uuid
             )
-            StatusLog.query.filter(StatusLog.execution_id.in_(execution_ids)).delete(
-                synchronize_session=False
+            # Cast to string for StatusLog which uses String(36) for execution_id
+            execution_ids_str = db.session.query(cast(Execution.id, String)).filter(
+                Execution.user_id == user_uuid
             )
+
+            # Get script IDs for this user (needed for script log deletions)
+            script_ids_uuid = db.session.query(Script.id).filter(
+                Script.user_id == user_uuid
+            )
+
+            # Batch delete related records for performance
+            # Delete status logs for user's executions first
+            # StatusLog.execution_id is String(36), so use string-cast query
+            logger.info("[DB]: Deleting status logs for user's executions")
+            StatusLog.query.filter(
+                StatusLog.execution_id.in_(execution_ids_str)
+            ).delete(synchronize_session=False)
+
+            # Delete execution logs (uses UUID foreign key)
+            logger.info("[DB]: Deleting execution logs for user's executions")
+            ExecutionLog.query.filter(
+                ExecutionLog.execution_id.in_(execution_ids_uuid)
+            ).delete(synchronize_session=False)
 
             # Delete executions
             logger.info("[DB]: Deleting executions")
             Execution.query.filter(Execution.user_id == user_uuid).delete(
+                synchronize_session=False
+            )
+
+            # Delete script logs for user's scripts
+            logger.info("[DB]: Deleting script logs for user's scripts")
+            ScriptLog.query.filter(ScriptLog.script_id.in_(script_ids_uuid)).delete(
                 synchronize_session=False
             )
 
