@@ -639,14 +639,14 @@ def delete_profile():
     logger.info("[ROUTER]: Delete me")
     identity = current_user
     try:
-        user = UserService.delete_user(str(identity.id))
+        user_data = UserService.delete_user(str(identity.id))
     except UserNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=user.serialize()), 200
+    return jsonify(data=user_data), 200
 
 
 @endpoints.route(
@@ -979,14 +979,14 @@ def delete_user(user):
     if not can_delete_user(identity):
         return error(status=403, detail="Forbidden")
     try:
-        user = UserService.delete_user(user)
+        user_data = UserService.delete_user(user)
     except UserNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=user.serialize()), 200
+    return jsonify(data=user_data), 200
 
 
 @endpoints.route(
