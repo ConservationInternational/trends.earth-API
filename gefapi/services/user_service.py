@@ -774,9 +774,9 @@ class UserService:
             execution_ids = db.session.query(Execution.id).filter(
                 Execution.user_id == user_uuid
             )
-            StatusLog.query.filter(
-                StatusLog.execution_id.in_(execution_ids)
-            ).delete(synchronize_session=False)
+            StatusLog.query.filter(StatusLog.execution_id.in_(execution_ids)).delete(
+                synchronize_session=False
+            )
 
             # Delete executions
             logger.info("[DB]: Deleting executions")
