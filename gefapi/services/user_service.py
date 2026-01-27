@@ -762,6 +762,8 @@ class UserService:
             )
         try:
             # Import models for explicit deletion
+            from sqlalchemy import String, cast
+
             from gefapi.models import Execution, Script, StatusLog
             from gefapi.models.password_reset_token import PasswordResetToken
             from gefapi.models.refresh_token import RefreshToken
@@ -770,8 +772,9 @@ class UserService:
 
             # Batch delete related records for performance
             # Delete status logs for user's executions first
+            # StatusLog.execution_id is String(36), so cast UUID to string
             logger.info("[DB]: Deleting status logs for user's executions")
-            execution_ids = db.session.query(Execution.id).filter(
+            execution_ids = db.session.query(cast(Execution.id, String)).filter(
                 Execution.user_id == user_uuid
             )
             StatusLog.query.filter(StatusLog.execution_id.in_(execution_ids)).delete(
