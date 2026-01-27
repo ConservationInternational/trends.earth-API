@@ -765,16 +765,17 @@ class UserService:
 
             user_uuid = str(user.id)
 
-            # Use raw SQL for maximum performance - single pass through each table
-            # Delete status logs via JOIN to executions (StatusLog uses String FK)
+            # Use PostgreSQL DELETE...USING for efficient JOIN-based deletes
+            # This is faster than subqueries as PostgreSQL can use indexes
+
+            # Delete status logs via JOIN (StatusLog uses String FK)
             logger.info("[DB]: Deleting status logs for user's executions")
             db.session.execute(
                 text("""
-                    DELETE FROM status_log
-                    WHERE execution_id IN (
-                        SELECT CAST(id AS VARCHAR)
-                        FROM execution WHERE user_id = :user_id
-                    )
+                    DELETE FROM status_log s
+                    USING execution e
+                    WHERE s.execution_id = CAST(e.id AS VARCHAR)
+                    AND e.user_id = :user_id
                 """),
                 {"user_id": user_uuid},
             )
@@ -783,10 +784,10 @@ class UserService:
             logger.info("[DB]: Deleting execution logs for user's executions")
             db.session.execute(
                 text("""
-                    DELETE FROM execution_log
-                    WHERE execution_id IN (
-                        SELECT id FROM execution WHERE user_id = :user_id
-                    )
+                    DELETE FROM execution_log el
+                    USING execution e
+                    WHERE el.execution_id = e.id
+                    AND e.user_id = :user_id
                 """),
                 {"user_id": user_uuid},
             )
@@ -802,10 +803,10 @@ class UserService:
             logger.info("[DB]: Deleting script logs for user's scripts")
             db.session.execute(
                 text("""
-                    DELETE FROM script_log
-                    WHERE script_id IN (
-                        SELECT id FROM script WHERE user_id = :user_id
-                    )
+                    DELETE FROM script_log sl
+                    USING script s
+                    WHERE sl.script_id = s.id
+                    AND s.user_id = :user_id
                 """),
                 {"user_id": user_uuid},
             )
