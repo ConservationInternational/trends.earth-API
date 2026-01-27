@@ -351,7 +351,13 @@ class DeploymentUtils:
         return False
 
     def wait_for_services_ready(self, stack_name: str, max_wait: int = 120) -> bool:
-        """Wait for Docker services to be ready.
+        """Wait for Docker Swarm services to be ready.
+
+        This method checks that all services have converged (update completed)
+        and have the correct number of running replicas. It properly handles:
+        - One-shot services like 'migrate' that run and exit
+        - Services with multiple replicas (e.g., api with 2/2)
+        - Swarm rolling updates by checking UpdateStatus
 
         Args:
             stack_name: Docker stack name
@@ -360,13 +366,16 @@ class DeploymentUtils:
         Returns:
             bool: True if services are ready, False otherwise
         """
-        logger.info("📊 Waiting for all services to be running...")
+        logger.info("📊 Waiting for Swarm services to converge...")
+
+        # Services that run once and exit (one-shot tasks)
+        one_shot_services = ["migrate"]
 
         wait_time = 0
 
         while wait_time < max_wait:
             try:
-                # Get service status
+                # Get service list with replicas in JSON format for proper parsing
                 result = subprocess.run(
                     [
                         "docker",
@@ -375,27 +384,73 @@ class DeploymentUtils:
                         "--filter",
                         f"name={stack_name}",
                         "--format",
-                        "table {{.Name}}\t{{.Replicas}}",
+                        "{{.Name}}\t{{.Replicas}}",
                     ],
                     capture_output=True,
                     text=True,
                     check=True,
                 )
 
-                # Count services that don't have 1/1 replicas
                 lines = result.stdout.strip().split("\n")
-                pending_services = sum(1 for line in lines if "1/1" not in line)
+                pending_services = []
+                all_ready = True
 
-                # Account for header line and migrate service (runs once and exits)
-                if pending_services <= 2:  # Header line and possibly migrate service
-                    logger.info("✅ All services are running")
+                for line in lines:
+                    if not line.strip():
+                        continue
+
+                    parts = line.split("\t")
+                    if len(parts) != 2:
+                        continue
+
+                    service_name, replicas = parts
+                    # Extract just the service suffix (e.g., "api" from "stack_api")
+                    service_suffix = service_name.replace(f"{stack_name}_", "")
+
+                    # Skip one-shot services - they run and exit
+                    if service_suffix in one_shot_services:
+                        continue
+
+                    # Parse replicas (e.g., "2/2" -> running=2, desired=2)
+                    try:
+                        running, desired = replicas.split("/")
+                        running = int(running)
+                        desired = int(desired)
+
+                        if running != desired:
+                            pending_services.append(
+                                f"{service_suffix}: {running}/{desired}"
+                            )
+                            all_ready = False
+                    except ValueError:
+                        pending_services.append(f"{service_suffix}: {replicas}")
+                        all_ready = False
+
+                # Also check Swarm update status to ensure rolling updates are complete
+                update_status_ok = self._check_swarm_update_status(
+                    stack_name, one_shot_services
+                )
+
+                if all_ready and update_status_ok:
+                    # Verify migrate service completed successfully
+                    migrate_ok = self._check_one_shot_service_status(
+                        f"{stack_name}_migrate"
+                    )
+                    if migrate_ok:
+                        logger.info("✅ All services converged and running")
+                        return True
+                    logger.warning("⚠️ Migrate service may have failed")
+                    # Continue anyway - the health check will catch issues
                     return True
 
                 logger.info(
-                    f"⏳ Waiting for services to be ready... "
+                    f"⏳ Waiting for services to converge... "
                     f"({wait_time}/{max_wait} seconds)"
                 )
-                logger.info(f"Current status:\n{result.stdout}")
+                if pending_services:
+                    logger.info(f"Pending: {', '.join(pending_services)}")
+                if not update_status_ok:
+                    logger.info("Update still in progress...")
 
                 time.sleep(10)
                 wait_time += 10
@@ -409,6 +464,115 @@ class DeploymentUtils:
             f"⚠️ Some services may not be fully ready after {max_wait} seconds"
         )
         return False
+
+    def _check_swarm_update_status(
+        self, stack_name: str, exclude_services: list
+    ) -> bool:
+        """Check if all Swarm service updates have completed.
+
+        Args:
+            stack_name: Docker stack name
+            exclude_services: Service names to exclude from check
+
+        Returns:
+            bool: True if all updates are complete, False if still updating
+        """
+        try:
+            # Get all services in the stack
+            result = subprocess.run(
+                [
+                    "docker",
+                    "service",
+                    "ls",
+                    "--filter",
+                    f"name={stack_name}",
+                    "--format",
+                    "{{.Name}}",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            services = [s.strip() for s in result.stdout.strip().split("\n") if s]
+
+            for service in services:
+                service_suffix = service.replace(f"{stack_name}_", "")
+                if service_suffix in exclude_services:
+                    continue
+
+                # Inspect service to check UpdateStatus
+                inspect_result = subprocess.run(
+                    [
+                        "docker",
+                        "service",
+                        "inspect",
+                        service,
+                        "--format",
+                        "{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+
+                update_state = inspect_result.stdout.strip()
+                # Empty means no update in progress, "completed" means done
+                if update_state and update_state not in ("completed", ""):
+                    logger.debug(f"Service {service} update state: {update_state}")
+                    return False
+
+            return True
+
+        except subprocess.CalledProcessError:
+            # If we can't check, assume OK and let health check validate
+            return True
+
+    def _check_one_shot_service_status(self, service_name: str) -> bool:
+        """Check if a one-shot service (like migrate) completed successfully.
+
+        Args:
+            service_name: Full service name (e.g., 'stack_migrate')
+
+        Returns:
+            bool: True if completed successfully or doesn't exist, False if failed
+        """
+        try:
+            # Get tasks for this service
+            result = subprocess.run(
+                [
+                    "docker",
+                    "service",
+                    "ps",
+                    service_name,
+                    "--format",
+                    "{{.CurrentState}}",
+                    "--filter",
+                    "desired-state=shutdown",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                # Service might not exist, that's OK
+                return True
+
+            states = result.stdout.strip().split("\n")
+            # Check if any task completed successfully
+            for state in states:
+                if "Complete" in state:
+                    logger.info(f"✅ {service_name} completed successfully")
+                    return True
+                if "Failed" in state or "Rejected" in state:
+                    logger.warning(f"⚠️ {service_name} task state: {state}")
+                    return False
+
+            # No completed tasks yet, but that's OK - it might still be running
+            return True
+
+        except subprocess.CalledProcessError:
+            return True
 
 
 def main():
