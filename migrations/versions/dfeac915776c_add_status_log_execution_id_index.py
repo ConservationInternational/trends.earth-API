@@ -1,7 +1,7 @@
 """Add indexes for faster API operations
 
 Revision ID: dfeac915776c
-Revises: 2c4f8e1a9b3d
+Revises: 6d7e8f9a0b1c
 Create Date: 2026-01-27 02:45:00.000000
 
 This migration adds indexes to optimize:
@@ -15,7 +15,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "dfeac915776c"
-down_revision = "2c4f8e1a9b3d"
+down_revision = "6d7e8f9a0b1c"
 branch_labels = None
 depends_on = None
 

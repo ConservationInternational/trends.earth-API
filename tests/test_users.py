@@ -29,7 +29,8 @@ class TestUserFilterSort:
         assert response.status_code == 200
         data = response.json["data"]
         names = [u["name"] for u in data]
-        assert names == sorted(names, reverse=True)
+        # Use case-insensitive sorting to match PostgreSQL default collation
+        assert names == sorted(names, key=str.lower, reverse=True)
 
     def test_sort_by_created_at_asc(self, client, auth_headers_admin):
         response = client.get(

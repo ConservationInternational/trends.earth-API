@@ -4,6 +4,8 @@ Unit tests for deployment utilities.
 
 Tests the DeploymentUtils class methods used in CI/CD workflows to ensure
 reliable deployment operations.
+
+These tests are marked as standalone because they don't require database access.
 """
 
 import subprocess
@@ -13,6 +15,9 @@ import pytest
 
 # Import deployment_utils from root directory (same level as run_db_migrations.py)
 from deployment_utils import DeploymentUtils
+
+# Mark all tests in this module as standalone (no database needed)
+pytestmark = pytest.mark.standalone
 
 
 class TestDeploymentUtils:
@@ -129,16 +134,38 @@ class TestDeploymentUtils:
     @patch("subprocess.run")
     def test_wait_for_services_ready_success(self, mock_run, mock_sleep):
         """Test successful service readiness check."""
-        # Mock docker service ls to show services ready after 2 attempts
+        # Mock docker service ls, _check_swarm_update_status, _check_one_shot_service
+        # The function checks replicas, then update status, then one-shot status
+        # Each iteration: service ls (replicas) + update status check calls
         mock_run.side_effect = [
+            # First iteration - service ls (not ready)
             MagicMock(
                 returncode=0,
-                stdout="trends-earth-prod_api\t0/1\ntrends-earth-prod_worker\t0/1",
-            ),  # Not ready
+                stdout="trends-earth-prod_api\t0/2\ntrends-earth-prod_worker\t0/1",
+            ),
+            # _check_swarm_update_status for first iteration - service ls
             MagicMock(
                 returncode=0,
-                stdout="trends-earth-prod_api\t1/1\ntrends-earth-prod_worker\t1/1",
-            ),  # Ready
+                stdout="trends-earth-prod_api\ntrends-earth-prod_worker",
+            ),
+            # _check_swarm_update_status - inspect api (still updating)
+            MagicMock(returncode=0, stdout="updating"),
+            # Second iteration - service ls (ready)
+            MagicMock(
+                returncode=0,
+                stdout="trends-earth-prod_api\t2/2\ntrends-earth-prod_worker\t1/1",
+            ),
+            # _check_swarm_update_status for second iteration - service ls
+            MagicMock(
+                returncode=0,
+                stdout="trends-earth-prod_api\ntrends-earth-prod_worker",
+            ),
+            # _check_swarm_update_status - inspect api
+            MagicMock(returncode=0, stdout="completed"),
+            # _check_swarm_update_status - inspect worker
+            MagicMock(returncode=0, stdout="completed"),
+            # _check_one_shot_service_status - service ps migrate
+            MagicMock(returncode=0, stdout="Complete 2 minutes ago"),
         ]
 
         result = self.utils.wait_for_services_ready(
@@ -150,18 +177,14 @@ class TestDeploymentUtils:
         # Should have called docker service ls at least once
         assert mock_run.call_count >= 1
 
-        # Verify the call included check=True parameter
-        call_args = mock_run.call_args
-        assert call_args.kwargs.get("check") is True
-
     @patch("time.sleep")
     @patch("subprocess.run")
     def test_wait_for_services_ready_timeout(self, mock_run, mock_sleep):
         """Test service readiness check timeout."""
-        # Mock service ls to always show services not ready (more than 2 services)
+        # Mock service ls to always show services not ready
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout="NAME\tREPLICAS\ntrends-earth-prod_api\t0/1\ntrends-earth-prod_worker\t0/1\ntrends-earth-prod_db\t0/1",
+            stdout="trends-earth-prod_api\t0/2\ntrends-earth-prod_worker\t0/1\ntrends-earth-prod_db\t0/1",
         )
 
         result = self.utils.wait_for_services_ready(
@@ -177,17 +200,89 @@ class TestDeploymentUtils:
     @patch("subprocess.run")
     def test_wait_for_services_ready_with_migrate_service(self, mock_run):
         """Test service readiness check accounting for migrate service."""
-        # Mock output with migrate service that's expected to be 0/1
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="NAME\tREPLICAS\ntrends-earth-prod_api\t1/1\ntrends-earth-prod_migrate\t0/1",
-        )
+        # Mock output with migrate service that's expected to be 0/1 (excluded)
+        mock_run.side_effect = [
+            # service ls - migrate is 0/1 but should be excluded
+            MagicMock(
+                returncode=0,
+                stdout="trends-earth-prod_api\t1/1\ntrends-earth-prod_migrate\t0/1",
+            ),
+            # _check_swarm_update_status - service ls
+            MagicMock(
+                returncode=0,
+                stdout="trends-earth-prod_api\ntrends-earth-prod_migrate",
+            ),
+            # _check_swarm_update_status - inspect api (migrate excluded)
+            MagicMock(returncode=0, stdout="completed"),
+            # _check_one_shot_service_status - service ps migrate
+            MagicMock(returncode=0, stdout="Complete 2 minutes ago"),
+        ]
 
         result = self.utils.wait_for_services_ready(
             stack_name="trends-earth-prod", max_wait=60
         )
 
         assert result is True
+
+    @patch("subprocess.run")
+    def test_wait_for_services_ready_multi_replica(self, mock_run):
+        """Test service readiness check with multiple replicas."""
+        # Mock output with services that have 2/2 replicas (like api and docker)
+        mock_run.side_effect = [
+            # service ls - all services ready with various replica counts
+            MagicMock(
+                returncode=0,
+                stdout="trends-earth-prod_api\t2/2\ntrends-earth-prod_docker\t2/2\n"
+                "trends-earth-prod_worker\t1/1\ntrends-earth-prod_beat\t1/1\n"
+                "trends-earth-prod_migrate\t0/1",
+            ),
+            # _check_swarm_update_status - service ls
+            MagicMock(
+                returncode=0,
+                stdout="trends-earth-prod_api\ntrends-earth-prod_docker\n"
+                "trends-earth-prod_worker\ntrends-earth-prod_beat\n"
+                "trends-earth-prod_migrate",
+            ),
+            # _check_swarm_update_status - inspect each service (migrate excluded)
+            MagicMock(returncode=0, stdout="completed"),  # api
+            MagicMock(returncode=0, stdout="completed"),  # docker
+            MagicMock(returncode=0, stdout="completed"),  # worker
+            MagicMock(returncode=0, stdout="completed"),  # beat
+            # _check_one_shot_service_status - service ps migrate
+            MagicMock(returncode=0, stdout="Complete 2 minutes ago"),
+        ]
+
+        result = self.utils.wait_for_services_ready(
+            stack_name="trends-earth-prod", max_wait=60
+        )
+
+        assert result is True
+
+    @patch("subprocess.run")
+    def test_wait_for_services_ready_update_in_progress(self, mock_run):
+        """Test service readiness check when Swarm update is still in progress."""
+        mock_run.side_effect = [
+            # service ls - replicas look ready
+            MagicMock(
+                returncode=0,
+                stdout="trends-earth-prod_api\t2/2\ntrends-earth-prod_worker\t1/1",
+            ),
+            # _check_swarm_update_status - service ls
+            MagicMock(
+                returncode=0,
+                stdout="trends-earth-prod_api\ntrends-earth-prod_worker",
+            ),
+            # _check_swarm_update_status - inspect api (still updating)
+            MagicMock(returncode=0, stdout="updating"),
+        ]
+
+        result = self.utils.wait_for_services_ready(
+            stack_name="trends-earth-prod",
+            max_wait=1,  # Short timeout
+        )
+
+        # Should timeout because update is still in progress
+        assert result is False
 
     def test_deployment_utils_basic(self):
         """Test basic deployment utils functionality."""

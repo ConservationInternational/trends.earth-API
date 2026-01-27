@@ -828,7 +828,7 @@ class UserService:
             # Delete refresh tokens
             logger.info("[DB]: Deleting refresh tokens")
             db.session.execute(
-                text("DELETE FROM refresh_token WHERE user_id = :user_id"),
+                text("DELETE FROM refresh_tokens WHERE user_id = :user_id"),
                 {"user_id": user_uuid},
             )
 

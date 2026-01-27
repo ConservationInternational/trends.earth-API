@@ -680,8 +680,16 @@ def sample_script_data():
 
 
 @pytest.fixture(autouse=True)
-def cleanup_xss_test_users(app):
+def cleanup_xss_test_users(request):
     """Clean up any XSS test users that might interfere with other tests"""
+    # Skip for tests marked as standalone (no database needed)
+    if request.node.get_closest_marker("standalone"):
+        yield
+        return
+
+    # Get app fixture only when needed
+    app = request.getfixturevalue("app")
+
     with app.app_context():
         # Run after each test to clean up any XSS test data
         yield
@@ -698,8 +706,15 @@ def cleanup_xss_test_users(app):
 
 
 @pytest.fixture(autouse=True)
-def reset_rate_limit_events(app):
+def reset_rate_limit_events(request):
     """Ensure rate limit event history does not leak between tests."""
+    # Skip for tests marked as standalone (no database needed)
+    if request.node.get_closest_marker("standalone"):
+        yield
+        return
+
+    # Get app fixture only when needed
+    app = request.getfixturevalue("app")
 
     def _clear_events() -> None:
         try:
