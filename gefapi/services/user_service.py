@@ -761,77 +761,82 @@ class UserService:
                 message="User with ID " + str(user_id) + " does not exist"
             )
         try:
-            # Import models for explicit deletion
-            from sqlalchemy import String, cast
+            from sqlalchemy import text
 
-            from gefapi.models import Execution, ExecutionLog, Script, StatusLog
-            from gefapi.models.password_reset_token import PasswordResetToken
-            from gefapi.models.refresh_token import RefreshToken
-            from gefapi.models.script_log import ScriptLog
+            user_uuid = str(user.id)
 
-            user_uuid = user.id
-
-            # Get execution IDs for this user (needed for related table deletions)
-            execution_ids_uuid = db.session.query(Execution.id).filter(
-                Execution.user_id == user_uuid
-            )
-            # Cast to string for StatusLog which uses String(36) for execution_id
-            execution_ids_str = db.session.query(cast(Execution.id, String)).filter(
-                Execution.user_id == user_uuid
-            )
-
-            # Get script IDs for this user (needed for script log deletions)
-            script_ids_uuid = db.session.query(Script.id).filter(
-                Script.user_id == user_uuid
-            )
-
-            # Batch delete related records for performance
-            # Delete status logs for user's executions first
-            # StatusLog.execution_id is String(36), so use string-cast query
+            # Use raw SQL for maximum performance - single pass through each table
+            # Delete status logs via JOIN to executions (StatusLog uses String FK)
             logger.info("[DB]: Deleting status logs for user's executions")
-            StatusLog.query.filter(
-                StatusLog.execution_id.in_(execution_ids_str)
-            ).delete(synchronize_session=False)
+            db.session.execute(
+                text("""
+                    DELETE FROM status_log
+                    WHERE execution_id IN (
+                        SELECT CAST(id AS VARCHAR)
+                        FROM execution WHERE user_id = :user_id
+                    )
+                """),
+                {"user_id": user_uuid},
+            )
 
-            # Delete execution logs (uses UUID foreign key)
+            # Delete execution logs via JOIN (ExecutionLog uses UUID FK)
             logger.info("[DB]: Deleting execution logs for user's executions")
-            ExecutionLog.query.filter(
-                ExecutionLog.execution_id.in_(execution_ids_uuid)
-            ).delete(synchronize_session=False)
+            db.session.execute(
+                text("""
+                    DELETE FROM execution_log
+                    WHERE execution_id IN (
+                        SELECT id FROM execution WHERE user_id = :user_id
+                    )
+                """),
+                {"user_id": user_uuid},
+            )
 
             # Delete executions
             logger.info("[DB]: Deleting executions")
-            Execution.query.filter(Execution.user_id == user_uuid).delete(
-                synchronize_session=False
+            db.session.execute(
+                text("DELETE FROM execution WHERE user_id = :user_id"),
+                {"user_id": user_uuid},
             )
 
-            # Delete script logs for user's scripts
+            # Delete script logs via JOIN
             logger.info("[DB]: Deleting script logs for user's scripts")
-            ScriptLog.query.filter(ScriptLog.script_id.in_(script_ids_uuid)).delete(
-                synchronize_session=False
+            db.session.execute(
+                text("""
+                    DELETE FROM script_log
+                    WHERE script_id IN (
+                        SELECT id FROM script WHERE user_id = :user_id
+                    )
+                """),
+                {"user_id": user_uuid},
             )
 
             # Delete scripts
             logger.info("[DB]: Deleting scripts")
-            Script.query.filter(Script.user_id == user_uuid).delete(
-                synchronize_session=False
+            db.session.execute(
+                text("DELETE FROM script WHERE user_id = :user_id"),
+                {"user_id": user_uuid},
             )
 
             # Delete password reset tokens
             logger.info("[DB]: Deleting password reset tokens")
-            PasswordResetToken.query.filter(
-                PasswordResetToken.user_id == user_uuid
-            ).delete(synchronize_session=False)
+            db.session.execute(
+                text("DELETE FROM password_reset_token WHERE user_id = :user_id"),
+                {"user_id": user_uuid},
+            )
 
             # Delete refresh tokens
             logger.info("[DB]: Deleting refresh tokens")
-            RefreshToken.query.filter(RefreshToken.user_id == user_uuid).delete(
-                synchronize_session=False
+            db.session.execute(
+                text("DELETE FROM refresh_token WHERE user_id = :user_id"),
+                {"user_id": user_uuid},
             )
 
             # Now delete the user
             logger.info("[DB]: DELETE user")
-            db.session.delete(user)
+            db.session.execute(
+                text("DELETE FROM public.user WHERE id = :user_id"),
+                {"user_id": user_uuid},
+            )
             db.session.commit()
         except Exception as error:
             db.session.rollback()
