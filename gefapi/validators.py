@@ -78,11 +78,12 @@ def validate_name(name):
     # Using a more compatible regex pattern for international characters
     import unicodedata
 
-    # Check each character is a letter, mark, space, or allowed punctuation
+    # Check each character is a letter, mark, digit, space, or allowed punctuation
     for char in clean_name:
         if not (
             unicodedata.category(char).startswith("L")  # Letters
             or unicodedata.category(char).startswith("M")  # Marks (accents, etc.)
+            or unicodedata.category(char).startswith("N")  # Numbers (digits)
             or char in " '-."  # Allowed punctuation
             or unicodedata.category(char) == "Zs"
         ):  # Spaces
