@@ -83,6 +83,20 @@ def _validate_password_strength(password: str) -> None:
 class UserService:
     """User Class"""
 
+    # Security: Explicitly allowed fields for filter and sort operations
+    # to prevent unauthorized access to sensitive model fields
+    USER_ALLOWED_FILTER_FIELDS = {
+        "id",
+        "email",
+        "name",
+        "role",
+        "country",
+        "institution",
+        "created_at",
+        "updated_at",
+    }
+    USER_ALLOWED_SORT_FIELDS = USER_ALLOWED_FILTER_FIELDS
+
     @staticmethod
     def create_user(user, legacy=True):
         """Create a new user account.
@@ -295,7 +309,7 @@ class UserService:
 
         query = db.session.query(User)
 
-        # SQL-style filter_param
+        # SQL-style filter_param with field allowlist for security
         if filter_param:
             import re
 
@@ -312,6 +326,12 @@ class UserService:
                     field = field.strip().lower()
                     op = op.strip().lower()
                     value = value.strip().strip("'\"")
+                    # Security: Only allow filtering on explicitly allowed fields
+                    if field not in UserService.USER_ALLOWED_FILTER_FIELDS:
+                        logger.warning(
+                            f"[SERVICE]: Rejected filter on disallowed field: {field}"
+                        )
+                        continue
                     col = getattr(User, field, None)
                     if col is not None:
                         # Check if this is a string column for case-insensitive compare
@@ -357,6 +377,12 @@ class UserService:
                 parts = sort_expr.split()
                 field = parts[0].lower()
                 direction = parts[1].lower() if len(parts) > 1 else "asc"
+                # Security: Only allow sorting on explicitly allowed fields
+                if field not in UserService.USER_ALLOWED_SORT_FIELDS:
+                    logger.warning(
+                        f"[SERVICE]: Rejected sort on disallowed field: {field}"
+                    )
+                    continue
                 col = getattr(User, field, None)
                 if col is not None:
                     if direction == "desc":

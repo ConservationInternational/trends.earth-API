@@ -103,6 +103,30 @@ def run_script(script):
         if request.get_json(silent=True):
             params.update(request.get_json())
         if "token" in params:
+            # Security: Log deprecated token query parameter usage
+            # Tokens in URLs are logged in server logs, browser history, and referrer
+            # headers, which is a security risk (CWE-598)
+            import rollbar
+
+            rollbar.report_message(
+                "SECURITY WARNING: Deprecated token query parameter used in "
+                f"script execution request for script '{script}' by user "
+                f"'{user.email}'. Token-based authentication via query "
+                "parameters is deprecated and will be removed in a future "
+                "version. Use Authorization header instead.",
+                level="warning",
+                extra_data={
+                    "script": script,
+                    "user_id": str(user.id),
+                    "user_email": user.email,
+                    "endpoint": "run_script",
+                    "security_issue": "CWE-598",
+                },
+            )
+            logger.warning(
+                f"[SECURITY]: Deprecated token query parameter used by {user.email} "
+                f"for script {script}. This should be migrated to header-based auth."
+            )
             del params["token"]
         execution = ExecutionService.create_execution(script, params, user)
     except ScriptNotFound as e:

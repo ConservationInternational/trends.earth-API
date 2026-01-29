@@ -298,13 +298,46 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
 # Transfer rate limiting configuration to Flask app config
 app.config["RATE_LIMITING"] = SETTINGS.get("RATE_LIMITING", {})
 
-# Ensure JWT_SECRET_KEY is set with proper fallback
+# Ensure JWT_SECRET_KEY is set with proper fallback and validation
 jwt_secret = (
     SETTINGS.get("JWT_SECRET_KEY")
     or SETTINGS.get("SECRET_KEY")
     or os.getenv("JWT_SECRET_KEY")
     or os.getenv("SECRET_KEY")
 )
+
+# Security: Validate JWT secret key to prevent insecure configurations
+# This list includes actual defaults from .env.example and develop/test configs
+INSECURE_KEY_PATTERNS = [
+    "your_jwt_secret_key_here",
+    "your_secret_key_here",
+    "develop_jwt_secret",
+    "develop_secret_key",
+    "test_jwt_secret_key",
+    "test_secret_key",
+]
+
+if not jwt_secret:
+    if os.getenv("ENVIRONMENT") == "prod":
+        raise RuntimeError(
+            "CRITICAL SECURITY ERROR: JWT_SECRET_KEY must be set in production. "
+            "Set the JWT_SECRET_KEY or SECRET_KEY environment variable."
+        )
+    logger.warning(
+        "JWT_SECRET_KEY is not set. This is insecure and must be fixed before "
+        "deploying to production. Set JWT_SECRET_KEY or SECRET_KEY."
+    )
+elif jwt_secret.lower() in INSECURE_KEY_PATTERNS or len(jwt_secret) < 32:
+    if os.getenv("ENVIRONMENT") == "prod":
+        raise RuntimeError(
+            "CRITICAL SECURITY ERROR: JWT_SECRET_KEY is insecure (too short or "
+            "uses a known default value). Use a cryptographically secure random "
+            "string of at least 32 characters."
+        )
+    logger.warning(
+        "JWT_SECRET_KEY appears insecure (too short or uses a default value). "
+        "This must be fixed before deploying to production."
+    )
 
 app.config["JWT_SECRET_KEY"] = jwt_secret
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = SETTINGS.get("JWT_ACCESS_TOKEN_EXPIRES")
@@ -431,13 +464,21 @@ def ping():
 
 @app.route("/debug/routes", methods=["GET"])
 def debug_routes():
-    """Debug endpoint to show all registered routes"""
+    """Debug endpoint to show all registered routes.
+
+    Security: This endpoint is only available in development/test environments.
+    It is completely disabled in production and staging unless explicitly enabled.
+    """
     import os
 
-    if (
-        os.getenv("ENVIRONMENT") == "prod"
-        and os.getenv("DEBUG_ROUTES_ENABLED", "false").lower() != "true"
-    ):
+    environment = os.getenv("ENVIRONMENT", "dev")
+    debug_routes_enabled = os.getenv("DEBUG_ROUTES_ENABLED", "false").lower() == "true"
+
+    # Security: Only allow in dev/test environments, or if explicitly enabled
+    if environment not in ("dev", "test") and not debug_routes_enabled:
+        logger.warning(
+            f"[SECURITY]: Blocked debug/routes access in {environment} environment"
+        )
         abort(404)
 
     routes_info = []
