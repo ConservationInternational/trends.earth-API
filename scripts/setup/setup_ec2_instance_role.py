@@ -59,7 +59,7 @@ def create_role(iam_client, account_id, region):
         response = iam_client.create_role(
             RoleName=ROLE_NAME,
             AssumeRolePolicyDocument=json.dumps(trust_policy),
-            Description="Role for EC2 instances running Trends.Earth API with CodeDeploy",
+            Description="EC2 role for Trends.Earth API with CodeDeploy",
             Tags=[
                 {"Key": "Project", "Value": "TrendsEarthAPI"},
                 {"Key": "ManagedBy", "Value": "automation"},
@@ -114,7 +114,9 @@ def attach_policies(iam_client, account_id, region):
                     "ecr:GetDownloadUrlForLayer",
                     "ecr:BatchGetImage",
                 ],
-                "Resource": f"arn:aws:ecr:{region}:{account_id}:repository/trendsearth-api",
+                "Resource": (
+                    f"arn:aws:ecr:{region}:{account_id}:repository/trendsearth-api"
+                ),
             },
             {
                 "Sid": "S3DeploymentBucket",
@@ -134,7 +136,9 @@ def attach_policies(iam_client, account_id, region):
                     "logs:PutLogEvents",
                     "logs:DescribeLogStreams",
                 ],
-                "Resource": f"arn:aws:logs:{region}:{account_id}:log-group:/aws/codedeploy/*",
+                "Resource": (
+                    f"arn:aws:logs:{region}:{account_id}:log-group:/aws/codedeploy/*"
+                ),
             },
         ],
     }
@@ -211,7 +215,7 @@ def main(profile=None, region=None):
 
     # Create role
     print("\n📋 Creating IAM role...")
-    role_arn = create_role(clients["iam"], account_id, actual_region)
+    create_role(clients["iam"], account_id, actual_region)
 
     # Attach policies
     print("\n📋 Attaching policies...")

@@ -488,20 +488,20 @@ class BoundaryFetcher:
             f"Updated: {self.stats['adm0_metadata_updated']}"
         )
 
-        # Fetch countries that are missing from /ALL/ endpoint but available directly
-        # Note: Some countries (like India) are excluded from the bulk /ALL/ API response
-        # but are still available via direct ISO code requests
-        KNOWN_MISSING_COUNTRIES = [
+        # Fetch countries that are missing from /ALL/ endpoint but available
+        # directly. Some countries (like India) are excluded from the bulk /ALL/
+        # API response but are still available via direct ISO code requests.
+        known_missing_countries = [
             "IND"
         ]  # India is not in /ALL/ but available directly
 
-        if KNOWN_MISSING_COUNTRIES:
+        if known_missing_countries:
             logger.info(
-                f"Fetching {len(KNOWN_MISSING_COUNTRIES)} known missing countries "
+                f"Fetching {len(known_missing_countries)} known missing countries "
                 f"not included in /ALL/ endpoint"
             )
 
-            for iso_code in KNOWN_MISSING_COUNTRIES:
+            for iso_code in known_missing_countries:
                 logger.info(f"Fetching missing country: {iso_code}")
                 try:
                     api_data = self.api_client.get_boundary_metadata(iso_code, "ADM0")
@@ -573,16 +573,17 @@ class BoundaryFetcher:
         )
 
         # Fetch ADM1 data for countries missing from /ALL/ endpoint
-        KNOWN_MISSING_COUNTRIES = [
+        known_missing_countries = [
             "IND"
         ]  # India is not in /ALL/ but available directly
 
-        if KNOWN_MISSING_COUNTRIES:
+        if known_missing_countries:
             logger.info(
-                f"Fetching ADM1 data for {len(KNOWN_MISSING_COUNTRIES)} known missing countries"
+                f"Fetching ADM1 data for {len(known_missing_countries)} "
+                "known missing countries"
             )
 
-            for iso_code in KNOWN_MISSING_COUNTRIES:
+            for iso_code in known_missing_countries:
                 logger.info(f"Fetching ADM1 for missing country: {iso_code}")
                 try:
                     self.fetch_country_adm1(iso_code)

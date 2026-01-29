@@ -66,7 +66,8 @@ def create_oidc_provider(iam_client):
     except ClientError as e:
         if e.response["Error"]["Code"] == "EntityAlreadyExists":
             account_id = boto3.client("sts").get_caller_identity()["Account"]
-            arn = f"arn:aws:iam::{account_id}:oidc-provider/token.actions.githubusercontent.com"
+            oidc_provider = "token.actions.githubusercontent.com"
+            arn = f"arn:aws:iam::{account_id}:oidc-provider/{oidc_provider}"
             print(f"ℹ️  OIDC provider already exists: {arn}")
             return arn
         raise
@@ -74,21 +75,22 @@ def create_oidc_provider(iam_client):
 
 def create_trust_policy(account_id):
     """Create the trust policy for the GitHub Actions role."""
+    oidc_provider = "token.actions.githubusercontent.com"
     return {
         "Version": "2012-10-17",
         "Statement": [
             {
                 "Effect": "Allow",
                 "Principal": {
-                    "Federated": f"arn:aws:iam::{account_id}:oidc-provider/token.actions.githubusercontent.com"
+                    "Federated": (
+                        f"arn:aws:iam::{account_id}:oidc-provider/{oidc_provider}"
+                    )
                 },
                 "Action": "sts:AssumeRoleWithWebIdentity",
                 "Condition": {
-                    "StringEquals": {
-                        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-                    },
+                    "StringEquals": {f"{oidc_provider}:aud": "sts.amazonaws.com"},
                     "StringLike": {
-                        "token.actions.githubusercontent.com:sub": f"repo:{GITHUB_ORG}/{GITHUB_REPO}:*"
+                        f"{oidc_provider}:sub": (f"repo:{GITHUB_ORG}/{GITHUB_REPO}:*")
                     },
                 },
             }
