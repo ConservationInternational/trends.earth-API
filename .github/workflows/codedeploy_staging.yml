@@ -386,3 +386,18 @@ jobs:
         else
           echo "⚠️ ROLLBAR_ACCESS_TOKEN not configured, skipping deployment notification"
         fi
+
+    - name: Notify Rollbar of deployment failure
+      if: failure()
+      run: |
+        # Notify Rollbar of failed deployment (if token is configured)
+        if [ -n "${{ secrets.ROLLBAR_ACCESS_TOKEN }}" ]; then
+          curl -X POST 'https://api.rollbar.com/api/1/deploy/' \
+            -F access_token="${{ secrets.ROLLBAR_ACCESS_TOKEN }}" \
+            -F environment="staging" \
+            -F revision="${{ github.sha }}" \
+            -F local_username="${{ github.actor }}" \
+            -F comment="FAILED: CodeDeploy deployment from ${{ github.ref_name }}" \
+            -F status=failed
+          echo "📊 Rollbar failure notification sent"
+        fi
