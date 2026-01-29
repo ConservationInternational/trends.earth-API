@@ -8,7 +8,7 @@ on:
       force_deploy:
         description: 'Force deployment even if no changes detected'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 env:
@@ -208,7 +208,7 @@ jobs:
             
             echo "🔄 Performing rolling update deployment..."
             attempts=0
-            until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod; do
+            until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth --resolve-image always trends-earth-prod; do
               attempts=$((attempts+1))
               if [ "$attempts" -ge 3 ]; then
                 echo "❌ Stack deploy failed after $attempts attempts"
@@ -278,7 +278,7 @@ jobs:
             fi
             echo "🚀 Deploying fresh stack..."
             attempts=0
-            until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-prod; do
+            until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth --resolve-image always trends-earth-prod; do
               attempts=$((attempts+1))
               if [ "$attempts" -ge 3 ]; then
                 echo "❌ Stack deploy failed after $attempts attempts"

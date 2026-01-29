@@ -229,10 +229,19 @@ def run_migrations():
 
                 # Check if this is a "Can't locate revision" error
                 if "Can't locate revision" in str(head_check_error):
-                    logger.info(
-                        "Revision location error - likely database/migration mismatch"
+                    logger.error(
+                        "Revision location error - database is at a revision that "
+                        "doesn't exist in the deployed code!"
                     )
-                    print("⚠️  Migration revision mismatch detected")
+                    print("❌ CRITICAL: Migration revision mismatch detected!")
+                    print("")
+                    print("The database is at a revision that doesn't exist in the")
+                    print("current codebase. This usually means:")
+                    print("  1. The Docker image is stale and missing new migrations")
+                    print(
+                        "  2. The database was migrated ahead by a previous deployment"
+                    )
+                    print("")
 
                     # Try to get current database revision for debugging
                     try:
@@ -241,13 +250,27 @@ def run_migrations():
                         with db.engine.connect() as connection:
                             context = MigrationContext.configure(connection)
                             current_rev = context.get_current_revision()
-                            logger.info(f"Current database revision: {current_rev}")
+                            logger.error(f"Database revision: {current_rev}")
+                            logger.error(f"Available heads: {heads}")
                             print(f"📋 Database is at revision: {current_rev}")
+                            print(f"📋 Available code heads: {heads}")
+                            print("")
+                            print("To fix this issue:")
+                            print(
+                                "  1. Redeploy with a fresh Docker image (force pull)"
+                            )
+                            print("  2. Or stamp database to a known revision:")
+                            print(
+                                f"     flask db stamp {heads[0] if heads else 'head'}"
+                            )
 
                     except Exception as db_check_error:
                         logger.warning(
                             f"Could not check database revision: {db_check_error}"
                         )
+
+                    # Exit with error - don't try to continue
+                    sys.exit(1)
 
                     # Don't try to fix this automatically - let it fall through
                     # to other migration attempts

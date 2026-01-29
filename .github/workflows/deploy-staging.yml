@@ -269,6 +269,17 @@ jobs:
             exit 1
           fi
           
+          # Force pull the latest image from registry to avoid using cached versions
+          echo "🔄 Pulling latest image from registry..."
+          docker pull "${DOCKER_REGISTRY}/${{ env.IMAGE_NAME }}:staging" || {
+            echo "⚠️ Image pull failed, continuing with cached image..."
+          }
+          
+          # Verify migration files in pulled image
+          echo "🔍 Verifying migration files in Docker image..."
+          MIGRATION_COUNT=$(docker run --rm "${DOCKER_REGISTRY}/${{ env.IMAGE_NAME }}:staging" sh -c "ls -1 /opt/gef-api/migrations/versions/*.py 2>/dev/null | wc -l" || echo "0")
+          echo "📋 Found $MIGRATION_COUNT migration files in Docker image"
+          
           # Deploy services using production-inspired approach
           echo "📦 Deploying services..."
           
@@ -287,7 +298,7 @@ jobs:
             
             echo "🔄 Performing rolling update deployment..."
             attempts=0
-            until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-staging; do
+            until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth --resolve-image always trends-earth-staging; do
               attempts=$((attempts+1))
               if [ "$attempts" -ge 3 ]; then
                 echo "❌ Stack deploy failed after $attempts attempts"
@@ -325,7 +336,7 @@ jobs:
             # Deploy fresh stack
             echo "🚀 Deploying fresh stack..."
             attempts=0
-            until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth trends-earth-staging; do
+            until docker stack deploy -c ${{ env.COMPOSE_FILE }} --with-registry-auth --resolve-image always trends-earth-staging; do
               attempts=$((attempts+1))
               if [ "$attempts" -ge 3 ]; then
                 echo "❌ Stack deploy failed after $attempts attempts"
