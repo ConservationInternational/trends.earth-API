@@ -9,18 +9,16 @@ Usage:
     python setup_ecr_repositories.py [--profile PROFILE] [--region REGION]
 """
 
-import boto3
 import argparse
 import json
 import sys
+
+import boto3
 from botocore.exceptions import ClientError
 
 # Repository configuration
 REPOSITORIES = [
-    {
-        'name': 'trendsearth-api',
-        'description': 'Trends.Earth API Docker images'
-    }
+    {"name": "trendsearth-api", "description": "Trends.Earth API Docker images"}
 ]
 
 
@@ -28,20 +26,17 @@ def create_clients(profile=None, region=None):
     """Create and return AWS service clients."""
     session_args = {}
     if profile:
-        session_args['profile_name'] = profile
+        session_args["profile_name"] = profile
     if region:
-        session_args['region_name'] = region
-    
+        session_args["region_name"] = region
+
     session = boto3.Session(**session_args)
-    return {
-        'ecr': session.client('ecr'),
-        'sts': session.client('sts')
-    }
+    return {"ecr": session.client("ecr"), "sts": session.client("sts")}
 
 
 def get_account_id(sts_client):
     """Get the current AWS account ID."""
-    return sts_client.get_caller_identity()['Account']
+    return sts_client.get_caller_identity()["Account"]
 
 
 def create_repository(ecr_client, repo_name, description):
@@ -49,23 +44,23 @@ def create_repository(ecr_client, repo_name, description):
     try:
         response = ecr_client.create_repository(
             repositoryName=repo_name,
-            imageScanningConfiguration={'scanOnPush': True},
-            imageTagMutability='MUTABLE',
-            encryptionConfiguration={'encryptionType': 'AES256'},
+            imageScanningConfiguration={"scanOnPush": True},
+            imageTagMutability="MUTABLE",
+            encryptionConfiguration={"encryptionType": "AES256"},
             tags=[
-                {'Key': 'Project', 'Value': 'TrendsEarthAPI'},
-                {'Key': 'Purpose', 'Value': description},
-                {'Key': 'ManagedBy', 'Value': 'automation'}
-            ]
+                {"Key": "Project", "Value": "TrendsEarthAPI"},
+                {"Key": "Purpose", "Value": description},
+                {"Key": "ManagedBy", "Value": "automation"},
+            ],
         )
-        repo_uri = response['repository']['repositoryUri']
+        repo_uri = response["repository"]["repositoryUri"]
         print(f"✅ Created ECR repository: {repo_uri}")
         return repo_uri
     except ClientError as e:
-        if e.response['Error']['Code'] == 'RepositoryAlreadyExistsException':
+        if e.response["Error"]["Code"] == "RepositoryAlreadyExistsException":
             # Get the existing repository URI
             response = ecr_client.describe_repositories(repositoryNames=[repo_name])
-            repo_uri = response['repositories'][0]['repositoryUri']
+            repo_uri = response["repositories"][0]["repositoryUri"]
             print(f"ℹ️  Repository already exists: {repo_uri}")
             return repo_uri
         raise
@@ -82,9 +77,9 @@ def set_lifecycle_policy(ecr_client, repo_name):
                     "tagStatus": "tagged",
                     "tagPrefixList": ["production-"],
                     "countType": "imageCountMoreThan",
-                    "countNumber": 10
+                    "countNumber": 10,
                 },
-                "action": {"type": "expire"}
+                "action": {"type": "expire"},
             },
             {
                 "rulePriority": 2,
@@ -93,9 +88,9 @@ def set_lifecycle_policy(ecr_client, repo_name):
                     "tagStatus": "tagged",
                     "tagPrefixList": ["staging-"],
                     "countType": "imageCountMoreThan",
-                    "countNumber": 5
+                    "countNumber": 5,
                 },
-                "action": {"type": "expire"}
+                "action": {"type": "expire"},
             },
             {
                 "rulePriority": 3,
@@ -104,9 +99,9 @@ def set_lifecycle_policy(ecr_client, repo_name):
                     "tagStatus": "untagged",
                     "countType": "sinceImagePushed",
                     "countUnit": "days",
-                    "countNumber": 1
+                    "countNumber": 1,
                 },
-                "action": {"type": "expire"}
+                "action": {"type": "expire"},
             },
             {
                 "rulePriority": 4,
@@ -114,17 +109,16 @@ def set_lifecycle_policy(ecr_client, repo_name):
                 "selection": {
                     "tagStatus": "any",
                     "countType": "imageCountMoreThan",
-                    "countNumber": 20
+                    "countNumber": 20,
                 },
-                "action": {"type": "expire"}
-            }
+                "action": {"type": "expire"},
+            },
         ]
     }
-    
+
     try:
         ecr_client.put_lifecycle_policy(
-            repositoryName=repo_name,
-            lifecyclePolicyText=json.dumps(lifecycle_policy)
+            repositoryName=repo_name, lifecyclePolicyText=json.dumps(lifecycle_policy)
         )
         print(f"✅ Set lifecycle policy for repository: {repo_name}")
     except ClientError as e:
@@ -139,22 +133,19 @@ def set_repository_policy(ecr_client, repo_name, account_id):
             {
                 "Sid": "AllowEC2Pull",
                 "Effect": "Allow",
-                "Principal": {
-                    "AWS": f"arn:aws:iam::{account_id}:root"
-                },
+                "Principal": {"AWS": f"arn:aws:iam::{account_id}:root"},
                 "Action": [
                     "ecr:GetDownloadUrlForLayer",
                     "ecr:BatchGetImage",
-                    "ecr:BatchCheckLayerAvailability"
-                ]
+                    "ecr:BatchCheckLayerAvailability",
+                ],
             }
-        ]
+        ],
     }
-    
+
     try:
         ecr_client.set_repository_policy(
-            repositoryName=repo_name,
-            policyText=json.dumps(repository_policy)
+            repositoryName=repo_name, policyText=json.dumps(repository_policy)
         )
         print(f"✅ Set repository policy for: {repo_name}")
     except ClientError as e:
@@ -165,56 +156,51 @@ def main(profile=None, region=None):
     """Main function to set up ECR repositories."""
     print("🚀 Setting up ECR Repositories for Trends.Earth API...")
     print("=" * 60)
-    
+
     # Create AWS clients
     clients = create_clients(profile, region)
-    
+
     # Get account ID
-    account_id = get_account_id(clients['sts'])
+    account_id = get_account_id(clients["sts"])
     print(f"📋 AWS Account ID: {account_id}")
-    
+
     # Get region
-    actual_region = clients['ecr'].meta.region_name
+    actual_region = clients["ecr"].meta.region_name
     print(f"📋 AWS Region: {actual_region}")
-    
+
     # Create repositories
     created_repos = []
     for repo_config in REPOSITORIES:
         print(f"\n📋 Setting up repository: {repo_config['name']}")
-        
+
         repo_uri = create_repository(
-            clients['ecr'],
-            repo_config['name'],
-            repo_config['description']
+            clients["ecr"], repo_config["name"], repo_config["description"]
         )
-        
+
         if repo_uri:
-            set_lifecycle_policy(clients['ecr'], repo_config['name'])
-            set_repository_policy(clients['ecr'], repo_config['name'], account_id)
-            created_repos.append({
-                'name': repo_config['name'],
-                'uri': repo_uri
-            })
-    
+            set_lifecycle_policy(clients["ecr"], repo_config["name"])
+            set_repository_policy(clients["ecr"], repo_config["name"], account_id)
+            created_repos.append({"name": repo_config["name"], "uri": repo_uri})
+
     # Summary
     print("\n" + "=" * 60)
     print("✅ ECR Repository Setup Complete!")
     print("=" * 60)
-    
+
     print("\n📋 Created Repositories:")
     for repo in created_repos:
         print(f"  - {repo['name']}: {repo['uri']}")
-    
+
     print("\n📋 Lifecycle Policy:")
     print("  - Keep last 10 production-* images")
     print("  - Keep last 5 staging-* images")
     print("  - Remove untagged images after 1 day")
     print("  - Keep maximum 20 images total")
-    
+
     print("\n📋 Next Steps:")
     print("1. The workflows will automatically push images to these repositories")
     print("2. Ensure EC2 instance role has permission to pull from ECR")
-    
+
     return created_repos
 
 
@@ -223,7 +209,7 @@ if __name__ == "__main__":
     parser.add_argument("--profile", "-p", help="AWS profile to use")
     parser.add_argument("--region", "-r", default="us-east-1", help="AWS region")
     args = parser.parse_args()
-    
+
     try:
         main(profile=args.profile, region=args.region)
     except Exception as e:
