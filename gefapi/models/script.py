@@ -236,13 +236,10 @@ class Script(db.Model):
             script["logs"] = self.serialize_logs
         if "user" in include:
             script["user"] = self.user.serialize()
-        if "user_name" in include:
-            if user and not is_admin_or_higher(user):
-                raise Exception("Only admin or superadmin users can include user_name")
+        # user_name/user_email: only for admin users, silently skip for non-admins
+        if "user_name" in include and (not user or is_admin_or_higher(user)):
             script["user_name"] = getattr(self.user, "name", None)
-        if "user_email" in include:
-            if user and not is_admin_or_higher(user):
-                raise Exception("Only admin or superadmin users can include user_email")
+        if "user_email" in include and (not user or is_admin_or_higher(user)):
             script["user_email"] = getattr(self.user, "email", None)
         if "executions" in include:
             script["executions"] = self.serialize_executions

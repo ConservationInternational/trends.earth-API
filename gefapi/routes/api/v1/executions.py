@@ -259,16 +259,16 @@ def get_user_executions():
             filter_param=filter_param,
             sort=sort,
         )
+
+        response_data = {
+            "data": [
+                execution.serialize(include, exclude, current_user)
+                for execution in executions
+            ]
+        }
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-
-    response_data = {
-        "data": [
-            execution.serialize(include, exclude, current_user)
-            for execution in executions
-        ]
-    }
 
     # Only include pagination metadata if pagination was requested
     if paginate:
@@ -411,16 +411,17 @@ def get_executions():
             filter_param=filter_param,
             sort=sort,
         )
+
+        response_data = {
+            "data": [
+                execution.serialize(include, exclude, current_user)
+                for execution in executions
+            ]
+        }
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
 
-    response_data = {
-        "data": [
-            execution.serialize(include, exclude, current_user)
-            for execution in executions
-        ]
-    }
     # Only include pagination metadata if pagination was requested
     if paginate:
         response_data["page"] = page
@@ -490,13 +491,14 @@ def get_execution(execution):
     exclude = exclude.split(",") if exclude else []
     try:
         execution = ExecutionService.get_execution(execution, current_user)
+        serialized = execution.serialize(include, exclude, current_user)
     except ExecutionNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=execution.serialize(include, exclude, current_user)), 200
+    return jsonify(data=serialized), 200
 
 
 @endpoints.route("/execution/<execution>", strict_slashes=False, methods=["PATCH"])

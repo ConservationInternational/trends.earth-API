@@ -215,13 +215,16 @@ def get_scripts():
             per_page=per_page,
             paginate=paginate,
         )
+
+        response_data = {
+            "data": [
+                script.serialize(include, exclude, current_user) for script in scripts
+            ]
+        }
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
 
-    response_data = {
-        "data": [script.serialize(include, exclude, current_user) for script in scripts]
-    }
     if paginate:
         response_data["page"] = page
         response_data["per_page"] = per_page
@@ -290,13 +293,14 @@ def get_script(script):
     exclude = exclude.split(",") if exclude else []
     try:
         script = ScriptService.get_script(script, current_user)
+        serialized = script.serialize(include, exclude, current_user)
     except ScriptNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=script.serialize(include, exclude, current_user)), 200
+    return jsonify(data=serialized), 200
 
 
 @endpoints.route("/script/<script>/publish", strict_slashes=False, methods=["POST"])
@@ -354,13 +358,14 @@ def publish_script(script):
     logger.info("[ROUTER]: Publishing script " + script)
     try:
         script = ScriptService.publish_script(script, current_user)
+        serialized = script.serialize(user=current_user)
     except ScriptNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=script.serialize(user=current_user)), 200
+    return jsonify(data=serialized), 200
 
 
 @endpoints.route("/script/<script>/unpublish", strict_slashes=False, methods=["POST"])
@@ -420,13 +425,14 @@ def unpublish_script(script):
     logger.info("[ROUTER]: Unpublishsing script " + script)
     try:
         script = ScriptService.unpublish_script(script, current_user)
+        serialized = script.serialize(user=current_user)
     except ScriptNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=script.serialize(user=current_user)), 200
+    return jsonify(data=serialized), 200
 
 
 @endpoints.route("/script/<script>/download", strict_slashes=False, methods=["GET"])
@@ -725,10 +731,11 @@ def delete_script(script):
         return error(status=403, detail="Forbidden")
     try:
         script = ScriptService.delete_script(script, identity)
+        serialized = script.serialize(user=current_user)
     except ScriptNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=script.serialize(user=current_user)), 200
+    return jsonify(data=serialized), 200
