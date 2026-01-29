@@ -1,5 +1,10 @@
 # Deployment Scripts Reference
 
+> ⚠️ **Note**: The primary deployment method has been updated to use **AWS CodeDeploy**.  
+> See [📖 CodeDeploy Setup Guide](../../docs/CODEDEPLOY_SETUP.md) for the current deployment process.
+>
+> The scripts in this directory are still useful for local testing and debugging.
+
 This directory contains modular deployment scripts that are used by the GitHub Actions workflows to set up and manage the staging environment.
 
 ## 🔒 Security Notice

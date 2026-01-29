@@ -1,0 +1,53 @@
+version: 0.0
+os: linux
+files:
+  # Copy deployment package files to application directory
+  # The destination is modified by the GitHub Actions workflow based on environment
+  - source: /
+    destination: /opt/trendsearth-api
+    overwrite: true
+
+# File permissions
+permissions:
+  - object: /opt/trendsearth-api
+    pattern: "**"
+    owner: ubuntu
+    group: ubuntu
+    mode: 755
+  - object: /opt/trendsearth-api/scripts
+    pattern: "**/*.sh"
+    owner: ubuntu
+    group: ubuntu
+    mode: 755
+
+# Lifecycle hooks
+hooks:
+  # Stop existing application before deployment
+  ApplicationStop:
+    - location: scripts/codedeploy/application-stop.sh
+      timeout: 120
+      runas: root
+
+  # Prepare environment for new deployment
+  BeforeInstall:
+    - location: scripts/codedeploy/before-install.sh
+      timeout: 300
+      runas: root
+
+  # Pull Docker images and prepare application
+  AfterInstall:
+    - location: scripts/codedeploy/after-install.sh
+      timeout: 600
+      runas: root
+
+  # Start the application
+  ApplicationStart:
+    - location: scripts/codedeploy/application-start.sh
+      timeout: 600
+      runas: root
+
+  # Validate the deployment
+  ValidateService:
+    - location: scripts/codedeploy/validate-service.sh
+      timeout: 300
+      runas: root

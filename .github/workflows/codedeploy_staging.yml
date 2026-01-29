@@ -1,0 +1,388 @@
+name: CodeDeploy - Staging
+
+on:
+  push:
+    branches:
+      - staging
+      - develop
+    paths:
+      - 'gefapi/**'
+      - 'migrations/**'
+      - 'docker-compose.yml'
+      - 'docker-compose.staging.yml'
+      - 'Dockerfile'
+      - 'entrypoint.sh'
+      - 'appspec.yml'
+      - 'scripts/codedeploy/**'
+      - '.github/workflows/codedeploy_staging.yml'
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: 'Force deployment even if no changes detected'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  AWS_REGION: us-east-1
+  APPLICATION_NAME: trendsearth-api
+  DEPLOYMENT_GROUP: trendsearth-api-staging
+  ECR_REPOSITORY: trendsearth-api
+
+concurrency:
+  group: staging-deployment
+  cancel-in-progress: false
+
+# Required for OIDC authentication with AWS
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    outputs:
+      image-uri: ${{ steps.build-push.outputs.image-uri }}
+      image-tag: ${{ steps.deployment-info.outputs.image-tag }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Get deployment info
+      id: deployment-info
+      run: |
+        echo "commit-sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+        echo "short-sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+        echo "timestamp=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+        echo "image-tag=staging-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+        echo "branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+
+    - name: Configure AWS credentials via OIDC
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+        role-session-name: GitHubActionsStagingBuild
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Ensure ECR repository exists
+      id: ecr-repo
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      run: |
+        REPO="${{ env.ECR_REPOSITORY }}"
+        echo "repo-name=$REPO" >> $GITHUB_OUTPUT
+        
+        if ! aws ecr describe-repositories --repository-names "$REPO" 2>/dev/null; then
+          echo "Creating ECR repository: $REPO"
+          aws ecr create-repository \
+            --repository-name "$REPO" \
+            --image-scanning-configuration scanOnPush=true \
+            --image-tag-mutability MUTABLE
+        else
+          echo "ECR repository exists: $REPO"
+        fi
+
+    - name: Build and push Docker image to ECR
+      id: build-push
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ steps.deployment-info.outputs.image-tag }}
+      run: |
+        IMAGE_URI="$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
+        
+        docker buildx build \
+          --platform linux/amd64 \
+          --cache-from=type=gha,scope=trendsearth-api-staging \
+          --cache-to=type=gha,mode=max,scope=trendsearth-api-staging \
+          --tag "$IMAGE_URI" \
+          --tag "$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:staging-latest" \
+          --push \
+          .
+        
+        echo "image-uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+        echo "✅ Docker image pushed to ECR: $IMAGE_URI"
+
+  deploy:
+    name: Deploy to Staging via CodeDeploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    needs: build-and-push
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials via OIDC
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+        role-session-name: GitHubActionsStagingDeploy
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Get deployment info
+      id: deployment-info
+      run: |
+        echo "commit-sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+        echo "short-sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+        echo "timestamp=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+        
+        # Get AWS account ID for S3 bucket name
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        echo "s3-bucket=trendsearth-api-deployments-${ACCOUNT_ID}" >> $GITHUB_OUTPUT
+
+    - name: Get image references
+      id: images
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      run: |
+        echo "api-image=${{ needs.build-and-push.outputs.image-uri }}" >> $GITHUB_OUTPUT
+        echo "ecr-registry=$ECR_REGISTRY" >> $GITHUB_OUTPUT
+        echo "✅ API image: ${{ needs.build-and-push.outputs.image-uri }}"
+
+    - name: Create environment file for deployment
+      env:
+        ECR_REGISTRY: ${{ steps.images.outputs.ecr-registry }}
+        API_IMAGE: ${{ steps.images.outputs.api-image }}
+      run: |
+        # Generate staging.env with secrets from GitHub
+        # This file is included in the deployment package and copied to the server
+        # Uses staging.env to match docker-compose.staging.yml env_file reference
+        cat > staging.env << EOF
+        # Generated by GitHub Actions on $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        # Commit: ${{ github.sha }}
+        
+        # ECR Images (pre-built in CI)
+        ECR_REGISTRY=$ECR_REGISTRY
+        API_IMAGE=$API_IMAGE
+        
+        # Environment
+        ENVIRONMENT=staging
+        DEBUG=False
+        TESTING=false
+        
+        # Flask/API Configuration
+        SECRET_KEY=${{ secrets.SECRET_KEY }}
+        JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+        
+        # Database Configuration
+        DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}
+        
+        # Redis Configuration
+        REDIS_URL=${{ secrets.STAGING_REDIS_URL }}
+        
+        # Rate Limiting
+        RATE_LIMITING_ENABLED=${{ secrets.RATE_LIMITING_ENABLED || 'true' }}
+        RATE_LIMIT_STORAGE_URI=${{ secrets.STAGING_RATE_LIMIT_STORAGE_URI }}
+        
+        # Google Earth Engine
+        GEE_SERVICE_ACCOUNT_JSON=${{ secrets.GEE_SERVICE_ACCOUNT_JSON }}
+        
+        # Rollbar Error Tracking
+        ROLLBAR_SCRIPT_TOKEN=${{ secrets.ROLLBAR_SCRIPT_TOKEN }}
+        ROLLBAR_ENV=staging
+        
+        # API URLs
+        API_URL=${{ secrets.STAGING_API_URL || 'https://api-staging.trends.earth' }}
+        
+        # S3 Configuration
+        S3_BUCKET_NAME=${{ secrets.STAGING_S3_BUCKET_NAME }}
+        AWS_ACCESS_KEY_ID=${{ secrets.STAGING_AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY=${{ secrets.STAGING_AWS_SECRET_ACCESS_KEY }}
+        
+        # SMTP Configuration
+        SMTP_HOST=${{ secrets.SMTP_HOST }}
+        SMTP_PORT=${{ secrets.SMTP_PORT }}
+        SMTP_USER=${{ secrets.SMTP_USER }}
+        SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+        SMTP_FROM=${{ secrets.SMTP_FROM }}
+        
+        # Deployment info
+        GIT_REVISION=${{ github.sha }}
+        GIT_BRANCH=${{ github.ref_name }}
+        DEPLOYMENT_ENVIRONMENT=staging
+        EOF
+        
+        echo "✅ Created staging.env with $(wc -l < staging.env) lines"
+
+    - name: Update appspec.yml for staging
+      run: |
+        # Modify appspec.yml to use staging-specific destination
+        # This prevents race conditions when staging and production deploy simultaneously
+        sed -i 's|destination: /opt/trendsearth-api|destination: /opt/trendsearth-api-staging|g' appspec.yml
+        echo "Updated appspec.yml destination to /opt/trendsearth-api-staging"
+        cat appspec.yml
+
+    - name: Create deployment package
+      id: package
+      run: |
+        # Create a deployment archive
+        REVISION_FILE="staging-${{ steps.deployment-info.outputs.timestamp }}-${{ steps.deployment-info.outputs.short-sha }}.zip"
+        echo "revision-file=$REVISION_FILE" >> $GITHUB_OUTPUT
+        
+        # Include only files needed for deployment (not source code - that's in the Docker image)
+        zip -r "$REVISION_FILE" \
+          appspec.yml \
+          staging.env \
+          docker-compose.yml \
+          docker-compose.staging.yml \
+          scripts/codedeploy/ \
+          entrypoint.sh \
+          -x "*.pyc" \
+          -x "__pycache__/*" \
+          -x ".git/*" \
+          -x ".venv/*" \
+          -x "*.log"
+        
+        echo "Created deployment package: $REVISION_FILE ($(du -h $REVISION_FILE | cut -f1))"
+
+    - name: Upload deployment package to S3
+      id: upload
+      run: |
+        BUCKET="${{ steps.deployment-info.outputs.s3-bucket }}"
+        KEY="staging/${{ steps.package.outputs.revision-file }}"
+        
+        aws s3 cp "${{ steps.package.outputs.revision-file }}" "s3://$BUCKET/$KEY"
+        
+        echo "s3-key=$KEY" >> $GITHUB_OUTPUT
+        echo "Uploaded to s3://$BUCKET/$KEY"
+
+    - name: Stop any in-progress deployments
+      run: |
+        echo "🔍 Checking for in-progress deployments..."
+        
+        # Get list of active deployments
+        ACTIVE_DEPLOYMENTS=$(aws deploy list-deployments \
+          --application-name ${{ env.APPLICATION_NAME }} \
+          --deployment-group-name ${{ env.DEPLOYMENT_GROUP }} \
+          --include-only-statuses "InProgress" "Queued" "Created" \
+          --query 'deployments' \
+          --output text 2>/dev/null || echo "")
+        
+        if [ -n "$ACTIVE_DEPLOYMENTS" ] && [ "$ACTIVE_DEPLOYMENTS" != "None" ]; then
+          for DEPLOYMENT_ID in $ACTIVE_DEPLOYMENTS; do
+            echo "⏹️ Stopping deployment: $DEPLOYMENT_ID"
+            aws deploy stop-deployment \
+              --deployment-id "$DEPLOYMENT_ID" \
+              --auto-rollback-enabled || echo "  (already stopping or stopped)"
+          done
+          
+          # Wait for deployments to stop
+          echo "⏳ Waiting for deployments to stop..."
+          sleep 15
+          echo "✅ Previous deployments stopped"
+        else
+          echo "✅ No active deployments found"
+        fi
+
+    - name: Create CodeDeploy deployment
+      id: deploy
+      run: |
+        BUCKET="${{ steps.deployment-info.outputs.s3-bucket }}"
+        KEY="${{ steps.upload.outputs.s3-key }}"
+        
+        DEPLOYMENT_ID=$(aws deploy create-deployment \
+          --application-name ${{ env.APPLICATION_NAME }} \
+          --deployment-group-name ${{ env.DEPLOYMENT_GROUP }} \
+          --s3-location bucket=$BUCKET,key=$KEY,bundleType=zip \
+          --deployment-config-name CodeDeployDefault.OneAtATime \
+          --description "Staging deployment from ${{ github.ref_name }}" \
+          --file-exists-behavior OVERWRITE \
+          --query 'deploymentId' \
+          --output text)
+        
+        echo "deployment-id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+        echo "🚀 Created deployment: $DEPLOYMENT_ID"
+
+    - name: Wait for deployment to complete
+      run: |
+        DEPLOYMENT_ID="${{ steps.deploy.outputs.deployment-id }}"
+        echo "⏳ Waiting for deployment $DEPLOYMENT_ID to complete..."
+        
+        # Wait for deployment (max 30 minutes)
+        aws deploy wait deployment-successful \
+          --deployment-id "$DEPLOYMENT_ID" \
+          --cli-read-timeout 1800 || {
+            # Get deployment info if failed
+            STATUS=$(aws deploy get-deployment --deployment-id "$DEPLOYMENT_ID" \
+              --query 'deploymentInfo.status' --output text)
+            
+            echo "❌ Deployment failed with status: $STATUS"
+            
+            # Get deployment events for debugging
+            echo "📋 Deployment events:"
+            aws deploy list-deployment-targets --deployment-id "$DEPLOYMENT_ID" \
+              --query 'targetIds' --output text | while read TARGET_ID; do
+              echo "Target: $TARGET_ID"
+              aws deploy get-deployment-target \
+                --deployment-id "$DEPLOYMENT_ID" \
+                --target-id "$TARGET_ID" \
+                --query 'deploymentTarget.instanceTarget.lifecycleEvents[*].{Event:lifecycleEventName,Status:status,Message:diagnostics.message}' \
+                --output table
+            done
+            
+            exit 1
+          }
+        
+        echo "✅ Deployment completed successfully!"
+
+    - name: Verify deployment
+      run: |
+        echo "🔍 Verifying deployment..."
+        
+        # Get deployment status
+        DEPLOYMENT_ID="${{ steps.deploy.outputs.deployment-id }}"
+        aws deploy get-deployment \
+          --deployment-id "$DEPLOYMENT_ID" \
+          --query 'deploymentInfo.{Status:status,CreateTime:createTime,CompleteTime:completeTime}' \
+          --output table
+
+    - name: Deployment notification
+      if: always()
+      run: |
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "✅ Staging deployment successful!"
+          echo "🌐 Site: https://api-staging.trends.earth"
+          echo "📦 Commit: ${{ github.sha }}"
+          echo "🚀 Deployment ID: ${{ steps.deploy.outputs.deployment-id }}"
+        else
+          echo "❌ Staging deployment failed!"
+          echo "📦 Commit: ${{ github.sha }}"
+          echo "🚀 Deployment ID: ${{ steps.deploy.outputs.deployment-id }}"
+          exit 1
+        fi
+
+    - name: Notify Rollbar of deployment
+      if: success()
+      run: |
+        # Notify Rollbar of successful deployment (if token is configured)
+        if [ -n "${{ secrets.ROLLBAR_ACCESS_TOKEN }}" ]; then
+          curl -X POST 'https://api.rollbar.com/api/1/deploy/' \
+            -F access_token="${{ secrets.ROLLBAR_ACCESS_TOKEN }}" \
+            -F environment="staging" \
+            -F revision="${{ github.sha }}" \
+            -F local_username="${{ github.actor }}" \
+            -F comment="Deployed via CodeDeploy from ${{ github.ref_name }}" \
+            -F status=succeeded
+          echo "📊 Rollbar deployment notification sent"
+        else
+          echo "⚠️ ROLLBAR_ACCESS_TOKEN not configured, skipping deployment notification"
+        fi
