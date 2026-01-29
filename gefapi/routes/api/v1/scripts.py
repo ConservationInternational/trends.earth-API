@@ -579,13 +579,14 @@ def get_script_logs(script):
             start = dateutil.parser.parse(start)
         last_id = request.args.get("last-id", None)
         logs = ScriptService.get_script_logs(script, start, last_id)
+        serialized = [log.serialize() for log in logs]
     except ScriptNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=[log.serialize() for log in logs]), 200
+    return jsonify(data=serialized), 200
 
 
 @endpoints.route("/script/<script>", strict_slashes=False, methods=["PATCH"])

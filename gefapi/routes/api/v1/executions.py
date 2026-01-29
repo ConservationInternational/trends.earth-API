@@ -813,13 +813,14 @@ def get_execution_logs(execution):
             start = dateutil.parser.parse(start)
         last_id = request.args.get("last-id", None)
         logs = ExecutionService.get_execution_logs(execution, start, last_id)
+        serialized = [log.serialize() for log in logs]
     except ExecutionNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=[log.serialize() for log in logs]), 200
+    return jsonify(data=serialized), 200
 
 
 @endpoints.route(
