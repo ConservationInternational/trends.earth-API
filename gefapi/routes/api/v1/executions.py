@@ -98,36 +98,41 @@ def run_script(script):
     """
     logger.info("[ROUTER]: Running script: " + script)
     user = current_user
+
+    # Security: Reject token query parameter usage (CWE-598)
+    # Tokens in URLs are logged in server logs, browser history, and referrer headers
+    if request.args.get("token"):
+        import rollbar
+
+        rollbar.report_message(
+            "SECURITY ERROR: Rejected token query parameter in script execution "
+            f"request for script '{script}' by user '{user.email}'. Token-based "
+            "authentication via query parameters is not supported. Use "
+            "Authorization header instead.",
+            level="error",
+            extra_data={
+                "script": script,
+                "user_id": str(user.id),
+                "user_email": user.email,
+                "endpoint": "run_script",
+                "security_issue": "CWE-598",
+                "client_ip": request.remote_addr,
+            },
+        )
+        logger.error(
+            f"[SECURITY]: Rejected token query parameter from {user.email} "
+            f"for script {script}. CWE-598 violation."
+        )
+        return error(
+            status=400,
+            detail="Token authentication via query parameters is not supported. "
+            "Use the Authorization header with a Bearer token instead.",
+        )
+
     try:
         params = request.args.to_dict() if request.args else {}
         if request.get_json(silent=True):
             params.update(request.get_json())
-        if "token" in params:
-            # Security: Log deprecated token query parameter usage
-            # Tokens in URLs are logged in server logs, browser history, and referrer
-            # headers, which is a security risk (CWE-598)
-            import rollbar
-
-            rollbar.report_message(
-                "SECURITY WARNING: Deprecated token query parameter used in "
-                f"script execution request for script '{script}' by user "
-                f"'{user.email}'. Token-based authentication via query "
-                "parameters is deprecated and will be removed in a future "
-                "version. Use Authorization header instead.",
-                level="warning",
-                extra_data={
-                    "script": script,
-                    "user_id": str(user.id),
-                    "user_email": user.email,
-                    "endpoint": "run_script",
-                    "security_issue": "CWE-598",
-                },
-            )
-            logger.warning(
-                f"[SECURITY]: Deprecated token query parameter used by {user.email} "
-                f"for script {script}. This should be migrated to header-based auth."
-            )
-            del params["token"]
         execution = ExecutionService.create_execution(script, params, user)
     except ScriptNotFound as e:
         logger.error("[ROUTER]: " + e.message)
