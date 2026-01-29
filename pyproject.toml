@@ -54,6 +54,7 @@ geoalchemy2 = ">=0.14.0"
 shapely = ">=2.0.0"
 # TopoJSON for converting TopoJSON to GeoJSON
 topojson = ">=1.0"
+brotlicffi = "^1.2.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
