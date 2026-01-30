@@ -1,6 +1,6 @@
 services:
   migrate:
-    image: ${API_IMAGE:-${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:latest}
+    image: ${API_IMAGE}
     command: migrate
     environment:
       PORT: 3000
@@ -18,7 +18,7 @@ services:
         condition: on-failure
 
   api:
-    image: ${API_IMAGE:-${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:latest}
+    image: ${API_IMAGE}
     command: start
     # Enable EC2 instance role credentials for AWS SDK (S3, etc.)
     extra_hosts:
@@ -65,7 +65,7 @@ services:
         window: 120s
 
   worker:
-    image: ${API_IMAGE:-${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:latest}
+    image: ${API_IMAGE}
     command: worker
     # Enable EC2 instance role credentials for AWS SDK (S3, etc.)
     extra_hosts:
@@ -103,7 +103,7 @@ services:
         window: 120s
 
   beat:
-    image: ${API_IMAGE:-${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:latest}
+    image: ${API_IMAGE}
     command: beat
     # Enable EC2 instance role credentials for AWS SDK (S3, etc.)
     extra_hosts:
@@ -140,7 +140,7 @@ services:
         window: 120s
 
   docker:
-    image: ${API_IMAGE:-${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:latest}
+    image: ${API_IMAGE}
     command: worker
     user: root
     # Enable EC2 instance role credentials for AWS SDK (S3, ECR, etc.)
