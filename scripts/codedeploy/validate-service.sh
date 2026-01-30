@@ -68,7 +68,9 @@ fi
 
 log_info "Performing API health check on port $API_PORT..."
 
-HEALTH_URL="http://localhost:${API_PORT}/api-health"
+# Use 127.0.0.1 instead of localhost to force IPv4
+# (localhost may resolve to IPv6 ::1 which Docker doesn't bind to)
+HEALTH_URL="http://127.0.0.1:${API_PORT}/api-health"
 MAX_ATTEMPTS=30
 ATTEMPT=1
 
@@ -110,7 +112,7 @@ done
 # ============================================================================
 
 log_info "Checking API documentation endpoint..."
-DOCS_URL="http://localhost:${API_PORT}/api/docs/"
+DOCS_URL="http://127.0.0.1:${API_PORT}/api/docs/"
 
 HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "$DOCS_URL" 2>/dev/null || echo "000")
 
@@ -125,7 +127,7 @@ fi
 # ============================================================================
 
 log_info "Checking database connectivity via API..."
-USER_ENDPOINT="http://localhost:${API_PORT}/api/v1/user/me"
+USER_ENDPOINT="http://127.0.0.1:${API_PORT}/api/v1/user/me"
 
 HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "$USER_ENDPOINT" 2>/dev/null || echo "000")
 
