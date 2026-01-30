@@ -1112,9 +1112,10 @@ class DockerService:
                 if client is None:
                     raise Exception("Docker client is not available")
 
-                # Build hosts list for EC2 metadata access (instance role credentials)
+                # Build hosts dict for EC2 metadata access (instance role credentials)
                 # This allows execution containers to use boto3 with instance roles
-                hosts = ["169.254.169.254:169.254.169.254"]
+                # For Docker Swarm services, hosts must be a dict {hostname: ip_address}
+                hosts = {"169.254.169.254": "169.254.169.254"}
 
                 create_kwargs = {
                     "image": f"{REGISTRY_URL}/{image}",
