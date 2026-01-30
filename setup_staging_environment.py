@@ -1039,7 +1039,7 @@ class StagingEnvironmentSetup:
         prod_cursor = None
         staging_cursor = None
 
-        # Tables to copy (in order due to potential foreign key relationships)
+        # Tables to copy (in order for INSERT - parent tables first)
         boundary_tables = [
             "admin_boundary_0_metadata",
             "admin_boundary_1_metadata",
@@ -1050,6 +1050,20 @@ class StagingEnvironmentSetup:
             prod_cursor = prod_conn.cursor()
             staging_cursor = staging_conn.cursor()
 
+            # Delete all tables first in REVERSE order (child tables first)
+            # This respects foreign key constraints
+            logger.info("Clearing existing boundary data (child tables first)...")
+            for table_name in reversed(boundary_tables):
+                try:
+                    delete_sql = f"DELETE FROM {table_name}"  # noqa: S608
+                    staging_cursor.execute(delete_sql)
+                    staging_conn.commit()
+                    logger.info(f"  Cleared {table_name}")
+                except psycopg2.Error as e:
+                    logger.warning(f"  Could not clear {table_name}: {e}")
+                    staging_conn.rollback()
+
+            # Now copy tables in forward order (parent tables first)
             for table_name in boundary_tables:
                 logger.info(f"Copying {table_name}...")
 
@@ -1083,12 +1097,6 @@ class StagingEnvironmentSetup:
                 if not columns:
                     logger.warning(f"No columns found for {table_name}, skipping")
                     continue
-
-                # Clear existing data in staging
-                # Table names are from hardcoded whitelist, safe from injection
-                delete_sql = f"DELETE FROM {table_name}"  # noqa: S608
-                staging_cursor.execute(delete_sql)
-                staging_conn.commit()
 
                 # Count records in production
                 count_sql = f"SELECT COUNT(*) FROM {table_name}"  # noqa: S608
