@@ -652,7 +652,6 @@ class StagingEnvironmentSetup:
 
             # Build dynamic query with common columns
             columns_str = ', '.join(common_columns)
-            placeholders = ', '.join(['%s'] * len(common_columns))
 
             # Note: columns_str is derived from information_schema, not user input
             # so this is safe from SQL injection
@@ -669,36 +668,42 @@ class StagingEnvironmentSetup:
             status_logs = prod_cursor.fetchall()
             logger.info(f"Found {len(status_logs)} recent status logs to import")
 
-            imported_count = 0
-            for log in status_logs:
-                try:
-                    # Insert using dynamic columns (columns derived from
-                    # information_schema, safe from SQL injection)
-                    staging_cursor.execute(
-                        f"""
-                        INSERT INTO status_log ({columns_str})
-                        VALUES ({placeholders})
-                    """,  # noqa: S608
-                        log,
-                    )
-                    imported_count += 1
+            if not status_logs:
+                logger.info("No status logs to import")
+            else:
+                # Use execute_values for fast bulk insert
+                from psycopg2.extras import execute_values
 
-                    if imported_count % 100 == 0:
-                        logger.info(f"Imported {imported_count} status logs so far...")
-
-                except psycopg2.Error as e:
-                    logger.warning(f"Failed to import status log: {e}")
-                    # If it's an integrity error, log more details
-                    if (
-                        "unique constraint" in str(e).lower()
-                        or "duplicate key" in str(e).lower()
-                    ):
-                        logger.error(
-                            "Duplicate status log key detected - "
-                            "this indicates a race condition"
+                batch_size = 20000
+                imported_count = 0
+                for i in range(0, len(status_logs), batch_size):
+                    batch = status_logs[i : i + batch_size]
+                    try:
+                        # Note: columns_str is derived from information_schema,
+                        # not user input, so this is safe from SQL injection
+                        execute_values(
+                            staging_cursor,
+                            f"INSERT INTO status_log ({columns_str}) "  # noqa: S608
+                            "VALUES %s",
+                            batch,
+                            page_size=batch_size,
                         )
-                        # Continue with other logs rather than failing completely
-                        continue
+                        imported_count += len(batch)
+                        logger.info(
+                            f"Imported {imported_count}/{len(status_logs)} "
+                            f"status logs..."
+                        )
+                    except psycopg2.Error as e:
+                        logger.warning(f"Failed to import batch at offset {i}: {e}")
+                        # If it's an integrity error, log more details
+                        if (
+                            "unique constraint" in str(e).lower()
+                            or "duplicate key" in str(e).lower()
+                        ):
+                            logger.error(
+                                "Duplicate status log key detected - "
+                                "this indicates a race condition"
+                            )
 
             # Set sequence to start from a safe value after the imported logs
             staging_cursor.execute("SELECT MAX(id) FROM status_log")
@@ -861,30 +866,41 @@ class StagingEnvironmentSetup:
             script_logs = prod_cursor.fetchall()
             logger.info(f"Found {len(script_logs)} script logs to import")
 
-            imported_count = 0
+            # Build batch of logs with remapped script IDs
+            logs_to_insert = []
             for log in script_logs:
+                old_script_id = log[3]
+                new_script_id = script_id_mapping.get(old_script_id)
+                if new_script_id:
+                    # (text, register_date, script_id)
+                    logs_to_insert.append((log[1], log[2], new_script_id))
+
+            if not logs_to_insert:
+                logger.info("No script logs to import after ID mapping")
+                return
+
+            # Use execute_values for fast bulk insert
+            from psycopg2.extras import execute_values
+
+            batch_size = 20000
+            imported_count = 0
+            for i in range(0, len(logs_to_insert), batch_size):
+                batch = logs_to_insert[i : i + batch_size]
                 try:
-                    old_script_id = log[3]
-                    new_script_id = script_id_mapping.get(old_script_id)
-
-                    if new_script_id:
-                        # Insert without ID to let sequence generate new IDs
-                        staging_cursor.execute(
-                            """
-                            INSERT INTO script_log (text, register_date, script_id)
-                            VALUES (%s, %s, %s)
-                        """,
-                            (log[1], log[2], new_script_id),
-                        )
-                        imported_count += 1
-
-                        if imported_count % 100 == 0:
-                            logger.info(
-                                f"Imported {imported_count} script logs so far..."
-                            )
-
+                    execute_values(
+                        staging_cursor,
+                        "INSERT INTO script_log (text, register_date, script_id) "
+                        "VALUES %s",
+                        batch,
+                        page_size=batch_size,
+                    )
+                    imported_count += len(batch)
+                    logger.info(
+                        f"Imported {imported_count}/{len(logs_to_insert)} "
+                        f"script logs..."
+                    )
                 except psycopg2.Error as e:
-                    logger.warning(f"Failed to import script log {log[0]}: {e}")
+                    logger.warning(f"Failed to import batch at offset {i}: {e}")
 
             # Set sequence to start from a safe value after the imported logs
             try:
