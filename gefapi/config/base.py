@@ -16,7 +16,9 @@ SETTINGS = {
     "logging": {"level": os.getenv("LOG_LEVEL", "INFO")},
     "service": {"port": 3000},
     "environment": {
-        "ROLLBAR_SCRIPT_TOKEN": os.getenv("ROLLBAR_SCRIPT_TOKEN"),
+        # ROLLBAR_SCRIPT_TOKEN falls back to ROLLBAR_SERVER_TOKEN for backwards compatibility
+        "ROLLBAR_SCRIPT_TOKEN": os.getenv("ROLLBAR_SCRIPT_TOKEN")
+        or os.getenv("ROLLBAR_SERVER_TOKEN"),
         "ROLLBAR_SERVER_TOKEN": os.getenv("ROLLBAR_SERVER_TOKEN"),
         "GOOGLE_PROJECT_ID": os.getenv("GOOGLE_PROJECT_ID"),
         "GEE_ENDPOINT": os.getenv("GEE_ENDPOINT"),

@@ -177,8 +177,9 @@ Add these secrets to your GitHub repository (Settings → Secrets and variables 
 
 | Secret Name | Description | Notes |
 |-------------|-------------|-------|
-| `ROLLBAR_SCRIPT_TOKEN` | Rollbar token for script/execution errors | From Rollbar project settings |
-| `ROLLBAR_SERVER_TOKEN` | Rollbar token for API server errors | From Rollbar project settings |
+| `ROLLBAR_SERVER_TOKEN` | Rollbar token for error reporting | From Rollbar project settings (post_server_item scope) |
+| `ROLLBAR_SCRIPT_TOKEN` | Rollbar token for script/execution errors | Optional - falls back to `ROLLBAR_SERVER_TOKEN` if not set |
+| `ROLLBAR_ACCESS_TOKEN` | Rollbar token for deployment notifications | Optional - requires write scope for deploy tracking |
 | `SPARKPOST_API_KEY` | SparkPost API key for email notifications | Optional - email disabled if not set |
 
 #### API Environment Authentication
