@@ -142,9 +142,7 @@ class StagingEnvironmentSetup:
             cursor = conn.cursor()
 
             db_name = self.staging_db_config["database"]
-            cursor.execute(
-                f'ALTER DATABASE "{db_name}" REFRESH COLLATION VERSION'
-            )
+            cursor.execute(f'ALTER DATABASE "{db_name}" REFRESH COLLATION VERSION')
             logger.info(f"✓ Refreshed collation version for database {db_name}")
 
         except psycopg2.Error as e:
