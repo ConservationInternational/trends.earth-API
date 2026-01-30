@@ -255,8 +255,102 @@ check_swarm_leader_or_skip() {
     fi
 }
 
+# Check if stack networks exist and are healthy
+# Returns 0 if healthy, 1 if needs recovery
+check_stack_networks() {
+    local stack_name="$1"
+    
+    # Expected networks for our stack
+    local backend_network="${stack_name}_backend"
+    local execution_network="${stack_name}_execution"
+    
+    # Check if networks exist
+    if ! docker network inspect "$backend_network" >/dev/null 2>&1; then
+        log_warning "Network $backend_network does not exist"
+        return 1
+    fi
+    
+    if ! docker network inspect "$execution_network" >/dev/null 2>&1; then
+        log_warning "Network $execution_network does not exist"
+        return 1
+    fi
+    
+    log_success "Stack networks are healthy"
+    return 0
+}
+
+# Recover a stack that's in a bad state by removing and redeploying
+# This fixes issues where networks exist but tasks are stuck in "New" state
+recover_stack() {
+    local stack_name="$1"
+    local compose_file="$2"
+    
+    log_warning "Attempting stack recovery for $stack_name..."
+    
+    # Check if stack exists
+    if docker stack ls --format "{{.Name}}" 2>/dev/null | grep -q "^${stack_name}$"; then
+        log_info "Removing existing stack to recover from bad state..."
+        docker stack rm "$stack_name" 2>/dev/null || true
+        
+        # Wait for stack resources to be fully removed
+        log_info "Waiting for stack resources to be cleaned up..."
+        local wait_count=0
+        local max_wait=60
+        while [ $wait_count -lt $max_wait ]; do
+            # Check if any stack resources still exist
+            local remaining=$(docker service ls --filter "name=${stack_name}_" --format "{{.Name}}" 2>/dev/null | wc -l)
+            if [ "$remaining" -eq 0 ]; then
+                # Also wait for networks to be removed
+                if ! docker network inspect "${stack_name}_backend" >/dev/null 2>&1 && \
+                   ! docker network inspect "${stack_name}_execution" >/dev/null 2>&1; then
+                    log_success "Stack resources cleaned up"
+                    break
+                fi
+            fi
+            sleep 2
+            wait_count=$((wait_count + 2))
+        done
+        
+        if [ $wait_count -ge $max_wait ]; then
+            log_warning "Timeout waiting for cleanup, proceeding anyway..."
+        fi
+        
+        # Extra wait for Docker to fully release resources
+        sleep 5
+    fi
+    
+    return 0
+}
+
+# Check for stuck services (tasks in "New" or "Pending" state for too long)
+check_for_stuck_services() {
+    local stack_name="$1"
+    
+    # Check for tasks stuck in "New" state with no node assigned
+    local stuck_tasks=$(docker service ls --filter "name=${stack_name}_" --format "{{.Name}} {{.Replicas}}" 2>/dev/null | \
+        grep -E "0/[0-9]+" | head -5 || echo "")
+    
+    if [ -n "$stuck_tasks" ]; then
+        log_warning "Found services with 0 running replicas:"
+        echo "$stuck_tasks"
+        
+        # Check if these are actually stuck (no node assignment)
+        for service_info in $stuck_tasks; do
+            local service_name=$(echo "$service_info" | awk '{print $1}')
+            local task_state=$(docker service ps "$service_name" --format "{{.CurrentState}} {{.Node}}" 2>/dev/null | head -1)
+            if echo "$task_state" | grep -qi "new\|pending" && echo "$task_state" | grep -qE "^[A-Za-z]+ *$"; then
+                log_warning "Service $service_name has tasks stuck without node assignment"
+                return 1
+            fi
+        done
+    fi
+    
+    return 0
+}
+
 # Export the functions for use in other scripts
 export -f log_info log_success log_warning log_error
 export -f detect_environment get_app_directory get_compose_file get_env_file
 export -f get_stack_name get_api_port wait_for_service get_aws_region ecr_login
 export -f is_swarm_leader check_swarm_leader_or_skip safe_source_env
+export -f check_stack_networks recover_stack check_for_stuck_services

@@ -232,7 +232,10 @@ services:
         mode: ingress
     volumes:
       - postgres_staging_data:/var/lib/postgresql/data
-      - ./config/db/init-postgis.sh:/docker-entrypoint-initdb.d/init-postgis.sh
+    configs:
+      - source: postgres_init
+        target: /docker-entrypoint-initdb.d/init-postgis.sh
+        mode: 0755
     networks:
       - backend
     deploy:
@@ -313,3 +316,7 @@ networks:
       driver: default
       config:
         - subnet: ${EXECUTION_SUBNET:-10.1.1.0/24}
+
+configs:
+  postgres_init:
+    file: ./config/db/init-postgis.sh

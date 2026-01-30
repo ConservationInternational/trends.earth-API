@@ -95,9 +95,6 @@ docker container prune -f 2>/dev/null || true
 log_info "Removing dangling images..."
 docker image prune -f 2>/dev/null || true
 
-log_info "Removing unused networks..."
-docker network prune -f 2>/dev/null || true
-
 # Level 2: Remove old images (always run - images are on ECR)
 log_info "Removing Docker images older than 7 days..."
 docker image prune -a --filter "until=168h" -f 2>/dev/null || true

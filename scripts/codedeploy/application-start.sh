@@ -91,6 +91,42 @@ if [ "$ACTIVE_EXECUTIONS" -gt 0 ]; then
 fi
 
 # ============================================================================
+# Stack Health Check - Detect and Recover from Bad State
+# ============================================================================
+# Docker Swarm can get into a bad state where networks exist but tasks are
+# stuck in "New" state with no node assigned. This happens when:
+#   - Previous deployment failed mid-way
+#   - Network prune removed overlay networks
+#   - Docker daemon was restarted unexpectedly
+# 
+# Detection: Check if stack exists but networks are missing or services are stuck
+# Recovery: Remove the stack completely and redeploy fresh
+# ============================================================================
+
+log_info "Checking stack health before deployment..."
+
+# Check if stack exists
+STACK_EXISTS=$(docker stack ls --format "{{.Name}}" 2>/dev/null | grep -c "^${STACK_NAME}$" || echo "0")
+
+if [ "$STACK_EXISTS" -gt 0 ]; then
+    log_info "Stack $STACK_NAME exists, checking health..."
+    
+    # Check networks
+    if ! check_stack_networks "$STACK_NAME"; then
+        log_warning "Stack networks are unhealthy, initiating recovery..."
+        recover_stack "$STACK_NAME" "$COMPOSE_FILE"
+    fi
+    
+    # Check for stuck services
+    if ! check_for_stuck_services "$STACK_NAME"; then
+        log_warning "Found stuck services, initiating recovery..."
+        recover_stack "$STACK_NAME" "$COMPOSE_FILE"
+    fi
+else
+    log_info "Stack $STACK_NAME does not exist, will create fresh"
+fi
+
+# ============================================================================
 # Deploy Stack
 # ============================================================================
 
