@@ -39,7 +39,7 @@ SETTINGS = {
         ),
     },
     # Public API URL for emails (password reset links, etc.)
-    # Distinct from SETTINGS["environment"]["API_URL"] which is for internal container use
+    # Distinct from SETTINGS["environment"]["API_URL"] (for internal container use)
     "API_PUBLIC_URL": os.getenv("API_PUBLIC_URL"),
     "ROLES": ["SUPERADMIN", "ADMIN", "USER"],
     "SQLALCHEMY_DATABASE_URI": os.getenv("DATABASE_URL")
