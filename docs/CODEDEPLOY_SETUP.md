@@ -188,6 +188,19 @@ Add these secrets to your GitHub repository (Settings → Secrets and variables 
 | `API_ENVIRONMENT_USER` | Username for execution container API access | Internal service account |
 | `API_ENVIRONMENT_USER_PASSWORD` | Password for execution container API access | Internal service account |
 
+#### Staging Database Setup (Staging Environment Only)
+
+These secrets are used by the staging migration service to create test users. The `PRODUCTION_DATABASE_URL` secret (defined in the Database section above) is also used to copy scripts from production.
+
+| Secret Name | Description | Notes |
+|-------------|-------------|-------|
+| `TEST_SUPERADMIN_EMAIL` | Test superadmin user email | For staging test users |
+| `TEST_SUPERADMIN_PASSWORD` | Test superadmin user password | For staging test users |
+| `TEST_ADMIN_EMAIL` | Test admin user email | For staging test users |
+| `TEST_ADMIN_PASSWORD` | Test admin user password | For staging test users |
+| `TEST_USER_EMAIL` | Test regular user email | For staging test users |
+| `TEST_USER_PASSWORD` | Test regular user password | For staging test users |
+
 ### Required Variables
 
 Add these to GitHub Variables (Settings → Secrets and variables → Actions → Variables):
@@ -203,8 +216,8 @@ Add these to GitHub Variables (Settings → Secrets and variables → Actions �
 
 | Variable Name | Description | Example |
 |---------------|-------------|---------|
-| `STAGING_API_URL` | Staging API base URL | `https://api-staging.trends.earth` |
-| `PRODUCTION_API_URL` | Production API base URL | `https://api.trends.earth` |
+| `STAGING_API_URL` | Staging API base URL (public, for emails) | `https://api-staging.trends.earth` |
+| `PRODUCTION_API_URL` | Production API base URL (public, for emails) | `https://api.trends.earth` |
 
 #### Google Cloud
 
@@ -220,7 +233,6 @@ Add these to GitHub Variables (Settings → Secrets and variables → Actions �
 
 | Variable Name | Description | Example |
 |---------------|-------------|---------|
-| `S3_BUCKET_NAME` | Main S3 bucket for data | `trends.earth-data` |
 | `SCRIPTS_S3_BUCKET` | S3 bucket for scripts storage | `trends.earth-private` |
 | `PARAMS_S3_BUCKET` | S3 bucket for parameters/results | `trends.earth-users` |
 | `STAGING_SCRIPTS_S3_PREFIX` | S3 prefix for staging scripts | `api-files/scripts/staging` |
@@ -248,17 +260,15 @@ Add these to GitHub Variables (Settings → Secrets and variables → Actions �
 | Variable Name | Description | Default |
 |---------------|-------------|---------|
 | `RATE_LIMITING_ENABLED` | Enable rate limiting | `true` |
-| `RATE_LIMIT_STORAGE_URI` | Redis URI for rate limit storage | `redis://redis:6379/1` |
-| `DEFAULT_LIMITS` | Default rate limits | `1000 per hour,100 per minute` |
-| `API_LIMITS` | API endpoint limits | `300 per hour,20 per minute` |
-| `AUTH_LIMITS` | Authentication endpoint limits | `60 per minute,600 per hour` |
-| `PASSWORD_RESET_LIMITS` | Password reset limits | `3 per hour,1 per minute` |
-| `USER_CREATION_LIMITS` | User creation limits | `100 per hour` |
-| `EXECUTION_RUN_LIMITS` | Script execution limits | `10 per minute,40 per hour,150 per day` |
-| `TRUSTED_PROXY_COUNT` | Number of trusted proxies | `1` |
-| `INTERNAL_NETWORKS` | Internal network CIDRs (no rate limiting) | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` |
+| `RATE_LIMIT_DEFAULT_LIMITS` | Default rate limits | `1000 per hour,100 per minute` |
+| `RATE_LIMIT_API_LIMITS` | API endpoint limits | `300 per hour,20 per minute` |
+| `RATE_LIMIT_AUTH_LIMITS` | Authentication endpoint limits | `60 per minute,600 per hour` |
+| `RATE_LIMIT_PASSWORD_RESET_LIMITS` | Password reset limits | `3 per hour,1 per minute` |
+| `RATE_LIMIT_USER_CREATION_LIMITS` | User creation limits | `100 per hour` |
+| `RATE_LIMIT_EXECUTION_RUN_LIMITS` | Script execution limits | `10 per minute,40 per hour,150 per day` |
+| `RATE_LIMIT_TRUSTED_PROXY_COUNT` | Number of trusted proxies | `1` |
+| `RATE_LIMIT_INTERNAL_NETWORKS` | Internal network CIDRs (no rate limiting) | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` |
 
-> **Note**: S3 access uses EC2 instance role credentials - no AWS access keys needed. Redis uses the stack's Redis service automatically.
 
 ## EC2 Instance Setup
 

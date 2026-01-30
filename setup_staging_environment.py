@@ -56,14 +56,19 @@ class StagingEnvironmentSetup:
             "password": parsed.password,
         }
 
-        # Production database configuration
-        self.prod_db_config = {
-            "host": os.getenv("PROD_DB_HOST", "localhost"),
-            "port": int(os.getenv("PROD_DB_PORT", 5432)),
-            "database": os.getenv("PROD_DB_NAME", "trendsearth"),
-            "user": os.getenv("PROD_DB_USER", "trendsearth"),
-            "password": os.getenv("PROD_DB_PASSWORD"),
-        }
+        # Production database configuration (from PRODUCTION_DATABASE_URL)
+        prod_database_url = os.getenv("PRODUCTION_DATABASE_URL")
+        if prod_database_url:
+            prod_parsed = urlparse(prod_database_url)
+            self.prod_db_config = {
+                "host": prod_parsed.hostname,
+                "port": prod_parsed.port or 5432,
+                "database": prod_parsed.path.lstrip("/"),
+                "user": prod_parsed.username,
+                "password": prod_parsed.password,
+            }
+        else:
+            self.prod_db_config = None
 
         # Test users configuration
         self.test_users = [
@@ -215,15 +220,15 @@ class StagingEnvironmentSetup:
         logger.info("STARTING SCRIPT IMPORT FROM PRODUCTION")
         logger.info("=" * 60)
 
-        # Check for production database password
+        # Check for production database configuration
         logger.info("Checking production database credentials...")
-        if not self.prod_db_config["password"]:
+        if not self.prod_db_config:
             logger.warning(
-                "No production database password provided - "
+                "No PRODUCTION_DATABASE_URL provided - "
                 "scripts will NOT be imported from production"
             )
             logger.info(
-                "To enable production data import, set PROD_DB_PASSWORD "
+                "To enable production data import, set PRODUCTION_DATABASE_URL "
                 "environment variable in the deployment workflow"
             )
             return {}
@@ -479,9 +484,9 @@ class StagingEnvironmentSetup:
 
     def copy_recent_status_logs(self):
         """Copy recent status logs from production database with reassigned IDs."""
-        if not self.prod_db_config["password"]:
+        if not self.prod_db_config:
             logger.debug(
-                "No production database password provided, skipping status logs import"
+                "No PRODUCTION_DATABASE_URL provided, skipping status logs import"
             )
             return
 
@@ -660,9 +665,9 @@ class StagingEnvironmentSetup:
 
     def copy_script_logs(self, script_id_mapping):
         """Copy script logs for imported scripts using ID mapping."""
-        if not self.prod_db_config["password"]:
+        if not self.prod_db_config:
             logger.debug(
-                "No production database password provided, skipping script logs import"
+                "No PRODUCTION_DATABASE_URL provided, skipping script logs import"
             )
             return
 

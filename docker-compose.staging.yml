@@ -7,12 +7,8 @@ services:
       ENVIRONMENT: staging
       GIT_BRANCH: ${GIT_BRANCH:-unknown}
       DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-staging}
-      # Production database credentials for data migration
-      PROD_DB_HOST: ${PROD_DB_HOST}
-      PROD_DB_PORT: ${PROD_DB_PORT}
-      PROD_DB_NAME: ${PROD_DB_NAME}
-      PROD_DB_USER: ${PROD_DB_USER}
-      PROD_DB_PASSWORD: ${PROD_DB_PASSWORD}
+      # Production database URL for data migration
+      PRODUCTION_DATABASE_URL: ${PRODUCTION_DATABASE_URL}
       # Test user credentials for staging setup
       TEST_SUPERADMIN_EMAIL: ${TEST_SUPERADMIN_EMAIL}
       TEST_ADMIN_EMAIL: ${TEST_ADMIN_EMAIL}

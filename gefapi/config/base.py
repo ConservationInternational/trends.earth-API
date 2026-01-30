@@ -28,7 +28,8 @@ SETTINGS = {
         # API configuration required for trends.earth-Environment integration
         "API_ENVIRONMENT_USER": _environment_user,
         "API_ENVIRONMENT_USER_PASSWORD": os.getenv("API_ENVIRONMENT_USER_PASSWORD"),
-        "API_URL": os.getenv("API_URL"),
+        # API_URL for execution containers - use internal URL to bypass rate limiting
+        "API_URL": os.getenv("API_INTERNAL_URL"),
         # OAuth client credentials for GEE authentication
         "GOOGLE_OAUTH_CLIENT_ID": os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
         "GOOGLE_OAUTH_CLIENT_SECRET": os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
@@ -36,6 +37,8 @@ SETTINGS = {
             "GOOGLE_OAUTH_TOKEN_URI", "https://oauth2.googleapis.com/token"
         ),
     },
+    # Public API_URL for emails (password reset links, etc.)
+    "API_URL": os.getenv("API_URL"),
     "ROLES": ["SUPERADMIN", "ADMIN", "USER"],
     "SQLALCHEMY_DATABASE_URI": os.getenv("DATABASE_URL")
     or (

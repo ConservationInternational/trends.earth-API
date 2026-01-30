@@ -177,7 +177,6 @@ jobs:
         ROLLBAR_SERVER_TOKEN: ${{ secrets.ROLLBAR_SERVER_TOKEN }}
         API_URL: ${{ vars.STAGING_API_URL }}
         # S3 Configuration
-        S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
         SCRIPTS_S3_BUCKET: ${{ vars.SCRIPTS_S3_BUCKET }}
         SCRIPTS_S3_PREFIX: ${{ vars.STAGING_SCRIPTS_S3_PREFIX || 'api-files/scripts/staging' }}
         PARAMS_S3_BUCKET: ${{ vars.PARAMS_S3_BUCKET }}
@@ -193,15 +192,24 @@ jobs:
         CORS_ORIGINS: ${{ vars.STAGING_CORS_ORIGINS || 'https://staging.trends.earth,https://api-staging.trends.earth' }}
         # Rate Limiting
         RATE_LIMITING_ENABLED: ${{ vars.RATE_LIMITING_ENABLED || 'true' }}
-        RATE_LIMIT_STORAGE_URI: ${{ vars.RATE_LIMIT_STORAGE_URI || 'redis://redis:6379/1' }}
-        DEFAULT_LIMITS: ${{ vars.DEFAULT_LIMITS || '1000 per hour,100 per minute' }}
-        API_LIMITS: ${{ vars.API_LIMITS || '300 per hour,20 per minute' }}
-        AUTH_LIMITS: ${{ vars.AUTH_LIMITS || '60 per minute,600 per hour' }}
-        PASSWORD_RESET_LIMITS: ${{ vars.PASSWORD_RESET_LIMITS || '3 per hour,1 per minute' }}
-        USER_CREATION_LIMITS: ${{ vars.USER_CREATION_LIMITS || '100 per hour' }}
-        EXECUTION_RUN_LIMITS: ${{ vars.EXECUTION_RUN_LIMITS || '10 per minute,40 per hour,150 per day' }}
-        TRUSTED_PROXY_COUNT: ${{ vars.TRUSTED_PROXY_COUNT || '1' }}
-        INTERNAL_NETWORKS: ${{ vars.INTERNAL_NETWORKS || '10.0.0.0/8,172.16.0.0/12,192.168.0.0/16' }}
+        RATE_LIMIT_DEFAULT_LIMITS: ${{ vars.RATE_LIMIT_DEFAULT_LIMITS || '1000 per hour,100 per minute' }}
+        RATE_LIMIT_API_LIMITS: ${{ vars.RATE_LIMIT_API_LIMITS || '300 per hour,20 per minute' }}
+        RATE_LIMIT_AUTH_LIMITS: ${{ vars.RATE_LIMIT_AUTH_LIMITS || '60 per minute,600 per hour' }}
+        RATE_LIMIT_PASSWORD_RESET_LIMITS: ${{ vars.RATE_LIMIT_PASSWORD_RESET_LIMITS || '3 per hour,1 per minute' }}
+        RATE_LIMIT_USER_CREATION_LIMITS: ${{ vars.RATE_LIMIT_USER_CREATION_LIMITS || '100 per hour' }}
+        RATE_LIMIT_EXECUTION_RUN_LIMITS: ${{ vars.RATE_LIMIT_EXECUTION_RUN_LIMITS || '10 per minute,40 per hour,150 per day' }}
+        RATE_LIMIT_TRUSTED_PROXY_COUNT: ${{ vars.RATE_LIMIT_TRUSTED_PROXY_COUNT || '1' }}
+        RATE_LIMIT_INTERNAL_NETWORKS: ${{ vars.RATE_LIMIT_INTERNAL_NETWORKS || '10.0.0.0/8,172.16.0.0/12,192.168.0.0/16' }}
+        # Staging Database Setup (for migrate service)
+        # Production database URL for copying scripts/data to staging
+        PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        # Test user credentials for staging
+        TEST_SUPERADMIN_EMAIL: ${{ secrets.TEST_SUPERADMIN_EMAIL }}
+        TEST_SUPERADMIN_PASSWORD: ${{ secrets.TEST_SUPERADMIN_PASSWORD }}
+        TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL }}
+        TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
+        TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+        TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
       run: |
         # Generate staging.env with secrets from GitHub
         # This file is included in the deployment package and copied to the server
@@ -232,15 +240,15 @@ jobs:
           echo ""
           echo "# Rate Limiting"
           echo "RATE_LIMITING_ENABLED=$RATE_LIMITING_ENABLED"
-          echo "RATE_LIMIT_STORAGE_URI=$RATE_LIMIT_STORAGE_URI"
-          echo "DEFAULT_LIMITS=$DEFAULT_LIMITS"
-          echo "API_LIMITS=$API_LIMITS"
-          echo "AUTH_LIMITS=$AUTH_LIMITS"
-          echo "PASSWORD_RESET_LIMITS=$PASSWORD_RESET_LIMITS"
-          echo "USER_CREATION_LIMITS=$USER_CREATION_LIMITS"
-          echo "EXECUTION_RUN_LIMITS=$EXECUTION_RUN_LIMITS"
-          echo "TRUSTED_PROXY_COUNT=$TRUSTED_PROXY_COUNT"
-          echo "INTERNAL_NETWORKS=$INTERNAL_NETWORKS"
+          echo "RATE_LIMIT_STORAGE_URI=redis://redis:6379/1"
+          echo "DEFAULT_LIMITS=$RATE_LIMIT_DEFAULT_LIMITS"
+          echo "API_LIMITS=$RATE_LIMIT_API_LIMITS"
+          echo "AUTH_LIMITS=$RATE_LIMIT_AUTH_LIMITS"
+          echo "PASSWORD_RESET_LIMITS=$RATE_LIMIT_PASSWORD_RESET_LIMITS"
+          echo "USER_CREATION_LIMITS=$RATE_LIMIT_USER_CREATION_LIMITS"
+          echo "EXECUTION_RUN_LIMITS=$RATE_LIMIT_EXECUTION_RUN_LIMITS"
+          echo "TRUSTED_PROXY_COUNT=$RATE_LIMIT_TRUSTED_PROXY_COUNT"
+          echo "INTERNAL_NETWORKS=$RATE_LIMIT_INTERNAL_NETWORKS"
           echo ""
           echo "# Google Earth Engine"
           echo "EE_SERVICE_ACCOUNT_JSON=$EE_SERVICE_ACCOUNT_JSON"
@@ -256,9 +264,9 @@ jobs:
           echo ""
           echo "# API URLs"
           echo "API_URL=$API_URL"
+          echo "API_INTERNAL_URL=http://api:3000"
           echo ""
           echo "# S3 Configuration (uses EC2 instance role for credentials)"
-          echo "S3_BUCKET_NAME=$S3_BUCKET_NAME"
           echo "SCRIPTS_S3_BUCKET=$SCRIPTS_S3_BUCKET"
           echo "SCRIPTS_S3_PREFIX=$SCRIPTS_S3_PREFIX"
           echo "PARAMS_S3_BUCKET=$PARAMS_S3_BUCKET"
@@ -274,6 +282,17 @@ jobs:
           echo ""
           echo "# CORS Configuration"
           echo "CORS_ORIGINS=$CORS_ORIGINS"
+          echo ""
+          echo "# Staging Database Setup (for migrate service)"
+          echo "# Production database URL for copying scripts/data to staging"
+          echo "PRODUCTION_DATABASE_URL=$PRODUCTION_DATABASE_URL"
+          echo "# Test user credentials"
+          echo "TEST_SUPERADMIN_EMAIL=$TEST_SUPERADMIN_EMAIL"
+          echo "TEST_SUPERADMIN_PASSWORD=$TEST_SUPERADMIN_PASSWORD"
+          echo "TEST_ADMIN_EMAIL=$TEST_ADMIN_EMAIL"
+          echo "TEST_ADMIN_PASSWORD=$TEST_ADMIN_PASSWORD"
+          echo "TEST_USER_EMAIL=$TEST_USER_EMAIL"
+          echo "TEST_USER_PASSWORD=$TEST_USER_PASSWORD"
           echo ""
           echo "# Deployment info"
           echo "GIT_REVISION=${{ github.sha }}"

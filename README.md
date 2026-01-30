@@ -302,6 +302,28 @@ The API includes configurable rate limiting to protect against abuse and ensure 
 - Test environments use lower limits for faster testing
 - In-memory storage (`memory://`) is used instead of Redis for test isolation
 
+### API URL Configuration
+
+The application uses two separate API URL configurations to handle different use cases:
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `API_URL` | **Public URL** for external-facing links (password reset emails, user notifications) | `https://api.trends.earth` |
+| `API_INTERNAL_URL` | **Internal URL** for execution containers to call back to the API (bypasses rate limiting) | `http://api:3000` |
+
+**Why Two URLs?**
+- **Execution containers** run scripts and need to update their status via the API. Using the internal Docker service URL (`http://api:3000`) allows them to bypass rate limiting since they're internal infrastructure, not user traffic.
+- **Email links** (password reset, welcome emails) need the public URL so users can access them from their browser.
+
+**Configuration:**
+```bash
+# In your environment file (prod.env, staging.env)
+API_URL=https://api.trends.earth           # Public URL for emails
+API_INTERNAL_URL=http://api:3000           # Internal URL for execution containers
+```
+
+**Note:** If `API_INTERNAL_URL` is not set, execution containers will not receive an `API_URL` environment variable. This is intentional to ensure proper configuration.
+
 ## API Endpoints
 
 The API provides comprehensive filtering, sorting, and pagination capabilities for listing endpoints. All query parameters are optional, ensuring backward compatibility with existing implementations.
