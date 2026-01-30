@@ -183,8 +183,11 @@ jobs:
         PARAMS_S3_PREFIX: ${{ vars.STAGING_PARAMS_S3_PREFIX || 'api-files/params/staging' }}
         # Docker Configuration
         REGISTRY_URL: ${{ vars.REGISTRY_URL }}
-        DOCKER_SUBNET: ${{ vars.DOCKER_SUBNET || '10.10.0.0/16' }}
-        EXECUTION_SUBNET: ${{ vars.EXECUTION_SUBNET || '10.11.0.0/24' }}
+        # Staging uses different subnets than production to avoid overlap
+        # Production: 10.10.0.0/16 and 10.11.0.0/24
+        # Staging: 10.20.0.0/16 and 10.21.0.0/24
+        DOCKER_SUBNET: ${{ vars.STAGING_DOCKER_SUBNET || '10.20.0.0/16' }}
+        EXECUTION_SUBNET: ${{ vars.STAGING_EXECUTION_SUBNET || '10.21.0.0/24' }}
         # Email
         SPARKPOST_API_KEY: ${{ secrets.SPARKPOST_API_KEY }}
         API_ENVIRONMENT_USER: ${{ secrets.API_ENVIRONMENT_USER }}

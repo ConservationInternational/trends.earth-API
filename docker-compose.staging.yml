@@ -308,14 +308,16 @@ networks:
     ipam:
       driver: default
       config:
-        - subnet: ${DOCKER_SUBNET:-10.1.0.0/16}
+        # Use 10.20.x.x for staging (prod uses 10.10.x.x)
+        - subnet: ${DOCKER_SUBNET:-10.20.0.0/16}
   execution:
     driver: overlay
     attachable: true
     ipam:
       driver: default
       config:
-        - subnet: ${EXECUTION_SUBNET:-10.1.1.0/24}
+        # Use 10.21.x.x for staging execution (separate from backend)
+        - subnet: ${EXECUTION_SUBNET:-10.21.0.0/24}
 
 configs:
   postgres_init:
