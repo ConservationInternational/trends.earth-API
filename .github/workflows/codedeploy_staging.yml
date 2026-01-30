@@ -8,12 +8,20 @@ on:
     paths:
       - 'gefapi/**'
       - 'migrations/**'
+      - 'config/**'
+      - 'scripts/codedeploy/**'
+      - 'scripts/deployment/**'
       - 'docker-compose.yml'
       - 'docker-compose.staging.yml'
       - 'Dockerfile'
       - 'entrypoint.sh'
       - 'appspec.yml'
-      - 'scripts/codedeploy/**'
+      - 'gunicorn.py'
+      - 'main.py'
+      - 'pyproject.toml'
+      - 'poetry.lock'
+      - 'run_db_migrations.py'
+      - 'setup_staging_environment.py'
       - '.github/workflows/codedeploy_staging.yml'
   workflow_dispatch:
     inputs:
