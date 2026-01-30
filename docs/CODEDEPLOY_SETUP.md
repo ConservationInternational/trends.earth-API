@@ -149,45 +149,36 @@ python setup_ec2_instance_role.py --profile your-profile --region us-east-1
 
 Add these secrets to your GitHub repository (Settings → Secrets and variables → Actions):
 
-#### Core Secrets (Required)
+#### Common Secrets
 
 | Secret Name | Description |
 |-------------|-------------|
 | `AWS_OIDC_ROLE_ARN` | ARN of GitHubActionsDeployRole (from step 1) |
 | `SECRET_KEY` | Flask secret key |
 | `JWT_SECRET_KEY` | JWT signing key |
+| `GEE_SERVICE_ACCOUNT_JSON` | Google Earth Engine service account credentials |
+| `ROLLBAR_SCRIPT_TOKEN` | Rollbar error tracking token |
+| `SPARKPOST_API_KEY` | SparkPost API key for sending emails |
 
 #### Staging Environment
 
 | Secret Name | Description |
 |-------------|-------------|
 | `STAGING_DATABASE_URL` | PostgreSQL connection string |
-| `STAGING_REDIS_URL` | Redis connection string |
 | `STAGING_API_URL` | API base URL (e.g., https://api-staging.trends.earth) |
 | `STAGING_S3_BUCKET_NAME` | S3 bucket for data storage |
-| `STAGING_RATE_LIMIT_STORAGE_URI` | Redis URI for rate limiting |
 
-> **Note**: S3 access uses EC2 instance role credentials. Ensure your instance role has permissions for the data bucket.
+> **Note**: S3 access uses EC2 instance role credentials. Redis and rate limiting use the stack's Redis service automatically.
 
 #### Production Environment
 
 | Secret Name | Description |
 |-------------|-------------|
 | `PRODUCTION_DATABASE_URL` | PostgreSQL connection string |
-| `PRODUCTION_REDIS_URL` | Redis connection string |
 | `PRODUCTION_API_URL` | API base URL (e.g., https://api.trends.earth) |
 | `PRODUCTION_S3_BUCKET_NAME` | S3 bucket for data storage |
-| `PRODUCTION_RATE_LIMIT_STORAGE_URI` | Redis URI for rate limiting |
 
-> **Note**: S3 access uses EC2 instance role credentials. Ensure your instance role has permissions for the data bucket.
-
-#### Common Secrets
-
-| Secret Name | Description |
-|-------------|-------------|
-| `GEE_SERVICE_ACCOUNT_JSON` | Google Earth Engine service account credentials |
-| `ROLLBAR_SCRIPT_TOKEN` | Rollbar error tracking token |
-| `SPARKPOST_API_KEY` | SparkPost API key for sending emails |
+> **Note**: S3 access uses EC2 instance role credentials. Redis and rate limiting use the stack's Redis service automatically.
 
 ### Optional Variables
 

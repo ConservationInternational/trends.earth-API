@@ -49,6 +49,9 @@ services:
   api:
     image: ${API_IMAGE:-${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging}
     command: start
+    # Enable EC2 instance role credentials for AWS SDK (S3, etc.)
+    extra_hosts:
+      - "169.254.169.254:169.254.169.254"
     environment:
       PORT: 3000
       ENVIRONMENT: staging
@@ -94,6 +97,9 @@ services:
   worker:
     image: ${API_IMAGE:-${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging}
     command: worker
+    # Enable EC2 instance role credentials for AWS SDK (S3, etc.)
+    extra_hosts:
+      - "169.254.169.254:169.254.169.254"
     environment:
       PORT: 3000
       ENVIRONMENT: staging
@@ -132,6 +138,9 @@ services:
   beat:
     image: ${API_IMAGE:-${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging}
     command: beat
+    # Enable EC2 instance role credentials for AWS SDK (S3, etc.)
+    extra_hosts:
+      - "169.254.169.254:169.254.169.254"
     environment:
       PORT: 3000
       ENVIRONMENT: staging
@@ -169,6 +178,9 @@ services:
     image: ${API_IMAGE:-${DOCKER_REGISTRY:-registry.example.com:5000}/trendsearth-api:staging}
     command: worker
     user: root
+    # Enable EC2 instance role credentials for AWS SDK (S3, ECR, etc.)
+    extra_hosts:
+      - "169.254.169.254:169.254.169.254"
     environment:
       PORT: 3000
       ENVIRONMENT: staging

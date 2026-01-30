@@ -1112,6 +1112,10 @@ class DockerService:
                 if client is None:
                     raise Exception("Docker client is not available")
 
+                # Build hosts list for EC2 metadata access (instance role credentials)
+                # This allows execution containers to use boto3 with instance roles
+                hosts = ["169.254.169.254:169.254.169.254"]
+
                 create_kwargs = {
                     "image": f"{REGISTRY_URL}/{image}",
                     "command": "./entrypoint.sh",
@@ -1123,6 +1127,7 @@ class DockerService:
                         "managed.by": "trends.earth-api",
                     },
                     "networks": networks,
+                    "hosts": hosts,
                     "restart_policy": docker_types.RestartPolicy(
                         condition="on-failure", delay=60, max_attempts=2, window=7200
                     ),
@@ -1165,6 +1170,8 @@ class DockerService:
                     detach=True,
                     name="execution-" + str(execution_id),
                     remove=True,
+                    # Enable EC2 metadata access for instance role credentials
+                    extra_hosts={"169.254.169.254": "169.254.169.254"},
                 )
         except docker_errors.ImageNotFound as error:
             logger.error("Image not found", error)

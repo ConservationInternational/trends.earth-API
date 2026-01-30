@@ -186,12 +186,12 @@ jobs:
         # Database Configuration
         DATABASE_URL=${{ secrets.PRODUCTION_DATABASE_URL }}
         
-        # Redis Configuration
-        REDIS_URL=${{ secrets.PRODUCTION_REDIS_URL }}
+        # Redis Configuration (uses stack's Redis service)
+        REDIS_URL=redis://redis:6379/0
         
-        # Rate Limiting
+        # Rate Limiting (uses stack's Redis service on database 1)
         RATE_LIMITING_ENABLED=${{ secrets.RATE_LIMITING_ENABLED || 'true' }}
-        RATE_LIMIT_STORAGE_URI=${{ secrets.PRODUCTION_RATE_LIMIT_STORAGE_URI }}
+        RATE_LIMIT_STORAGE_URI=redis://redis:6379/1
         
         # Google Earth Engine
         GEE_SERVICE_ACCOUNT_JSON=${{ secrets.GEE_SERVICE_ACCOUNT_JSON }}
@@ -203,10 +203,8 @@ jobs:
         # API URLs
         API_URL=${{ secrets.PRODUCTION_API_URL || 'https://api.trends.earth' }}
         
-        # S3 Configuration
+        # S3 Configuration (uses EC2 instance role for credentials)
         S3_BUCKET_NAME=${{ secrets.PRODUCTION_S3_BUCKET_NAME }}
-        AWS_ACCESS_KEY_ID=${{ secrets.PRODUCTION_AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY=${{ secrets.PRODUCTION_AWS_SECRET_ACCESS_KEY }}
         
         # Email Configuration (SparkPost)
         SPARKPOST_API_KEY=${{ secrets.SPARKPOST_API_KEY }}
