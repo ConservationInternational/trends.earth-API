@@ -137,20 +137,18 @@ MAX_WAIT=180
 WAIT_TIME=0
 
 while [ $WAIT_TIME -lt $MAX_WAIT ]; do
-    # Check if all services are running
-    PENDING_SERVICES=$(docker service ls --filter "name=${STACK_NAME}_" \
-        --format "{{.Replicas}}" 2>/dev/null | grep -v "1/1" | grep -v "2/2" | wc -l)
+    # Get list of services that are not ready (excluding migrate which exits after completion)
+    NOT_READY_SERVICES=$(docker service ls --filter "name=${STACK_NAME}_" \
+        --format "{{.Name}} {{.Replicas}}" 2>/dev/null | \
+        grep -v "_migrate " | \
+        grep -v "1/1" | grep -v "2/2" || true)
     
-    # Exclude migrate service which exits after completion
-    MIGRATE_STATUS=$(docker service ps "${STACK_NAME}_migrate" \
-        --format "{{.CurrentState}}" 2>/dev/null | head -1 || echo "")
+    # Count non-ready services (excluding migrate)
+    NOT_READY_COUNT=$(echo "$NOT_READY_SERVICES" | grep -c . 2>/dev/null || echo "0")
     
-    if [ "$PENDING_SERVICES" -le 1 ]; then
-        # Only migrate service might not be 1/1 (it completes and exits)
-        if [ -z "$MIGRATE_STATUS" ] || echo "$MIGRATE_STATUS" | grep -q "Complete"; then
-            log_success "All services are running"
-            break
-        fi
+    if [ "$NOT_READY_COUNT" -eq 0 ]; then
+        log_success "All required services are running"
+        break
     fi
     
     log_info "Waiting for services... ($WAIT_TIME/$MAX_WAIT seconds)"
@@ -161,7 +159,22 @@ while [ $WAIT_TIME -lt $MAX_WAIT ]; do
 done
 
 if [ $WAIT_TIME -ge $MAX_WAIT ]; then
-    log_warning "Some services may not be fully ready after $MAX_WAIT seconds"
+    log_error "DEPLOYMENT FAILED: Services did not start within $MAX_WAIT seconds"
+    log_error "The following services are not ready:"
+    docker service ls --filter "name=${STACK_NAME}_" \
+        --format "{{.Name}} {{.Replicas}}" 2>/dev/null | \
+        grep -v "_migrate " | \
+        grep -v "1/1" | grep -v "2/2" || true
+    log_info "Checking service logs for failed services..."
+    for service in $(docker service ls --filter "name=${STACK_NAME}_" --format "{{.Name}}" 2>/dev/null | grep -v "_migrate"); do
+        REPLICAS=$(docker service ls --filter "name=$service" --format "{{.Replicas}}" 2>/dev/null)
+        if ! echo "$REPLICAS" | grep -qE "^[0-9]+/[0-9]+$" || [ "${REPLICAS%/*}" != "${REPLICAS#*/}" ]; then
+            log_error "Service $service failed to start (Replicas: $REPLICAS)"
+            log_info "Last 20 lines of logs for $service:"
+            docker service logs --tail 20 "$service" 2>&1 || true
+        fi
+    done
+    exit 1
 fi
 
 # ============================================================================
