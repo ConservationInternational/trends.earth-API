@@ -51,11 +51,14 @@ class TestStagingEnvironmentSetupDatetimeHandling:
             f"Found datetime.now() calls without UTC on lines: {calls_without_utc}"
         )
 
-        # Verify we found the expected number of calls (should be 5 total)
-        # Lines 160, 161 (create_test_users), 227 (copy_recent_scripts),
-        # 470 (copy_recent_status_logs), 756 (verify_setup)
-        assert len(datetime_now_calls) == 5, (
-            f"Expected 5 datetime.now() calls, found {len(datetime_now_calls)}"
+        # Verify we found the expected number of calls (should be 7 total)
+        # Lines 224, 225 (create_test_users - 2 calls),
+        # Lines 285, 286 (create_test_users - 2 more calls),
+        # Line 394 (copy_recent_scripts),
+        # Line 688 (copy_recent_status_logs),
+        # Line 1179 (verify_setup)
+        assert len(datetime_now_calls) == 7, (
+            f"Expected 7 datetime.now() calls, found {len(datetime_now_calls)}"
         )
 
     def test_copy_recent_scripts_uses_utc_timezone(self):
