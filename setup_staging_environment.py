@@ -98,12 +98,31 @@ class StagingEnvironmentSetup:
             },
         ]
 
+        # API Environment User configuration (for execution containers)
+        self.api_environment_user = {
+            "email": os.getenv("API_ENVIRONMENT_USER"),
+            "password": os.getenv("API_ENVIRONMENT_USER_PASSWORD"),
+            "name": "API Environment Automation User",
+            "role": "USER",  # Standard user role is sufficient for execution
+        }
+
         # Check for required test user passwords
         required_vars = [
             "TEST_SUPERADMIN_PASSWORD",
             "TEST_ADMIN_PASSWORD",
             "TEST_USER_PASSWORD",
         ]
+
+        # API_ENVIRONMENT_USER is optional but recommended
+        if (
+            self.api_environment_user["email"]
+            and not self.api_environment_user["password"]
+        ):
+            logger.warning(
+                "API_ENVIRONMENT_USER is set but API_ENVIRONMENT_USER_PASSWORD is not. "
+                "Execution containers may fail to authenticate."
+            )
+
         missing_vars = [var for var in required_vars if not os.getenv(var)]
 
         if missing_vars:
@@ -146,9 +165,7 @@ class StagingEnvironmentSetup:
             cursor = conn.cursor()
 
             db_name = self.staging_db_config["database"]
-            cursor.execute(
-                f'ALTER DATABASE "{db_name}" REFRESH COLLATION VERSION'
-            )
+            cursor.execute(f'ALTER DATABASE "{db_name}" REFRESH COLLATION VERSION')
             logger.info(f"✓ Refreshed collation version for database {db_name}")
 
         except psycopg2.Error as e:
@@ -229,6 +246,61 @@ class StagingEnvironmentSetup:
             )
             for user_data in self.test_users:
                 logger.info(f"   - {user_data['role']}: {user_data['email']}")
+
+            # Create API Environment User if configured
+            if (
+                self.api_environment_user["email"]
+                and self.api_environment_user["password"]
+            ):
+                env_user_id = str(uuid.uuid4())
+                env_hashed_password = generate_password_hash(
+                    self.api_environment_user["password"]
+                )
+
+                logger.info(
+                    f"Creating API environment user: "
+                    f"{self.api_environment_user['email']}"
+                )
+
+                cursor.execute(
+                    """
+                    INSERT INTO "user" (id, email, name, country, institution,
+                                       password, role, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (email) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        password = EXCLUDED.password,
+                        role = EXCLUDED.role,
+                        updated_at = EXCLUDED.updated_at
+                    RETURNING id;
+                """,
+                    (
+                        env_user_id,
+                        self.api_environment_user["email"],
+                        self.api_environment_user["name"],
+                        "API Automation",
+                        "Trends.Earth System",
+                        env_hashed_password,
+                        self.api_environment_user["role"],
+                        datetime.now(UTC),
+                        datetime.now(UTC),
+                    ),
+                )
+
+                result = cursor.fetchone()
+                actual_env_user_id = result[0] if result else env_user_id
+                conn.commit()
+
+                logger.info(
+                    f"✓ API environment user {self.api_environment_user['email']} "
+                    f"created/updated with ID: {actual_env_user_id}"
+                )
+            else:
+                logger.warning(
+                    "⚠️ API_ENVIRONMENT_USER not configured - "
+                    "execution containers may fail to authenticate"
+                )
+
             logger.info("=" * 60)
             return superadmin_id
 
@@ -642,12 +714,11 @@ class StagingEnvironmentSetup:
 
             # Find common columns (excluding 'id' which we'll auto-generate)
             common_columns = [
-                col for col in staging_columns
-                if col in prod_columns and col != 'id'
+                col for col in staging_columns if col in prod_columns and col != "id"
             ]
             logger.info(f"Common columns for import: {common_columns}")
 
-            if not common_columns or 'timestamp' not in common_columns:
+            if not common_columns or "timestamp" not in common_columns:
                 logger.warning(
                     "No compatible columns found between production and staging "
                     "status_log tables. Skipping status log import."
@@ -655,7 +726,7 @@ class StagingEnvironmentSetup:
                 return
 
             # Build dynamic query with common columns
-            columns_str = ', '.join(common_columns)
+            columns_str = ", ".join(common_columns)
 
             # Note: columns_str is derived from information_schema, not user input
             # so this is safe from SQL injection
@@ -938,6 +1009,141 @@ class StagingEnvironmentSetup:
             prod_conn.close()
             staging_conn.close()
 
+    def copy_boundary_tables(self):
+        """Copy administrative boundary tables from production to staging.
+
+        Copies the following tables:
+        - admin_boundary_0_metadata (country-level boundaries)
+        - admin_boundary_1_metadata (state/province-level metadata)
+        - admin_boundary_1_unit (individual state/province units)
+
+        These tables are required for the boundaries API endpoints.
+        """
+        logger.info("=" * 60)
+        logger.info("COPYING BOUNDARY TABLES FROM PRODUCTION")
+        logger.info("=" * 60)
+
+        if not self.prod_db_config:
+            logger.warning(
+                "Production database not configured, skipping boundary import"
+            )
+            return
+
+        prod_conn = self.connect_to_database(self.prod_db_config)
+        staging_conn = self.connect_to_database(self.staging_db_config)
+
+        if not prod_conn or not staging_conn:
+            logger.error("Could not connect to databases for boundary copy")
+            return
+
+        prod_cursor = None
+        staging_cursor = None
+
+        # Tables to copy (in order due to potential foreign key relationships)
+        boundary_tables = [
+            "admin_boundary_0_metadata",
+            "admin_boundary_1_metadata",
+            "admin_boundary_1_unit",
+        ]
+
+        try:
+            prod_cursor = prod_conn.cursor()
+            staging_cursor = staging_conn.cursor()
+
+            for table_name in boundary_tables:
+                logger.info(f"Copying {table_name}...")
+
+                # Check if table exists in production
+                prod_cursor.execute(
+                    """
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_name = %s
+                    )
+                """,
+                    (table_name,),
+                )
+                if not prod_cursor.fetchone()[0]:
+                    logger.warning(
+                        f"Table {table_name} does not exist in production, skipping"
+                    )
+                    continue
+
+                # Get column names from production
+                prod_cursor.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = %s
+                    ORDER BY ordinal_position
+                """,
+                    (table_name,),
+                )
+                columns = [row[0] for row in prod_cursor.fetchall()]
+
+                if not columns:
+                    logger.warning(f"No columns found for {table_name}, skipping")
+                    continue
+
+                # Clear existing data in staging
+                # Table names are from hardcoded whitelist, safe from injection
+                delete_sql = f"DELETE FROM {table_name}"  # noqa: S608
+                staging_cursor.execute(delete_sql)
+                staging_conn.commit()
+
+                # Count records in production
+                count_sql = f"SELECT COUNT(*) FROM {table_name}"  # noqa: S608
+                prod_cursor.execute(count_sql)
+                total_count = prod_cursor.fetchone()[0]
+
+                if total_count == 0:
+                    logger.info(f"No records in {table_name}, skipping")
+                    continue
+
+                # Fetch all records from production
+                columns_str = ", ".join(f'"{col}"' for col in columns)
+                select_sql = f"SELECT {columns_str} FROM {table_name}"  # noqa: S608
+                prod_cursor.execute(select_sql)
+                records = prod_cursor.fetchall()
+
+                # Build insert query with placeholders
+                placeholders = ", ".join(["%s"] * len(columns))
+                insert_query = (
+                    f"INSERT INTO {table_name} ({columns_str}) "  # noqa: S608
+                    f"VALUES ({placeholders})"
+                )
+
+                # Batch insert
+                batch_size = 1000
+                imported = 0
+                for i in range(0, len(records), batch_size):
+                    batch = records[i : i + batch_size]
+                    staging_cursor.executemany(insert_query, batch)
+                    staging_conn.commit()
+                    imported += len(batch)
+                    logger.info(f"Imported {imported}/{total_count} {table_name}...")
+
+                logger.info(
+                    f"✅ Successfully copied {total_count} records to {table_name}"
+                )
+
+            logger.info("=" * 60)
+            logger.info("BOUNDARY TABLE COPY COMPLETE")
+            logger.info("=" * 60)
+
+        except psycopg2.Error as e:
+            logger.error(f"Error copying boundary tables: {e}")
+            if staging_conn:
+                staging_conn.rollback()
+        finally:
+            if prod_cursor:
+                prod_cursor.close()
+            if staging_cursor:
+                staging_cursor.close()
+            if prod_conn:
+                prod_conn.close()
+            if staging_conn:
+                staging_conn.close()
+
     def verify_setup(self):
         """Verify the staging environment setup."""
         logger.info("Verifying staging database setup...")
@@ -1012,6 +1218,9 @@ class StagingEnvironmentSetup:
             script_id_mapping = self.copy_recent_scripts(superadmin_id)
             self.copy_recent_status_logs()
             self.copy_script_logs(script_id_mapping)
+
+            # Copy boundary tables (needed for boundaries API)
+            self.copy_boundary_tables()
 
             # Verify setup
             self.verify_setup()
