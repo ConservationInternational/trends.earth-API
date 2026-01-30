@@ -165,9 +165,9 @@ Add these secrets to your GitHub repository (Settings → Secrets and variables 
 | `STAGING_REDIS_URL` | Redis connection string |
 | `STAGING_API_URL` | API base URL (e.g., https://api-staging.trends.earth) |
 | `STAGING_S3_BUCKET_NAME` | S3 bucket for data storage |
-| `STAGING_AWS_ACCESS_KEY_ID` | AWS key for S3 data access |
-| `STAGING_AWS_SECRET_ACCESS_KEY` | AWS secret for S3 data access |
 | `STAGING_RATE_LIMIT_STORAGE_URI` | Redis URI for rate limiting |
+
+> **Note**: S3 access uses EC2 instance role credentials. Ensure your instance role has permissions for the data bucket.
 
 #### Production Environment
 
@@ -177,9 +177,9 @@ Add these secrets to your GitHub repository (Settings → Secrets and variables 
 | `PRODUCTION_REDIS_URL` | Redis connection string |
 | `PRODUCTION_API_URL` | API base URL (e.g., https://api.trends.earth) |
 | `PRODUCTION_S3_BUCKET_NAME` | S3 bucket for data storage |
-| `PRODUCTION_AWS_ACCESS_KEY_ID` | AWS key for S3 data access |
-| `PRODUCTION_AWS_SECRET_ACCESS_KEY` | AWS secret for S3 data access |
 | `PRODUCTION_RATE_LIMIT_STORAGE_URI` | Redis URI for rate limiting |
+
+> **Note**: S3 access uses EC2 instance role credentials. Ensure your instance role has permissions for the data bucket.
 
 #### Common Secrets
 
@@ -187,11 +187,7 @@ Add these secrets to your GitHub repository (Settings → Secrets and variables 
 |-------------|-------------|
 | `GEE_SERVICE_ACCOUNT_JSON` | Google Earth Engine service account credentials |
 | `ROLLBAR_SCRIPT_TOKEN` | Rollbar error tracking token |
-| `SMTP_HOST` | SMTP server hostname |
-| `SMTP_PORT` | SMTP server port |
-| `SMTP_USER` | SMTP username |
-| `SMTP_PASSWORD` | SMTP password |
-| `SMTP_FROM` | From email address |
+| `SPARKPOST_API_KEY` | SparkPost API key for sending emails |
 
 ### Optional Variables
 

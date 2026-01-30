@@ -208,12 +208,8 @@ jobs:
         AWS_ACCESS_KEY_ID=${{ secrets.PRODUCTION_AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY=${{ secrets.PRODUCTION_AWS_SECRET_ACCESS_KEY }}
         
-        # SMTP Configuration
-        SMTP_HOST=${{ secrets.SMTP_HOST }}
-        SMTP_PORT=${{ secrets.SMTP_PORT }}
-        SMTP_USER=${{ secrets.SMTP_USER }}
-        SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
-        SMTP_FROM=${{ secrets.SMTP_FROM }}
+        # Email Configuration (SparkPost)
+        SPARKPOST_API_KEY=${{ secrets.SPARKPOST_API_KEY }}
         
         # Deployment info
         GIT_REVISION=${{ github.sha }}

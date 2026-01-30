@@ -174,7 +174,47 @@ ecr_login() {
     return 0
 }
 
+# Check if this node is the active Swarm leader
+# Returns 0 if this node is the leader, 1 otherwise
+# When deploying to multiple nodes in a Swarm, only the leader should
+# execute stack deploy commands - Swarm handles distribution to other nodes
+is_swarm_leader() {
+    # Check if Docker is available
+    if ! docker info >/dev/null 2>&1; then
+        log_warning "Docker daemon unreachable"
+        return 1
+    fi
+    
+    # Get this node's manager status
+    local manager_status
+    manager_status=$(docker node ls --format '{{.Self}} {{.ManagerStatus}}' 2>/dev/null | awk '$1=="true" {print $2}')
+    
+    if [ -z "$manager_status" ]; then
+        log_warning "This node is not part of the swarm or manager status unknown"
+        return 1
+    fi
+    
+    if [ "$manager_status" != "Leader" ]; then
+        log_info "Node is a swarm manager but not the leader (status: $manager_status)"
+        return 1
+    fi
+    
+    log_success "Node is the active swarm leader"
+    return 0
+}
+
+# Check if we should skip deployment on this node (non-leader)
+# Exits with 0 if not the leader (skip), continues if leader
+check_swarm_leader_or_skip() {
+    log_info "Checking swarm manager status..."
+    if ! is_swarm_leader; then
+        log_info "Skipping deployment on this node (not the swarm leader)"
+        exit 0
+    fi
+}
+
 # Export the functions for use in other scripts
 export -f log_info log_success log_warning log_error
 export -f detect_environment get_app_directory get_compose_file get_env_file
 export -f get_stack_name get_api_port wait_for_service get_aws_region ecr_login
+export -f is_swarm_leader check_swarm_leader_or_skip

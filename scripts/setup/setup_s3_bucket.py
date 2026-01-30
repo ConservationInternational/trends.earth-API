@@ -6,7 +6,7 @@ This script creates and configures the S3 bucket used to store
 deployment packages for CodeDeploy.
 
 Usage:
-    python setup_s3_bucket.py [--profile PROFILE]
+    python setup_s3_bucket.py [--profile PROFILE] [--region REGION]
 """
 
 import argparse
@@ -16,11 +16,13 @@ import boto3
 from botocore.exceptions import ClientError
 
 
-def create_clients(profile=None):
+def create_clients(profile=None, region=None):
     """Create and return AWS service clients."""
     session_args = {}
     if profile:
         session_args["profile_name"] = profile
+    if region:
+        session_args["region_name"] = region
 
     session = boto3.Session(**session_args)
     return {"s3": session.client("s3"), "sts": session.client("sts")}
@@ -159,17 +161,18 @@ def add_bucket_tags(s3_client, bucket_name):
         print(f"❌ Failed to add tags: {e}")
 
 
-def main(profile=None):
+def main(profile=None, region=None):
     """Main function to set up S3 deployment bucket."""
     print("🚀 Setting up S3 Deployment Bucket for Trends.Earth API...")
     print("=" * 60)
 
     # Create AWS clients
-    clients = create_clients(profile)
+    clients = create_clients(profile, region)
 
     # Get account ID and region
     account_id = get_account_id(clients["sts"])
-    region = get_region(profile)
+    # Use provided region or fall back to session/default
+    region = region or get_region(profile)
 
     print(f"📋 AWS Account ID: {account_id}")
     print(f"📋 AWS Region: {region}")
@@ -215,10 +218,11 @@ def main(profile=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Set up S3 deployment bucket")
     parser.add_argument("--profile", "-p", help="AWS profile to use")
+    parser.add_argument("--region", "-r", default="us-east-1", help="AWS region")
     args = parser.parse_args()
 
     try:
-        main(profile=args.profile)
+        main(profile=args.profile, region=args.region)
     except Exception as e:
         print(f"❌ Error: {e}")
         sys.exit(1)

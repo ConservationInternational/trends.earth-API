@@ -18,6 +18,9 @@ source "${SCRIPT_DIR}/common.sh"
 
 log_info "ApplicationStop hook started"
 
+# Check if this node is the swarm leader - only leader should manage stacks
+check_swarm_leader_or_skip
+
 # Detect environment
 ENVIRONMENT=$(detect_environment)
 log_info "Detected environment: $ENVIRONMENT"

@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import sys
+import time
 
 import boto3
 from botocore.exceptions import ClientError
@@ -197,6 +198,10 @@ def main(profile=None, region=None):
     # Create CodeDeploy service role
     print("\n📋 Creating CodeDeploy service role...")
     service_role_arn = create_codedeploy_service_role(clients["iam"])
+
+    # Wait for IAM role to propagate (AWS eventual consistency)
+    print("\n⏳ Waiting for IAM role to propagate (15 seconds)...")
+    time.sleep(15)
 
     # Create CodeDeploy application
     print("\n📋 Creating CodeDeploy application...")
