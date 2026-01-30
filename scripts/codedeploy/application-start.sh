@@ -173,22 +173,21 @@ MAX_WAIT=180
 WAIT_TIME=0
 
 while [ $WAIT_TIME -lt $MAX_WAIT ]; do
-    # Get list of services that are not ready (excluding migrate which exits after completion)
+    # Get list of services that are not ready (excluding migrate which starts later and exits after completion)
     NOT_READY_SERVICES=$(docker service ls --filter "name=${STACK_NAME}_" \
         --format "{{.Name}} {{.Replicas}}" 2>/dev/null | \
-        grep -v "_migrate " | \
-        grep -v "1/1" | grep -v "2/2" || true)
+        grep -v "_migrate" | \
+        grep -v "1/1" | grep -v "2/2" | grep -v "^$" || true)
     
-    # Count non-ready services (excluding migrate)
-    NOT_READY_COUNT=$(echo "$NOT_READY_SERVICES" | grep -c . 2>/dev/null || echo "0")
-    
-    if [ "$NOT_READY_COUNT" -eq 0 ]; then
+    # Check if all required services are running (empty string means all ready)
+    if [ -z "$NOT_READY_SERVICES" ]; then
         log_success "All required services are running"
         break
     fi
     
     log_info "Waiting for services... ($WAIT_TIME/$MAX_WAIT seconds)"
-    docker service ls --filter "name=${STACK_NAME}_" --format "table {{.Name}}\t{{.Replicas}}"
+    # Show status but exclude migrate to avoid confusion
+    docker service ls --filter "name=${STACK_NAME}_" --format "table {{.Name}}\t{{.Replicas}}" | grep -v "_migrate"
     
     sleep 10
     WAIT_TIME=$((WAIT_TIME + 10))
@@ -199,8 +198,8 @@ if [ $WAIT_TIME -ge $MAX_WAIT ]; then
     log_error "The following services are not ready:"
     docker service ls --filter "name=${STACK_NAME}_" \
         --format "{{.Name}} {{.Replicas}}" 2>/dev/null | \
-        grep -v "_migrate " | \
-        grep -v "1/1" | grep -v "2/2" || true
+        grep -v "_migrate" | \
+        grep -v "1/1" | grep -v "2/2" | grep -v "^$" || true
     log_info "Checking service logs for failed services..."
     for service in $(docker service ls --filter "name=${STACK_NAME}_" --format "{{.Name}}" 2>/dev/null | grep -v "_migrate"); do
         REPLICAS=$(docker service ls --filter "name=$service" --format "{{.Replicas}}" 2>/dev/null)
