@@ -304,6 +304,7 @@ jobs:
           docker-compose.yml \
           docker-compose.prod.yml \
           scripts/codedeploy/ \
+          config/db/ \
           entrypoint.sh \
           -x "*.pyc" \
           -x "__pycache__/*" \
