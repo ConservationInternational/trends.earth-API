@@ -1,0 +1,390 @@
+name: Rollback Staging Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      rollback_to_commit:
+        description: 'Specific commit SHA to rollback to (optional, leave blank for automatic rollback)'
+        required: false
+        default: ''
+        type: string
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        type: string
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+  ECR_REPOSITORY: trendsearth-api
+  CODEDEPLOY_APPLICATION: trends-earth-api
+  CODEDEPLOY_DEPLOYMENT_GROUP: trends-earth-api-staging
+
+jobs:
+  rollback-staging:
+    name: Rollback Staging Service
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      ROLLBAR_ACCESS_TOKEN: ${{ secrets.ROLLBAR_SCRIPT_TOKEN }}
+      CODEDEPLOY_S3_BUCKET: ${{ secrets.CODEDEPLOY_S3_BUCKET }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 50  # Get enough history to find target commits
+
+    - name: Validate inputs and configuration
+      run: |
+        echo "🔍 Validating rollback configuration..."
+        echo "Reason: ${{ github.event.inputs.reason }}"
+        echo "Rollback to commit: ${{ github.event.inputs.rollback_to_commit || 'automatic rollback' }}"
+        
+        # Validate required secrets
+        if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] || [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+          echo "❌ Error: AWS credentials not configured"
+          exit 1
+        fi
+        
+        if [ -z "$CODEDEPLOY_S3_BUCKET" ]; then
+          echo "❌ Error: CODEDEPLOY_S3_BUCKET secret is not set"
+          exit 1
+        fi
+        
+        echo "✅ Configuration validated"
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Get current deployment status
+      id: current-deployment
+      run: |
+        echo "📊 Getting current deployment status..."
+        
+        # Get the most recent successful deployment
+        CURRENT_DEPLOYMENT=$(aws deploy list-deployments \
+          --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
+          --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
+          --include-only-statuses Succeeded \
+          --max-items 1 \
+          --query 'deployments[0]' \
+          --output text)
+        
+        if [ "$CURRENT_DEPLOYMENT" = "None" ]; then
+          echo "⚠️ No successful deployments found, will try to list recent deployments"
+          aws deploy list-deployments \
+            --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
+            --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
+            --max-items 5 \
+            --query 'deployments' \
+            --output table
+        else
+          echo "current-deployment=$CURRENT_DEPLOYMENT" >> $GITHUB_OUTPUT
+          echo "✅ Current deployment: $CURRENT_DEPLOYMENT"
+        fi
+
+    - name: Determine rollback strategy
+      id: rollback-strategy
+      run: |
+        if [ -n "${{ github.event.inputs.rollback_to_commit }}" ]; then
+          echo "🎯 Specific commit rollback requested"
+          echo "strategy=commit" >> $GITHUB_OUTPUT
+          echo "target-commit=${{ github.event.inputs.rollback_to_commit }}" >> $GITHUB_OUTPUT
+        else
+          echo "🔄 Automatic rollback requested"
+          echo "strategy=automatic" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Stop active deployments
+      run: |
+        echo "⏹️ Checking for active deployments to stop..."
+        
+        ACTIVE_DEPLOYMENTS=$(aws deploy list-deployments \
+          --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
+          --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
+          --include-only-statuses "InProgress" "Queued" "Created" \
+          --query 'deployments' \
+          --output text 2>/dev/null || echo "")
+        
+        if [ -n "$ACTIVE_DEPLOYMENTS" ] && [ "$ACTIVE_DEPLOYMENTS" != "None" ]; then
+          for DEPLOYMENT_ID in $ACTIVE_DEPLOYMENTS; do
+            echo "⏹️ Stopping deployment: $DEPLOYMENT_ID"
+            aws deploy stop-deployment \
+              --deployment-id "$DEPLOYMENT_ID" \
+              --auto-rollback-enabled || echo "  (already stopping or stopped)"
+          done
+          
+          echo "⏳ Waiting for deployments to stop..."
+          sleep 15
+          echo "✅ Active deployments stopped"
+        else
+          echo "✅ No active deployments to stop"
+        fi
+
+    - name: Perform automatic rollback
+      if: steps.rollback-strategy.outputs.strategy == 'automatic'
+      run: |
+        echo "🔄 Performing automatic rollback using Docker Swarm..."
+        
+        # For automatic rollback, we'll get the previous successful deployment
+        # and redeploy that version
+        
+        PREVIOUS_DEPLOYMENTS=$(aws deploy list-deployments \
+          --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
+          --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
+          --include-only-statuses Succeeded \
+          --max-items 2 \
+          --query 'deployments' \
+          --output text)
+        
+        # Get the second deployment (previous successful one)
+        PREVIOUS_DEPLOYMENT=$(echo "$PREVIOUS_DEPLOYMENTS" | awk '{print $2}')
+        
+        if [ -z "$PREVIOUS_DEPLOYMENT" ] || [ "$PREVIOUS_DEPLOYMENT" = "None" ]; then
+          echo "❌ No previous successful deployment found to rollback to"
+          echo "Available deployments:"
+          aws deploy list-deployments \
+            --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
+            --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
+            --max-items 10 \
+            --output table
+          exit 1
+        fi
+        
+        echo "📋 Found previous deployment: $PREVIOUS_DEPLOYMENT"
+        
+        # Get the revision info from the previous deployment
+        REVISION_INFO=$(aws deploy get-deployment \
+          --deployment-id "$PREVIOUS_DEPLOYMENT" \
+          --query 'deploymentInfo.revision' \
+          --output json)
+        
+        echo "📦 Previous revision info:"
+        echo "$REVISION_INFO" | jq .
+        
+        # Extract S3 location
+        S3_BUCKET=$(echo "$REVISION_INFO" | jq -r '.s3Location.bucket')
+        S3_KEY=$(echo "$REVISION_INFO" | jq -r '.s3Location.key')
+        
+        if [ "$S3_BUCKET" = "null" ] || [ "$S3_KEY" = "null" ]; then
+          echo "❌ Could not extract S3 location from previous deployment"
+          exit 1
+        fi
+        
+        echo "📍 Redeploying from: s3://$S3_BUCKET/$S3_KEY"
+        
+        # Create new deployment using the previous revision
+        ROLLBACK_DEPLOYMENT_ID=$(aws deploy create-deployment \
+          --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
+          --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
+          --s3-location bucket=$S3_BUCKET,key=$S3_KEY,bundleType=zip \
+          --deployment-config-name CodeDeployDefault.OneAtATime \
+          --description "ROLLBACK to previous deployment $PREVIOUS_DEPLOYMENT: ${{ github.event.inputs.reason }}" \
+          --file-exists-behavior OVERWRITE \
+          --query 'deploymentId' \
+          --output text)
+        
+        echo "rollback-deployment-id=$ROLLBACK_DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+        echo "✅ Rollback deployment created: $ROLLBACK_DEPLOYMENT_ID"
+        
+        # Wait for rollback deployment to complete
+        echo "⏳ Waiting for rollback deployment to complete..."
+        aws deploy wait deployment-successful \
+          --deployment-id "$ROLLBACK_DEPLOYMENT_ID" \
+          --cli-read-timeout 1800 || {
+          STATUS=$(aws deploy get-deployment --deployment-id "$ROLLBACK_DEPLOYMENT_ID" \
+            --query 'deploymentInfo.status' --output text)
+          echo "❌ Rollback deployment failed with status: $STATUS"
+          exit 1
+        }
+        
+        echo "✅ Automatic rollback completed successfully"
+
+    - name: Perform commit-specific rollback
+      if: steps.rollback-strategy.outputs.strategy == 'commit'
+      run: |
+        TARGET_COMMIT="${{ steps.rollback-strategy.outputs.target-commit }}"
+        echo "🎯 Performing rollback to specific commit: $TARGET_COMMIT"
+        
+        # Checkout the specific commit
+        git checkout "$TARGET_COMMIT" || {
+          echo "❌ Could not checkout commit $TARGET_COMMIT"
+          echo "Fetching more history..."
+          git fetch --unshallow || git fetch --depth=100
+          git checkout "$TARGET_COMMIT" || {
+            echo "❌ Commit $TARGET_COMMIT not found in repository"
+            exit 1
+          }
+        }
+        
+        # Get AWS account ID
+        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+        
+        # Check if ECR image exists for this commit (try both staging and short SHA formats)
+        SHORT_SHA="${TARGET_COMMIT:0:7}"
+        
+        IMAGE_TAG=""
+        for TAG in "staging-${SHORT_SHA}" "${TARGET_COMMIT}" "${SHORT_SHA}"; do
+          if aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-ids imageTag="$TAG" \
+            --query 'imageDetails[0].imageTags' \
+            --output text 2>/dev/null; then
+            IMAGE_TAG="$TAG"
+            echo "✅ Found ECR image with tag: $IMAGE_TAG"
+            break
+          fi
+        done
+        
+        if [ -z "$IMAGE_TAG" ]; then
+          echo "❌ Error: No ECR image found for commit $TARGET_COMMIT"
+          echo "Available images:"
+          aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --query 'imageDetails[*].[imagePushedAt,imageTags[0]]' \
+            --output table | head -20
+          exit 1
+        fi
+        
+        FULL_IMAGE="${ECR_REGISTRY}/${{ env.ECR_REPOSITORY }}:${IMAGE_TAG}"
+        echo "📦 Rolling back to image: $FULL_IMAGE"
+        
+        # Create deployment bundle
+        echo "📦 Creating rollback deployment bundle..."
+        mkdir -p deploy-bundle/scripts/codedeploy
+        
+        # Copy CodeDeploy files
+        cp appspec.yml deploy-bundle/
+        cp scripts/codedeploy/*.sh deploy-bundle/scripts/codedeploy/
+        cp docker-compose.staging.yml deploy-bundle/
+        cp docker-compose.prod.yml deploy-bundle/ 2>/dev/null || true
+        
+        # Create deployment info file
+        cat > deploy-bundle/deployment-info.json <<EOF
+        {
+          "deploymentId": "${TARGET_COMMIT}",
+          "branch": "rollback",
+          "image": "${FULL_IMAGE}",
+          "registry": "${ECR_REGISTRY}",
+          "environment": "staging",
+          "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+          "rollback": true,
+          "reason": "${{ github.event.inputs.reason }}",
+          "triggeredBy": "${{ github.actor }}"
+        }
+        EOF
+        
+        # Create staging.env template (actual values come from CodeDeploy deployment group)
+        cat > deploy-bundle/staging.env <<EOF
+        # Rollback deployment - environment variables provided by CodeDeploy
+        API_IMAGE=${FULL_IMAGE}
+        GIT_COMMIT_SHA=${TARGET_COMMIT}
+        GIT_BRANCH=rollback
+        DEPLOYMENT_ENVIRONMENT=staging
+        EOF
+        
+        cd deploy-bundle
+        zip -r ../rollback-bundle.zip .
+        cd ..
+        
+        echo "📦 Bundle contents:"
+        unzip -l rollback-bundle.zip
+        
+        # Upload bundle to S3
+        S3_KEY="deployments/trends-earth-api/staging/rollback/${TARGET_COMMIT}/rollback-bundle.zip"
+        
+        aws s3 cp rollback-bundle.zip "s3://$CODEDEPLOY_S3_BUCKET/$S3_KEY"
+        echo "✅ Bundle uploaded to s3://$CODEDEPLOY_S3_BUCKET/$S3_KEY"
+        
+        # Create CodeDeploy deployment
+        ROLLBACK_DEPLOYMENT_ID=$(aws deploy create-deployment \
+          --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
+          --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
+          --s3-location bucket=$CODEDEPLOY_S3_BUCKET,key=$S3_KEY,bundleType=zip \
+          --deployment-config-name CodeDeployDefault.OneAtATime \
+          --description "ROLLBACK to commit ${TARGET_COMMIT}: ${{ github.event.inputs.reason }}" \
+          --file-exists-behavior OVERWRITE \
+          --query 'deploymentId' \
+          --output text)
+        
+        echo "rollback-deployment-id=$ROLLBACK_DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+        echo "✅ Rollback deployment created: $ROLLBACK_DEPLOYMENT_ID"
+        
+        # Wait for rollback deployment to complete
+        echo "⏳ Waiting for rollback deployment to complete..."
+        aws deploy wait deployment-successful \
+          --deployment-id "$ROLLBACK_DEPLOYMENT_ID" \
+          --cli-read-timeout 1800 || {
+          STATUS=$(aws deploy get-deployment --deployment-id "$ROLLBACK_DEPLOYMENT_ID" \
+            --query 'deploymentInfo.status' --output text)
+          echo "❌ Rollback deployment failed with status: $STATUS"
+          
+          # Get deployment events for debugging
+          echo "📋 Deployment events:"
+          aws deploy get-deployment \
+            --deployment-id "$ROLLBACK_DEPLOYMENT_ID" \
+            --query 'deploymentInfo.deploymentOverview' \
+            --output json
+          exit 1
+        }
+        
+        echo "✅ Rollback to commit ${TARGET_COMMIT} completed successfully"
+
+    - name: Verify rollback
+      run: |
+        echo "🔍 Verifying rollback was successful..."
+        
+        # Wait for services to stabilize
+        sleep 30
+        
+        # Check deployment status
+        echo "📊 Deployment status:"
+        aws deploy list-deployments \
+          --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
+          --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
+          --max-items 3 \
+          --output table
+        
+        echo "✅ Rollback verification complete - actual health checks handled by CodeDeploy validation hooks"
+
+    - name: Notify Rollbar of rollback
+      if: ${{ env.ROLLBAR_ACCESS_TOKEN != '' }}
+      continue-on-error: true
+      env:
+        COMMIT_SHA: ${{ steps.rollback-strategy.outputs.target-commit || 'automatic-rollback' }}
+      run: |
+        cat <<EOF > rollbar-payload.json
+        {
+          "environment": "staging",
+          "revision": "$COMMIT_SHA",
+          "local_username": "github-actions-rollback",
+          "comment": "ROLLBACK: ${{ github.event.inputs.reason }}"
+        }
+        EOF
+
+        curl -X POST https://api.rollbar.com/api/1/deploy \
+          -H "X-Rollbar-Access-Token: $ROLLBAR_ACCESS_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d @rollbar-payload.json || echo "⚠️ Rollbar notification failed (non-critical)"
+
+    - name: Rollback summary
+      run: |
+        echo ""
+        echo "========================================"
+        echo "🔄 STAGING ROLLBACK COMPLETED"
+        echo "========================================"
+        echo ""
+        echo "📋 Rollback Details:"
+        echo "  Strategy: ${{ steps.rollback-strategy.outputs.strategy }}"
+        echo "  Target Commit: ${{ steps.rollback-strategy.outputs.target-commit || 'previous successful deployment' }}"
+        echo "  Reason: ${{ github.event.inputs.reason }}"
+        echo "  Triggered by: ${{ github.actor }}"
+        echo "  Environment: staging"
+        echo ""
+        echo "✅ Rollback completed successfully"
+        echo "========================================"

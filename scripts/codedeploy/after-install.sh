@@ -14,6 +14,18 @@ source "${SCRIPT_DIR}/common.sh"
 
 log_info "AfterInstall hook started"
 
+# ============================================================================
+# Check if this node is the swarm leader
+# Only the leader needs to pull images; other nodes can skip
+# ============================================================================
+if ! is_swarm_leader; then
+    log_info "This node is not the Swarm leader - skipping image pull"
+    log_success "AfterInstall hook completed (non-leader node)"
+    exit 0
+fi
+
+log_info "This node is the Swarm leader - pulling images"
+
 # Detect environment
 ENVIRONMENT=$(detect_environment)
 log_info "Detected environment: $ENVIRONMENT"

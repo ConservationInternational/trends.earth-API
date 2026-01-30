@@ -20,6 +20,25 @@ source "${SCRIPT_DIR}/common.sh"
 
 log_info "BeforeInstall hook started"
 
+# ============================================================================
+# Check if this node is the swarm leader
+# Only the leader needs full preparation; other nodes just need basic setup
+# ============================================================================
+if ! is_swarm_leader; then
+    log_info "This node is not the Swarm leader - performing minimal setup only"
+    
+    # Ensure Docker is running
+    if command -v docker &> /dev/null && ! systemctl is-active --quiet docker; then
+        log_info "Starting Docker service..."
+        systemctl start docker || true
+    fi
+    
+    log_success "BeforeInstall hook completed (non-leader node)"
+    exit 0
+fi
+
+log_info "This node is the Swarm leader - performing full setup"
+
 # Detect environment
 ENVIRONMENT=$(detect_environment)
 log_info "Detected environment: $ENVIRONMENT"
