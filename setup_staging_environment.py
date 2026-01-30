@@ -22,13 +22,17 @@ from werkzeug.security import generate_password_hash
 
 # Configure logging only if not already configured
 # This prevents duplicate log messages when imported from run_db_migrations.py
-if not logging.getLogger().handlers:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
-
-# Use a specific logger name to avoid conflicts with the main migration script
 logger = logging.getLogger("setup_staging_environment")
+# Prevent propagation to root logger to avoid duplicate messages
+logger.propagate = False
+# Only add handler if none exists for this logger
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 
 class StagingEnvironmentSetup:

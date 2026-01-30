@@ -25,22 +25,17 @@ services:
       placement:
         constraints: [node.role == manager]
       restart_policy:
-        condition: on-failure
-        delay: 10s
-        max_attempts: 3
-        window: 60s
+        # Use 'none' for one-shot migration tasks - don't restart after completion
+        condition: none
       # Ensure only one migrate service runs at a time to prevent migration conflicts
       update_config:
         parallelism: 1
-        delay: 30s
-        failure_action: rollback
-        monitor: 60s
-        order: stop-first
-      rollback_config:
-        parallelism: 1
-        delay: 0s
+        delay: 10s
+        # Don't rollback if migration completes (exits 0) - that's expected behavior
         failure_action: pause
-        monitor: 60s
+        # Short monitor time since migration should complete quickly
+        monitor: 10s
+        order: stop-first
 
   api:
     image: ${API_IMAGE}

@@ -15,7 +15,8 @@ services:
         constraints:
           - node.role == manager
       restart_policy:
-        condition: on-failure
+        # Use 'none' for one-shot migration tasks - don't restart after completion
+        condition: none
 
   api:
     image: ${API_IMAGE}
