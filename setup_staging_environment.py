@@ -142,7 +142,9 @@ class StagingEnvironmentSetup:
             cursor = conn.cursor()
 
             db_name = self.staging_db_config["database"]
-            cursor.execute(f'ALTER DATABASE "{db_name}" REFRESH COLLATION VERSION')
+            cursor.execute(
+                f'ALTER DATABASE "{db_name}" REFRESH COLLATION VERSION'
+            )
             logger.info(f"✓ Refreshed collation version for database {db_name}")
 
         except psycopg2.Error as e:
@@ -347,7 +349,9 @@ class StagingEnvironmentSetup:
                 """
                 SELECT id, name, slug, description, created_at, updated_at, status,
                        public, cpu_reservation, cpu_limit, memory_reservation,
-                       memory_limit, environment, environment_version
+                       memory_limit, environment, environment_version,
+                       COALESCE(restricted, false) as restricted,
+                       allowed_roles, allowed_users, build_error
                 FROM script
                 WHERE created_at >= %s OR updated_at >= %s
                 ORDER BY created_at ASC
@@ -401,9 +405,11 @@ class StagingEnvironmentSetup:
                                           updated_at, user_id, status, public,
                                           cpu_reservation, cpu_limit,
                                           memory_reservation, memory_limit,
-                                          environment, environment_version)
+                                          environment, environment_version,
+                                          restricted, allowed_roles, allowed_users,
+                                          build_error)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                                %s, %s, %s)
+                                %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (slug) DO UPDATE SET
                             id = EXCLUDED.id,
                             name = EXCLUDED.name,
@@ -417,7 +423,11 @@ class StagingEnvironmentSetup:
                             memory_reservation = EXCLUDED.memory_reservation,
                             memory_limit = EXCLUDED.memory_limit,
                             environment = EXCLUDED.environment,
-                            environment_version = EXCLUDED.environment_version
+                            environment_version = EXCLUDED.environment_version,
+                            restricted = EXCLUDED.restricted,
+                            allowed_roles = EXCLUDED.allowed_roles,
+                            allowed_users = EXCLUDED.allowed_users,
+                            build_error = EXCLUDED.build_error
                         RETURNING id, (xmax = 0) AS inserted
                     """,
                         (
@@ -436,6 +446,10 @@ class StagingEnvironmentSetup:
                             script[11],  # memory_limit
                             script[12],  # environment
                             script[13],  # environment_version
+                            script[14],  # restricted
+                            script[15],  # allowed_roles
+                            script[16],  # allowed_users
+                            script[17],  # build_error
                         ),
                     )
 
@@ -597,16 +611,58 @@ class StagingEnvironmentSetup:
             # Calculate date one month ago
             one_month_ago = datetime.now(UTC) - timedelta(days=30)
 
-            # Get recent status logs from production (excluding ID for reassignment)
+            # Get recent status logs from production
+            # Note: Production may have different column names, so we query
+            # dynamically based on what exists
             prod_cursor.execute(
                 """
-                SELECT timestamp, executions_active, executions_ready,
-                       executions_running, executions_finished, executions_failed,
-                       executions_count, users_count, scripts_count
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'status_log'
+                ORDER BY ordinal_position
+            """
+            )
+            prod_columns = [row[0] for row in prod_cursor.fetchall()]
+            logger.info(f"Production status_log columns: {prod_columns}")
+
+            # Skip status log import if schemas don't match - not critical
+            # The status_log table may have different schemas between prod and staging
+            staging_cursor.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'status_log'
+                ORDER BY ordinal_position
+            """
+            )
+            staging_columns = [row[0] for row in staging_cursor.fetchall()]
+            logger.info(f"Staging status_log columns: {staging_columns}")
+
+            # Find common columns (excluding 'id' which we'll auto-generate)
+            common_columns = [
+                col for col in staging_columns
+                if col in prod_columns and col != 'id'
+            ]
+            logger.info(f"Common columns for import: {common_columns}")
+
+            if not common_columns or 'timestamp' not in common_columns:
+                logger.warning(
+                    "No compatible columns found between production and staging "
+                    "status_log tables. Skipping status log import."
+                )
+                return
+
+            # Build dynamic query with common columns
+            columns_str = ', '.join(common_columns)
+            placeholders = ', '.join(['%s'] * len(common_columns))
+
+            # Note: columns_str is derived from information_schema, not user input
+            # so this is safe from SQL injection
+            prod_cursor.execute(
+                f"""
+                SELECT {columns_str}
                 FROM status_log
                 WHERE timestamp >= %s
                 ORDER BY timestamp ASC
-            """,
+            """,  # noqa: S608
                 (one_month_ago,),
             )
 
@@ -616,16 +672,13 @@ class StagingEnvironmentSetup:
             imported_count = 0
             for log in status_logs:
                 try:
-                    # Insert without ID to let the sequence generate new IDs
+                    # Insert using dynamic columns (columns derived from
+                    # information_schema, safe from SQL injection)
                     staging_cursor.execute(
-                        """
-                        INSERT INTO status_log (timestamp, executions_active,
-                                              executions_ready, executions_running,
-                                              executions_finished, executions_failed,
-                                              executions_count, users_count,
-                                              scripts_count)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
+                        f"""
+                        INSERT INTO status_log ({columns_str})
+                        VALUES ({placeholders})
+                    """,  # noqa: S608
                         log,
                     )
                     imported_count += 1
