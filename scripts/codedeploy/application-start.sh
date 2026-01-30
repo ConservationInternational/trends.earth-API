@@ -36,18 +36,32 @@ log_info "Compose file: $COMPOSE_FILE"
 # ============================================================================
 
 ENV_FILE=$(get_env_file "$ENVIRONMENT")
-if [ -f "$ENV_FILE" ]; then
-    log_info "Loading environment variables from $ENV_FILE"
-    set -a
-    source "$ENV_FILE"
-    set +a
-else
-    log_error "Environment file not found: $ENV_FILE"
+log_info "Loading environment variables from $ENV_FILE"
+# Use safe_source_env to handle special characters (# & etc) in values
+# This reads line-by-line instead of bash 'source' which interprets special chars
+if ! safe_source_env "$ENV_FILE"; then
+    log_error "Failed to load environment file: $ENV_FILE"
     exit 1
 fi
 
 # Export Docker registry for compose
 export DOCKER_REGISTRY="$ECR_REGISTRY"
+
+# ============================================================================
+# Login to ECR (refresh credentials before stack deploy)
+# ============================================================================
+# ECR tokens expire after 12 hours. We need fresh credentials on the node
+# running docker stack deploy so --with-registry-auth can pass them to workers.
+
+if [ -n "$ECR_REGISTRY" ]; then
+    log_info "Refreshing ECR credentials before stack deploy..."
+    ecr_login "$ECR_REGISTRY" || {
+        log_error "Failed to refresh ECR credentials"
+        exit 1
+    }
+else
+    log_warning "ECR_REGISTRY not set, skipping ECR login"
+fi
 
 # ============================================================================
 # Verify Compose File

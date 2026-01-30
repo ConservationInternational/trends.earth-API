@@ -29,13 +29,11 @@ cd "$APP_DIR"
 # ============================================================================
 
 ENV_FILE=$(get_env_file "$ENVIRONMENT")
-if [ -f "$ENV_FILE" ]; then
-    log_info "Loading environment variables from $ENV_FILE"
-    set -a
-    source "$ENV_FILE"
-    set +a
-else
-    log_error "Environment file not found: $ENV_FILE"
+log_info "Loading environment variables from $ENV_FILE"
+# Use safe_source_env to handle special characters (# & etc) in values
+# This reads line-by-line instead of bash 'source' which interprets special chars
+if ! safe_source_env "$ENV_FILE"; then
+    log_error "Failed to load environment file: $ENV_FILE"
     exit 1
 fi
 

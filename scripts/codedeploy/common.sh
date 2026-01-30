@@ -117,6 +117,48 @@ get_env_file() {
     fi
 }
 
+# Safely source an environment file without bash interpretation of special chars
+# This reads line-by-line and exports variables, handling # and & in values correctly
+# Docker env_file format: VAR=value (no quotes needed)
+# This function is necessary because 'source file.env' interprets special chars
+safe_source_env() {
+    local file="$1"
+    
+    if [ ! -f "$file" ]; then
+        log_error "Environment file not found: $file"
+        return 1
+    fi
+    
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Skip empty lines and comments
+        [[ -z "$line" ]] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        
+        # Skip lines without =
+        [[ "$line" != *"="* ]] && continue
+        
+        # Extract key and value (split on first = only)
+        local key="${line%%=*}"
+        local value="${line#*=}"
+        
+        # Skip if key is empty
+        [[ -z "$key" ]] && continue
+        
+        # Strip surrounding quotes if present (for backwards compatibility)
+        # This handles both 'value' and "value" formats
+        if [[ "$value" =~ ^\'(.*)\'$ ]]; then
+            value="${BASH_REMATCH[1]}"
+        elif [[ "$value" =~ ^\"(.*)\"$ ]]; then
+            value="${BASH_REMATCH[1]}"
+        fi
+        
+        # Export the variable
+        export "$key=$value"
+    done < "$file"
+    
+    return 0
+}
+
 # Wait for a service to be healthy
 wait_for_service() {
     local service_url="$1"
@@ -217,4 +259,4 @@ check_swarm_leader_or_skip() {
 export -f log_info log_success log_warning log_error
 export -f detect_environment get_app_directory get_compose_file get_env_file
 export -f get_stack_name get_api_port wait_for_service get_aws_region ecr_login
-export -f is_swarm_leader check_swarm_leader_or_skip
+export -f is_swarm_leader check_swarm_leader_or_skip safe_source_env
