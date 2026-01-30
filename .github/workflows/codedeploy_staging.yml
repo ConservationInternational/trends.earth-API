@@ -67,7 +67,7 @@ jobs:
     - name: Configure AWS credentials via OIDC
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+        role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
         role-session-name: GitHubActionsStagingBuild
         aws-region: ${{ env.AWS_REGION }}
 
@@ -130,7 +130,7 @@ jobs:
     - name: Configure AWS credentials via OIDC
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+        role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
         role-session-name: GitHubActionsStagingDeploy
         aws-region: ${{ env.AWS_REGION }}
 
@@ -165,11 +165,43 @@ jobs:
         SECRET_KEY: ${{ secrets.SECRET_KEY }}
         JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
         DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
-        GEE_SERVICE_ACCOUNT_JSON: ${{ secrets.GEE_SERVICE_ACCOUNT_JSON }}
+        # GEE Configuration
+        EE_SERVICE_ACCOUNT_JSON: ${{ secrets.EE_SERVICE_ACCOUNT_JSON }}
+        GOOGLE_PROJECT_ID: ${{ vars.GOOGLE_PROJECT_ID }}
+        GEE_ENDPOINT: ${{ vars.GEE_ENDPOINT || 'https://earthengine-highvolume.googleapis.com' }}
+        GOOGLE_OAUTH_CLIENT_ID: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+        GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        GOOGLE_OAUTH_REDIRECT_URI: ${{ vars.STAGING_GOOGLE_OAUTH_REDIRECT_URI }}
+        # Rollbar
         ROLLBAR_SCRIPT_TOKEN: ${{ secrets.ROLLBAR_SCRIPT_TOKEN }}
-        API_URL: ${{ secrets.STAGING_API_URL }}
-        S3_BUCKET_NAME: ${{ secrets.STAGING_S3_BUCKET_NAME }}
+        ROLLBAR_SERVER_TOKEN: ${{ secrets.ROLLBAR_SERVER_TOKEN }}
+        API_URL: ${{ vars.STAGING_API_URL }}
+        # S3 Configuration
+        S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
+        SCRIPTS_S3_BUCKET: ${{ vars.SCRIPTS_S3_BUCKET }}
+        SCRIPTS_S3_PREFIX: ${{ vars.STAGING_SCRIPTS_S3_PREFIX || 'api-files/scripts/staging' }}
+        PARAMS_S3_BUCKET: ${{ vars.PARAMS_S3_BUCKET }}
+        PARAMS_S3_PREFIX: ${{ vars.STAGING_PARAMS_S3_PREFIX || 'api-files/params/staging' }}
+        # Docker Configuration
+        REGISTRY_URL: ${{ vars.REGISTRY_URL }}
+        DOCKER_SUBNET: ${{ vars.DOCKER_SUBNET || '10.10.0.0/16' }}
+        EXECUTION_SUBNET: ${{ vars.EXECUTION_SUBNET || '10.11.0.0/24' }}
+        # Email
         SPARKPOST_API_KEY: ${{ secrets.SPARKPOST_API_KEY }}
+        API_ENVIRONMENT_USER: ${{ secrets.API_ENVIRONMENT_USER }}
+        API_ENVIRONMENT_USER_PASSWORD: ${{ secrets.API_ENVIRONMENT_USER_PASSWORD }}
+        CORS_ORIGINS: ${{ vars.STAGING_CORS_ORIGINS || 'https://staging.trends.earth,https://api-staging.trends.earth' }}
+        # Rate Limiting
+        RATE_LIMITING_ENABLED: ${{ vars.RATE_LIMITING_ENABLED || 'true' }}
+        RATE_LIMIT_STORAGE_URI: ${{ vars.RATE_LIMIT_STORAGE_URI || 'redis://redis:6379/1' }}
+        DEFAULT_LIMITS: ${{ vars.DEFAULT_LIMITS || '1000 per hour,100 per minute' }}
+        API_LIMITS: ${{ vars.API_LIMITS || '300 per hour,20 per minute' }}
+        AUTH_LIMITS: ${{ vars.AUTH_LIMITS || '60 per minute,600 per hour' }}
+        PASSWORD_RESET_LIMITS: ${{ vars.PASSWORD_RESET_LIMITS || '3 per hour,1 per minute' }}
+        USER_CREATION_LIMITS: ${{ vars.USER_CREATION_LIMITS || '100 per hour' }}
+        EXECUTION_RUN_LIMITS: ${{ vars.EXECUTION_RUN_LIMITS || '10 per minute,40 per hour,150 per day' }}
+        TRUSTED_PROXY_COUNT: ${{ vars.TRUSTED_PROXY_COUNT || '1' }}
+        INTERNAL_NETWORKS: ${{ vars.INTERNAL_NETWORKS || '10.0.0.0/8,172.16.0.0/12,192.168.0.0/16' }}
       run: |
         # Generate staging.env with secrets from GitHub
         # This file is included in the deployment package and copied to the server
@@ -189,6 +221,8 @@ jobs:
           echo "# Flask/API Configuration"
           echo "SECRET_KEY=$SECRET_KEY"
           echo "JWT_SECRET_KEY=$JWT_SECRET_KEY"
+          echo "API_ENVIRONMENT_USER=$API_ENVIRONMENT_USER"
+          echo "API_ENVIRONMENT_USER_PASSWORD=$API_ENVIRONMENT_USER_PASSWORD"
           echo ""
           echo "# Database Configuration"
           echo "DATABASE_URL=$DATABASE_URL"
@@ -196,25 +230,50 @@ jobs:
           echo "# Redis Configuration (uses stack Redis service)"
           echo "REDIS_URL=redis://redis:6379/0"
           echo ""
-          echo "# Rate Limiting (uses stack Redis service on database 1)"
-          echo "RATE_LIMITING_ENABLED=true"
-          echo "RATE_LIMIT_STORAGE_URI=redis://redis:6379/1"
+          echo "# Rate Limiting"
+          echo "RATE_LIMITING_ENABLED=$RATE_LIMITING_ENABLED"
+          echo "RATE_LIMIT_STORAGE_URI=$RATE_LIMIT_STORAGE_URI"
+          echo "DEFAULT_LIMITS=$DEFAULT_LIMITS"
+          echo "API_LIMITS=$API_LIMITS"
+          echo "AUTH_LIMITS=$AUTH_LIMITS"
+          echo "PASSWORD_RESET_LIMITS=$PASSWORD_RESET_LIMITS"
+          echo "USER_CREATION_LIMITS=$USER_CREATION_LIMITS"
+          echo "EXECUTION_RUN_LIMITS=$EXECUTION_RUN_LIMITS"
+          echo "TRUSTED_PROXY_COUNT=$TRUSTED_PROXY_COUNT"
+          echo "INTERNAL_NETWORKS=$INTERNAL_NETWORKS"
           echo ""
           echo "# Google Earth Engine"
-          echo "GEE_SERVICE_ACCOUNT_JSON=$GEE_SERVICE_ACCOUNT_JSON"
+          echo "EE_SERVICE_ACCOUNT_JSON=$EE_SERVICE_ACCOUNT_JSON"
+          echo "GOOGLE_PROJECT_ID=$GOOGLE_PROJECT_ID"
+          echo "GEE_ENDPOINT=$GEE_ENDPOINT"
+          echo "GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID"
+          echo "GOOGLE_OAUTH_CLIENT_SECRET=$GOOGLE_OAUTH_CLIENT_SECRET"
+          echo "GOOGLE_OAUTH_REDIRECT_URI=$GOOGLE_OAUTH_REDIRECT_URI"
           echo ""
           echo "# Rollbar Error Tracking"
           echo "ROLLBAR_SCRIPT_TOKEN=$ROLLBAR_SCRIPT_TOKEN"
-          echo "ROLLBAR_ENV=staging"
+          echo "ROLLBAR_SERVER_TOKEN=$ROLLBAR_SERVER_TOKEN"
           echo ""
           echo "# API URLs"
           echo "API_URL=$API_URL"
           echo ""
           echo "# S3 Configuration (uses EC2 instance role for credentials)"
           echo "S3_BUCKET_NAME=$S3_BUCKET_NAME"
+          echo "SCRIPTS_S3_BUCKET=$SCRIPTS_S3_BUCKET"
+          echo "SCRIPTS_S3_PREFIX=$SCRIPTS_S3_PREFIX"
+          echo "PARAMS_S3_BUCKET=$PARAMS_S3_BUCKET"
+          echo "PARAMS_S3_PREFIX=$PARAMS_S3_PREFIX"
+          echo ""
+          echo "# Docker Configuration"
+          echo "REGISTRY_URL=$REGISTRY_URL"
+          echo "DOCKER_SUBNET=$DOCKER_SUBNET"
+          echo "EXECUTION_SUBNET=$EXECUTION_SUBNET"
           echo ""
           echo "# Email Configuration (SparkPost)"
           echo "SPARKPOST_API_KEY=$SPARKPOST_API_KEY"
+          echo ""
+          echo "# CORS Configuration"
+          echo "CORS_ORIGINS=$CORS_ORIGINS"
           echo ""
           echo "# Deployment info"
           echo "GIT_REVISION=${{ github.sha }}"

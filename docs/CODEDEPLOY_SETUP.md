@@ -149,44 +149,116 @@ python setup_ec2_instance_role.py --profile your-profile --region us-east-1
 
 Add these secrets to your GitHub repository (Settings → Secrets and variables → Actions):
 
-#### Common Secrets
+### Required Secrets
 
-| Secret Name | Description |
-|-------------|-------------|
-| `AWS_OIDC_ROLE_ARN` | ARN of GitHubActionsDeployRole (from step 1) |
-| `SECRET_KEY` | Flask secret key |
-| `JWT_SECRET_KEY` | JWT signing key |
-| `GEE_SERVICE_ACCOUNT_JSON` | Google Earth Engine service account credentials |
-| `ROLLBAR_SCRIPT_TOKEN` | Rollbar error tracking token |
-| `SPARKPOST_API_KEY` | SparkPost API key for sending emails |
+#### Authentication
 
-#### Staging Environment
+| Secret Name | Description | Example |
+|-------------|-------------|--------|
+| `SECRET_KEY` | Flask application secret key | Generate with `openssl rand -base64 32` |
+| `JWT_SECRET_KEY` | JWT token signing key | Generate with `openssl rand -base64 32` |
 
-| Secret Name | Description |
-|-------------|-------------|
-| `STAGING_DATABASE_URL` | PostgreSQL connection string |
-| `STAGING_API_URL` | API base URL (e.g., https://api-staging.trends.earth) |
-| `STAGING_S3_BUCKET_NAME` | S3 bucket for data storage |
+#### Database
 
-> **Note**: S3 access uses EC2 instance role credentials. Redis and rate limiting use the stack's Redis service automatically.
+| Secret Name | Description | Example |
+|-------------|-------------|---------|
+| `STAGING_DATABASE_URL` | PostgreSQL connection string for staging | `postgresql://user:pass@host:5432/db_staging` |
+| `PRODUCTION_DATABASE_URL` | PostgreSQL connection string for production | `postgresql://user:pass@host:5432/db_prod` |
 
-#### Production Environment
 
-| Secret Name | Description |
-|-------------|-------------|
-| `PRODUCTION_DATABASE_URL` | PostgreSQL connection string |
-| `PRODUCTION_API_URL` | API base URL (e.g., https://api.trends.earth) |
-| `PRODUCTION_S3_BUCKET_NAME` | S3 bucket for data storage |
+#### Google Cloud
 
-> **Note**: S3 access uses EC2 instance role credentials. Redis and rate limiting use the stack's Redis service automatically.
+| Secret Name | Description | Notes |
+|-------------|-------------|-------|
+| `EE_SERVICE_ACCOUNT_JSON` | GEE service account credentials (base64 encoded) | Full service account JSON, base64 encoded |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | OAuth client secret for user GEE authentication | From Google Cloud Console |
 
-### Optional Variables
+#### Other external Services
 
-Add these to GitHub Variables for customization:
+| Secret Name | Description | Notes |
+|-------------|-------------|-------|
+| `ROLLBAR_SCRIPT_TOKEN` | Rollbar token for script/execution errors | From Rollbar project settings |
+| `ROLLBAR_SERVER_TOKEN` | Rollbar token for API server errors | From Rollbar project settings |
+| `SPARKPOST_API_KEY` | SparkPost API key for email notifications | Optional - email disabled if not set |
+
+#### API Environment Authentication
+
+| Secret Name | Description | Notes |
+|-------------|-------------|-------|
+| `API_ENVIRONMENT_USER` | Username for execution container API access | Internal service account |
+| `API_ENVIRONMENT_USER_PASSWORD` | Password for execution container API access | Internal service account |
+
+### Required Variables
+
+Add these to GitHub Variables (Settings → Secrets and variables → Actions → Variables):
+
+#### AWS Configuration
+
+| Variable Name | Description | Example |
+|---------------|-------------|---------|
+| `AWS_OIDC_ROLE_ARN` | ARN of GitHubActionsDeployRole (from setup step 1) | `arn:aws:iam::123456789:role/GitHubActionsDeployRole` |
+| `AWS_REGION` | AWS region for deployment | `us-east-1` |
+
+#### API URLs
+
+| Variable Name | Description | Example |
+|---------------|-------------|---------|
+| `STAGING_API_URL` | Staging API base URL | `https://api-staging.trends.earth` |
+| `PRODUCTION_API_URL` | Production API base URL | `https://api.trends.earth` |
+
+#### Google Cloud
+
+| Variable Name | Description | Example |
+|---------------|-------------|---------|
+| `GOOGLE_PROJECT_ID` | Google Cloud project ID for GEE | `gef-ld-toolbox` |
+| `GEE_ENDPOINT` | GEE API endpoint (optional) | `https://earthengine-highvolume.googleapis.com` |
+| `GOOGLE_OAUTH_CLIENT_ID` | OAuth client ID for user GEE authentication | From Google Cloud Console |
+| `STAGING_GOOGLE_OAUTH_REDIRECT_URI` | OAuth callback URL for staging | `https://api-staging.trends.earth/api/v1/user/me/gee-oauth/callback` |
+| `PRODUCTION_GOOGLE_OAUTH_REDIRECT_URI` | OAuth callback URL for production | `https://api.trends.earth/api/v1/user/me/gee-oauth/callback` |
+
+#### S3 Storage (Shared between environments)
+
+| Variable Name | Description | Example |
+|---------------|-------------|---------|
+| `S3_BUCKET_NAME` | Main S3 bucket for data | `trends.earth-data` |
+| `SCRIPTS_S3_BUCKET` | S3 bucket for scripts storage | `trends.earth-private` |
+| `PARAMS_S3_BUCKET` | S3 bucket for parameters/results | `trends.earth-users` |
+| `STAGING_SCRIPTS_S3_PREFIX` | S3 prefix for staging scripts | `api-files/scripts/staging` |
+| `PRODUCTION_SCRIPTS_S3_PREFIX` | S3 prefix for production scripts | `api-files/scripts/production` |
+| `STAGING_PARAMS_S3_PREFIX` | S3 prefix for staging params | `api-files/params/staging` |
+| `PRODUCTION_PARAMS_S3_PREFIX` | S3 prefix for production params | `api-files/params/production` |
+
+#### Docker Configuration
+
+| Variable Name | Description | Example |
+|---------------|-------------|---------|
+| `REGISTRY_URL` | Docker registry URL for script images | `172.40.1.52:5000` |
+| `DOCKER_SUBNET` | Docker network subnet (optional) | `10.10.0.0/16` |
+| `EXECUTION_SUBNET` | Execution container subnet (optional) | `10.11.0.0/24` |
+
+#### CORS Configuration
+
+| Variable Name | Description | Example |
+|---------------|-------------|---------|
+| `STAGING_CORS_ORIGINS` | Allowed CORS origins for staging | `https://staging.trends.earth,https://api-staging.trends.earth` |
+| `PRODUCTION_CORS_ORIGINS` | Allowed CORS origins for production | `https://trends.earth,https://api.trends.earth` |
+
+#### Rate Limiting (All optional - have sensible defaults)
 
 | Variable Name | Description | Default |
 |---------------|-------------|---------|
-| `AWS_REGION` | AWS region | us-east-1 |
+| `RATE_LIMITING_ENABLED` | Enable rate limiting | `true` |
+| `RATE_LIMIT_STORAGE_URI` | Redis URI for rate limit storage | `redis://redis:6379/1` |
+| `DEFAULT_LIMITS` | Default rate limits | `1000 per hour,100 per minute` |
+| `API_LIMITS` | API endpoint limits | `300 per hour,20 per minute` |
+| `AUTH_LIMITS` | Authentication endpoint limits | `60 per minute,600 per hour` |
+| `PASSWORD_RESET_LIMITS` | Password reset limits | `3 per hour,1 per minute` |
+| `USER_CREATION_LIMITS` | User creation limits | `100 per hour` |
+| `EXECUTION_RUN_LIMITS` | Script execution limits | `10 per minute,40 per hour,150 per day` |
+| `TRUSTED_PROXY_COUNT` | Number of trusted proxies | `1` |
+| `INTERNAL_NETWORKS` | Internal network CIDRs (no rate limiting) | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` |
+
+> **Note**: S3 access uses EC2 instance role credentials - no AWS access keys needed. Redis uses the stack's Redis service automatically.
 
 ## EC2 Instance Setup
 
