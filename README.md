@@ -308,7 +308,7 @@ The application uses two separate API URL configurations to handle different use
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
-| `API_URL` | **Public URL** for external-facing links (password reset emails, user notifications) | `https://api.trends.earth` |
+| `API_PUBLIC_URL` | **Public URL** for external-facing links (password reset emails, user notifications) | `https://api.trends.earth` |
 | `API_INTERNAL_URL` | **Internal URL** for execution containers to call back to the API (bypasses rate limiting) | `http://api:3000` |
 
 **Why Two URLs?**
@@ -318,7 +318,7 @@ The application uses two separate API URL configurations to handle different use
 **Configuration:**
 ```bash
 # In your environment file (prod.env, staging.env)
-API_URL=https://api.trends.earth           # Public URL for emails
+API_PUBLIC_URL=https://api.trends.earth    # Public URL for emails
 API_INTERNAL_URL=http://api:3000           # Internal URL for execution containers
 ```
 

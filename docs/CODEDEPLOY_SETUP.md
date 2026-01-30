@@ -217,8 +217,8 @@ Add these to GitHub Variables (Settings → Secrets and variables → Actions �
 
 | Variable Name | Description | Example |
 |---------------|-------------|---------|
-| `STAGING_API_URL` | Staging API base URL (public, for emails) | `https://api-staging.trends.earth` |
-| `PRODUCTION_API_URL` | Production API base URL (public, for emails) | `https://api.trends.earth` |
+| `STAGING_API_PUBLIC_URL` | Staging API base URL (public, for emails) | `https://api-staging.trends.earth` |
+| `PRODUCTION_API_PUBLIC_URL` | Production API base URL (public, for emails) | `https://api.trends.earth` |
 
 #### Google Cloud
 

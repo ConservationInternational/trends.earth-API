@@ -248,7 +248,7 @@ class UserService:
             db.session.commit()
 
             # Build the reset URL (points to UI, which routes to /reset-password)
-            api_url = SETTINGS.get("API_URL", "https://api.trends.earth")
+            api_url = SETTINGS.get("API_PUBLIC_URL", "https://api.trends.earth")
             reset_url = f"{api_url}/reset-password?token={reset_token.token}"
 
             # Send welcome email with reset link
@@ -607,7 +607,7 @@ class UserService:
             db.session.commit()
 
             # Build the reset URL (points to UI, which routes to /reset-password)
-            api_url = SETTINGS.get("API_URL", "https://api.trends.earth")
+            api_url = SETTINGS.get("API_PUBLIC_URL", "https://api.trends.earth")
             reset_url = f"{api_url}/reset-password?token={reset_token.token}"
 
             # Send email with reset link (not the password itself)

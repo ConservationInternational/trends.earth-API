@@ -16,7 +16,6 @@ SETTINGS = {
     "logging": {"level": os.getenv("LOG_LEVEL", "INFO")},
     "service": {"port": 3000},
     "environment": {
-        # ROLLBAR_SCRIPT_TOKEN falls back to ROLLBAR_SERVER_TOKEN for backwards compatibility
         "ROLLBAR_SCRIPT_TOKEN": os.getenv("ROLLBAR_SCRIPT_TOKEN")
         or os.getenv("ROLLBAR_SERVER_TOKEN"),
         "ROLLBAR_SERVER_TOKEN": os.getenv("ROLLBAR_SERVER_TOKEN"),
@@ -39,8 +38,9 @@ SETTINGS = {
             "GOOGLE_OAUTH_TOKEN_URI", "https://oauth2.googleapis.com/token"
         ),
     },
-    # Public API_URL for emails (password reset links, etc.)
-    "API_URL": os.getenv("API_URL"),
+    # Public API URL for emails (password reset links, etc.)
+    # Distinct from SETTINGS["environment"]["API_URL"] which is for internal container use
+    "API_PUBLIC_URL": os.getenv("API_PUBLIC_URL"),
     "ROLES": ["SUPERADMIN", "ADMIN", "USER"],
     "SQLALCHEMY_DATABASE_URI": os.getenv("DATABASE_URL")
     or (
