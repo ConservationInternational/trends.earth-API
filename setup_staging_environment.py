@@ -121,6 +121,38 @@ class StagingEnvironmentSetup:
             logger.error(f"Error connecting to database: {e}")
             return None
 
+    def refresh_collation_version(self):
+        """Refresh the database collation version to suppress mismatch warnings.
+
+        This is needed when the database was created on a system with a different
+        glibc version than the current system. The warning is harmless but noisy.
+        """
+        logger.info("Checking and refreshing database collation version...")
+
+        conn = self.connect_to_database(self.staging_db_config)
+        if not conn:
+            logger.warning(
+                "Could not connect to staging database for collation refresh"
+            )
+            return
+
+        try:
+            # Need autocommit for ALTER DATABASE
+            conn.autocommit = True
+            cursor = conn.cursor()
+
+            db_name = self.staging_db_config["database"]
+            cursor.execute(
+                f'ALTER DATABASE "{db_name}" REFRESH COLLATION VERSION'
+            )
+            logger.info(f"✓ Refreshed collation version for database {db_name}")
+
+        except psycopg2.Error as e:
+            # This is not critical - just a warning suppression
+            logger.warning(f"Could not refresh collation version (non-critical): {e}")
+        finally:
+            conn.close()
+
     def create_test_users(self):
         """Create test users with properly hashed passwords."""
         logger.info("=" * 60)
@@ -289,6 +321,11 @@ class StagingEnvironmentSetup:
             prod_cursor = prod_conn.cursor()
             staging_cursor = staging_conn.cursor()
 
+            # Enable autocommit for this connection to avoid transaction isolation
+            # issues. This is needed because sequence operations may conflict with
+            # transaction isolation. MUST be set BEFORE acquiring the advisory lock.
+            staging_conn.autocommit = True
+
             # Acquire advisory lock to prevent concurrent imports
             # Use a unique ID for staging script import operations
             staging_import_lock_id = 12345
@@ -296,11 +333,6 @@ class StagingEnvironmentSetup:
             staging_cursor.execute(
                 "SELECT pg_advisory_lock(%s)", (staging_import_lock_id,)
             )
-
-            # Enable autocommit for this connection to avoid transaction isolation
-            # issues. This is needed because sequence operations may conflict with
-            # transaction isolation
-            staging_conn.autocommit = True
 
             # Note: We don't delete existing scripts - we use ON CONFLICT to update them
             # Scripts use GUID primary keys, not sequences, so no sequence reset needed
@@ -512,6 +544,10 @@ class StagingEnvironmentSetup:
             prod_cursor = prod_conn.cursor()
             staging_cursor = staging_conn.cursor()
 
+            # Enable autocommit to avoid transaction isolation issues with
+            # sequence operations. MUST be set BEFORE acquiring the advisory lock.
+            staging_conn.autocommit = True
+
             # Acquire advisory lock to prevent concurrent status log insertions
             # Use a unique ID for staging status log import operations
             staging_status_import_lock_id = 54321
@@ -519,10 +555,6 @@ class StagingEnvironmentSetup:
             staging_cursor.execute(
                 "SELECT pg_advisory_lock(%s)", (staging_status_import_lock_id,)
             )
-
-            # Enable autocommit to avoid transaction isolation issues with
-            # sequence operations
-            staging_conn.autocommit = True
 
             # Check if status_log table exists in both databases
             prod_cursor.execute(
@@ -896,6 +928,9 @@ class StagingEnvironmentSetup:
     def run(self):
         """Run the complete staging environment setup."""
         try:
+            # Refresh collation version to suppress mismatch warnings
+            self.refresh_collation_version()
+
             # Create test users first
             superadmin_id = self.create_test_users()
             if not superadmin_id:
