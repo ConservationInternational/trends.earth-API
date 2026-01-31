@@ -463,33 +463,23 @@ jobs:
         fi
 
     - name: Notify Rollbar of deployment
-      if: success()
-      run: |
-        # Notify Rollbar of successful deployment (if token is configured)
-        if [ -n "${{ secrets.ROLLBAR_ACCESS_TOKEN }}" ]; then
-          curl -X POST 'https://api.rollbar.com/api/1/deploy/' \
-            -F access_token="${{ secrets.ROLLBAR_ACCESS_TOKEN }}" \
-            -F environment="staging" \
-            -F revision="${{ github.sha }}" \
-            -F local_username="${{ github.actor }}" \
-            -F comment="Deployed via CodeDeploy from ${{ github.ref_name }}" \
-            -F status=succeeded
-          echo "📊 Rollbar deployment notification sent"
-        else
-          echo "⚠️ ROLLBAR_ACCESS_TOKEN not configured, skipping deployment notification"
-        fi
+      if: success() && secrets.ROLLBAR_ACCESS_TOKEN != ''
+      uses: rollbar/github-deploy-action@2.1.2
+      with:
+        environment: 'staging'
+        version: ${{ github.sha }}
+        status: 'succeeded'
+        local_username: ${{ github.actor }}
+      env:
+        ROLLBAR_ACCESS_TOKEN: ${{ secrets.ROLLBAR_ACCESS_TOKEN }}
 
     - name: Notify Rollbar of deployment failure
-      if: failure()
-      run: |
-        # Notify Rollbar of failed deployment (if token is configured)
-        if [ -n "${{ secrets.ROLLBAR_ACCESS_TOKEN }}" ]; then
-          curl -X POST 'https://api.rollbar.com/api/1/deploy/' \
-            -F access_token="${{ secrets.ROLLBAR_ACCESS_TOKEN }}" \
-            -F environment="staging" \
-            -F revision="${{ github.sha }}" \
-            -F local_username="${{ github.actor }}" \
-            -F comment="FAILED: CodeDeploy deployment from ${{ github.ref_name }}" \
-            -F status=failed
-          echo "📊 Rollbar failure notification sent"
-        fi
+      if: failure() && secrets.ROLLBAR_ACCESS_TOKEN != ''
+      uses: rollbar/github-deploy-action@2.1.2
+      with:
+        environment: 'staging'
+        version: ${{ github.sha }}
+        status: 'failed'
+        local_username: ${{ github.actor }}
+      env:
+        ROLLBAR_ACCESS_TOKEN: ${{ secrets.ROLLBAR_ACCESS_TOKEN }}
