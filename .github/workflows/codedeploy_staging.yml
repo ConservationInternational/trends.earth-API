@@ -463,7 +463,7 @@ jobs:
         fi
 
     - name: Notify Rollbar of deployment
-      if: success() && secrets.ROLLBAR_ACCESS_TOKEN != ''
+      if: success()
       uses: rollbar/github-deploy-action@2.1.2
       with:
         environment: 'staging'
@@ -472,9 +472,10 @@ jobs:
         local_username: ${{ github.actor }}
       env:
         ROLLBAR_ACCESS_TOKEN: ${{ secrets.ROLLBAR_ACCESS_TOKEN }}
+      continue-on-error: true
 
     - name: Notify Rollbar of deployment failure
-      if: failure() && secrets.ROLLBAR_ACCESS_TOKEN != ''
+      if: failure()
       uses: rollbar/github-deploy-action@2.1.2
       with:
         environment: 'staging'
@@ -483,3 +484,4 @@ jobs:
         local_username: ${{ github.actor }}
       env:
         ROLLBAR_ACCESS_TOKEN: ${{ secrets.ROLLBAR_ACCESS_TOKEN }}
+      continue-on-error: true
