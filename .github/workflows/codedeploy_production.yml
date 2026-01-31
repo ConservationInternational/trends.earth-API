@@ -446,7 +446,7 @@ jobs:
         status: 'succeeded'
         local_username: ${{ github.actor }}
       env:
-        ROLLBAR_ACCESS_TOKEN: ${{ secrets.ROLLBAR_ACCESS_TOKEN }}
+        ROLLBAR_ACCESS_TOKEN: ${{ secrets.ROLLBAR_SERVER_TOKEN }}
       continue-on-error: true
 
     - name: Notify Rollbar of deployment failure
@@ -458,5 +458,5 @@ jobs:
         status: 'failed'
         local_username: ${{ github.actor }}
       env:
-        ROLLBAR_ACCESS_TOKEN: ${{ secrets.ROLLBAR_ACCESS_TOKEN }}
+        ROLLBAR_ACCESS_TOKEN: ${{ secrets.ROLLBAR_SERVER_TOKEN }}
       continue-on-error: true
