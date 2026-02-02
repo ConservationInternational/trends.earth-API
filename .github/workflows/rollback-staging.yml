@@ -14,10 +14,15 @@ on:
         type: string
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+  AWS_REGION: us-east-1
   ECR_REPOSITORY: trendsearth-api
   CODEDEPLOY_APPLICATION: trends-earth-api
   CODEDEPLOY_DEPLOYMENT_GROUP: trends-earth-api-staging
+
+# Required for OIDC authentication with AWS
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   rollback-staging:
@@ -40,9 +45,9 @@ jobs:
         echo "Reason: ${{ github.event.inputs.reason }}"
         echo "Rollback to commit: ${{ github.event.inputs.rollback_to_commit || 'automatic rollback' }}"
         
-        # Validate required secrets
-        if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] || [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
-          echo "❌ Error: AWS credentials not configured"
+        # Validate OIDC role is configured
+        if [ -z "${{ vars.AWS_OIDC_ROLE_ARN }}" ]; then
+          echo "❌ Error: AWS_OIDC_ROLE_ARN variable not configured"
           exit 1
         fi
         
@@ -53,11 +58,11 @@ jobs:
         
         echo "✅ Configuration validated"
 
-    - name: Configure AWS credentials
+    - name: Configure AWS credentials via OIDC
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+        role-session-name: GitHubActionsStagingRollback
         aws-region: ${{ env.AWS_REGION }}
 
     - name: Get current deployment status
