@@ -16,7 +16,7 @@ spew = False
 
 daemon = False
 pidfile = None
-umask = 666
+umask = 0  # Use system default; container permissions are managed by Docker
 user = os.getenv("USER")
 group = os.getenv("USER")
 tmp_upload_dir = None
