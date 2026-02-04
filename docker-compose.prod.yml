@@ -202,7 +202,7 @@ services:
     # Uses alpine's built-in sleep; runs indefinitely
     command: |
       sh -c 'while true; do
-        echo "[$(date)] Starting Docker cleanup on node..."
+        echo "[$$(date)] Starting Docker cleanup on node..."
         echo "Pruning stopped containers..."
         docker container prune -f
         echo "Pruning dangling images..."
@@ -211,7 +211,7 @@ services:
         docker builder prune -f --filter "until=168h" || true
         echo "Pruning unused volumes..."
         docker volume prune -f || true
-        echo "[$(date)] Cleanup complete. Sleeping 6 hours..."
+        echo "[$$(date)] Cleanup complete. Sleeping 6 hours..."
         sleep 21600
       done'
     deploy:
