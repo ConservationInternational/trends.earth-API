@@ -144,6 +144,9 @@ class UserService:
                 message="User with email " + email_addr + " already exists"
             )
 
+        # Check if this email was previously deleted (security monitoring)
+        UserService._check_previously_deleted_email(email_addr)
+
         if legacy:
             return UserService._create_user_legacy(
                 email_addr=email_addr,
@@ -292,6 +295,56 @@ class UserService:
             raise error
 
         return user
+
+    @staticmethod
+    def _check_previously_deleted_email(email_addr):
+        """Check if an email was previously deleted and log security warning.
+
+        This helps detect potential abuse patterns like:
+        - Users deleting accounts to reset rate limits
+        - Re-registration after policy violations
+        - Suspicious account cycling behavior
+
+        Does not block registration - only logs for monitoring.
+        """
+        import hashlib
+
+        from gefapi.models import UserDeletionAudit
+
+        try:
+            email_hash = hashlib.sha256(email_addr.lower().encode("utf-8")).hexdigest()
+
+            # Check if this email hash exists in deletion audit
+            deletion_record = UserDeletionAudit.query.filter(
+                UserDeletionAudit.email_hash == email_hash
+            ).first()
+
+            if deletion_record:
+                logger.warning(
+                    f"[SECURITY]: Registration attempt with previously deleted email. "
+                    f"Deletion reason: {deletion_record.deletion_reason}, "
+                    f"Deleted at: {deletion_record.deleted_at}"
+                )
+                rollbar.report_message(
+                    "Registration with previously deleted email detected",
+                    level="warning",
+                    extra_data={
+                        "deletion_reason": deletion_record.deletion_reason,
+                        "deleted_at": deletion_record.deleted_at.isoformat()
+                        if deletion_record.deleted_at
+                        else None,
+                        "days_since_deletion": (
+                            datetime.datetime.utcnow() - deletion_record.deleted_at
+                        ).days
+                        if deletion_record.deleted_at
+                        else None,
+                        "original_account_age_days": deletion_record.account_age_days,
+                        "original_total_executions": deletion_record.total_executions,
+                    },
+                )
+        except Exception as e:
+            # Don't fail registration if audit check fails
+            logger.error(f"[SERVICE]: Error checking deletion audit: {e}")
 
     @staticmethod
     def get_users(
@@ -782,7 +835,36 @@ class UserService:
         return current_user
 
     @staticmethod
-    def delete_user(user_id):
+    def delete_user(
+        user_id,
+        deletion_reason: str = None,
+        deleted_by_admin_id: str = None,
+        context: str = None,
+    ):
+        """Delete a user account and all associated data.
+
+        Creates an audit record before deletion to track the deletion
+        for compliance and analytics purposes.
+
+        Args:
+            user_id: The ID of the user to delete
+            deletion_reason: Why the user is being deleted (see DeletionReason).
+                Defaults to USER_REQUEST if not specified.
+            deleted_by_admin_id: ID of admin performing the deletion (if applicable)
+            context: Additional JSON context for the audit record (no PII)
+
+        Returns:
+            Dict with the user's serialized data (before deletion)
+
+        Raises:
+            UserNotFound: If the user doesn't exist
+        """
+        from gefapi.models import DeletionReason, UserDeletionAudit
+
+        # Default to user_request if no reason specified
+        if deletion_reason is None:
+            deletion_reason = DeletionReason.USER_REQUEST
+
         logger.info("[SERVICE]: Deleting user " + str(user_id))
         user = UserService.get_user(user_id=user_id)
         if not user:
@@ -793,6 +875,15 @@ class UserService:
         # Serialize user data before deletion
         user_data = user.serialize()
 
+        # Create audit record before deletion (captures user statistics)
+        logger.info("[DB]: Creating deletion audit record")
+        audit_record = UserDeletionAudit.create_from_user(
+            user=user,
+            deletion_reason=deletion_reason,
+            deleted_by_admin_id=deleted_by_admin_id,
+            context=context,
+        )
+
         try:
             from sqlalchemy import String, cast
 
@@ -800,6 +891,9 @@ class UserService:
             from gefapi.models.password_reset_token import PasswordResetToken
             from gefapi.models.refresh_token import RefreshToken
             from gefapi.models.script_log import ScriptLog
+
+            # Add audit record to session first
+            db.session.add(audit_record)
 
             user_uuid = user.id
 

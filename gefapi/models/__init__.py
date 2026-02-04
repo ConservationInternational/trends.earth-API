@@ -60,11 +60,16 @@ from gefapi.models.script import Script  # noqa: E402
 from gefapi.models.script_log import ScriptLog  # noqa: E402
 from gefapi.models.status_log import StatusLog  # noqa: E402
 from gefapi.models.user import User  # noqa: E402
+from gefapi.models.user_deletion_audit import (  # noqa: E402
+    DeletionReason,
+    UserDeletionAudit,
+)
 
 __all__ = [
     "AdminBoundary0Metadata",
     "AdminBoundary1Metadata",
     "AdminBoundary1Unit",
+    "DeletionReason",
     "Execution",
     "ExecutionLog",
     "PasswordResetToken",
@@ -74,4 +79,5 @@ __all__ = [
     "ScriptLog",
     "StatusLog",
     "User",
+    "UserDeletionAudit",
 ]

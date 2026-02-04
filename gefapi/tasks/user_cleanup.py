@@ -11,6 +11,7 @@ these fields, so they won't be affected by cleanup tasks.
 """
 
 import datetime
+import json
 import logging
 import os
 
@@ -62,7 +63,7 @@ def cleanup_unverified_users(self):
 
     try:
         from gefapi import app
-        from gefapi.models import User
+        from gefapi.models import DeletionReason, User
         from gefapi.services.user_service import UserService
 
         with app.app_context():
@@ -86,7 +87,18 @@ def cleanup_unverified_users(self):
             for user in unverified_users:
                 try:
                     email = user.email
-                    UserService.delete_user(user.id)
+                    # Create context for audit record
+                    context = json.dumps(
+                        {
+                            "cleanup_task": "cleanup_unverified_users",
+                            "threshold_days": cleanup_days,
+                        }
+                    )
+                    UserService.delete_user(
+                        user.id,
+                        deletion_reason=DeletionReason.UNVERIFIED_EMAIL,
+                        context=context,
+                    )
                     deleted_count += 1
                     deleted_emails.append(email)
                     logger.info(
@@ -149,7 +161,7 @@ def cleanup_never_logged_in_users(self):
 
     try:
         from gefapi import app
-        from gefapi.models import User
+        from gefapi.models import DeletionReason, User
         from gefapi.services.user_service import UserService
 
         with app.app_context():
@@ -171,7 +183,18 @@ def cleanup_never_logged_in_users(self):
             for user in never_logged_in_users:
                 try:
                     email = user.email
-                    UserService.delete_user(user.id)
+                    # Create context for audit record
+                    context = json.dumps(
+                        {
+                            "cleanup_task": "cleanup_never_logged_in_users",
+                            "threshold_days": cleanup_days,
+                        }
+                    )
+                    UserService.delete_user(
+                        user.id,
+                        deletion_reason=DeletionReason.NEVER_LOGGED_IN,
+                        context=context,
+                    )
                     deleted_count += 1
                     deleted_emails.append(email)
                     logger.info(

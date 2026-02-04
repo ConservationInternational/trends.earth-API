@@ -641,10 +641,15 @@ def delete_profile():
     - `403 Forbidden`: Cannot delete admin accounts via self-service
     - `500 Internal Server Error`: Account deletion failed
     """
+    from gefapi.models import DeletionReason
+
     logger.info("[ROUTER]: Delete me")
     identity = current_user
     try:
-        user_data = UserService.delete_user(str(identity.id))
+        user_data = UserService.delete_user(
+            str(identity.id),
+            deletion_reason=DeletionReason.USER_REQUEST,
+        )
     except UserNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
@@ -977,6 +982,8 @@ def delete_user(user):
     - `404 Not Found`: User does not exist
     - `500 Internal Server Error`: Account deletion failed
     """
+    from gefapi.models import DeletionReason
+
     logger.info("[ROUTER]: Deleting user" + user)
     identity = current_user
     if is_protected_admin_email(user):
@@ -984,7 +991,11 @@ def delete_user(user):
     if not can_delete_user(identity):
         return error(status=403, detail="Forbidden")
     try:
-        user_data = UserService.delete_user(user)
+        user_data = UserService.delete_user(
+            user,
+            deletion_reason=DeletionReason.ADMIN_REQUEST,
+            deleted_by_admin_id=str(identity.id),
+        )
     except UserNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
