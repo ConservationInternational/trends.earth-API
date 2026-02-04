@@ -214,6 +214,45 @@ services:
         max_attempts: 3
         window: 120s
 
+  # Global Docker cleanup service - runs on ALL nodes (managers + workers)
+  # This ensures images, containers, and build cache are cleaned on every node,
+  # not just managers where the Celery cleanup tasks run.
+  # Security note: Uses minimal docker:24-cli image with only prune commands.
+  docker-cleanup:
+    image: docker:24-cli
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Run cleanup every 6 hours: prune containers, dangling images, and build cache
+    command: |
+      sh -c 'while true; do
+        echo "[$(date)] Starting Docker cleanup on node..."
+        echo "Pruning stopped containers..."
+        docker container prune -f
+        echo "Pruning dangling images..."
+        docker image prune -f
+        echo "Pruning build cache (older than 168h)..."
+        docker builder prune -f --filter "until=168h" || true
+        echo "Pruning unused volumes..."
+        docker volume prune -f || true
+        echo "[$(date)] Cleanup complete. Sleeping 6 hours..."
+        sleep 21600
+      done'
+    deploy:
+      mode: global  # Run on EVERY node in the swarm
+      resources:
+        reservations:
+          cpus: "0.1"
+          memory: 50M
+        limits:
+          cpus: "0.5"
+          memory: 100M
+      restart_policy:
+        condition: on-failure
+        delay: 60s
+        max_attempts: 3
+        window: 300s
+
   postgres:
     image: postgis/postgis:16-3.4
     environment:

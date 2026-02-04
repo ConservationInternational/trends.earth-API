@@ -55,10 +55,6 @@ def make_celery(app):
         "gefapi.tasks.docker_completed_monitoring.monitor_completed_docker_services": {
             "queue": "build"
         },
-        # Docker resource cleanup task - run on build queue with Docker access
-        "gefapi.tasks.docker_resource_cleanup.cleanup_docker_build_cache": {
-            "queue": "build"
-        },
         # Stats cache refresh tasks - run on default queue
         "gefapi.tasks.stats_cache_refresh.refresh_dashboard_stats_cache": {
             "queue": "default"
@@ -128,11 +124,6 @@ def make_celery(app):
                 "gefapi.tasks.docker_completed_monitoring.monitor_completed_docker_services"
             ),
             "schedule": 180.0,  # Every 3 minutes - check for completed services
-            "options": {"queue": "build"},  # Run on build queue with Docker access
-        },
-        "cleanup-docker-build-cache": {
-            "task": "gefapi.tasks.docker_resource_cleanup.cleanup_docker_build_cache",
-            "schedule": 604800.0,  # Every week (7 days = 604800 seconds)
             "options": {"queue": "build"},  # Run on build queue with Docker access
         },
         # Stats cache refresh tasks for performance optimization
