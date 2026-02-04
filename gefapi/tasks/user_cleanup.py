@@ -100,6 +100,20 @@ def cleanup_unverified_users(self):
                     continue
 
             logger.info(f"[TASK]: Cleaned up {deleted_count} unverified user accounts")
+
+            # Report to Rollbar for visibility
+            if deleted_count > 0:
+                rollbar.report_message(
+                    f"User cleanup: Deleted {deleted_count} unverified user accounts",
+                    level="info",
+                    extra_data={
+                        "task": "cleanup_unverified_users",
+                        "deleted_count": deleted_count,
+                        "cleanup_days_threshold": cleanup_days,
+                        "sample_emails": deleted_emails[:5],
+                    },
+                )
+
             return {
                 "status": "success",
                 "deleted_count": deleted_count,
@@ -174,6 +188,20 @@ def cleanup_never_logged_in_users(self):
             logger.info(
                 f"[TASK]: Cleaned up {deleted_count} never-logged-in user accounts"
             )
+
+            # Report to Rollbar for visibility
+            if deleted_count > 0:
+                rollbar.report_message(
+                    f"User cleanup: Deleted {deleted_count} never-logged-in users",
+                    level="info",
+                    extra_data={
+                        "task": "cleanup_never_logged_in_users",
+                        "deleted_count": deleted_count,
+                        "cleanup_days_threshold": cleanup_days,
+                        "sample_emails": deleted_emails[:5],
+                    },
+                )
+
             return {
                 "status": "success",
                 "deleted_count": deleted_count,

@@ -100,6 +100,19 @@ def cleanup_inactive_refresh_tokens(self):
                 f"[TASK]: Revoked {revoked_count} inactive refresh tokens "
                 f"(unused for {inactive_days}+ days)"
             )
+
+            # Report to Rollbar for visibility
+            if revoked_count > 0:
+                rollbar.report_message(
+                    f"Token cleanup: Revoked {revoked_count} inactive refresh tokens",
+                    level="info",
+                    extra_data={
+                        "task": "cleanup_inactive_refresh_tokens",
+                        "revoked_count": revoked_count,
+                        "inactive_days_threshold": inactive_days,
+                    },
+                )
+
             return {
                 "status": "success",
                 "revoked_count": revoked_count,
