@@ -461,12 +461,24 @@ class TestLegacyUserProtection:
                 institution="Test",
             )
             user.created_at = old_date
-            # Simulate edge case with NULL email_verified
-            user.email_verified = None
             user.last_login_at = None
             db.session.add(user)
             db.session.commit()
             user_id = user.id
+
+            # Force NULL email_verified using raw SQL since SQLAlchemy __init__ sets False
+            from sqlalchemy import text
+
+            db.session.execute(
+                text('UPDATE "user" SET email_verified = NULL WHERE id = :uid'),
+                {"uid": str(user_id)},
+            )
+            db.session.commit()
+
+            # Verify it's actually NULL
+            db.session.expire_all()
+            user = User.query.get(user_id)
+            assert user.email_verified is None, f"Expected None but got {user.email_verified}"
 
             # Run unverified cleanup task (checks for email_verified=False)
             from gefapi.tasks.user_cleanup import cleanup_unverified_users
@@ -475,6 +487,7 @@ class TestLegacyUserProtection:
                 cleanup_unverified_users()
 
             # User should still exist (email_verified is NULL, not False)
+            db.session.expire_all()
             assert User.query.get(user_id) is not None
 
             # Clean up
@@ -625,6 +638,9 @@ class TestInactiveTokenCleanup:
                 with patch.object(cleanup_inactive_refresh_tokens, "retry"):
                     result = cleanup_inactive_refresh_tokens()
 
+                # Expire session to see fresh data from database
+                db.session.expire_all()
+
                 # Token should be revoked
                 token = RefreshToken.query.get(token_id)
                 assert token.is_revoked is True
@@ -676,6 +692,9 @@ class TestInactiveTokenCleanup:
                 with patch.object(cleanup_inactive_refresh_tokens, "retry"):
                     cleanup_inactive_refresh_tokens()
 
+                # Expire session to see fresh data from database
+                db.session.expire_all()
+
                 # Token should NOT be revoked
                 token = RefreshToken.query.get(token_id)
                 assert token.is_revoked is False
@@ -725,6 +744,9 @@ class TestInactiveTokenCleanup:
 
                 with patch.object(cleanup_inactive_refresh_tokens, "retry"):
                     cleanup_inactive_refresh_tokens()
+
+                # Expire session to see fresh data from database
+                db.session.expire_all()
 
                 # Token should NOT be revoked (NULL last_used_at = legacy)
                 token = RefreshToken.query.get(token_id)
