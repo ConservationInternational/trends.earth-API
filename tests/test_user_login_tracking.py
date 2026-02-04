@@ -478,7 +478,9 @@ class TestLegacyUserProtection:
             # Verify it's actually NULL
             db.session.expire_all()
             user = User.query.get(user_id)
-            assert user.email_verified is None, f"Expected None but got {user.email_verified}"
+            assert user.email_verified is None, (
+                f"Expected None but got {user.email_verified}"
+            )
 
             # Run unverified cleanup task (checks for email_verified=False)
             from gefapi.tasks.user_cleanup import cleanup_unverified_users
