@@ -94,6 +94,9 @@ class UserService:
         "institution",
         "created_at",
         "updated_at",
+        "last_login_at",
+        "email_verified",
+        "email_verified_at",
     }
     USER_ALLOWED_SORT_FIELDS = USER_ALLOWED_FILTER_FIELDS
 
@@ -882,8 +885,17 @@ class UserService:
             log_authentication_event(False, email, "invalid_password")
             return None
 
-        # Successful authentication
-        # logger.info(f"[AUTH]: Successful login for user {email}")
+        # Successful authentication - update last login timestamp
+        try:
+            user.last_login_at = datetime.datetime.utcnow()
+            db.session.add(user)
+            db.session.commit()
+            logger.info(f"[AUTH]: Updated last_login_at for user {email}")
+        except Exception as e:
+            # Don't fail login if we can't update the timestamp
+            logger.warning(f"[AUTH]: Failed to update last_login_at for {email}: {e}")
+            db.session.rollback()
+
         # log_authentication_event(True, email)
 
         #  to serialize id with jwt

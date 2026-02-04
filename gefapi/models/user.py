@@ -78,6 +78,14 @@ class User(db.Model):
     # Email notification preferences
     email_notifications_enabled = db.Column(db.Boolean(), default=True, nullable=False)
 
+    # Login and email verification tracking
+    # last_login_at: Updated on each successful authentication
+    # email_verified: Whether user has verified their email address
+    # email_verified_at: When email was verified (NULL for legacy users)
+    last_login_at = db.Column(db.DateTime(), nullable=True)
+    email_verified = db.Column(db.Boolean(), default=False, nullable=True)
+    email_verified_at = db.Column(db.DateTime(), nullable=True)
+
     def __init__(self, email, password, name, country, institution, role="USER"):
         self.email = email
         self.password = self.set_password(password)
@@ -87,6 +95,10 @@ class User(db.Model):
         self.institution = institution
         # Ensure email_notifications_enabled gets the default value
         self.email_notifications_enabled = True
+        # Initialize login/verification tracking fields
+        self.last_login_at = None
+        self.email_verified = False
+        self.email_verified_at = None
 
     def __repr__(self):
         return f"<User {self.email!r}>"
@@ -118,6 +130,13 @@ class User(db.Model):
             "country": self.country,
             "institution": self.institution,
             "email_notifications_enabled": self.email_notifications_enabled,
+            "last_login_at": self.last_login_at.isoformat()
+            if self.last_login_at
+            else None,
+            "email_verified": self.email_verified,
+            "email_verified_at": self.email_verified_at.isoformat()
+            if self.email_verified_at
+            else None,
         }
 
         # Include Google Groups preferences if requested

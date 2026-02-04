@@ -43,6 +43,12 @@ def make_celery(app):
         "gefapi.tasks.refresh_token_cleanup.cleanup_expired_refresh_tokens": {
             "queue": "default"
         },
+        "gefapi.tasks.refresh_token_cleanup.cleanup_inactive_refresh_tokens": {
+            "queue": "default"
+        },
+        "gefapi.tasks.user_cleanup.cleanup_unverified_users": {"queue": "default"},
+        "gefapi.tasks.user_cleanup.cleanup_never_logged_in_users": {"queue": "default"},
+        "gefapi.tasks.user_cleanup.get_user_cleanup_stats": {"queue": "default"},
         "gefapi.tasks.docker_service_monitoring.monitor_failed_docker_services": {
             "queue": "build"
         },
@@ -94,6 +100,21 @@ def make_celery(app):
         "cleanup-expired-refresh-tokens": {
             "task": "gefapi.tasks.refresh_token_cleanup.cleanup_expired_refresh_tokens",
             "schedule": 86400.0,  # Every day (86400 seconds)
+        },
+        "cleanup-inactive-refresh-tokens": {
+            "task": (
+                "gefapi.tasks.refresh_token_cleanup.cleanup_inactive_refresh_tokens"
+            ),
+            "schedule": 86400.0,  # Every day (86400 seconds)
+        },
+        # User cleanup tasks - run weekly for safety
+        "cleanup-unverified-users": {
+            "task": "gefapi.tasks.user_cleanup.cleanup_unverified_users",
+            "schedule": 604800.0,  # Every week (7 days = 604800 seconds)
+        },
+        "cleanup-never-logged-in-users": {
+            "task": "gefapi.tasks.user_cleanup.cleanup_never_logged_in_users",
+            "schedule": 604800.0,  # Every week (7 days = 604800 seconds)
         },
         "monitor-failed-docker-services": {
             "task": (

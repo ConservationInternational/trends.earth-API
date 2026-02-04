@@ -8,4 +8,5 @@ from gefapi.tasks import (
     refresh_token_cleanup,  # noqa: F401
     stats_cache_refresh,  # noqa: F401
     status_monitoring,  # noqa: F401
+    user_cleanup,  # noqa: F401
 )
