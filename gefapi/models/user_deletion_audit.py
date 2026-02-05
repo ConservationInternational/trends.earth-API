@@ -96,6 +96,8 @@ class UserDeletionAudit(db.Model):
     account_age_days = db.Column(db.Integer(), nullable=True)
     last_login_at = db.Column(db.DateTime(), nullable=True)
     days_since_last_login = db.Column(db.Integer(), nullable=True)
+    last_activity_at = db.Column(db.DateTime(), nullable=True)
+    days_since_last_activity = db.Column(db.Integer(), nullable=True)
 
     # Usage statistics (non-identifying aggregate data)
     total_executions = db.Column(db.Integer(), default=0)
@@ -129,6 +131,7 @@ class UserDeletionAudit(db.Model):
         country: str | None = None,
         account_created_at: datetime.datetime | None = None,
         last_login_at: datetime.datetime | None = None,
+        last_activity_at: datetime.datetime | None = None,
         total_executions: int = 0,
         total_scripts: int = 0,
         completed_executions: int = 0,
@@ -154,6 +157,7 @@ class UserDeletionAudit(db.Model):
         self.country = country
         self.account_created_at = account_created_at
         self.last_login_at = last_login_at
+        self.last_activity_at = last_activity_at
         self.total_executions = total_executions
         self.total_scripts = total_scripts
         self.completed_executions = completed_executions
@@ -170,6 +174,9 @@ class UserDeletionAudit(db.Model):
         if last_login_at:
             self.days_since_last_login = (self.deleted_at - last_login_at).days
 
+        if last_activity_at:
+            self.days_since_last_activity = (self.deleted_at - last_activity_at).days
+
     def __repr__(self):
         return f"<UserDeletionAudit {self.id} reason={self.deletion_reason}>"
 
@@ -182,6 +189,7 @@ class UserDeletionAudit(db.Model):
             "country": self.country,
             "account_age_days": self.account_age_days,
             "days_since_last_login": self.days_since_last_login,
+            "days_since_last_activity": self.days_since_last_activity,
             "total_executions": self.total_executions,
             "total_scripts": self.total_scripts,
             "completed_executions": self.completed_executions,
@@ -225,6 +233,7 @@ class UserDeletionAudit(db.Model):
             country=user.country,
             account_created_at=user.created_at,
             last_login_at=user.last_login_at,
+            last_activity_at=user.last_activity_at,
             total_executions=total_executions,
             total_scripts=total_scripts,
             completed_executions=completed_executions,

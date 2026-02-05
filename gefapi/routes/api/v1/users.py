@@ -170,6 +170,7 @@ def get_users():
           "created_at": "2025-01-15T10:30:00Z",
           "updated_at": "2025-01-15T10:30:00Z",
           "last_login_at": "2025-01-15T09:30:00Z",
+          "last_activity_at": "2025-01-15T11:30:00Z",
           "email_verified": true,
           "email_verified_at": "2025-01-15T10:30:00Z"
         }
@@ -191,12 +192,12 @@ def get_users():
     - `?filter=role=ADMIN` - Find users with ADMIN role
     - `?filter=country=US` - Find users from United States
     - `?filter=email_verified=true` - Find users who verified their email
-    - `?filter=last_login_at>2025-01-01` - Find users who logged in after date
+    - `?filter=last_activity_at>2025-01-01` - Find users active after date
 
     **Sorting Examples**:
     - `?sort=name` - Sort by name ascending
     - `?sort=-created_at` - Sort by creation date descending
-    - `?sort=last_login_at desc` - Sort by last login descending
+    - `?sort=last_activity_at desc` - Sort by last activity descending
     - `?sort=-email_verified` - Sort unverified users first
 
     **Field Control Examples**:

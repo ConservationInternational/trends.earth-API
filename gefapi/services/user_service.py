@@ -95,6 +95,7 @@ class UserService:
         "created_at",
         "updated_at",
         "last_login_at",
+        "last_activity_at",
         "email_verified",
         "email_verified_at",
     }
@@ -979,15 +980,17 @@ class UserService:
             log_authentication_event(False, email, "invalid_password")
             return None
 
-        # Successful authentication - update last login timestamp
+        # Successful authentication - update login and activity timestamps
         try:
-            user.last_login_at = datetime.datetime.utcnow()
+            now = datetime.datetime.utcnow()
+            user.last_login_at = now
+            user.last_activity_at = now
             db.session.add(user)
             db.session.commit()
-            logger.info(f"[AUTH]: Updated last_login_at for user {email}")
+            logger.info(f"[AUTH]: Updated login timestamps for {email}")
         except Exception as e:
             # Don't fail login if we can't update the timestamp
-            logger.warning(f"[AUTH]: Failed to update last_login_at for {email}: {e}")
+            logger.warning(f"[AUTH]: Failed to update timestamps for {email}: {e}")
             db.session.rollback()
 
         # log_authentication_event(True, email)

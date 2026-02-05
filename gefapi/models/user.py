@@ -79,10 +79,12 @@ class User(db.Model):
     email_notifications_enabled = db.Column(db.Boolean(), default=True, nullable=False)
 
     # Login and email verification tracking
-    # last_login_at: Updated on each successful authentication
+    # last_login_at: Updated on each successful authentication (email/password)
+    # last_activity_at: Updated on login AND token refresh (best proxy for "active")
     # email_verified: Whether user has verified their email address
     # email_verified_at: When email was verified (NULL for legacy users)
     last_login_at = db.Column(db.DateTime(), nullable=True)
+    last_activity_at = db.Column(db.DateTime(), nullable=True, index=True)
     email_verified = db.Column(db.Boolean(), default=False, nullable=True)
     email_verified_at = db.Column(db.DateTime(), nullable=True)
 
@@ -97,6 +99,7 @@ class User(db.Model):
         self.email_notifications_enabled = True
         # Initialize login/verification tracking fields
         self.last_login_at = None
+        self.last_activity_at = None
         self.email_verified = False
         self.email_verified_at = None
 
@@ -132,6 +135,9 @@ class User(db.Model):
             "email_notifications_enabled": self.email_notifications_enabled,
             "last_login_at": self.last_login_at.isoformat()
             if self.last_login_at
+            else None,
+            "last_activity_at": self.last_activity_at.isoformat()
+            if self.last_activity_at
             else None,
             "email_verified": self.email_verified,
             "email_verified_at": self.email_verified_at.isoformat()

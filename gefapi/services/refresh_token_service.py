@@ -58,6 +58,21 @@ class RefreshTokenService:
         db.session.commit()
 
         user = refresh_token.user
+
+        # Update user's last_activity_at timestamp
+        try:
+            import datetime
+
+            user.last_activity_at = datetime.datetime.utcnow()
+            db.session.commit()
+            logger.debug(f"[SERVICE]: Updated last_activity_at for user {user.email}")
+        except Exception as e:
+            # Don't fail token validation if we can't update the timestamp
+            logger.warning(
+                f"[SERVICE]: Failed to update last_activity_at for {user.email}: {e}"
+            )
+            db.session.rollback()
+
         logger.info(f"[SERVICE]: Refresh token validated for user {user.email}")
         return refresh_token, user
 
