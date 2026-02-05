@@ -172,12 +172,33 @@ docker service ls --filter "name=${STACK_NAME}_" --format "table {{.Name}}\t{{.R
 MAX_WAIT=180
 WAIT_TIME=0
 
+# Function to check if a service is ready (current replicas == desired replicas)
+is_service_ready() {
+    local replicas="$1"
+    # Check if replicas format is valid (e.g., "2/2", "4/4", "0/1")
+    if echo "$replicas" | grep -qE "^[0-9]+/[0-9]+$"; then
+        local current="${replicas%/*}"
+        local desired="${replicas#*/}"
+        [ "$current" = "$desired" ] && [ "$desired" != "0" ]
+    else
+        return 1
+    fi
+}
+
 while [ $WAIT_TIME -lt $MAX_WAIT ]; do
     # Get list of services that are not ready (excluding migrate which starts later and exits after completion)
-    NOT_READY_SERVICES=$(docker service ls --filter "name=${STACK_NAME}_" \
-        --format "{{.Name}} {{.Replicas}}" 2>/dev/null | \
-        grep -v "_migrate" | \
-        grep -v "1/1" | grep -v "2/2" | grep -v "^$" || true)
+    NOT_READY_SERVICES=""
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        service_name=$(echo "$line" | awk '{print $1}')
+        replicas=$(echo "$line" | awk '{print $2}')
+        # Skip migrate service
+        echo "$service_name" | grep -q "_migrate" && continue
+        # Check if service is ready
+        if ! is_service_ready "$replicas"; then
+            NOT_READY_SERVICES="${NOT_READY_SERVICES}${line}\n"
+        fi
+    done < <(docker service ls --filter "name=${STACK_NAME}_" --format "{{.Name}} {{.Replicas}}" 2>/dev/null)
     
     # Check if all required services are running (empty string means all ready)
     if [ -z "$NOT_READY_SERVICES" ]; then
@@ -196,14 +217,20 @@ done
 if [ $WAIT_TIME -ge $MAX_WAIT ]; then
     log_error "DEPLOYMENT FAILED: Services did not start within $MAX_WAIT seconds"
     log_error "The following services are not ready:"
-    docker service ls --filter "name=${STACK_NAME}_" \
-        --format "{{.Name}} {{.Replicas}}" 2>/dev/null | \
-        grep -v "_migrate" | \
-        grep -v "1/1" | grep -v "2/2" | grep -v "^$" || true
+    # Show services that are not ready using the same logic as above
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        service_name=$(echo "$line" | awk '{print $1}')
+        replicas=$(echo "$line" | awk '{print $2}')
+        echo "$service_name" | grep -q "_migrate" && continue
+        if ! is_service_ready "$replicas"; then
+            echo "$line"
+        fi
+    done < <(docker service ls --filter "name=${STACK_NAME}_" --format "{{.Name}} {{.Replicas}}" 2>/dev/null)
     log_info "Checking service logs for failed services..."
     for service in $(docker service ls --filter "name=${STACK_NAME}_" --format "{{.Name}}" 2>/dev/null | grep -v "_migrate"); do
         REPLICAS=$(docker service ls --filter "name=$service" --format "{{.Replicas}}" 2>/dev/null)
-        if ! echo "$REPLICAS" | grep -qE "^[0-9]+/[0-9]+$" || [ "${REPLICAS%/*}" != "${REPLICAS#*/}" ]; then
+        if ! is_service_ready "$REPLICAS"; then
             log_error "Service $service failed to start (Replicas: $REPLICAS)"
             log_info "Last 20 lines of logs for $service:"
             docker service logs --tail 20 "$service" 2>&1 || true
