@@ -183,7 +183,7 @@ jobs:
         # Rollbar
         ROLLBAR_SCRIPT_TOKEN: ${{ secrets.ROLLBAR_SCRIPT_TOKEN }}
         ROLLBAR_SERVER_TOKEN: ${{ secrets.ROLLBAR_SERVER_TOKEN }}
-        API_PUBLIC_URL: ${{ vars.STAGING_API_PUBLIC_URL }}
+        API_PUBLIC_URL: ${{ vars.STAGING_API_PUBLIC_URL || 'https://api-staging.trends.earth' }}
         # S3 Configuration
         SCRIPTS_S3_BUCKET: ${{ vars.SCRIPTS_S3_BUCKET }}
         SCRIPTS_S3_PREFIX: ${{ vars.STAGING_SCRIPTS_S3_PREFIX || 'api-files/scripts/staging' }}
