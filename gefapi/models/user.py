@@ -88,6 +88,12 @@ class User(db.Model):
     email_verified = db.Column(db.Boolean(), default=False, nullable=True)
     email_verified_at = db.Column(db.DateTime(), nullable=True)
 
+    # Account lockout fields for brute force protection
+    # failed_login_count: Number of consecutive failed login attempts
+    # locked_until: When the account will be auto-unlocked (NULL = not locked)
+    failed_login_count = db.Column(db.Integer(), default=0, nullable=False)
+    locked_until = db.Column(db.DateTime(), nullable=True, index=True)
+
     def __init__(self, email, password, name, country, institution, role="USER"):
         self.email = email
         self.password = self.set_password(password)
@@ -102,6 +108,9 @@ class User(db.Model):
         self.last_activity_at = None
         self.email_verified = False
         self.email_verified_at = None
+        # Initialize account lockout fields
+        self.failed_login_count = 0
+        self.locked_until = None
 
     def __repr__(self):
         return f"<User {self.email!r}>"
@@ -203,6 +212,81 @@ class User(db.Model):
     def get_token(self):
         """Generate JWT token"""
         return create_access_token(identity=self.id)
+
+    # -------------------------------------------------------------------------
+    # Account Lockout Methods
+    # -------------------------------------------------------------------------
+    # Lockout thresholds and durations
+    LOCKOUT_THRESHOLDS = [
+        (5, 15),  # After 5 failures: lock for 15 minutes
+        (10, 60),  # After 10 failures: lock for 60 minutes
+        (20, None),  # After 20 failures: lock until password reset
+    ]
+
+    def is_locked(self) -> bool:
+        """Check if the account is currently locked.
+
+        Returns:
+            True if account is locked, False otherwise
+        """
+        if self.locked_until is None:
+            return False
+        now = datetime.datetime.utcnow()
+        # Return True if lock hasn't expired yet
+        return self.locked_until > now
+
+    def get_lockout_minutes_remaining(self) -> int | None:
+        """Get minutes remaining until account unlocks.
+
+        Returns:
+            Minutes remaining, or None if not locked or permanently locked
+        """
+        if not self.is_locked():
+            return 0
+        if self.locked_until is None:
+            return None  # Shouldn't happen, but be safe
+        now = datetime.datetime.utcnow()
+        remaining = self.locked_until - now
+        return max(1, int(remaining.total_seconds() / 60))
+
+    def record_failed_login(self) -> tuple[bool, int | None]:
+        """Record a failed login attempt and apply lockout if needed.
+
+        Returns:
+            Tuple of (is_now_locked, lockout_minutes or None for permanent)
+        """
+        self.failed_login_count = (self.failed_login_count or 0) + 1
+        count = self.failed_login_count
+
+        # Determine lockout duration based on failure count
+        lockout_minutes = None
+        for threshold, minutes in self.LOCKOUT_THRESHOLDS:
+            if count >= threshold:
+                lockout_minutes = minutes
+
+        if lockout_minutes is not None:
+            self.locked_until = datetime.datetime.utcnow() + datetime.timedelta(
+                minutes=lockout_minutes
+            )
+            return True, lockout_minutes
+
+        if count >= self.LOCKOUT_THRESHOLDS[-1][0]:
+            # Permanent lock (until password reset)
+            # Set to far future date
+            self.locked_until = datetime.datetime.utcnow() + datetime.timedelta(
+                days=365 * 100
+            )
+            return True, None
+
+        return False, None
+
+    def clear_failed_logins(self) -> None:
+        """Clear failed login counter and unlock account.
+
+        Called on successful login or password reset.
+        """
+        self.failed_login_count = 0
+        self.locked_until = None
 
     @staticmethod
     @lru_cache(maxsize=1)

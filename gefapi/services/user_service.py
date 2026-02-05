@@ -490,6 +490,8 @@ class UserService:
             )
         _validate_password_strength(new_password)
         user.password = user.set_password(new_password)
+        # Clear any account lockout on password change
+        user.clear_failed_logins()
         try:
             db.session.add(user)
             db.session.commit()
@@ -529,6 +531,8 @@ class UserService:
         logger.info(f"[SERVICE]: Admin changing password for user {user.email}")
         _validate_password_strength(new_password)
         user.password = user.set_password(new_password)
+        # Clear any account lockout on admin password change
+        user.clear_failed_logins()
         try:
             db.session.add(user)
             db.session.commit()
@@ -619,6 +623,8 @@ class UserService:
         """
         password = _generate_secure_password()
         user.password = user.set_password(password=password)
+        # Clear any account lockout on password recovery
+        user.clear_failed_logins()
         try:
             logger.info("[DB]: ADD")
             db.session.add(user)
@@ -743,6 +749,9 @@ class UserService:
         try:
             # Set new password
             user.password = user.set_password(password=new_password)
+
+            # Clear any account lockout - password reset unlocks the account
+            user.clear_failed_logins()
 
             # Mark token as used
             reset_token.mark_used()
@@ -967,6 +976,17 @@ class UserService:
 
     @staticmethod
     def authenticate_user(email, password):
+        """Authenticate a user by email and password.
+
+        Returns:
+            User object on successful authentication, None if user not found
+            or password is invalid.
+
+        Raises:
+            AccountLockedError: If the account is locked due to failed attempts.
+        """
+        from gefapi.errors import AccountLockedError
+
         logger.info(f"[AUTH]: Authentication attempt for {email}")
         user = User.query.filter_by(email=email).first()
 
@@ -975,14 +995,98 @@ class UserService:
             log_authentication_event(False, email, "user_not_found")
             return None
 
+        # Check if account is locked
+        if user.is_locked():
+            minutes_remaining = user.get_lockout_minutes_remaining()
+            if minutes_remaining is None:
+                logger.warning(f"[AUTH]: Account locked until password reset: {email}")
+                log_authentication_event(False, email, "account_locked_permanent")
+                raise AccountLockedError(
+                    "Your account is locked due to too many failed login attempts. "
+                    "Please reset your password to regain access.",
+                    minutes_remaining=None,
+                    requires_password_reset=True,
+                )
+            logger.warning(
+                f"[AUTH]: Account temporarily locked for {email}, "
+                f"{minutes_remaining} minutes remaining"
+            )
+            log_authentication_event(
+                False, email, f"account_locked_{minutes_remaining}m"
+            )
+            raise AccountLockedError(
+                f"Your account is temporarily locked. "
+                f"Please try again in {minutes_remaining} minute(s).",
+                minutes_remaining=minutes_remaining,
+                requires_password_reset=False,
+            )
+
         if not user.check_password(password):
             logger.warning(f"[AUTH]: Failed login - invalid password: {email}")
-            log_authentication_event(False, email, "invalid_password")
+
+            # Record failed attempt and apply lockout if threshold reached
+            try:
+                is_locked, lockout_minutes = user.record_failed_login()
+                db.session.add(user)
+                db.session.commit()
+
+                if is_locked:
+                    if lockout_minutes is None:
+                        logger.warning(
+                            f"[AUTH]: Account locked until password reset after "
+                            f"{user.failed_login_count} failures: {email}"
+                        )
+                        log_authentication_event(
+                            False, email, "account_locked_permanent"
+                        )
+                        # Log security event for account lockout
+                        from gefapi.utils.security_events import log_security_event
+
+                        log_security_event(
+                            "ACCOUNT_LOCKED",
+                            user_email=email,
+                            details={
+                                "reason": "max_failed_attempts",
+                                "failed_count": user.failed_login_count,
+                                "unlock_method": "password_reset_required",
+                            },
+                            level="warning",
+                        )
+                        raise AccountLockedError(
+                            "Your account has been locked due to too many failed "
+                            "login attempts. Please reset your password to unlock.",
+                            minutes_remaining=None,
+                            requires_password_reset=True,
+                        )
+                    logger.warning(
+                        f"[AUTH]: Account locked for {lockout_minutes} minutes "
+                        f"after {user.failed_login_count} failures: {email}"
+                    )
+                    log_authentication_event(
+                        False, email, f"account_locked_{lockout_minutes}m"
+                    )
+                    raise AccountLockedError(
+                        f"Your account has been temporarily locked after "
+                        f"{user.failed_login_count} failed login attempts. "
+                        f"Please try again in {lockout_minutes} minute(s).",
+                        minutes_remaining=lockout_minutes,
+                        requires_password_reset=False,
+                    )
+                log_authentication_event(False, email, "invalid_password")
+            except AccountLockedError:
+                # Re-raise AccountLockedError so it propagates to the route handler
+                raise
+            except Exception as e:
+                logger.warning(f"[AUTH]: Failed to record failed login: {e}")
+                db.session.rollback()
+                log_authentication_event(False, email, "invalid_password")
+
             return None
 
-        # Successful authentication - update login and activity timestamps
+        # Successful authentication - clear failed login count and update timestamps
         try:
             now = datetime.datetime.utcnow()
+            user.clear_failed_logins()  # Reset lockout state
             user.last_login_at = now
             user.last_activity_at = now
             db.session.add(user)
