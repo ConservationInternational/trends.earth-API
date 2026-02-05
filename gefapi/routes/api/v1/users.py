@@ -646,6 +646,19 @@ def delete_profile():
 
     logger.info("[ROUTER]: Delete me")
     identity = current_user
+
+    # Admin users cannot delete their own accounts via self-service
+    if is_admin_or_higher(identity):
+        logger.warning(
+            "[ROUTER]: Admin user %s attempted to delete own account via self-service",
+            identity.email,
+        )
+        return error(
+            status=403,
+            detail="Admin accounts cannot be deleted via self-service. "
+            "Please contact a system administrator.",
+        )
+
     try:
         user_data = UserService.delete_user(
             str(identity.id),
