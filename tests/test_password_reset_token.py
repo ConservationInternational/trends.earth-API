@@ -60,10 +60,8 @@ class TestPasswordResetTokenEmailVerification:
             assert updated_user.email_verified is True
             assert updated_user.email_verified_at is not None
             # Verify the timestamp is recent (within last minute)
-            now = datetime.datetime.now(datetime.UTC)
-            time_diff = now - updated_user.email_verified_at.replace(
-                tzinfo=datetime.UTC
-            )
+            now = datetime.datetime.utcnow()
+            time_diff = now - updated_user.email_verified_at
             assert time_diff.total_seconds() < 60
 
     def test_reset_password_with_token_preserves_already_verified_user(self, app):
@@ -78,7 +76,7 @@ class TestPasswordResetTokenEmailVerification:
                 institution="Test Institution",
             )
             original_verification_time = datetime.datetime(
-                2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC
+                2024, 1, 1, 12, 0, 0
             )
             user.email_verified = True
             user.email_verified_at = original_verification_time
@@ -103,7 +101,7 @@ class TestPasswordResetTokenEmailVerification:
             assert updated_user.email_verified is True
             # Original verification time should be preserved (not updated)
             assert (
-                updated_user.email_verified_at.replace(tzinfo=datetime.UTC)
+                updated_user.email_verified_at
                 == original_verification_time
             )
 
@@ -136,9 +134,7 @@ class TestPasswordResetTokenEmailVerification:
             # Create an expired token
             reset_token = PasswordResetToken(user_id=user.id)
             # Set expiry to the past
-            reset_token.expires_at = datetime.datetime.now(
-                datetime.UTC
-            ) - datetime.timedelta(hours=2)
+            reset_token.expires_at = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
             db.session.add(reset_token)
             db.session.commit()
 
@@ -165,7 +161,7 @@ class TestPasswordResetTokenEmailVerification:
 
             # Create a token and mark it as used
             reset_token = PasswordResetToken(user_id=user.id)
-            reset_token.used_at = datetime.datetime.now(datetime.UTC)
+            reset_token.used_at = datetime.datetime.utcnow()
             db.session.add(reset_token)
             db.session.commit()
 
