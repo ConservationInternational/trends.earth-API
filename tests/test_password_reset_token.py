@@ -75,9 +75,7 @@ class TestPasswordResetTokenEmailVerification:
                 country="US",
                 institution="Test Institution",
             )
-            original_verification_time = datetime.datetime(
-                2024, 1, 1, 12, 0, 0
-            )
+            original_verification_time = datetime.datetime(2024, 1, 1, 12, 0, 0)
             user.email_verified = True
             user.email_verified_at = original_verification_time
             db.session.add(user)
@@ -100,10 +98,7 @@ class TestPasswordResetTokenEmailVerification:
             # Verify the original verification status is preserved
             assert updated_user.email_verified is True
             # Original verification time should be preserved (not updated)
-            assert (
-                updated_user.email_verified_at
-                == original_verification_time
-            )
+            assert updated_user.email_verified_at == original_verification_time
 
     def test_reset_password_with_invalid_token_fails(self, app):
         """Test that invalid tokens are rejected."""
@@ -134,7 +129,9 @@ class TestPasswordResetTokenEmailVerification:
             # Create an expired token
             reset_token = PasswordResetToken(user_id=user.id)
             # Set expiry to the past
-            reset_token.expires_at = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
+            reset_token.expires_at = datetime.datetime.utcnow() - datetime.timedelta(
+                hours=2
+            )
             db.session.add(reset_token)
             db.session.commit()
 
