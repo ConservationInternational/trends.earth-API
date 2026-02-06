@@ -756,7 +756,7 @@ class UserService:
             # Mark user as email verified - they proved email access by using the token
             if not user.email_verified:
                 user.email_verified = True
-                user.email_verified_at = datetime.datetime.now(datetime.UTC)
+                user.email_verified_at = datetime.datetime.utcnow()
                 logger.info(
                     f"[SERVICE]: Email verified for {user.email} via password reset"
                 )
