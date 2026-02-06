@@ -753,6 +753,14 @@ class UserService:
             # Clear any account lockout - password reset unlocks the account
             user.clear_failed_logins()
 
+            # Mark user as email verified - they proved email access by using the token
+            if not user.email_verified:
+                user.email_verified = True
+                user.email_verified_at = datetime.datetime.now(datetime.UTC)
+                logger.info(
+                    f"[SERVICE]: Email verified for {user.email} via password reset"
+                )
+
             # Mark token as used
             reset_token.mark_used()
 
