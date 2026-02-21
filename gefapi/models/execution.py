@@ -22,11 +22,11 @@ class Execution(db.Model):
         autoincrement=False,
     )
     start_date = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
-    end_date = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
+    end_date = db.Column(db.DateTime(), default=None)
     status = db.Column(db.String(10), default="PENDING")
     progress = db.Column(db.Integer(), default=0)
-    params = db.Column(JSONB, default={})
-    results = db.Column(JSONB, default={})
+    params = db.Column(JSONB, default=dict)
+    results = db.Column(JSONB, default=dict)
     logs = db.relationship(
         "ExecutionLog",
         backref=db.backref("execution"),
