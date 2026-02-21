@@ -297,16 +297,13 @@ class BoundariesService:
                 .filter(AdminBoundary1Metadata.releaseType == release_type)
                 .all()
             )
-            adm1_metadata_by_iso = {
-                m.boundaryISO: m for m in adm1_metadata_all
-            }
+            adm1_metadata_by_iso = {m.boundaryISO: m for m in adm1_metadata_all}
 
             # Bulk-fetch all ADM1 units for this release type and group by ISO
             adm1_units_all = (
                 db.session.query(AdminBoundary1Unit)
                 .filter(AdminBoundary1Unit.releaseType == release_type)
-                .order_by(AdminBoundary1Unit.boundaryISO,
-                          AdminBoundary1Unit.shapeName)
+                .order_by(AdminBoundary1Unit.boundaryISO, AdminBoundary1Unit.shapeName)
                 .all()
             )
             adm1_units_by_iso: dict[str, list] = {}
@@ -367,29 +364,18 @@ class BoundariesService:
             from sqlalchemy import func, union_all
 
             # Get the latest updated_at from all three tables in a single query
-            q0 = (
-                db.session.query(
-                    func.max(AdminBoundary0Metadata.updated_at).label("latest")
-                )
-                .filter(AdminBoundary0Metadata.releaseType == release_type)
-            )
-            q1 = (
-                db.session.query(
-                    func.max(AdminBoundary1Metadata.updated_at).label("latest")
-                )
-                .filter(AdminBoundary1Metadata.releaseType == release_type)
-            )
-            q2 = (
-                db.session.query(
-                    func.max(AdminBoundary1Unit.updated_at).label("latest")
-                )
-                .filter(AdminBoundary1Unit.releaseType == release_type)
-            )
+            q0 = db.session.query(
+                func.max(AdminBoundary0Metadata.updated_at).label("latest")
+            ).filter(AdminBoundary0Metadata.releaseType == release_type)
+            q1 = db.session.query(
+                func.max(AdminBoundary1Metadata.updated_at).label("latest")
+            ).filter(AdminBoundary1Metadata.releaseType == release_type)
+            q2 = db.session.query(
+                func.max(AdminBoundary1Unit.updated_at).label("latest")
+            ).filter(AdminBoundary1Unit.releaseType == release_type)
 
             combined = union_all(q0, q1, q2).subquery()
-            result = db.session.query(
-                func.max(combined.c.latest)
-            ).scalar()
+            result = db.session.query(func.max(combined.c.latest)).scalar()
 
             return result
 

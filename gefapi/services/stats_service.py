@@ -302,9 +302,7 @@ class StatsService:
                 func.count(Execution.id).label("cnt"),
             )
             if cutoff_date:
-                exec_query = exec_query.filter(
-                    Execution.start_date >= cutoff_date
-                )
+                exec_query = exec_query.filter(Execution.start_date >= cutoff_date)
             status_counts = {
                 row.status: row.cnt
                 for row in exec_query.group_by(Execution.status).all()

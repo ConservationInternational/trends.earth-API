@@ -359,12 +359,8 @@ class ExecutionService:
         query = db.session.query(Execution)
 
         # Eager-load relationships when include fields reference them
-        needs_user = bool(
-            {"user", "user_name", "user_email"} & set(include)
-        )
-        needs_script = bool(
-            {"script", "script_name"} & set(include)
-        )
+        needs_user = bool({"user", "user_name", "user_email"} & set(include))
+        needs_script = bool({"script", "script_name"} & set(include))
         if needs_user:
             query = query.options(joinedload(Execution.user))
         if needs_script:
