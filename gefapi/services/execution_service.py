@@ -327,6 +327,7 @@ class ExecutionService:
             per_page (int): Results per page (default: 2000, max: 2000)
             paginate (bool): Whether to apply pagination (default: True)
             filter_param (str, optional): SQL-style filter expressions
+                (date comparisons like start_date>='2024-01-01' are supported)
             sort (str, optional): SQL-style sort expressions
 
         Returns:
@@ -335,6 +336,8 @@ class ExecutionService:
         Raises:
             Exception: If pagination parameters are invalid or filter permissions denied
         """
+        from gefapi.utils.query_filters import parse_filter_param, parse_sort_param
+
         logger.info("[SERVICE]: Getting executions")
         logger.info("[DB]: QUERY")
 
@@ -372,92 +375,46 @@ class ExecutionService:
             # and is more reliable than end_date for ongoing executions
             query = query.filter(Execution.start_date >= updated_at)
 
-        # Apply SQL-style filter_param if present
-        if filter_param:
-            import re
+        # Apply SQL-style filter_param if present (supports OR groups)
+        # Date comparisons (e.g. start_date>='2024-01-01') are handled here.
+        join_scripts = False
+        join_users = False
 
+        if filter_param:
             from sqlalchemy import and_
 
-            filter_clauses = []
-            join_scripts = False
-            join_users = False
-            for expr in filter_param.split(","):
-                expr = expr.strip()
-                m = re.match(
-                    r"(\w+)\s*(=|!=|>=|<=|>|<| like )\s*(.+)", expr, re.IGNORECASE
-                )
-                if m:
-                    field, op, value = m.groups()
-                    field = field.strip().lower()
-                    op = op.strip().lower()
-                    value = value.strip().strip("'\"")
+            all_allowed = (
+                EXECUTION_ALLOWED_FILTER_FIELDS | EXECUTION_ADMIN_ONLY_FIELDS
+            )
 
-                    # Security: Validate field against allowlist
-                    all_allowed = (
-                        EXECUTION_ALLOWED_FILTER_FIELDS | EXECUTION_ADMIN_ONLY_FIELDS
-                    )
-                    if field not in all_allowed:
-                        logger.warning(
-                            f"[SERVICE]: Rejected filter on disallowed field: {field}"
+            def _resolve_filter_column(field_name):
+                nonlocal join_scripts, join_users
+                if field_name == "script_name":
+                    join_scripts = True
+                    return Script.name
+                if field_name == "user_name":
+                    if not is_admin_or_higher(user):
+                        raise Exception(
+                            "Only admin or superadmin users can filter by user_name"
                         )
-                        continue
-
-                    if field == "script_name":
-                        join_scripts = True
-                        col = Script.name
-                    elif field == "user_name":
-                        if not is_admin_or_higher(user):
-                            raise Exception(
-                                "Only admin or superadmin users can filter by user_name"
-                            )
-                        join_users = True
-                        col = User.name
-                    elif field == "user_email":
-                        if not is_admin_or_higher(user):
-                            raise Exception(
-                                "Only admin or superadmin users can "
-                                "filter by user_email"
-                            )
-                        join_users = True
-                        col = User.email
-                    else:
-                        col = getattr(Execution, field, None)
-                    if col is not None:
-                        # Check if this is a string column for case-insensitive compare
-                        is_string_col = (
-                            field in ["script_name", "user_name", "user_email"]
-                            or (
-                                hasattr(col.type, "python_type")
-                                and isinstance(col.type.python_type, type)
-                                and issubclass(col.type.python_type, str)
-                            )
-                            or str(col.type)
-                            .upper()
-                            .startswith(("VARCHAR", "TEXT", "STRING"))
+                    join_users = True
+                    return User.name
+                if field_name == "user_email":
+                    if not is_admin_or_higher(user):
+                        raise Exception(
+                            "Only admin or superadmin users can filter by user_email"
                         )
+                    join_users = True
+                    return User.email
+                return getattr(Execution, field_name, None)
 
-                        if op == "=":
-                            if is_string_col:
-                                filter_clauses.append(func.lower(col) == value.lower())
-                            else:
-                                filter_clauses.append(col == value)
-                        elif op == "!=":
-                            if is_string_col:
-                                filter_clauses.append(func.lower(col) != value.lower())
-                            else:
-                                filter_clauses.append(col != value)
-                        elif op == ">":
-                            filter_clauses.append(col > value)
-                        elif op == "<":
-                            filter_clauses.append(col < value)
-                        elif op == ">=":
-                            filter_clauses.append(col >= value)
-                        elif op == "<=":
-                            filter_clauses.append(col <= value)
-                        elif op == "like":
-                            filter_clauses.append(col.ilike(value))
-            # Join with script and user tables if needed due to filtering on
-            # fields not in executions table
+            filter_clauses = parse_filter_param(
+                filter_param,
+                allowed_fields=all_allowed,
+                resolve_column=_resolve_filter_column,
+                string_field_names={"script_name", "user_name", "user_email"},
+            )
+
             if join_scripts:
                 query = query.join(Script, Execution.script_id == Script.id)
             if join_users:
@@ -467,30 +424,12 @@ class ExecutionService:
 
         # Apply SQL-style sorting if present
         if sort:
-            from sqlalchemy import asc, desc
-
-            for sort_expr in sort.split(","):
-                sort_expr = sort_expr.strip()
-                if not sort_expr:
-                    continue
-                parts = sort_expr.split()
-                field = parts[0].lower()
-                direction = parts[1].lower() if len(parts) > 1 else "asc"
-
-                # Security: Validate field against allowlist
-                if field not in EXECUTION_ALLOWED_SORT_FIELDS:
-                    logger.warning(
-                        f"[SERVICE]: Rejected sort on disallowed field: {field}"
-                    )
-                    continue
-
-                col = getattr(Execution, field, None)
+            def _resolve_sort_column(field_name, direction):
+                nonlocal join_scripts, join_users
+                col = getattr(Execution, field_name, None)
                 if col is not None:
-                    if direction == "desc":
-                        query = query.order_by(desc(col))
-                    else:
-                        query = query.order_by(asc(col))
-                elif field == "duration":
+                    return col
+                if field_name == "duration":
                     duration_expr = case(
                         (
                             Execution.end_date.isnot(None),
@@ -498,47 +437,49 @@ class ExecutionService:
                                 "epoch", Execution.end_date - Execution.start_date
                             ),
                         ),
-                        else_=func.extract("epoch", func.now() - Execution.start_date),
+                        else_=func.extract(
+                            "epoch", func.now() - Execution.start_date
+                        ),
                     )
-                    if direction == "desc":
-                        query = query.order_by(duration_expr.desc())
-                    else:
-                        query = query.order_by(duration_expr.asc())
-                elif field == "script_name":
-                    if direction == "desc":
-                        query = query.join(
-                            Script, Execution.script_id == Script.id
-                        ).order_by(Script.name.desc())
-                    else:
-                        query = query.join(
-                            Script, Execution.script_id == Script.id
-                        ).order_by(Script.name.asc())
-                elif field == "user_email":
+                    ordered = (
+                        duration_expr.desc()
+                        if direction == "desc"
+                        else duration_expr.asc()
+                    )
+                    return (ordered, True)
+                if field_name == "script_name":
+                    join_scripts = True
+                    return Script.name
+                if field_name == "user_email":
                     if not is_admin_or_higher(user):
                         raise Exception(
                             "Only admin or superadmin users can sort by user_email"
                         )
-                    if direction == "desc":
-                        query = query.join(User, Execution.user_id == User.id).order_by(
-                            User.email.desc()
-                        )
-                    else:
-                        query = query.join(User, Execution.user_id == User.id).order_by(
-                            User.email.asc()
-                        )
-                elif field == "user_name":
+                    join_users = True
+                    return User.email
+                if field_name == "user_name":
                     if not is_admin_or_higher(user):
                         raise Exception(
                             "Only admin or superadmin users can sort by user_name"
                         )
-                    if direction == "desc":
-                        query = query.join(User, Execution.user_id == User.id).order_by(
-                            User.name.desc()
-                        )
-                    else:
-                        query = query.join(User, Execution.user_id == User.id).order_by(
-                            User.name.asc()
-                        )
+                    join_users = True
+                    return User.name
+                return None
+
+            order_clauses = parse_sort_param(
+                sort,
+                allowed_fields=EXECUTION_ALLOWED_SORT_FIELDS,
+                resolve_column=_resolve_sort_column,
+            )
+
+            # Ensure JOINs are applied for sort columns
+            if join_scripts:
+                query = query.join(Script, Execution.script_id == Script.id)
+            if join_users:
+                query = query.join(User, Execution.user_id == User.id)
+
+            for clause in order_clauses:
+                query = query.order_by(clause)
         else:
             # Default to sorting by end_date for backwards compatibility
             query = query.order_by(Execution.end_date.desc())

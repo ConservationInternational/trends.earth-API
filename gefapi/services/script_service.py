@@ -234,83 +234,37 @@ class ScriptService:
 
             query = query.filter(or_(*access_conditions))
 
-        # SQL-style filter_param
+        # SQL-style filter_param (supports OR groups)
+        join_users = False
         if filter_param:
-            import re
-
             from sqlalchemy import and_
 
-            filter_clauses = []
-            join_users = False
-            for expr in filter_param.split(","):
-                expr = expr.strip()
-                m = re.match(
-                    r"(\w+)\s*(=|!=|>=|<=|>|<| like )\s*(.+)",
-                    expr,
-                    re.IGNORECASE,
-                )
-                if m:
-                    field, op, value = m.groups()
-                    field = field.strip().lower()
-                    op = op.strip().lower()
-                    value = value.strip().strip("'\"")
+            from gefapi.utils.query_filters import parse_filter_param
 
-                    # Security: Validate field against allowlist
-                    allowed_fields = (
-                        SCRIPT_ALLOWED_FILTER_FIELDS | SCRIPT_ADMIN_ONLY_FIELDS
-                    )
-                    if field not in allowed_fields:
-                        logger.warning(
-                            f"[SERVICE]: Rejected filter on disallowed field: {field}"
-                        )
-                        continue
+            allowed_fields = (
+                SCRIPT_ALLOWED_FILTER_FIELDS | SCRIPT_ADMIN_ONLY_FIELDS
+            )
 
-                    if field == "user_name":
-                        if not is_admin_or_higher(user):
-                            raise Exception("Only admin users can filter by user_name")
-                        join_users = True
-                        col = User.name
-                    elif field == "user_email":
-                        if not is_admin_or_higher(user):
-                            raise Exception("Only admin users can filter by user_email")
-                        join_users = True
-                        col = User.email
-                    else:
-                        col = getattr(Script, field, None)
-                    if col is not None:
-                        # Check if this is a string column for case-insensitive compare
-                        is_string_col = (
-                            field in ["user_name", "user_email"]
-                            or (
-                                hasattr(col.type, "python_type")
-                                and isinstance(col.type.python_type, type)
-                                and issubclass(col.type.python_type, str)
-                            )
-                            or str(col.type)
-                            .upper()
-                            .startswith(("VARCHAR", "TEXT", "STRING"))
-                        )
+            def _resolve_script_filter_column(field_name):
+                nonlocal join_users
+                if field_name == "user_name":
+                    if not is_admin_or_higher(user):
+                        raise Exception("Only admin users can filter by user_name")
+                    join_users = True
+                    return User.name
+                if field_name == "user_email":
+                    if not is_admin_or_higher(user):
+                        raise Exception("Only admin users can filter by user_email")
+                    join_users = True
+                    return User.email
+                return getattr(Script, field_name, None)
 
-                        if op == "=":
-                            if is_string_col:
-                                filter_clauses.append(func.lower(col) == value.lower())
-                            else:
-                                filter_clauses.append(col == value)
-                        elif op == "!=":
-                            if is_string_col:
-                                filter_clauses.append(func.lower(col) != value.lower())
-                            else:
-                                filter_clauses.append(col != value)
-                        elif op == ">":
-                            filter_clauses.append(col > value)
-                        elif op == "<":
-                            filter_clauses.append(col < value)
-                        elif op == ">=":
-                            filter_clauses.append(col >= value)
-                        elif op == "<=":
-                            filter_clauses.append(col <= value)
-                        elif op == "like":
-                            filter_clauses.append(col.ilike(value))
+            filter_clauses = parse_filter_param(
+                filter_param,
+                allowed_fields=allowed_fields,
+                resolve_column=_resolve_script_filter_column,
+                string_field_names={"user_name", "user_email"},
+            )
             if join_users:
                 query = query.join(User, Script.user_id == User.id)
             if filter_clauses:
@@ -318,51 +272,34 @@ class ScriptService:
 
         # SQL-style sorting
         if sort:
-            from sqlalchemy import asc, desc
+            from gefapi.utils.query_filters import parse_sort_param
 
-            for sort_expr in sort.split(","):
-                sort_expr = sort_expr.strip()
-                if not sort_expr:
-                    continue
-                parts = sort_expr.split()
-                field = parts[0].lower()
-                direction = parts[1].lower() if len(parts) > 1 else "asc"
-
-                # Security: Validate field against allowlist
-                if field not in SCRIPT_ALLOWED_SORT_FIELDS:
-                    logger.warning(
-                        f"[SERVICE]: Rejected sort on disallowed field: {field}"
-                    )
-                    continue
-
-                col = getattr(Script, field, None)
+            def _resolve_script_sort_column(field_name, direction):
+                nonlocal join_users
+                col = getattr(Script, field_name, None)
                 if col is not None:
-                    if direction == "desc":
-                        query = query.order_by(desc(col))
-                    else:
-                        query = query.order_by(asc(col))
-                elif field == "user_email":
+                    return col
+                if field_name == "user_email":
                     if not is_admin_or_higher(user):
                         raise Exception("Only admin users can sort by user_email")
-                    if direction == "desc":
-                        query = query.join(User, Script.user_id == User.id).order_by(
-                            User.email.desc()
-                        )
-                    else:
-                        query = query.join(User, Script.user_id == User.id).order_by(
-                            User.email.asc()
-                        )
-                elif field == "user_name":
+                    join_users = True
+                    return User.email
+                if field_name == "user_name":
                     if not is_admin_or_higher(user):
                         raise Exception("Only admin users can sort by user_name")
-                    if direction == "desc":
-                        query = query.join(User, Script.user_id == User.id).order_by(
-                            User.name.desc()
-                        )
-                    else:
-                        query = query.join(User, Script.user_id == User.id).order_by(
-                            User.name.asc()
-                        )
+                    join_users = True
+                    return User.name
+                return None
+
+            order_clauses = parse_sort_param(
+                sort,
+                allowed_fields=SCRIPT_ALLOWED_SORT_FIELDS,
+                resolve_column=_resolve_script_sort_column,
+            )
+            if join_users:
+                query = query.join(User, Script.user_id == User.id)
+            for clause in order_clauses:
+                query = query.order_by(clause)
         else:
             query = query.order_by(Script.created_at.desc())
 
