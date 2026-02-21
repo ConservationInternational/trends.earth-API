@@ -395,9 +395,7 @@ def update_profile():
       "name": "John Smith",
       "country": "CA",
       "institution": "New Research Institute",
-      "email_notifications_enabled": false,
-      "password": "newSecurePassword123",
-      "repeatPassword": "newSecurePassword123"
+      "email_notifications_enabled": false
     }
     ```
 
@@ -407,8 +405,6 @@ def update_profile():
     - `institution`: User's organization/institution (string)
     - `email_notifications_enabled`: Enable/disable email notifications for
       execution completion (boolean)
-    - `password`: New password (must include `repeatPassword`)
-    - `repeatPassword`: Password confirmation (must match `password`)
 
     **Response Schema**:
     ```json
@@ -433,65 +429,50 @@ def update_profile():
     - When `email_notifications_enabled=false`: No execution completion emails sent
     - Affects notifications for FINISHED, FAILED, and CANCELLED execution states
 
-    **Password Update Requirements**:
-    - Both `password` and `repeatPassword` fields must be provided
-    - Passwords must match exactly
-    - Password must meet security requirements (length, complexity)
-    - Old password is not required for self-service updates
-
     **Profile Update Rules**:
     - Users cannot change their own role
     - Email address cannot be changed via this endpoint
+    - Password cannot be changed via this endpoint; use
+      ``/user/me/change-password`` instead
     - At least one field must be provided for update
     - Changes are applied immediately
 
     **Validation**:
     - Country codes validated against ISO 3166-1 alpha-2 standard
     - Name and institution have length and character restrictions
-    - Password strength requirements enforced
 
     **Error Responses**:
-    - `400 Bad Request`: Invalid data, password mismatch, or no fields to update
+    - `400 Bad Request`: Invalid data or no fields to update
     - `401 Unauthorized`: JWT token required
     - `404 Not Found`: User not found
-    - `422 Unprocessable Entity`: Validation failed
     - `500 Internal Server Error`: Profile update failed
     """
     logger.info("[ROUTER]: Updating profile")
     body = request.get_json()
     identity = current_user
     try:
-        password = body.get("password", None)
-        repeat_password = body.get("repeatPassword", None)
-        if (
-            password is not None
-            and repeat_password is not None
-            and password == repeat_password
-        ):
-            user = UserService.update_profile_password(body, identity)
-        else:
-            if "role" in body:
-                del body["role"]
-            name = body.get("name", None)
-            country = body.get("country", None)
-            institution = body.get("institution", None)
-            email_notifications_enabled = body.get("email_notifications_enabled", None)
+        # Strip fields that cannot be changed via this endpoint
+        body.pop("role", None)
+        body.pop("password", None)
+        body.pop("repeatPassword", None)
 
-            if (
-                name is not None
-                or country is not None
-                or institution is not None
-                or email_notifications_enabled is not None
-            ):
-                user = UserService.update_user(body, str(identity.id))
-            else:
-                return error(status=400, detail="Not updated")
+        name = body.get("name", None)
+        country = body.get("country", None)
+        institution = body.get("institution", None)
+        email_notifications_enabled = body.get("email_notifications_enabled", None)
+
+        if (
+            name is not None
+            or country is not None
+            or institution is not None
+            or email_notifications_enabled is not None
+        ):
+            user = UserService.update_user(body, str(identity.id))
+        else:
+            return error(status=400, detail="Not updated")
     except UserNotFound as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=404, detail=e.message)
-    except PasswordValidationError as e:
-        logger.error("[ROUTER]: " + e.message)
-        return error(status=422, detail=e.message)
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")

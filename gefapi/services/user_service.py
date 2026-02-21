@@ -783,21 +783,6 @@ class UserService:
             raise error
 
     @staticmethod
-    def update_profile_password(user, current_user):
-        logger.info("[SERVICE]: Updating user password")
-        password = user.get("password")
-        _validate_password_strength(password)
-        current_user.password = current_user.set_password(password=password)
-        try:
-            logger.info("[DB]: ADD")
-            db.session.add(current_user)
-            db.session.commit()
-        except Exception as error:
-            rollbar.report_exc_info()
-            raise error
-        return current_user
-
-    @staticmethod
     def update_user(user, user_id):
         """Update user profile information including notification preferences
 
