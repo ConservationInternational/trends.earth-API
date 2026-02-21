@@ -15,7 +15,9 @@ class ExecutionLog(db.Model):
     id = db.Column(db.Integer(), primary_key=True)
     text = db.Column(db.Text())
     level = db.Column(db.String(80), nullable=False, default="DEBUG")
-    register_date = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
+    register_date = db.Column(
+        db.DateTime(), default=lambda: datetime.datetime.now(datetime.UTC)
+    )
     execution_id = db.Column(db.GUID(), db.ForeignKey("execution.id"))
 
     def __init__(self, text, level, execution_id):

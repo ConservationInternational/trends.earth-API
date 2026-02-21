@@ -1092,6 +1092,4 @@ class UserService:
 
         # log_authentication_event(True, email)
 
-        #  to serialize id with jwt
-        user.id = user.id.hex
         return user

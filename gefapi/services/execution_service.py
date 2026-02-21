@@ -41,15 +41,15 @@ except ImportError:
 logger = logging.getLogger()
 
 EXECUTION_FINISHED_MAIL_CONTENT = """
-<p>Thank you for using Trends.Earth. The below task has {}. More details on this task
-are below: </p>
+<p>Thank you for using Trends.Earth. The status of the below task is now
+{status}. More details on this task are below:</p>
 <ul>
-    <li>Task name: {}</li>
-    <li>Job: {}</li>
-    <li>Task ID: {}</li>
-    <li>Start time: {}</li>
-    <li>End time: {}</li>
-    <li>Status: {}</li>
+    <li>Task name: {task_name}</li>
+    <li>Script: {script_name}</li>
+    <li>Task ID: {execution_id}</li>
+    <li>Start time: {start_time}</li>
+    <li>End time: {end_time}</li>
+    <li>Status: {status}</li>
 </ul>
 <p>For more information, and to view the results, return to QGIS and click the
 "Datasets" tab in the Trends.Earth plugin window.</p>
@@ -735,13 +735,14 @@ class ExecutionService:
                         EmailService.send_html_email(
                             recipients=[user.email],
                             html=EXECUTION_FINISHED_MAIL_CONTENT.format(
-                                status,
-                                execution.params.get("task_name"),
-                                script.name,
-                                str(execution.id),
-                                execution.start_date,
-                                execution.end_date or datetime.datetime.utcnow(),
-                                status,
+                                status=status,
+                                task_name=execution.params.get("task_name", "N/A"),
+                                script_name=script.name,
+                                execution_id=str(execution.id),
+                                start_time=execution.start_date,
+                                end_time=(
+                                    execution.end_date or datetime.datetime.utcnow()
+                                ),
                             ),
                             subject="[trends.earth] Execution finished",
                         )

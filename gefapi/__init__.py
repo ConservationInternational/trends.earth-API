@@ -90,21 +90,55 @@ def handle_compressed_request():
     if content_encoding == "gzip":
         try:
             import gzip
+            from io import BytesIO
+
+            # Enforce a maximum compressed payload size before reading
+            max_compressed_size = SETTINGS.get(
+                "MAX_COMPRESSED_REQUEST_SIZE", 25 * 1024 * 1024
+            )  # 25 MB default
+            content_length = request.content_length or 0
+            if content_length > max_compressed_size:
+                logger.warning(
+                    "Compressed request body too large: %s bytes (limit %s)",
+                    content_length,
+                    max_compressed_size,
+                )
+                return (
+                    jsonify(
+                        {
+                            "status": 413,
+                            "detail": "Compressed request body too large",
+                        }
+                    ),
+                    413,
+                )
 
             # Get the raw request data
             compressed_data = request.get_data()
 
+            # Check actual size (Content-Length may be absent or wrong)
+            if len(compressed_data) > max_compressed_size:
+                logger.warning(
+                    "Compressed request body too large: %s bytes (limit %s)",
+                    len(compressed_data),
+                    max_compressed_size,
+                )
+                return (
+                    jsonify(
+                        {
+                            "status": 413,
+                            "detail": "Compressed request body too large",
+                        }
+                    ),
+                    413,
+                )
+
             # Decompress the data
             decompressed_data = gzip.decompress(compressed_data)
 
-            # Replace the input stream with decompressed data
-            from io import BytesIO
-
-            request._cached_data = decompressed_data
-            request.environ["wsgi.input"] = BytesIO(decompressed_data)
-            request.environ["CONTENT_LENGTH"] = str(len(decompressed_data))
-
-            max_size = SETTINGS.get("MAX_DECOMPRESSED_REQUEST_SIZE", 5 * 1024 * 1024)
+            max_size = SETTINGS.get(
+                "MAX_DECOMPRESSED_REQUEST_SIZE", 100 * 1024 * 1024
+            )  # 100 MB default
             if len(decompressed_data) > max_size:
                 logger.warning(
                     "Decompressed request body exceeded limit: %s bytes (limit %s)",
@@ -120,6 +154,11 @@ def handle_compressed_request():
                     ),
                     413,
                 )
+
+            # Replace the input stream with decompressed data
+            request._cached_data = decompressed_data
+            request.environ["wsgi.input"] = BytesIO(decompressed_data)
+            request.environ["CONTENT_LENGTH"] = str(len(decompressed_data))
 
             # Remove the content encoding header since we've decompressed
             if "HTTP_CONTENT_ENCODING" in request.environ:

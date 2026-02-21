@@ -334,7 +334,10 @@ def docker_build(script_id):
     script = Script.query.get(script_id)
     if not script:
         logger.error(f"Script with id {script_id} not found.")
-        ScriptLog(text="Build failed: script not found.", script_id=script_id)
+        db.session.add(
+            ScriptLog(text="Build failed: script not found.", script_id=script_id)
+        )
+        db.session.commit()
         return {"success": False, "error": "Script not found"}
     script_file = script.slug + ".tar.gz"
 
@@ -394,7 +397,7 @@ def docker_build(script_id):
         db.session.add(script)
         db.session.commit()
         logger.info(f"[STATUS] Script {script_id} status set to BUILDING")
-        ScriptLog(text="Build started.", script_id=script_id)
+        db.session.add(ScriptLog(text="Build started.", script_id=script_id))
         db.session.commit()
         logger.debug("Building...")
         correct, log = DockerService.build(
@@ -408,15 +411,18 @@ def docker_build(script_id):
         script = Script.query.get(script_id)
         if not script:
             logger.error(f"Script with id {script_id} not found after build.")
-            ScriptLog(
-                text="Build failed: script not found after build.", script_id=script_id
+            db.session.add(
+                ScriptLog(
+                    text="Build failed: script not found after build.",
+                    script_id=script_id,
+                )
             )
             db.session.commit()
             return {"success": False, "error": "Script not found after build"}
         if correct:
             logger.info(f"[STATUS] Script {script_id} build SUCCESS")
             script.status = "SUCCESS"
-            ScriptLog(text="Build successful.", script_id=script_id)
+            db.session.add(ScriptLog(text="Build successful.", script_id=script_id))
             db.session.add(script)
             db.session.commit()
             return {"success": True}
@@ -425,7 +431,9 @@ def docker_build(script_id):
         # Save error reason to ScriptLog and script object
         error_msg = str(log)
         script.build_error = error_msg if hasattr(script, "build_error") else None
-        ScriptLog(text=f"Build failed: {error_msg}", script_id=script_id)
+        db.session.add(
+            ScriptLog(text=f"Build failed: {error_msg}", script_id=script_id)
+        )
         db.session.add(script)
         db.session.commit()
         return {"success": False, "error": error_msg}

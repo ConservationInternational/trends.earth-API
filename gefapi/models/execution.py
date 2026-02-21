@@ -21,9 +21,11 @@ class Execution(db.Model):
         primary_key=True,
         autoincrement=False,
     )
-    start_date = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
+    start_date = db.Column(
+        db.DateTime(), default=lambda: datetime.datetime.now(datetime.UTC)
+    )
     end_date = db.Column(db.DateTime(), default=None)
-    status = db.Column(db.String(10), default="PENDING")
+    status = db.Column(db.String(20), default="PENDING")
     progress = db.Column(db.Integer(), default=0)
     params = db.Column(JSONB, default=dict)
     results = db.Column(JSONB, default=dict)

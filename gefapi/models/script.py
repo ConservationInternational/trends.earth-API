@@ -22,8 +22,12 @@ class Script(db.Model):
     name = db.Column(db.String(120), nullable=False)
     slug = db.Column(db.String(80), unique=True, nullable=False)
     description = db.Column(db.Text(), default="")
-    created_at = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
-    updated_at = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
+    created_at = db.Column(
+        db.DateTime(), default=lambda: datetime.datetime.now(datetime.UTC)
+    )
+    updated_at = db.Column(
+        db.DateTime(), default=lambda: datetime.datetime.now(datetime.UTC)
+    )
     user_id = db.Column(db.GUID(), db.ForeignKey("user.id"))
     status = db.Column(db.String(80), nullable=False, default="PENDING")
     logs = db.relationship(
