@@ -51,6 +51,11 @@ class TestRollbarError1803Fix:
                 mock_session = Mock()
                 mock_query = Mock()
                 mock_query.scalar.return_value = 100  # Mock count result
+                # Support the group_by().all() pattern used for execution status counts
+                mock_group_by = Mock()
+                mock_group_by.all.return_value = []  # No status rows
+                mock_query.group_by.return_value = mock_group_by
+                mock_query.filter.return_value = mock_query
                 mock_session.query.return_value = mock_query
                 mock_db.session = mock_session
 
@@ -114,9 +119,21 @@ class TestRollbarError1803Fix:
                 mock_session = Mock()
 
                 # Mock the queries from _get_summary_stats
+                # Execution query now uses group_by().all() for status counts
                 mock_execution_query = Mock()
                 mock_execution_query.scalar.return_value = 150  # total_executions
                 mock_execution_query.filter.return_value = mock_execution_query
+                # Create mock status rows for the group_by result
+                mock_finished_row = Mock(status="FINISHED", cnt=100)
+                mock_failed_row = Mock(status="FAILED", cnt=30)
+                mock_cancelled_row = Mock(status="CANCELLED", cnt=20)
+                mock_group_by = Mock()
+                mock_group_by.all.return_value = [
+                    mock_finished_row,
+                    mock_failed_row,
+                    mock_cancelled_row,
+                ]
+                mock_execution_query.group_by.return_value = mock_group_by
 
                 mock_user_query = Mock()
                 mock_user_query.scalar.return_value = 25  # total_users
@@ -126,14 +143,30 @@ class TestRollbarError1803Fix:
                 mock_script_query.scalar.return_value = 10  # total_scripts
 
                 # Setup query method to return appropriate mocks
+                # The new query pattern uses:
+                #   1. query(func.count(User.id)) -> scalar() for user count
+                #   2. query(func.count(Script.id)) -> scalar() for script count
+                #   3. query(Execution.status, func.count(...)) -> group_by().all()
+                # A default mock handles all cases by chaining properly.
+                mock_default_query = Mock()
+                mock_default_query.scalar.return_value = 0
+                mock_default_query.filter.return_value = mock_default_query
+                mock_default_query.group_by.return_value = mock_group_by
+
+                call_count = {"n": 0}
+
                 def mock_query_side_effect(*args):
-                    if "Execution" in str(args):
-                        return mock_execution_query
-                    elif "User" in str(args):
+                    call_count["n"] += 1
+                    args_str = str(args)
+                    # Match by inspecting which model columns are queried
+                    if "User" in args_str or "user" in args_str:
                         return mock_user_query
-                    elif "Script" in str(args):
+                    elif "Script" in args_str or "script" in args_str:
                         return mock_script_query
-                    return Mock()
+                    else:
+                        # Execution-related queries (status counts)
+                        return mock_execution_query
+                    return mock_default_query
 
                 mock_session.query.side_effect = mock_query_side_effect
                 mock_db.session = mock_session

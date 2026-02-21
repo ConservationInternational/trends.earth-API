@@ -287,6 +287,7 @@ def get_user_executions():
             paginate=paginate,
             filter_param=filter_param,
             sort=sort,
+            include=include,
         )
 
         response_data = {
@@ -439,6 +440,7 @@ def get_executions():
             paginate=paginate,
             filter_param=filter_param,
             sort=sort,
+            include=include,
         )
 
         response_data = {

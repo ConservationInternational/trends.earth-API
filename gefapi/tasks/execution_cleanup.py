@@ -65,6 +65,16 @@ def cleanup_stale_executions(self):
             cancelled_count = 0
             docker_services_removed = 0
 
+            # Create Docker client once outside the loop
+            try:
+                docker_client = get_docker_client()
+            except Exception as docker_init_error:
+                logger.warning(
+                    "[TASK]: Failed to initialize Docker client: %s",
+                    docker_init_error,
+                )
+                docker_client = None
+
             for execution in stale_executions:
                 try:
                     # Log execution details
@@ -110,7 +120,6 @@ def cleanup_stale_executions(self):
                     docker_service_name = f"execution-{execution.id}"
 
                     try:
-                        docker_client = get_docker_client()
                         if docker_client is not None:
                             # Try to find and remove the Docker service
                             try:
@@ -269,6 +278,16 @@ def cleanup_finished_executions(self):
 
             docker_services_removed = 0
 
+            # Create Docker client once outside the loop
+            try:
+                docker_client = get_docker_client()
+            except Exception as docker_init_error:
+                logger.warning(
+                    "[TASK]: Failed to initialize Docker client: %s",
+                    docker_init_error,
+                )
+                docker_client = None
+
             for execution in finished_executions:
                 try:
                     # Log execution details
@@ -282,7 +301,6 @@ def cleanup_finished_executions(self):
                     docker_service_name = f"execution-{execution.id}"
 
                     try:
-                        docker_client = get_docker_client()
                         if docker_client is not None:
                             # Try to find and remove the Docker service
                             try:
@@ -419,6 +437,16 @@ def cleanup_old_failed_executions(self):
 
             docker_services_removed = 0
 
+            # Create Docker client once outside the loop
+            try:
+                docker_client = get_docker_client()
+            except Exception as docker_init_error:
+                logger.warning(
+                    "[TASK]: Failed to initialize Docker client: %s",
+                    docker_init_error,
+                )
+                docker_client = None
+
             for execution in old_failed_executions:
                 try:
                     # Log execution details
@@ -432,7 +460,6 @@ def cleanup_old_failed_executions(self):
                     docker_service_name = f"execution-{execution.id}"
 
                     try:
-                        docker_client = get_docker_client()
                         if docker_client is not None:
                             # Try to find and remove the Docker service
                             try:

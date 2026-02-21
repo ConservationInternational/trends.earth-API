@@ -287,44 +287,33 @@ class StatsService:
             # Get period filter
             cutoff_date = StatsService._get_time_filter(period)
 
-            # Get total counts (filtered by period if specified)
-            execution_query = db.session.query(func.count(Execution.id))
+            # Get total users (filtered by period if specified)
             user_query = db.session.query(func.count(User.id))
-
             if cutoff_date:
-                execution_query = execution_query.filter(
-                    Execution.start_date >= cutoff_date
-                )
                 user_query = user_query.filter(User.created_at >= cutoff_date)
-
-            total_executions = execution_query.scalar() or 0
             total_users = user_query.scalar() or 0
+
             # Scripts count is always all-time since scripts don't have a time dimension
             total_scripts = db.session.query(func.count(Script.id)).scalar() or 0
 
-            # Get execution counts by status (filtered by period if specified)
-            finished_query = db.session.query(func.count(Execution.id)).filter(
-                Execution.status == "FINISHED"
+            # Get execution counts by status in a single GROUP BY query
+            exec_query = db.session.query(
+                Execution.status,
+                func.count(Execution.id).label("cnt"),
             )
-            failed_query = db.session.query(func.count(Execution.id)).filter(
-                Execution.status == "FAILED"
-            )
-            cancelled_query = db.session.query(func.count(Execution.id)).filter(
-                Execution.status == "CANCELLED"
-            )
-
             if cutoff_date:
-                finished_query = finished_query.filter(
+                exec_query = exec_query.filter(
                     Execution.start_date >= cutoff_date
                 )
-                failed_query = failed_query.filter(Execution.start_date >= cutoff_date)
-                cancelled_query = cancelled_query.filter(
-                    Execution.start_date >= cutoff_date
-                )
+            status_counts = {
+                row.status: row.cnt
+                for row in exec_query.group_by(Execution.status).all()
+            }
 
-            total_executions_finished = finished_query.scalar() or 0
-            total_executions_failed = failed_query.scalar() or 0
-            total_executions_cancelled = cancelled_query.scalar() or 0
+            total_executions = sum(status_counts.values())
+            total_executions_finished = status_counts.get("FINISHED", 0)
+            total_executions_failed = status_counts.get("FAILED", 0)
+            total_executions_cancelled = status_counts.get("CANCELLED", 0)
 
             summary = {
                 "total_executions": total_executions,

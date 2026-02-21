@@ -22,10 +22,12 @@ class Execution(db.Model):
         autoincrement=False,
     )
     start_date = db.Column(
-        db.DateTime(), default=lambda: datetime.datetime.now(datetime.UTC)
+        db.DateTime(),
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        index=True,
     )
-    end_date = db.Column(db.DateTime(), default=None)
-    status = db.Column(db.String(20), default="PENDING")
+    end_date = db.Column(db.DateTime(), default=None, index=True)
+    status = db.Column(db.String(20), default="PENDING", index=True)
     progress = db.Column(db.Integer(), default=0)
     params = db.Column(JSONB, default=dict)
     results = db.Column(JSONB, default=dict)
@@ -35,8 +37,8 @@ class Execution(db.Model):
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
-    script_id = db.Column(db.GUID(), db.ForeignKey("script.id"))
-    user_id = db.Column(db.GUID(), db.ForeignKey("user.id"))
+    script_id = db.Column(db.GUID(), db.ForeignKey("script.id"), index=True)
+    user_id = db.Column(db.GUID(), db.ForeignKey("user.id"), index=True)
 
     def __init__(self, script_id, params, user_id):
         self.script_id = script_id

@@ -8,7 +8,6 @@ import string
 from uuid import UUID
 
 import rollbar
-from sqlalchemy import func
 
 from gefapi import db
 from gefapi.config import SETTINGS

@@ -31,7 +31,9 @@ class StatusLog(db.Model):
     __tablename__ = "status_log"
     id = db.Column(db.Integer(), primary_key=True)
     timestamp = db.Column(
-        db.DateTime(), default=lambda: datetime.datetime.now(datetime.UTC)
+        db.DateTime(),
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        index=True,
     )
 
     # Execution counts
@@ -45,7 +47,7 @@ class StatusLog(db.Model):
     # Status transition fields
     status_from = db.Column(db.String(20), nullable=True)
     status_to = db.Column(db.String(20), nullable=True)
-    execution_id = db.Column(db.String(36), nullable=True)
+    execution_id = db.Column(db.String(36), nullable=True, index=True)
 
     def __init__(
         self,

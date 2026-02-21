@@ -11,7 +11,7 @@ import logging
 import re
 from typing import Any
 
-from sqlalchemy import and_, asc, desc, func, or_
+from sqlalchemy import asc, desc, func, or_
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,9 @@ _SIMPLE_EXPR_RE = re.compile(
 # Helper -------------------------------------------------------------------
 
 
-def _is_string_column(field: str, col: Any, string_field_names: set[str] | None = None) -> bool:
+def _is_string_column(
+    field: str, col: Any, string_field_names: set[str] | None = None
+) -> bool:
     """Return True when *col* should be compared case-insensitively."""
     if string_field_names and field in string_field_names:
         return True
@@ -113,7 +115,9 @@ def parse_single_expression(
     value = value.strip().strip("'\"")
 
     if field not in allowed_fields:
-        logger.warning("[QUERY_FILTERS]: Rejected filter on disallowed field: %s", field)
+        logger.warning(
+            "[QUERY_FILTERS]: Rejected filter on disallowed field: %s", field
+        )
         return None
 
     col = resolve_column(field)
@@ -236,7 +240,9 @@ def parse_sort_param(
         direction = parts[1].lower() if len(parts) > 1 else "asc"
 
         if field not in allowed_fields:
-            logger.warning("[QUERY_FILTERS]: Rejected sort on disallowed field: %s", field)
+            logger.warning(
+                "[QUERY_FILTERS]: Rejected sort on disallowed field: %s", field
+            )
             continue
 
         col_or_ordered = resolve_column(field, direction)
@@ -248,6 +254,8 @@ def parse_sort_param(
         if isinstance(col_or_ordered, tuple):
             order_clauses.append(col_or_ordered[0])
         else:
-            order_clauses.append(desc(col_or_ordered) if direction == "desc" else asc(col_or_ordered))
+            order_clauses.append(
+                desc(col_or_ordered) if direction == "desc" else asc(col_or_ordered)
+            )
 
     return order_clauses

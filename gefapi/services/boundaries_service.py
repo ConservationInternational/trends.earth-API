@@ -36,6 +36,8 @@ class BoundariesService:
         backwards compatibility but no longer affects the response (geometries are
         never included).
 
+        Uses SQL-level COUNT and OFFSET/LIMIT for efficient pagination.
+
         Args:
             levels: List of administrative levels (e.g., [0, 1])
             filters: Dictionary of filter criteria
@@ -46,22 +48,52 @@ class BoundariesService:
         Returns:
             Tuple of (results list, total count)
         """
+        if page < 1:
+            page = 1
+        if per_page < 1:
+            per_page = 100
+
         all_results = []
         total_count = 0
 
-        # Query each level separately and combine results
+        # First pass: get total counts per level
+        level_counts: dict[int, int] = {}
         for level in levels:
             model = AdminBoundary0Metadata if level == 0 else AdminBoundary1Unit
             query = db.session.query(model)
+            if filters:
+                query = BoundariesService._apply_filters(query, model, filters)
+            level_counts[level] = query.count()
+            total_count += level_counts[level]
 
-            # Apply filters if provided
+        # Second pass: determine which levels contribute to this page
+        offset = (page - 1) * per_page
+        remaining = per_page
+        skipped = 0
+
+        for level in levels:
+            count = level_counts[level]
+
+            # How many rows from this level to skip
+            level_skip = max(0, offset - skipped)
+            if level_skip >= count:
+                # This entire level is before the current page
+                skipped += count
+                continue
+
+            # How many rows to take from this level
+            level_take = min(remaining, count - level_skip)
+            if level_take <= 0:
+                skipped += count
+                continue
+
+            model = AdminBoundary0Metadata if level == 0 else AdminBoundary1Unit
+            query = db.session.query(model)
             if filters:
                 query = BoundariesService._apply_filters(query, model, filters)
 
-            # Get results for this level
-            level_results = query.all()
+            level_results = query.offset(level_skip).limit(level_take).all()
 
-            # Format results and add level information
             for boundary in level_results:
                 result = BoundariesService._format_boundary(boundary)
                 result["level"] = level
@@ -73,19 +105,13 @@ class BoundariesService:
                 )
                 all_results.append(result)
 
-            total_count += len(level_results)
+            remaining -= len(level_results)
+            skipped += count
 
-        # Apply pagination to combined results
-        if page < 1:
-            page = 1
-        if per_page < 1:
-            per_page = 100
+            if remaining <= 0:
+                break
 
-        start_idx = (page - 1) * per_page
-        end_idx = start_idx + per_page
-        paginated_results = all_results[start_idx:end_idx]
-
-        return paginated_results, total_count
+        return all_results, total_count
 
     @staticmethod
     def _apply_filters(query: Query, model, filters: dict) -> Query:
@@ -265,28 +291,33 @@ class BoundariesService:
                 .all()
             )
 
+            # Bulk-fetch all ADM1 metadata for this release type and index by ISO
+            adm1_metadata_all = (
+                db.session.query(AdminBoundary1Metadata)
+                .filter(AdminBoundary1Metadata.releaseType == release_type)
+                .all()
+            )
+            adm1_metadata_by_iso = {
+                m.boundaryISO: m for m in adm1_metadata_all
+            }
+
+            # Bulk-fetch all ADM1 units for this release type and group by ISO
+            adm1_units_all = (
+                db.session.query(AdminBoundary1Unit)
+                .filter(AdminBoundary1Unit.releaseType == release_type)
+                .order_by(AdminBoundary1Unit.boundaryISO,
+                          AdminBoundary1Unit.shapeName)
+                .all()
+            )
+            adm1_units_by_iso: dict[str, list] = {}
+            for unit in adm1_units_all:
+                adm1_units_by_iso.setdefault(unit.boundaryISO, []).append(unit)
+
             result = []
             for adm0 in adm0_boundaries:
-                # Get ADM1 metadata for this country to include download links
-                adm1_metadata = (
-                    db.session.query(AdminBoundary1Metadata)
-                    .filter(
-                        AdminBoundary1Metadata.boundaryISO == adm0.boundaryISO,
-                        AdminBoundary1Metadata.releaseType == release_type,
-                    )
-                    .first()
-                )
-
-                # Get all ADM1 units for this country and release type
-                adm1_units = (
-                    db.session.query(AdminBoundary1Unit)
-                    .filter(
-                        AdminBoundary1Unit.boundaryISO == adm0.boundaryISO,
-                        AdminBoundary1Unit.releaseType == release_type,
-                    )
-                    .order_by(AdminBoundary1Unit.shapeName)
-                    .all()
-                )
+                iso = adm0.boundaryISO
+                adm1_metadata = adm1_metadata_by_iso.get(iso)
+                adm1_units = adm1_units_by_iso.get(iso, [])
 
                 # Format ADM1 units with minimal fields
                 admin1_list = [
@@ -296,7 +327,7 @@ class BoundariesService:
 
                 # Build hierarchy with download links
                 country_data = {
-                    "boundaryISO": adm0.boundaryISO,
+                    "boundaryISO": iso,
                     "boundaryName": adm0.boundaryName,
                     "releaseType": adm0.releaseType,
                     "adm0_geojson_url": adm0.gjDownloadURL,
@@ -333,42 +364,34 @@ class BoundariesService:
             datetime or None if no boundaries exist
         """
         try:
-            # Get the most recent updated_at from AdminBoundary0Metadata
-            adm0_latest = (
-                db.session.query(AdminBoundary0Metadata.updated_at)
+            from sqlalchemy import func, union_all
+
+            # Get the latest updated_at from all three tables in a single query
+            q0 = (
+                db.session.query(
+                    func.max(AdminBoundary0Metadata.updated_at).label("latest")
+                )
                 .filter(AdminBoundary0Metadata.releaseType == release_type)
-                .order_by(AdminBoundary0Metadata.updated_at.desc())
-                .first()
             )
-
-            # Get the most recent updated_at from AdminBoundary1Metadata
-            adm1_meta_latest = (
-                db.session.query(AdminBoundary1Metadata.updated_at)
+            q1 = (
+                db.session.query(
+                    func.max(AdminBoundary1Metadata.updated_at).label("latest")
+                )
                 .filter(AdminBoundary1Metadata.releaseType == release_type)
-                .order_by(AdminBoundary1Metadata.updated_at.desc())
-                .first()
             )
-
-            # Get the most recent updated_at from AdminBoundary1Unit
-            adm1_unit_latest = (
-                db.session.query(AdminBoundary1Unit.updated_at)
+            q2 = (
+                db.session.query(
+                    func.max(AdminBoundary1Unit.updated_at).label("latest")
+                )
                 .filter(AdminBoundary1Unit.releaseType == release_type)
-                .order_by(AdminBoundary1Unit.updated_at.desc())
-                .first()
             )
 
-            # Compare and return the latest
-            timestamps = []
-            if adm0_latest and adm0_latest[0]:
-                timestamps.append(adm0_latest[0])
-            if adm1_meta_latest and adm1_meta_latest[0]:
-                timestamps.append(adm1_meta_latest[0])
-            if adm1_unit_latest and adm1_unit_latest[0]:
-                timestamps.append(adm1_unit_latest[0])
+            combined = union_all(q0, q1, q2).subquery()
+            result = db.session.query(
+                func.max(combined.c.latest)
+            ).scalar()
 
-            if timestamps:
-                return max(timestamps)
-            return None
+            return result
 
         except Exception as e:
             logger.error(

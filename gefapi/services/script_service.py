@@ -9,7 +9,7 @@ from uuid import UUID
 
 import rollbar
 from slugify import slugify
-from sqlalchemy import String, cast, func
+from sqlalchemy import String, cast
 from werkzeug.utils import secure_filename
 
 from gefapi import db
@@ -241,9 +241,7 @@ class ScriptService:
 
             from gefapi.utils.query_filters import parse_filter_param
 
-            allowed_fields = (
-                SCRIPT_ALLOWED_FILTER_FIELDS | SCRIPT_ADMIN_ONLY_FIELDS
-            )
+            allowed_fields = SCRIPT_ALLOWED_FILTER_FIELDS | SCRIPT_ADMIN_ONLY_FIELDS
 
             def _resolve_script_filter_column(field_name):
                 nonlocal join_users

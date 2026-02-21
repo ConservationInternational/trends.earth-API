@@ -314,6 +314,7 @@ class ExecutionService:
         paginate=True,
         filter_param=None,
         sort=None,
+        include=None,
     ):
         """
         Retrieve executions with filtering, pagination, and permission controls.
@@ -329,6 +330,9 @@ class ExecutionService:
             filter_param (str, optional): SQL-style filter expressions
                 (date comparisons like start_date>='2024-01-01' are supported)
             sort (str, optional): SQL-style sort expressions
+            include (list, optional): Fields to include in serialization. When
+                'user', 'user_name', 'user_email', 'script', or 'script_name'
+                are present, eager loading is applied to avoid N+1 queries.
 
         Returns:
             tuple: (executions list, total count)
@@ -336,10 +340,14 @@ class ExecutionService:
         Raises:
             Exception: If pagination parameters are invalid or filter permissions denied
         """
+        from sqlalchemy.orm import joinedload
+
         from gefapi.utils.query_filters import parse_filter_param, parse_sort_param
 
         logger.info("[SERVICE]: Getting executions")
         logger.info("[DB]: QUERY")
+
+        include = include or []
 
         # Validate pagination parameters only when pagination is requested
         if paginate:
@@ -349,6 +357,18 @@ class ExecutionService:
                 raise Exception("Per page must be greater than 0")
 
         query = db.session.query(Execution)
+
+        # Eager-load relationships when include fields reference them
+        needs_user = bool(
+            {"user", "user_name", "user_email"} & set(include)
+        )
+        needs_script = bool(
+            {"script", "script_name"} & set(include)
+        )
+        if needs_user:
+            query = query.options(joinedload(Execution.user))
+        if needs_script:
+            query = query.options(joinedload(Execution.script))
 
         # Apply user filters
         if is_admin_or_higher(user):
@@ -383,9 +403,7 @@ class ExecutionService:
         if filter_param:
             from sqlalchemy import and_
 
-            all_allowed = (
-                EXECUTION_ALLOWED_FILTER_FIELDS | EXECUTION_ADMIN_ONLY_FIELDS
-            )
+            all_allowed = EXECUTION_ALLOWED_FILTER_FIELDS | EXECUTION_ADMIN_ONLY_FIELDS
 
             def _resolve_filter_column(field_name):
                 nonlocal join_scripts, join_users
@@ -424,6 +442,7 @@ class ExecutionService:
 
         # Apply SQL-style sorting if present
         if sort:
+
             def _resolve_sort_column(field_name, direction):
                 nonlocal join_scripts, join_users
                 col = getattr(Execution, field_name, None)
@@ -437,9 +456,7 @@ class ExecutionService:
                                 "epoch", Execution.end_date - Execution.start_date
                             ),
                         ),
-                        else_=func.extract(
-                            "epoch", func.now() - Execution.start_date
-                        ),
+                        else_=func.extract("epoch", func.now() - Execution.start_date),
                     )
                     ordered = (
                         duration_expr.desc()

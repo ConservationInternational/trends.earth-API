@@ -846,19 +846,32 @@ jwt = JWTManager(app)
 # Token blocklist storage for revoked access tokens
 # Uses Redis for production scalability, falls back to in-memory for testing
 _revoked_tokens = set()
+_revoked_tokens_redis_client = None
+_revoked_tokens_redis_initialized = False
 
 
 def get_revoked_tokens_storage():
-    """Get the revoked tokens storage (Redis or in-memory fallback)."""
+    """Get the revoked tokens storage (Redis or in-memory fallback).
+
+    Caches the Redis client after the first successful connection
+    to avoid creating a new connection on every request.
+    """
+    global _revoked_tokens_redis_client, _revoked_tokens_redis_initialized
+    if _revoked_tokens_redis_initialized:
+        return _revoked_tokens_redis_client
     try:
         import redis
 
         redis_url = SETTINGS.get("CELERY_BROKER_URL")
         if redis_url:
-            return redis.from_url(redis_url)
+            _revoked_tokens_redis_client = redis.from_url(redis_url)
+            # Verify the connection is alive
+            _revoked_tokens_redis_client.ping()
     except Exception as e:
         logger.debug(f"Redis not available for token blocklist, using in-memory: {e}")
-    return None
+        _revoked_tokens_redis_client = None
+    _revoked_tokens_redis_initialized = True
+    return _revoked_tokens_redis_client
 
 
 def add_token_to_blocklist(jti: str, expires_in_seconds: int = 3600) -> None:

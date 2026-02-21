@@ -242,7 +242,7 @@ class AdminBoundary1Unit(db.Model):
     )  # gbOpen, gbHumanitarian, gbAuthoritative
 
     # Foreign key to parent country
-    boundaryISO = db.Column(db.String(10), nullable=False)
+    boundaryISO = db.Column(db.String(10), nullable=False, index=True)
 
     # Unit identification from GeoJSON properties
     shapeName = db.Column(db.String(255))  # State/province name from GeoJSON
