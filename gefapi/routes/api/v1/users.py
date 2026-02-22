@@ -699,24 +699,22 @@ def recover_password(user):
     ```json
     {
       "data": {
-        "id": "user-123",
-        "email": "user@example.com",
-        "name": "John Doe",
-        "role": "USER"
+        "message": "If an account with that email exists, a password recovery email has been sent."
       }
     }
     ```
 
     **Security Notes**:
+    - Returns the same response regardless of whether the user exists,
+      preventing user enumeration attacks (CWE-204).
     - Legacy mode (default) is DEPRECATED but maintained for backwards
       compatibility. It sends passwords via email which is less secure.
     - New integrations should use `legacy=false` for better security.
     - Rate limiting prevents email flooding attacks in both modes.
 
     **Error Responses**:
-    - `404 Not Found`: User does not exist
     - `429 Too Many Requests`: Rate limit exceeded
-    - `500 Internal Server Error`: Email delivery failed or system error
+    - `500 Internal Server Error`: System error (email failures are masked)
     """
     logger.info("[ROUTER]: Recovering password")
 
@@ -724,18 +722,34 @@ def recover_password(user):
     legacy_param = request.args.get("legacy", "true").lower()
     use_legacy = legacy_param not in ("false", "0", "no")
 
+    # Generic success message returned regardless of whether the user exists.
+    # This prevents user enumeration via the password recovery endpoint
+    # (CWE-204: Observable Response Discrepancy).
+    generic_response = {
+        "data": {
+            "message": (
+                "If an account with that email exists, a password recovery "
+                "email has been sent."
+            )
+        }
+    }
+
     try:
-        user = UserService.recover_password(user, legacy=use_legacy)
-    except UserNotFound as e:
-        logger.error("[ROUTER]: " + e.message)
-        return error(status=404, detail=e.message)
+        UserService.recover_password(user, legacy=use_legacy)
+    except UserNotFound:
+        # Log for debugging but return the same response as success
+        logger.info("[ROUTER]: Password recovery requested for unknown user")
+        return jsonify(generic_response), 200
     except EmailError as e:
-        logger.error("[ROUTER]: " + e.message)
-        return error(status=500, detail=e.message)
+        # Email delivery failure is a server-side issue — still return
+        # the generic message to avoid leaking user existence, but log
+        # the real error for operators.
+        logger.error("[ROUTER]: Email delivery failed during recovery: " + e.message)
+        return jsonify(generic_response), 200
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
-    return jsonify(data=user.serialize()), 200
+    return jsonify(generic_response), 200
 
 
 @endpoints.route("/user/reset-password", strict_slashes=False, methods=["POST"])

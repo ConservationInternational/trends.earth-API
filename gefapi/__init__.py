@@ -844,7 +844,9 @@ def api_docs():
 jwt = JWTManager(app)
 
 # Token blocklist storage for revoked access tokens
-# Uses Redis for production scalability, falls back to in-memory for testing
+# Uses Redis for production scalability, falls back to in-memory ONLY in
+# dev/test environments.  In production, Redis is required — if unavailable
+# the blocklist check will reject all tokens (fail closed).
 _revoked_tokens = set()
 _revoked_tokens_redis_client = None
 _revoked_tokens_redis_initialized = False
@@ -853,8 +855,14 @@ _revoked_tokens_redis_initialized = False
 def get_revoked_tokens_storage():
     """Get the revoked tokens storage (Redis or in-memory fallback).
 
-    Caches the Redis client after the first successful connection
-    to avoid creating a new connection on every request.
+    In production (ENVIRONMENT=prod/staging), Redis is mandatory.  If Redis
+    cannot be reached the function returns ``None`` and callers must treat
+    that as "blocklist unavailable" — meaning tokens should be rejected
+    (fail closed).
+
+    In development/test environments, an in-memory ``set()`` is used as a
+    convenience fallback (not shared across workers, acceptable for local
+    testing only).
     """
     global _revoked_tokens_redis_client, _revoked_tokens_redis_initialized
     if _revoked_tokens_redis_initialized:
@@ -868,7 +876,17 @@ def get_revoked_tokens_storage():
             # Verify the connection is alive
             _revoked_tokens_redis_client.ping()
     except Exception as e:
-        logger.debug(f"Redis not available for token blocklist, using in-memory: {e}")
+        environment = os.getenv("ENVIRONMENT", "dev")
+        if environment in ("prod", "staging", "production"):
+            logger.critical(
+                f"Redis is REQUIRED for token blocklist in {environment} "
+                f"but is unavailable: {e}. Token revocation will fail closed."
+            )
+        else:
+            logger.debug(
+                f"Redis not available for token blocklist, "
+                f"using in-memory (env={environment}): {e}"
+            )
         _revoked_tokens_redis_client = None
     _revoked_tokens_redis_initialized = True
     return _revoked_tokens_redis_client
@@ -884,19 +902,47 @@ def add_token_to_blocklist(jti: str, expires_in_seconds: int = 3600) -> None:
             return
         except Exception as e:
             logger.warning(f"Failed to add token to Redis blocklist: {e}")
-    # Fallback to in-memory (note: not shared across workers)
-    _revoked_tokens.add(jti)
+    # Fallback to in-memory only in non-production environments
+    environment = os.getenv("ENVIRONMENT", "dev")
+    if environment in ("prod", "staging", "production"):
+        logger.error(
+            "Cannot add token to blocklist: Redis unavailable in production. "
+            "Token revocation may not be effective."
+        )
+    else:
+        _revoked_tokens.add(jti)
 
 
 def is_token_in_blocklist(jti: str) -> bool:
-    """Check if a token JTI is in the blocklist."""
+    """Check if a token JTI is in the blocklist.
+
+    In production, if Redis is unavailable the check returns ``True``
+    (fail closed) so that revoked tokens cannot bypass the blocklist
+    due to infrastructure failure.
+    """
     redis_client = get_revoked_tokens_storage()
     if redis_client:
         try:
             return redis_client.exists(f"blocklist:{jti}") > 0
         except Exception as e:
             logger.warning(f"Failed to check Redis blocklist: {e}")
-    # Fallback to in-memory
+            # Redis was expected but errored — fail closed in production
+            environment = os.getenv("ENVIRONMENT", "dev")
+            if environment in ("prod", "staging", "production"):
+                logger.error(
+                    "Redis blocklist check failed in production — "
+                    "treating token as revoked (fail closed)."
+                )
+                return True
+    # In-memory fallback (dev/test only; production without Redis → fail closed)
+    environment = os.getenv("ENVIRONMENT", "dev")
+    if environment in ("prod", "staging", "production"):
+        # No Redis client at all in production — fail closed
+        logger.error(
+            "Token blocklist unavailable in production (no Redis) — "
+            "treating token as revoked (fail closed)."
+        )
+        return True
     return jti in _revoked_tokens
 
 

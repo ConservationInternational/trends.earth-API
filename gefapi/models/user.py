@@ -9,7 +9,9 @@ import os
 from typing import Any
 import uuid
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from flask_jwt_extended import create_access_token
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -291,7 +293,19 @@ class User(db.Model):
     @staticmethod
     @lru_cache(maxsize=1)
     def _get_encryption_key() -> bytes:
-        """Get encryption key for GEE credentials"""
+        """Get HKDF-derived encryption key for GEE credentials.
+
+        Uses HKDF-SHA256 to derive a proper 32-byte Fernet key from the
+        configured secret, providing cryptographically strong key derivation
+        regardless of the input key length or entropy.
+
+        Returns:
+            Base64url-encoded 32-byte key suitable for Fernet.
+
+        Raises:
+            RuntimeError: If no encryption key is configured or the default
+                insecure key is in use.
+        """
 
         key = os.getenv("GEE_ENCRYPTION_KEY")
         if key:
@@ -321,13 +335,35 @@ class User(db.Model):
                 "GEE_ENCRYPTION_KEY to avoid using the application secret."
             )
 
-        # Ensure key is 32 bytes for Fernet while preserving compatibility with
-        # previously stored credentials.
+        # Derive a proper 32-byte key using HKDF-SHA256
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=b"trends.earth-gee-credentials-v2",
+            info=b"fernet-key",
+        )
+        derived_key = hkdf.derive(key.encode("utf-8"))
+        return base64.urlsafe_b64encode(derived_key)
+
+    @staticmethod
+    def _get_legacy_encryption_key() -> bytes:
+        """Get the legacy (pre-HKDF) encryption key for backwards compatibility.
+
+        This reproduces the old key derivation that truncated/padded to 32
+        bytes without a proper KDF.  Used only to decrypt credentials that
+        were encrypted before the HKDF migration.
+        """
+        key = os.getenv("GEE_ENCRYPTION_KEY")
+        if not key:
+            key = os.getenv("SECRET_KEY")
+        if not key:
+            raise RuntimeError("Missing encryption key for GEE credentials")
+
         key_bytes = key.encode("utf-8")[:32].ljust(32, b"0")
         return base64.urlsafe_b64encode(key_bytes)
 
     def _encrypt_gee_data(self, data: str) -> str:
-        """Encrypt GEE credential data"""
+        """Encrypt GEE credential data using HKDF-derived key."""
         if not data:
             return None
         fernet = Fernet(self._get_encryption_key())
@@ -335,13 +371,51 @@ class User(db.Model):
         return base64.b64encode(encrypted).decode("utf-8")
 
     def _decrypt_gee_data(self, encrypted_data: str) -> str:
-        """Decrypt GEE credential data"""
+        """Decrypt GEE credential data, with automatic legacy key fallback.
+
+        Tries the current HKDF-derived key first.  If decryption fails (e.g.
+        because the data was encrypted with the old truncate/pad key), falls
+        back to the legacy key derivation.  On successful legacy decryption a
+        warning is logged so operators can identify credentials that should be
+        re-encrypted.
+        """
         if not encrypted_data:
             return None
         try:
-            fernet = Fernet(self._get_encryption_key())
             decoded = base64.b64decode(encrypted_data.encode("utf-8"))
+        except Exception as e:
+            logger.error(f"Failed to base64-decode GEE data for user {self.email}: {e}")
+            return None
+
+        # Try current (HKDF-derived) key first
+        try:
+            fernet = Fernet(self._get_encryption_key())
             return fernet.decrypt(decoded).decode("utf-8")
+        except InvalidToken:
+            pass
+        except Exception as e:
+            logger.error(
+                f"Unexpected error decrypting GEE data for user {self.email} "
+                f"with current key: {e}"
+            )
+
+        # Fall back to legacy (truncate/pad) key for pre-migration data
+        try:
+            legacy_key = self._get_legacy_encryption_key()
+            fernet_legacy = Fernet(legacy_key)
+            plaintext = fernet_legacy.decrypt(decoded).decode("utf-8")
+            logger.warning(
+                f"GEE credentials for user {self.email} were decrypted with "
+                f"the legacy key. They should be re-encrypted with the new "
+                f"HKDF-derived key."
+            )
+            return plaintext
+        except InvalidToken:
+            logger.error(
+                f"Failed to decrypt GEE data for user {self.email}: "
+                f"neither current nor legacy key could decrypt the data."
+            )
+            return None
         except Exception as e:
             logger.error(f"Failed to decrypt GEE data for user {self.email}: {e}")
             return None

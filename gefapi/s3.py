@@ -1,4 +1,5 @@
 import logging
+import posixpath
 
 import boto3
 import botocore
@@ -9,7 +10,57 @@ from gefapi.config import SETTINGS
 logger = logging.getLogger()
 
 
+def _sanitize_object_basename(object_basename: str) -> str:
+    """Sanitize an S3 object basename to prevent path traversal attacks.
+
+    Strips directory components and rejects values containing path traversal
+    sequences (e.g. '..', '/', '\\') to ensure objects stay within the
+    intended S3 prefix.
+
+    Args:
+        object_basename: The basename to sanitize.
+
+    Returns:
+        The sanitized basename.
+
+    Raises:
+        ValueError: If the basename is empty, contains traversal sequences,
+            or resolves to a different name after sanitization.
+    """
+    if not object_basename:
+        raise ValueError("object_basename must not be empty")
+
+    # Reject obvious traversal attempts before any normalization
+    if ".." in object_basename:
+        raise ValueError(
+            f"Invalid object_basename: path traversal detected: {object_basename!r}"
+        )
+
+    # Extract just the filename, stripping any directory components
+    # Use posixpath since S3 keys use forward slashes
+    sanitized = posixpath.basename(object_basename)
+
+    # Also strip Windows-style directory separators
+    if "\\" in object_basename:
+        sanitized = sanitized.split("\\")[-1]
+
+    if not sanitized:
+        raise ValueError(
+            f"Invalid object_basename: resolved to empty after sanitization: "
+            f"{object_basename!r}"
+        )
+
+    if sanitized != object_basename:
+        logger.warning(
+            "S3 object_basename sanitized: %r -> %r", object_basename, sanitized
+        )
+
+    return sanitized
+
+
 def push_script_to_s3(file_path, object_basename):
+    object_basename = _sanitize_object_basename(object_basename)
+
     prefix = SETTINGS.get("SCRIPTS_S3_PREFIX")
     bucket = SETTINGS.get("SCRIPTS_S3_BUCKET")
 
@@ -31,6 +82,8 @@ def push_script_to_s3(file_path, object_basename):
 
 
 def get_script_from_s3(script_file, out_path):
+    script_file = _sanitize_object_basename(script_file)
+
     prefix = SETTINGS.get("SCRIPTS_S3_PREFIX")
     bucket = SETTINGS.get("SCRIPTS_S3_BUCKET")
 
@@ -45,6 +98,8 @@ def get_script_from_s3(script_file, out_path):
 
 
 def delete_script_from_s3(object_basename):
+    object_basename = _sanitize_object_basename(object_basename)
+
     prefix = SETTINGS.get("SCRIPTS_S3_PREFIX")
     bucket = SETTINGS.get("SCRIPTS_S3_BUCKET")
 
@@ -66,6 +121,8 @@ def delete_script_from_s3(object_basename):
 
 
 def push_params_to_s3(file_path, object_basename):
+    object_basename = _sanitize_object_basename(object_basename)
+
     prefix = SETTINGS.get("PARAMS_S3_PREFIX")
     bucket = SETTINGS.get("PARAMS_S3_BUCKET")
 
