@@ -599,14 +599,14 @@ class TestRateLimitEvents:
             "/api/v1/rate-limit/events", headers=auth_headers_superadmin
         )
         assert response.status_code == 200
-        payload = response.json["data"]
-        assert "events" in payload
-        assert "total" in payload
-        assert isinstance(payload["events"], list)
-        assert payload["total"] >= len(payload["events"])
+        body = response.json
+        events = body["data"]
+        total = body["total"]
+        assert isinstance(events, list)
+        assert total >= len(events)
 
-        if payload["events"]:
-            event = payload["events"][0]
+        if events:
+            event = events[0]
             assert "occurred_at" in event
             assert event["rate_limit_type"] in {"AUTH", "USER", "IP"}
 
@@ -632,7 +632,9 @@ class TestRateLimitEvents:
             "/api/v1/rate-limit/events", headers=auth_headers_superadmin
         )
         assert response.status_code == 200
-        payload = response.json["data"]
-        assert payload["total"] == len(payload["events"])
+        body = response.json
+        events = body["data"]
+        total = body["total"]
+        assert total == len(events)
         # Should only record a single transition for the current limiter window
-        assert payload["total"] == 1
+        assert total == 1
