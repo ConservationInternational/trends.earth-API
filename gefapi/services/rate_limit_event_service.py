@@ -6,10 +6,11 @@ import datetime
 import logging
 import uuid
 
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 
 from gefapi import db
 from gefapi.models import RateLimitEvent
+from gefapi.utils.query_filters import parse_filter_param, parse_sort_param
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +249,47 @@ class RateLimitEventService:
             db.session.rollback()
             return 0
 
+    # Fields allowed in the ``filter`` and ``sort`` query parameters.
+    # Mirrors the pattern used by ExecutionService / UserService / ScriptService.
+    ALLOWED_FILTER_FIELDS: set[str] = {
+        "occurred_at",
+        "expires_at",
+        "user_email",
+        "user_role",
+        "endpoint",
+        "method",
+        "limit_key",
+        "rate_limit_type",
+        "status",
+    }
+
+    ALLOWED_SORT_FIELDS: set[str] = ALLOWED_FILTER_FIELDS - {"status"}
+
+    # Fields that should use string (ILIKE) matching for simple equality
+    # comparisons in the filter parser.
+    STRING_FIELD_NAMES: set[str] = {
+        "user_email",
+        "user_role",
+        "endpoint",
+        "method",
+        "limit_key",
+        "rate_limit_type",
+    }
+
+    @staticmethod
+    def _resolve_filter_column(field_name: str):
+        """Map a filter field name to the corresponding SQLAlchemy column.
+
+        The virtual ``status`` field is handled via ``custom_filter_handlers``
+        in the route layer, so it is intentionally *not* resolved here.
+        """
+        return getattr(RateLimitEvent, field_name, None)
+
+    @staticmethod
+    def _resolve_sort_column(field_name: str, direction: str):
+        """Map a sort field name to the corresponding SQLAlchemy column."""
+        return getattr(RateLimitEvent, field_name, None)
+
     @staticmethod
     def list_events(
         *,
@@ -257,6 +299,9 @@ class RateLimitEventService:
         rate_limit_type: str | None = None,
         user_id: str | None = None,
         ip_address: str | None = None,
+        sort: str | None = None,
+        filter_param: str | None = None,
+        status: str | None = None,
     ) -> tuple[list[RateLimitEvent], int]:
         """Fetch rate limit events with optional filters.
 
@@ -267,6 +312,15 @@ class RateLimitEventService:
             rate_limit_type: Filter by a specific rate limit category.
             user_id: Filter by associated user identifier.
             ip_address: Filter by originating IP address.
+            sort: Optional comma-separated sort clause, e.g.
+                ``"occurred_at desc"`` or ``"expires_at asc"``.
+                Parsed by :func:`~gefapi.utils.query_filters.parse_sort_param`.
+            filter_param: SQL-style filter string, e.g.
+                ``"user_email like '%@example.com%',method='GET'"``.
+                Parsed by :func:`~gefapi.utils.query_filters.parse_filter_param`.
+            status: Virtual filter — ``"active"`` returns events whose
+                ``expires_at`` is in the future; ``"historical"`` returns
+                already-expired or NULL-expiry events.
 
         Returns:
             Tuple of (events, total_count) based on the supplied filters.
@@ -288,11 +342,49 @@ class RateLimitEventService:
         if ip_address:
             base_query = base_query.filter(RateLimitEvent.ip_address == ip_address)
 
-        # Count must ignore any ordering or pagination applied later so the
-        # API reports the actual number of matching events.
+        # Virtual "status" filter based on expires_at
+        if status:
+            now = datetime.datetime.now(datetime.UTC)
+            normalised = status.strip().lower()
+            if normalised == "active":
+                base_query = base_query.filter(
+                    RateLimitEvent.expires_at.isnot(None),
+                    RateLimitEvent.expires_at > now,
+                )
+            elif normalised == "historical":
+                base_query = base_query.filter(
+                    or_(
+                        RateLimitEvent.expires_at.is_(None),
+                        RateLimitEvent.expires_at <= now,
+                    )
+                )
+
+        # Parse the unified ``filter`` param (same pattern as executions/users)
+        if filter_param:
+            filter_clauses = parse_filter_param(
+                filter_param,
+                allowed_fields=RateLimitEventService.ALLOWED_FILTER_FIELDS,
+                resolve_column=RateLimitEventService._resolve_filter_column,
+                string_field_names=RateLimitEventService.STRING_FIELD_NAMES,
+            )
+            if filter_clauses:
+                base_query = base_query.filter(and_(*filter_clauses))
+
+        # Count before ordering/pagination
         total = base_query.order_by(None).count()
 
-        events_query = base_query.order_by(RateLimitEvent.occurred_at.desc())
-        events = list(events_query.offset(offset).limit(limit).all())
+        # Parse the ``sort`` param (same pattern as executions/users)
+        if sort:
+            order_clauses = parse_sort_param(
+                sort,
+                allowed_fields=RateLimitEventService.ALLOWED_SORT_FIELDS,
+                resolve_column=RateLimitEventService._resolve_sort_column,
+            )
+            for clause in order_clauses:
+                base_query = base_query.order_by(clause)
+        else:
+            base_query = base_query.order_by(RateLimitEvent.occurred_at.desc())
+
+        events = list(base_query.offset(offset).limit(limit).all())
 
         return events, int(total)

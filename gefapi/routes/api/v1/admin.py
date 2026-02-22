@@ -278,6 +278,9 @@ def get_rate_limit_events():
         rate_limit_type = request.args.get("type")
         user_filter = request.args.get("user_id")
         ip_filter = request.args.get("ip")
+        sort_param = request.args.get("sort")
+        filter_param = request.args.get("filter")
+        status_filter = request.args.get("status")
 
         events, total = RateLimitEventService.list_events(
             limit=per_page,
@@ -286,29 +289,23 @@ def get_rate_limit_events():
             rate_limit_type=rate_limit_type,
             user_id=user_filter,
             ip_address=ip_filter,
+            sort=sort_param,
+            filter_param=filter_param,
+            status=status_filter,
         )
 
         total_pages = (total + per_page - 1) // per_page if per_page else 0
 
-        data = {
-            "events": [event.serialize() for event in events],
-            "total": total,
-            "page": page,
-            "per_page": per_page,
-            "total_pages": total_pages,
-            "since": since.isoformat() if since else None,
-            "filters": {
-                "type": rate_limit_type,
-                "user_id": user_filter,
-                "ip": ip_filter,
-            },
-        }
+        data = [event.serialize() for event in events]
 
         return (
             jsonify(
                 {
-                    "message": "Rate limit events retrieved successfully",
                     "data": data,
+                    "total": total,
+                    "page": page,
+                    "per_page": per_page,
+                    "total_pages": total_pages,
                 }
             ),
             200,
