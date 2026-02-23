@@ -699,7 +699,8 @@ def recover_password(user):
     ```json
     {
       "data": {
-        "message": "If an account with that email exists, a password recovery email has been sent."
+        "message": "If an account with that email exists,
+          a password recovery email has been sent."
       }
     }
     ```

@@ -88,14 +88,14 @@ class TestS3ObjectBasenameSanitization:
         from gefapi.s3 import push_script_to_s3
 
         with pytest.raises(ValueError, match="path traversal"):
-            push_script_to_s3("/tmp/file", "../../etc/passwd")
+            push_script_to_s3("/tmp/file", "../../etc/passwd")  # noqa: S108
 
     def test_get_script_calls_sanitize(self):
         """Ensure get_script_from_s3 rejects traversal basenames."""
         from gefapi.s3 import get_script_from_s3
 
         with pytest.raises(ValueError, match="path traversal"):
-            get_script_from_s3("../../other_prefix/secret", "/tmp/out")
+            get_script_from_s3("../../other_prefix/secret", "/tmp/out")  # noqa: S108
 
     def test_delete_script_calls_sanitize(self):
         """Ensure delete_script_from_s3 rejects traversal basenames."""
@@ -109,7 +109,7 @@ class TestS3ObjectBasenameSanitization:
         from gefapi.s3 import push_params_to_s3
 
         with pytest.raises(ValueError, match="path traversal"):
-            push_params_to_s3("/tmp/file", "../../etc/passwd")
+            push_params_to_s3("/tmp/file", "../../etc/passwd")  # noqa: S108
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +216,6 @@ class TestGEEEncryptionKeyDerivation:
             assert stub._encrypt_gee_data("") is None
 
     def test_decrypt_none_returns_none(self, app):
-
         with app.app_context():
             stub = self._make_user_stub()
             assert stub._decrypt_gee_data(None) is None
