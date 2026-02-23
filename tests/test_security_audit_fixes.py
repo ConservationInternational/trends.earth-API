@@ -8,7 +8,7 @@ M1: Generic password recovery response (no user enumeration)
 
 import base64
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -71,12 +71,12 @@ class TestS3ObjectBasenameSanitization:
         cannot remove its patches directly.  Instead we simply re-bind the
         names in ``gefapi.s3`` back to the originals.
         """
-        import gefapi.s3 as _s3_mod
-
         # The real implementations are still available in the module's
         # globals because ``unittest.mock.patch`` saves/restores them.
         # We grab them from the *source* via importlib reload.
         import importlib
+
+        import gefapi.s3 as _s3_mod
 
         _real = importlib.reload(_s3_mod)
         monkeypatch.setattr("gefapi.s3.push_script_to_s3", _real.push_script_to_s3)
@@ -216,7 +216,6 @@ class TestGEEEncryptionKeyDerivation:
             assert stub._encrypt_gee_data("") is None
 
     def test_decrypt_none_returns_none(self, app):
-        from gefapi.models.user import User
 
         with app.app_context():
             stub = self._make_user_stub()
@@ -268,14 +267,12 @@ class TestTokenBlocklistFailClosed:
     def test_dev_env_falls_back_to_in_memory(self):
         """In dev, in-memory blocklist is used when Redis is unavailable."""
         self._reset_blocklist_state()
-        from gefapi import add_token_to_blocklist, is_token_in_blocklist
+        from gefapi import add_token_to_blocklist
 
         with patch.dict(os.environ, {"ENVIRONMENT": "dev"}):
             self._reset_blocklist_state()
             # Force Redis to be unavailable
-            with patch(
-                "gefapi.get_revoked_tokens_storage", return_value=None
-            ):
+            with patch("gefapi.get_revoked_tokens_storage", return_value=None):
                 add_token_to_blocklist("test-jti-dev")
                 # In dev without Redis, falls back to in-memory
                 # But since we patched get_revoked_tokens_storage,
@@ -292,10 +289,9 @@ class TestTokenBlocklistFailClosed:
         with patch.dict(os.environ, {"ENVIRONMENT": "prod"}):
             self._reset_blocklist_state()
             # Import after reset to get fresh state
-            from gefapi import is_token_in_blocklist
-
             # Force Redis unavailable
             import gefapi
+            from gefapi import is_token_in_blocklist
 
             gefapi._revoked_tokens_redis_client = None
             gefapi._revoked_tokens_redis_initialized = True
@@ -312,13 +308,12 @@ class TestTokenBlocklistFailClosed:
 
         with patch.dict(os.environ, {"ENVIRONMENT": "testing"}):
             self._reset_blocklist_state()
+            import gefapi
             from gefapi import (
                 _revoked_tokens,
                 add_token_to_blocklist,
                 is_token_in_blocklist,
             )
-
-            import gefapi
 
             gefapi._revoked_tokens_redis_client = None
             gefapi._revoked_tokens_redis_initialized = True
@@ -353,9 +348,7 @@ class TestGenericPasswordRecoveryResponse:
         assert "message" in data.get("data", {})
         assert "If an account" in data["data"]["message"]
 
-    def test_nonexistent_user_gets_same_generic_response(
-        self, client_no_rate_limiting
-    ):
+    def test_nonexistent_user_gets_same_generic_response(self, client_no_rate_limiting):
         """Recovery for a non-existent user must return 200 with generic message."""
         response = client_no_rate_limiting.post(
             "/api/v1/user/nonexistent-user-12345@example.com/recover-password"
