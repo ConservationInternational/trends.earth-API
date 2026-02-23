@@ -29,18 +29,35 @@ def _check_service_failed(service):
     """
     Check if a Docker service has failed by examining its tasks.
 
+    Distinguishes between actual failures (non-zero exit, rejected) and
+    orchestrator-driven shutdowns (node drain, node failure, rolling update).
+    Tasks in the "shutdown" state are normal during Swarm node failures and
+    should NOT be counted as application failures — the Swarm orchestrator
+    will reschedule them on a healthy node.
+
+    Restart-loop detection: if a service has accumulated >=3 real failures
+    (failed/rejected) it is considered to be in a restart loop even when a
+    current attempt is still active, because the restart policy will keep
+    trying and failing.
+
     Args:
         service: Docker service object
 
     Returns:
         bool: True if service is considered failed, False otherwise
     """
+    # Threshold: how many real (non-shutdown) failures indicate a restart loop.
+    # With the execution restart policy set to max_attempts=5, declaring a loop
+    # at 3 gives the monitoring task a chance to act before all retries expire.
+    RESTART_LOOP_THRESHOLD = 3
+
     try:
         tasks = service.tasks()
 
-        # Count task states - simple and reliable
+        # Count task states - distinguish real failures from orchestrator events
         active_tasks = 0
         failed_tasks = 0
+        shutdown_tasks = 0
 
         for task in tasks:
             task_status = task.get("Status", {})
@@ -55,38 +72,61 @@ def _check_service_failed(service):
             ]:
                 active_tasks += 1
 
-            # Count failed tasks (regardless of desired state - important for loops)  # noqa: E501
-            if task_state in ["failed", "rejected", "shutdown"]:
+            # Count real application failures (non-zero exit, resource rejection)
+            # NOTE: "shutdown" is excluded — it indicates the Swarm orchestrator
+            # stopped the task (node drain, node failure, rolling update), NOT an
+            # application error. Swarm will reschedule these on a healthy node.
+            if task_state in ["failed", "rejected"]:
                 failed_tasks += 1
+
+            # Track shutdowns separately for diagnostics
+            if task_state == "shutdown":
+                shutdown_tasks += 1
 
         logger.debug(
             f"Service {service.name}: {active_tasks} active, "
-            f"{failed_tasks} failed tasks"
+            f"{failed_tasks} failed, {shutdown_tasks} shutdown tasks"
         )
 
-        # Simple failure detection rules:
+        # Failure detection rules:
 
-        # 1. No active tasks but has failed tasks = service failed
+        # 1. Restart-loop detection: many real failures means the service keeps
+        #    crashing regardless of whether a new attempt is currently active.
+        if failed_tasks >= RESTART_LOOP_THRESHOLD:
+            logger.warning(
+                f"Service {service.name} in restart loop: "
+                f"{failed_tasks} real failures (threshold {RESTART_LOOP_THRESHOLD}), "
+                f"{active_tasks} active, {shutdown_tasks} shutdown"
+            )
+            return True
+
+        # 2. No active tasks and real failures exist = service has failed
         if active_tasks == 0 and failed_tasks > 0:
             logger.warning(
-                f"Service {service.name} failed: no active tasks, {failed_tasks} failed"
+                f"Service {service.name} failed: no active tasks, "
+                f"{failed_tasks} failed, {shutdown_tasks} shutdown"
             )
             return True
 
-        # 2. Multiple failed tasks = restart loop
-        if failed_tasks >= 2:
-            logger.warning(
-                f"Service {service.name} in restart loop: {failed_tasks} failed tasks"
-            )
-            return True
-
-        # 3. Active task with failed tasks = potential restart loop
+        # 3. Active task with a small number of real failures (<threshold):
+        #    Swarm may be recovering from a transient error. Let it continue.
         if active_tasks > 0 and failed_tasks > 0:
-            logger.warning(
-                f"Service {service.name} potential restart loop: "
-                f"{active_tasks} active, {failed_tasks} failed"
+            logger.info(
+                f"Service {service.name} has {active_tasks} active task(s) "
+                f"alongside {failed_tasks} failure(s) (below threshold "
+                f"{RESTART_LOOP_THRESHOLD}) — allowing Swarm to recover"
             )
-            return True
+            return False
+
+        # 4. No active tasks, no real failures, only shutdowns = node went
+        #    down. Swarm should reschedule; give it time before declaring failure.
+        if active_tasks == 0 and shutdown_tasks > 0:
+            logger.info(
+                f"Service {service.name} has {shutdown_tasks} shutdown task(s) "
+                f"but no failures — likely a node went down. "
+                f"Swarm should reschedule automatically; not marking as failed."
+            )
+            return False
 
         return False
 
@@ -284,10 +324,11 @@ def monitor_failed_docker_services(self):
                                     f"{docker_service_name}: {cleanup_error}"
                                 )
                         else:
-                            # Get task summary for logging - use same logic  # noqa: E501
+                            # Get task summary for logging - use same logic
                             tasks = service.tasks()
                             active_count = 0
                             failed_count = 0
+                            shutdown_count = 0
                             for task in tasks:
                                 task_status = task.get("Status", {})
                                 task_state = task_status.get("State", "").lower()
@@ -301,18 +342,21 @@ def monitor_failed_docker_services(self):
                                 ]:
                                     active_count += 1
 
-                                # Count failed tasks (regardless of desired state)
+                                # Count real failures (not shutdowns)
                                 if task_state in [
                                     "failed",
                                     "rejected",
-                                    "shutdown",
                                 ]:
                                     failed_count += 1
 
+                                if task_state == "shutdown":
+                                    shutdown_count += 1
+
                             logger.debug(
                                 f"[TASK]: Docker service {docker_service_name} "
-                                f"is still healthy (active tasks: {active_count}, "
-                                f"failed tasks: {failed_count})"
+                                f"is still healthy (active: {active_count}, "
+                                f"failed: {failed_count}, "
+                                f"shutdown: {shutdown_count})"
                             )
 
                 except Exception as e:

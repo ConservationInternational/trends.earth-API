@@ -23,6 +23,21 @@ def make_celery(app):
     )
     celery.conf.update(app.config)
 
+    # --- Worker resilience settings ---
+    # Acknowledge tasks AFTER execution completes, not on receipt.
+    # If a worker crashes mid-task (e.g. node failure), the message
+    # stays in the broker and is re-delivered to another worker.
+    celery.conf.task_acks_late = True
+
+    # Re-queue the task if the worker process is lost (OOM kill,
+    # SIGKILL, node shutdown) instead of acknowledging it as failed.
+    celery.conf.task_reject_on_worker_lost = True
+
+    # Only prefetch one task at a time per worker process.  With
+    # late-ack enabled this prevents a crashing worker from losing
+    # multiple buffered tasks that were already pulled from the broker.
+    celery.conf.worker_prefetch_multiplier = 1
+
     # Configure task routing - build tasks go to build queue
     celery.conf.task_routes = {
         "gefapi.services.docker_service.docker_build": {"queue": "build"},
