@@ -4,6 +4,7 @@ from datetime import datetime
 import logging
 import os
 import sys
+import time as _time
 
 from flask import Flask, abort, got_request_exception, jsonify, request
 from flask_compress import Compress
@@ -847,40 +848,54 @@ jwt = JWTManager(app)
 # Uses Redis for production scalability, falls back to in-memory ONLY in
 # dev/test environments.  In production, Redis is required — if unavailable
 # the blocklist check will reject all tokens (fail closed).
+#
+# IMPORTANT: Redis connection is retried on every call when it was previously
+# unavailable.  This prevents a permanent fail-closed state caused by a race
+# condition where the API worker starts before Redis is ready (common in
+# Docker Swarm / Kubernetes where service ordering is not guaranteed).
 _revoked_tokens = set()
 _revoked_tokens_redis_client = None
-_revoked_tokens_redis_initialized = False
+_revoked_tokens_redis_url = None
+# Retry tracking — when Redis is unavailable we retry periodically rather
+# than latching to None permanently.
+_revoked_tokens_last_retry = 0.0
+_REVOKED_TOKENS_RETRY_INTERVAL = 5  # seconds between reconnection attempts
 
 
-def get_revoked_tokens_storage():
-    """Get the revoked tokens storage (Redis or in-memory fallback).
+def _try_connect_redis():
+    """Attempt to create/validate a Redis connection for the blocklist.
 
-    In production (ENVIRONMENT=prod/staging), Redis is mandatory.  If Redis
-    cannot be reached the function returns ``None`` and callers must treat
-    that as "blocklist unavailable" — meaning tokens should be rejected
-    (fail closed).
-
-    In development/test environments, an in-memory ``set()`` is used as a
-    convenience fallback (not shared across workers, acceptable for local
-    testing only).
+    Returns the Redis client on success, or ``None`` on failure.
+    Does NOT raise — all exceptions are caught and logged.
     """
-    global _revoked_tokens_redis_client, _revoked_tokens_redis_initialized
-    if _revoked_tokens_redis_initialized:
-        return _revoked_tokens_redis_client
+    global _revoked_tokens_redis_client, _revoked_tokens_redis_url
+
     try:
-        import redis
+        import redis as _redis_mod
 
         redis_url = SETTINGS.get("CELERY_BROKER_URL")
-        if redis_url:
-            _revoked_tokens_redis_client = redis.from_url(redis_url)
-            # Verify the connection is alive
-            _revoked_tokens_redis_client.ping()
+        if not redis_url:
+            return None
+
+        # Re-use existing client if the URL hasn't changed, otherwise create new
+        client_needs_init = (
+            _revoked_tokens_redis_client is None
+            or redis_url != _revoked_tokens_redis_url
+        )
+        if client_needs_init:
+            _revoked_tokens_redis_client = _redis_mod.from_url(redis_url)
+            _revoked_tokens_redis_url = redis_url
+
+        # Verify the connection is alive
+        _revoked_tokens_redis_client.ping()
+        return _revoked_tokens_redis_client
+
     except Exception as e:
         environment = os.getenv("ENVIRONMENT", "dev")
         if environment in ("prod", "staging", "production"):
-            logger.critical(
-                f"Redis is REQUIRED for token blocklist in {environment} "
-                f"but is unavailable: {e}. Token revocation will fail closed."
+            logger.warning(
+                f"Redis blocklist connection failed in {environment}: {e}. "
+                "Will retry on next request."
             )
         else:
             logger.debug(
@@ -888,8 +903,34 @@ def get_revoked_tokens_storage():
                 f"using in-memory (env={environment}): {e}"
             )
         _revoked_tokens_redis_client = None
-    _revoked_tokens_redis_initialized = True
-    return _revoked_tokens_redis_client
+        return None
+
+
+def get_revoked_tokens_storage():
+    """Get the revoked tokens storage (Redis or in-memory fallback).
+
+    Unlike the previous implementation this does NOT permanently latch on
+    failure.  If Redis was unavailable (e.g. the API started before Redis)
+    it will retry every ``_REVOKED_TOKENS_RETRY_INTERVAL`` seconds so that
+    the blocklist self-heals once Redis becomes reachable.
+
+    In development/test environments an in-memory ``set()`` is used as a
+    convenience fallback.  In production Redis is required — callers must
+    handle the ``None`` return (fail closed).
+    """
+    global _revoked_tokens_redis_client, _revoked_tokens_last_retry
+
+    # Fast path — we already have a live client
+    if _revoked_tokens_redis_client is not None:
+        return _revoked_tokens_redis_client
+
+    # Throttle reconnection attempts to avoid hammering Redis
+    now = _time.monotonic()
+    if now - _revoked_tokens_last_retry < _REVOKED_TOKENS_RETRY_INTERVAL:
+        return None  # Too soon — return None, let caller handle it
+    _revoked_tokens_last_retry = now
+
+    return _try_connect_redis()
 
 
 def add_token_to_blocklist(jti: str, expires_in_seconds: int = 3600) -> None:
@@ -902,6 +943,8 @@ def add_token_to_blocklist(jti: str, expires_in_seconds: int = 3600) -> None:
             return
         except Exception as e:
             logger.warning(f"Failed to add token to Redis blocklist: {e}")
+            # Mark client as broken so next call retries connection
+            _invalidate_redis_client()
     # Fallback to in-memory only in non-production environments
     environment = os.getenv("ENVIRONMENT", "dev")
     if environment in ("prod", "staging", "production"):
@@ -913,31 +956,50 @@ def add_token_to_blocklist(jti: str, expires_in_seconds: int = 3600) -> None:
         _revoked_tokens.add(jti)
 
 
+def _invalidate_redis_client():
+    """Mark the cached Redis client as broken so the next call retries."""
+    global _revoked_tokens_redis_client
+    _revoked_tokens_redis_client = None
+
+
 def is_token_in_blocklist(jti: str) -> bool:
     """Check if a token JTI is in the blocklist.
 
-    In production, if Redis is unavailable the check returns ``True``
-    (fail closed) so that revoked tokens cannot bypass the blocklist
-    due to infrastructure failure.
+    Behaviour:
+    * If Redis is reachable the check is authoritative.
+    * If Redis is transiently unreachable we attempt one reconnection.
+      - If reconnection succeeds we proceed normally.
+      - If reconnection fails in production we fail closed (return True).
+    * In dev/test the in-memory set is used as fallback.
     """
     redis_client = get_revoked_tokens_storage()
     if redis_client:
         try:
             return redis_client.exists(f"blocklist:{jti}") > 0
         except Exception as e:
-            logger.warning(f"Failed to check Redis blocklist: {e}")
-            # Redis was expected but errored — fail closed in production
+            logger.warning(f"Redis blocklist check failed: {e}")
+            # Connection may be stale — invalidate and try ONE reconnection
+            _invalidate_redis_client()
+            reconnected = _try_connect_redis()
+            if reconnected:
+                try:
+                    return reconnected.exists(f"blocklist:{jti}") > 0
+                except Exception:
+                    _invalidate_redis_client()
+
+            # Reconnect failed — fail closed in production
             environment = os.getenv("ENVIRONMENT", "dev")
             if environment in ("prod", "staging", "production"):
                 logger.error(
-                    "Redis blocklist check failed in production — "
+                    "Redis blocklist check failed after reconnection attempt — "
                     "treating token as revoked (fail closed)."
                 )
                 return True
-    # In-memory fallback (dev/test only; production without Redis → fail closed)
+
+    # No Redis client at all
     environment = os.getenv("ENVIRONMENT", "dev")
     if environment in ("prod", "staging", "production"):
-        # No Redis client at all in production — fail closed
+        # Production without a working Redis → fail closed
         logger.error(
             "Token blocklist unavailable in production (no Redis) — "
             "treating token as revoked (fail closed)."
