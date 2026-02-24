@@ -261,7 +261,8 @@ class TestTokenBlocklistFailClosed:
 
         gefapi._revoked_tokens.clear()
         gefapi._revoked_tokens_redis_client = None
-        gefapi._revoked_tokens_redis_initialized = False
+        gefapi._revoked_tokens_redis_url = None
+        gefapi._revoked_tokens_last_retry = 0.0
 
     def test_dev_env_falls_back_to_in_memory(self):
         """In dev, in-memory blocklist is used when Redis is unavailable."""
@@ -287,19 +288,20 @@ class TestTokenBlocklistFailClosed:
 
         with patch.dict(os.environ, {"ENVIRONMENT": "prod"}):
             self._reset_blocklist_state()
-            # Import after reset to get fresh state
-            # Force Redis unavailable
             import gefapi
             from gefapi import is_token_in_blocklist
 
-            gefapi._revoked_tokens_redis_client = None
-            gefapi._revoked_tokens_redis_initialized = True
+            # Simulate Redis being completely unreachable: _try_connect_redis
+            # will fail every time, so get_revoked_tokens_storage returns None,
+            # triggering the production fail-closed path.
+            with patch("gefapi._try_connect_redis", return_value=None):
+                gefapi._revoked_tokens_redis_client = None
 
-            result = is_token_in_blocklist("never-revoked-jti")
-            assert result is True, (
-                "In production without Redis, all tokens must be treated "
-                "as revoked (fail closed)."
-            )
+                result = is_token_in_blocklist("never-revoked-jti")
+                assert result is True, (
+                    "In production without Redis, all tokens must be treated "
+                    "as revoked (fail closed)."
+                )
 
     def test_testing_env_allows_in_memory_fallback(self):
         """In testing, in-memory fallback should work normally."""
@@ -314,13 +316,14 @@ class TestTokenBlocklistFailClosed:
                 is_token_in_blocklist,
             )
 
-            gefapi._revoked_tokens_redis_client = None
-            gefapi._revoked_tokens_redis_initialized = True
+            # Simulate Redis unreachable so in-memory fallback is used
+            with patch("gefapi._try_connect_redis", return_value=None):
+                gefapi._revoked_tokens_redis_client = None
 
-            add_token_to_blocklist("test-jti-testing")
-            assert "test-jti-testing" in _revoked_tokens
-            assert is_token_in_blocklist("test-jti-testing") is True
-            assert is_token_in_blocklist("unknown-jti") is False
+                add_token_to_blocklist("test-jti-testing")
+                assert "test-jti-testing" in _revoked_tokens
+                assert is_token_in_blocklist("test-jti-testing") is True
+                assert is_token_in_blocklist("unknown-jti") is False
 
 
 # ---------------------------------------------------------------------------
