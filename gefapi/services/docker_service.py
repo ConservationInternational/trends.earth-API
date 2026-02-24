@@ -1017,22 +1017,6 @@ class DockerService:
         try:
             environment["ENV"] = "prod"
 
-            # Resolve the Docker image digest (sha256) so the execution
-            # container can log exactly which image it ran on.
-            image_ref = f"{REGISTRY_URL}/{image}"
-            try:
-                client_for_sha = get_docker_client()
-                if client_for_sha is not None:
-                    img = client_for_sha.images.get(image_ref)
-                    # img.id is e.g. "sha256:abcdef..."
-                    environment["IMAGE_SHA"] = img.id
-                    logger.info(f"Resolved image SHA for {image_ref}: {img.id}")
-            except Exception as sha_err:
-                logger.warning(
-                    f"Could not resolve image SHA for {image_ref}: {sha_err}"
-                )
-                environment["IMAGE_SHA"] = "unknown"
-
             if os.getenv("ENVIRONMENT") not in ["dev"]:
                 logger.info(
                     "Creating service (running in "
