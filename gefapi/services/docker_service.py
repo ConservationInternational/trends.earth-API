@@ -1137,13 +1137,15 @@ class DockerService:
                     },
                     "networks": networks,
                     "hosts": hosts,
-                    # Restart policy: allow enough retries for Swarm to
-                    # reschedule on a healthy node after a node failure.
-                    # "any" condition (vs "on-failure") ensures tasks that
-                    # were shut down by the orchestrator (e.g. node drain)
-                    # are also rescheduled, not just non-zero exit codes.
+                    # Restart policy: only restart on non-zero exit.
+                    # "on-failure" (not "any") is critical for batch
+                    # workloads — exit 0 means the execution completed
+                    # successfully and must NOT be restarted.  Swarm's
+                    # orchestrator independently reschedules tasks when a
+                    # node goes down, so node-failure recovery does not
+                    # depend on the restart policy condition.
                     "restart_policy": docker_types.RestartPolicy(
-                        condition="any", delay=30, max_attempts=5, window=7200
+                        condition="on-failure", delay=30, max_attempts=3, window=7200
                     ),
                 }
 

@@ -12,7 +12,11 @@ from gefapi.services.docker_service import get_docker_client
 
 logger = logging.getLogger(__name__)
 
-RESTART_LOOP_THRESHOLD = 3
+# Must stay in sync with max_attempts in the Docker restart
+# policy defined in docker_service.py.  Declaring a loop at 2
+# gives the monitoring task a chance to act before all retries
+# expire (max_attempts=3).
+RESTART_LOOP_THRESHOLD = 2
 
 
 class DockerServiceMonitoringTask(Task):
