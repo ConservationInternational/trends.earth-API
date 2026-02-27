@@ -443,6 +443,23 @@ class ExecutionService:
                 nonlocal join_scripts, join_users
                 col = getattr(Execution, field_name, None)
                 if col is not None:
+                    # For end_date, handle NULLs explicitly so running
+                    # executions (no end_date) always sort at the top
+                    # when descending, and add start_date as a
+                    # secondary sort for stable ordering.
+                    if field_name == "end_date":
+                        if direction == "desc":
+                            ordered = Execution.end_date.desc().nulls_first()
+                        else:
+                            ordered = Execution.end_date.asc().nulls_last()
+                        # Return a composite: end_date then start_date
+                        return (
+                            [
+                                ordered,
+                                Execution.start_date.desc(),
+                            ],
+                            True,
+                        )
                     return col
                 if field_name == "duration":
                     duration_expr = case(
@@ -492,10 +509,19 @@ class ExecutionService:
                 query = query.join(User, Execution.user_id == User.id)
 
             for clause in order_clauses:
-                query = query.order_by(clause)
+                if isinstance(clause, list):
+                    for sub in clause:
+                        query = query.order_by(sub)
+                else:
+                    query = query.order_by(clause)
         else:
-            # Default to sorting by end_date for backwards compatibility
-            query = query.order_by(Execution.end_date.desc())
+            # Default: running executions (NULL end_date) first, then
+            # most-recently-finished.  Among running executions, show
+            # the most-recently-started first.
+            query = query.order_by(
+                Execution.end_date.desc().nulls_first(),
+                Execution.start_date.desc(),
+            )
 
         if paginate:
             total = query.count()

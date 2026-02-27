@@ -251,8 +251,13 @@ def parse_sort_param(
 
         # If resolve_column already returned an ordered expression, use it
         # directly (signalled by returning a tuple ``(expr, True)``).
+        # The first element may be a single clause or a list of clauses.
         if isinstance(col_or_ordered, tuple):
-            order_clauses.append(col_or_ordered[0])
+            expr = col_or_ordered[0]
+            if isinstance(expr, list):
+                order_clauses.extend(expr)
+            else:
+                order_clauses.append(expr)
         else:
             order_clauses.append(
                 desc(col_or_ordered) if direction == "desc" else asc(col_or_ordered)
