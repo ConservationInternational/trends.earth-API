@@ -38,7 +38,9 @@ def sanitize_text(text, max_length=None, allow_html=False):
         r"<script[^>]*>.*?</script>",
         r"javascript:",
         r"vbscript:",
-        r"on\w+\s*=",  # event handlers like onclick=
+        r"\bon[a-z]+\s*=",  # event handlers like onclick=, onload= (word boundary
+        # prevents false positives on words containing "on" like
+        # "polygons =", "options =", "conditions =" in log text)
         r"data:text/html",
         r"<iframe",
         r"<object",
