@@ -5,7 +5,7 @@ table, and creates the service_client table used by OAuth2 Client
 Credentials authentication.
 
 Revision ID: 8d2e4f6a1c3b
-Revises: 2c4f8e1a9b3d
+Revises: e3f4a5b6c7d8
 Create Date: 2026-02-28 14:00:00.000000
 
 """
@@ -15,7 +15,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "8d2e4f6a1c3b"
-down_revision = "2c4f8e1a9b3d"
+down_revision = "e3f4a5b6c7d8"
 branch_labels = None
 depends_on = None
 
