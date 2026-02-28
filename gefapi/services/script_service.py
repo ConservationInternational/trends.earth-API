@@ -92,6 +92,9 @@ class ScriptService:
                 memory_reservation = config.get("memory_reservation", None)
                 environment = config.get("environment", None)
                 environment_version = config.get("environment_version", None)
+                compute_type = config.get("compute_type", None)
+                batch_job_definition = config.get("batch_job_definition", None)
+                batch_job_queue = config.get("batch_job_queue", None)
         except Exception as error:
             rollbar.report_exc_info()
             raise error
@@ -122,6 +125,9 @@ class ScriptService:
                 memory_limit=memory_limit,
                 environment=environment,
                 environment_version=environment_version,
+                compute_type=compute_type,
+                batch_job_definition=batch_job_definition,
+                batch_job_queue=batch_job_queue,
             )
         else:
             # Updating existing entity
@@ -140,6 +146,12 @@ class ScriptService:
                 script.environment = environment
             if environment_version:
                 script.environment_version = environment_version
+            if compute_type:
+                script.compute_type = compute_type
+            if batch_job_definition is not None:
+                script.batch_job_definition = batch_job_definition
+            if batch_job_queue is not None:
+                script.batch_job_queue = batch_job_queue
         # TO DB
         try:
             logger.info("[DB]: ADD")

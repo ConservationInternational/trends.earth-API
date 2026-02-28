@@ -25,7 +25,7 @@ SECURITY_EVENTS = {
     "UNAUTHORIZED_ACCESS": "Unauthorized access attempt",
     "DATA_EXPORT": "Sensitive data exported",
     "SCRIPT_EXECUTION": "Script execution started",
-    "API_KEY_USED": "API key authentication used",
+    "OAUTH2_CLIENT_AUTH": "OAuth2 client credentials authentication used",
 }
 
 

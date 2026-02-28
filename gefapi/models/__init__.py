@@ -58,6 +58,7 @@ from gefapi.models.rate_limit_event import RateLimitEvent  # noqa: E402
 from gefapi.models.refresh_token import RefreshToken  # noqa: E402
 from gefapi.models.script import Script  # noqa: E402
 from gefapi.models.script_log import ScriptLog  # noqa: E402
+from gefapi.models.service_client import ServiceClient  # noqa: E402
 from gefapi.models.status_log import StatusLog  # noqa: E402
 from gefapi.models.user import User  # noqa: E402
 from gefapi.models.user_deletion_audit import (  # noqa: E402
@@ -77,6 +78,7 @@ __all__ = [
     "RefreshToken",
     "Script",
     "ScriptLog",
+    "ServiceClient",
     "StatusLog",
     "User",
     "UserDeletionAudit",

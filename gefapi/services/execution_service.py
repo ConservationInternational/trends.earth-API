@@ -12,7 +12,13 @@ from gefapi import db
 from gefapi.config import SETTINGS
 from gefapi.errors import ExecutionNotFound, ScriptNotFound, ScriptStateNotValid
 from gefapi.models import Execution, ExecutionLog, Script, StatusLog, User
-from gefapi.services import EmailService, ScriptService, UserService, docker_run
+from gefapi.services import (
+    EmailService,
+    ScriptService,
+    UserService,
+    batch_run,
+    docker_run,
+)
 from gefapi.utils.permissions import is_admin_or_higher
 
 # Security: Explicitly allowed fields for filter and sort operations
@@ -195,6 +201,16 @@ class ExecutionService:
     All status updates use the centralized status tracking system to maintain
     an audit trail of execution state changes.
     """
+
+    @staticmethod
+    def _is_batch_environment(script):
+        """Return True if *script* should be dispatched via AWS Batch.
+
+        A script is routed to Batch when its ``compute_type`` column is
+        set to ``"batch"``.  This is fully data-driven – no environment
+        names or slug prefixes are hard-coded here.
+        """
+        return (getattr(script, "compute_type", None) or "").lower() == "batch"
 
     @staticmethod
     def _build_execution_environment(user, execution_id):
@@ -585,7 +601,10 @@ class ExecutionService:
             environment = ExecutionService._build_execution_environment(
                 user, execution.id
             )
-            docker_run.delay(execution.id, script.slug, environment, params)
+            if ExecutionService._is_batch_environment(script):
+                batch_run.delay(execution.id, script.slug, environment, params)
+            else:
+                docker_run.delay(execution.id, script.slug, environment, params)
         except Exception as e:
             rollbar.report_exc_info()
             raise e

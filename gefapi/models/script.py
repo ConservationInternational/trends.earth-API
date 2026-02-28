@@ -56,6 +56,11 @@ class Script(db.Model):
     memory_limit = db.Column(db.BigInteger(), default=int(1e9))
     environment = db.Column(db.Text(), default="trends.earth-environment")
     environment_version = db.Column(db.Text(), default="0.1.6")
+    # Compute dispatch target: "docker" (local daemon) or "batch" (AWS Batch)
+    compute_type = db.Column(db.String(40), default="docker", nullable=False)
+    # AWS Batch-specific overrides (only relevant when compute_type == "batch")
+    batch_job_definition = db.Column(db.String(255), default=None)
+    batch_job_queue = db.Column(db.String(255), default=None)
     # Optional build error field for reporting build failures
     build_error = db.Column(db.Text(), default=None)
 
@@ -70,6 +75,9 @@ class Script(db.Model):
         memory_limit=None,
         environment=None,
         environment_version=None,
+        compute_type=None,
+        batch_job_definition=None,
+        batch_job_queue=None,
         allowed_roles=None,
         allowed_users=None,
         restricted=False,
@@ -83,6 +91,9 @@ class Script(db.Model):
         self.memory_limit = memory_limit
         self.environment = environment
         self.environment_version = environment_version
+        self.compute_type = compute_type or "docker"
+        self.batch_job_definition = batch_job_definition
+        self.batch_job_queue = batch_job_queue
         self.allowed_roles = allowed_roles
         self.allowed_users = allowed_users
         self.restricted = restricted
@@ -250,6 +261,10 @@ class Script(db.Model):
         if "environment" in include:
             script["environment"] = self.environment
             script["environment_version"] = self.environment_version
+            script["compute_type"] = self.compute_type or "docker"
+            if self.compute_type == "batch":
+                script["batch_job_definition"] = self.batch_job_definition
+                script["batch_job_queue"] = self.batch_job_queue
         if "access_control" in include:
             if user and is_admin_or_higher(user):
                 script["restricted"] = self.restricted or False
