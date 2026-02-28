@@ -12,6 +12,7 @@ Create Date: 2026-02-28 14:00:00.000000
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "8d2e4f6a1c3b"
@@ -41,16 +42,22 @@ def upgrade():
     )
 
     # -- OAuth2 service_client table ------------------------------------------
+    # Use postgresql.UUID to match the existing user.id column type
     op.create_table(
         "service_client",
-        sa.Column("id", sa.CHAR(32), nullable=False),
+        sa.Column(
+            "id", postgresql.UUID(as_uuid=True), nullable=False
+        ),
         sa.Column("name", sa.String(120), nullable=False),
         sa.Column("client_id", sa.String(64), nullable=False),
         sa.Column("client_secret_hash", sa.String(64), nullable=False),
         sa.Column("secret_prefix", sa.String(16), nullable=False),
         sa.Column("scopes", sa.Text(), nullable=False, server_default=""),
         sa.Column(
-            "user_id", sa.CHAR(32), sa.ForeignKey("user.id"), nullable=False
+            "user_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("user.id"),
+            nullable=False,
         ),
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("last_used_at", sa.DateTime(), nullable=True),
