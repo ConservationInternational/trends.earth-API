@@ -67,7 +67,7 @@ def _normalise_limit_count(value):
     if value is None:
         return None
 
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return int(value)
 
     if isinstance(value, str):
@@ -114,7 +114,7 @@ def _parse_limit_metadata(limit_details):
         if granularity is not None:
             for attribute in ("value", "expiry", "amount", "delta", "seconds"):
                 candidate = getattr(granularity, attribute, None)
-                if isinstance(candidate, (int, float)):
+                if isinstance(candidate, int | float):
                     metadata["time_window_seconds"] = int(candidate)
                     break
 
@@ -373,14 +373,14 @@ def create_rate_limit_response(retry_after=None, limit_details=None):
         raw_count = metadata.get("limit_count")
         limit_count = (
             int(raw_count)
-            if isinstance(raw_count, (int, float)) and not isinstance(raw_count, bool)
+            if isinstance(raw_count, int | float) and not isinstance(raw_count, bool)
             else None
         )
 
         raw_window = metadata.get("time_window_seconds")
         time_window_seconds = (
             int(raw_window)
-            if isinstance(raw_window, (int, float)) and not isinstance(raw_window, bool)
+            if isinstance(raw_window, int | float) and not isinstance(raw_window, bool)
             else None
         )
 
@@ -676,7 +676,7 @@ def reset_rate_limit_by_key(limit_key: str) -> bool:
                 # Redis storage - find all keys matching this identifier
                 pattern = f"LIMITER/{limit_key}/*"
                 keys = storage.storage.keys(pattern)
-                if isinstance(keys, (list, tuple)):
+                if isinstance(keys, list | tuple):
                     for key in keys:
                         key_str = key.decode() if isinstance(key, bytes) else key
                         try:

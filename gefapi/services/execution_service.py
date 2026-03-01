@@ -213,13 +213,18 @@ class ExecutionService:
         return (getattr(script, "compute_type", None) or "").lower() == "batch"
 
     @staticmethod
-    def _build_execution_environment(user, execution_id):
+    def _build_execution_environment(user, execution_id, script=None):
         """
         Build environment variables for script execution container.
 
         Args:
             user: User model instance executing the script
             execution_id: ID of the execution
+            script: Script model instance (optional). When present and the
+                script uses a non-GEE compute path (``compute_type="batch"``),
+                ``SKIP_GEE_INIT=true`` is set so the trends.earth-Environment
+                entrypoint does not abort the container for missing GEE
+                credentials.
 
         Returns:
             dict: Environment variables to pass to the container
@@ -227,6 +232,13 @@ class ExecutionService:
         # Start with base environment variables
         environment = SETTINGS.get("environment", {}).copy()
         environment["EXECUTION_ID"] = execution_id
+
+        # Tell the Environment entrypoint to skip GEE credential validation
+        # for scripts that do not need Earth Engine.  gefcore.runner also
+        # checks REQUIRES_GEE on the script module, but entrypoint.sh runs
+        # before Python and would otherwise hard-exit the container.
+        if script and (getattr(script, "compute_type", None) or "").lower() == "batch":
+            environment["SKIP_GEE_INIT"] = "true"
 
         # Maintain backward compatibility for trends.earth-Environment by
         # exposing legacy variable names alongside the new defaults.
@@ -599,7 +611,7 @@ class ExecutionService:
 
         try:
             environment = ExecutionService._build_execution_environment(
-                user, execution.id
+                user, execution.id, script=script
             )
             if ExecutionService._is_batch_environment(script):
                 batch_run.delay(execution.id, script.slug, environment, params)

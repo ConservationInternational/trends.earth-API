@@ -147,7 +147,7 @@ class TestRateLimitStatusImprovements:
             for limit in data["active_limits"]:
                 assert "current_count" in limit
                 # Current count should be greater than 0 for "active" limits
-                if isinstance(limit["current_count"], (int, float)):
+                if isinstance(limit["current_count"], int | float):
                     assert limit["current_count"] > 0
 
     def test_rate_limit_status_includes_user_info_for_user_limits(

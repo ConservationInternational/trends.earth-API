@@ -83,6 +83,8 @@ def make_celery(app):
         "gefapi.tasks.stats_cache_refresh.warmup_stats_cache_on_startup": {
             "queue": "default"
         },
+        # Batch monitoring – no Docker access needed, runs on default queue
+        "gefapi.tasks.batch_monitoring.monitor_batch_executions": {"queue": "default"},
         # All other tasks use default queue
     }
 
@@ -140,6 +142,12 @@ def make_celery(app):
             ),
             "schedule": 180.0,  # Every 3 minutes - check for completed services
             "options": {"queue": "build"},  # Run on build queue with Docker access
+        },
+        # Batch execution monitoring – poll AWS Batch for status changes
+        "monitor-batch-executions": {
+            "task": "gefapi.tasks.batch_monitoring.monitor_batch_executions",
+            "schedule": 120.0,  # Every 2 minutes
+            "options": {"queue": "default"},
         },
         # Stats cache refresh tasks for performance optimization
         "refresh-dashboard-stats-cache": {
