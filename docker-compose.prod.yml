@@ -209,8 +209,7 @@ services:
         docker image prune -a -f --filter "until=168h"
         echo "Pruning build cache (older than 168h)..."
         docker builder prune -f --filter "until=168h" || true
-        echo "Pruning unused volumes..."
-        docker volume prune -f || true
+        echo "Skipping volume prune to protect persistent data volumes"
         echo "[$$(date)] Cleanup complete. Sleeping 6 hours..."
         sleep 21600
       done'
