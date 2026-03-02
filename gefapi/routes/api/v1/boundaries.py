@@ -12,12 +12,14 @@ from flask_jwt_extended import jwt_required
 
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.boundaries_service import BoundariesService
+from gefapi.utils.scopes import require_scope
 
 logger = logging.getLogger(__name__)
 
 
 @endpoints.route("/data/boundaries", methods=["GET"])
 @jwt_required()
+@require_scope("boundary:read")
 def get_boundaries():
     """
     Get administrative boundary metadata with download URLs.
@@ -230,6 +232,7 @@ def get_boundaries():
 
 @endpoints.route("/data/boundaries/list", methods=["GET"])
 @jwt_required()
+@require_scope("boundary:read")
 def get_boundaries_list():
     """
     Get hierarchical list of all boundaries with ADM1 nested under ADM0.
@@ -303,6 +306,7 @@ def get_boundaries_list():
 
 @endpoints.route("/data/boundaries/last-updated", methods=["GET"])
 @jwt_required()
+@require_scope("boundary:read")
 def get_boundaries_last_updated():
     """
     Get the most recent modification timestamp across all boundaries.

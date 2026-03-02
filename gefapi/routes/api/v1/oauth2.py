@@ -82,7 +82,7 @@ def oauth2_token():
         )
 
     try:
-        user = OAuth2Service.authenticate(client_id, client_secret)
+        user, service_client = OAuth2Service.authenticate(client_id, client_secret)
     except Exception:
         logger.debug("OAuth2 client_credentials auth failed for %s", client_id)
         return (
@@ -99,7 +99,10 @@ def oauth2_token():
     access_token = create_access_token(
         identity=user.id,
         expires_delta=expires,
-        additional_claims={"grant_type": "client_credentials"},
+        additional_claims={
+            "grant_type": "client_credentials",
+            "scopes": service_client.scopes,
+        },
     )
 
     return (

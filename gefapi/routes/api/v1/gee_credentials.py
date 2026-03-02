@@ -12,12 +12,14 @@ from gefapi.models.user import User
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.gee_service import GEEService
 from gefapi.utils.permissions import is_admin_or_higher
+from gefapi.utils.scopes import require_scope
 
 logger = logging.getLogger(__name__)
 
 
 @endpoints.route("/user/me/gee-credentials", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("gee:read")
 def get_user_gee_credentials():
     """
     Get current user's Google Earth Engine credentials status.
@@ -72,6 +74,7 @@ def get_user_gee_credentials():
 
 @endpoints.route("/user/me/gee-oauth/initiate", strict_slashes=False, methods=["POST"])
 @jwt_required()
+@require_scope("gee:write")
 def initiate_gee_oauth():
     """
     Initiate OAuth flow for Google Earth Engine authentication.
@@ -153,6 +156,7 @@ def initiate_gee_oauth():
 
 @endpoints.route("/user/me/gee-oauth/callback", strict_slashes=False, methods=["POST"])
 @jwt_required()
+@require_scope("gee:write")
 def handle_gee_oauth_callback():
     """
     Complete OAuth flow and store Google Earth Engine credentials.
@@ -254,6 +258,7 @@ def handle_gee_oauth_callback():
 
 @endpoints.route("/user/me/gee-service-account", strict_slashes=False, methods=["POST"])
 @jwt_required()
+@require_scope("gee:write")
 def upload_gee_service_account():
     """
     Upload Google Earth Engine service account credentials.
@@ -355,6 +360,7 @@ def upload_gee_service_account():
 
 @endpoints.route("/user/me/gee-credentials", strict_slashes=False, methods=["DELETE"])
 @jwt_required()
+@require_scope("gee:write")
 def delete_gee_credentials():
     """
     Delete current user's Google Earth Engine credentials.
@@ -408,6 +414,7 @@ def delete_gee_credentials():
     "/user/me/gee-credentials/test", strict_slashes=False, methods=["POST"]
 )
 @jwt_required()
+@require_scope("gee:read")
 def test_gee_credentials():
     """
     Test current user's Google Earth Engine credentials.
@@ -470,6 +477,7 @@ def test_gee_credentials():
     "/user/<user_id>/gee-credentials", strict_slashes=False, methods=["GET"]
 )
 @jwt_required()
+@require_scope("gee:read")
 def get_user_gee_credentials_admin(user_id):
     """
     Get another user's Google Earth Engine credentials status (Admin only).
@@ -538,6 +546,7 @@ def get_user_gee_credentials_admin(user_id):
     "/user/<user_id>/gee-service-account", strict_slashes=False, methods=["POST"]
 )
 @jwt_required()
+@require_scope("gee:write")
 def upload_user_gee_service_account_admin(user_id):
     """
     Upload Google Earth Engine service account for another user (Admin only).
@@ -649,6 +658,7 @@ def upload_user_gee_service_account_admin(user_id):
     "/user/<user_id>/gee-credentials", strict_slashes=False, methods=["DELETE"]
 )
 @jwt_required()
+@require_scope("gee:write")
 def delete_user_gee_credentials_admin(user_id):
     """
     Delete another user's Google Earth Engine credentials (Admin only).
@@ -721,6 +731,7 @@ def delete_user_gee_credentials_admin(user_id):
     "/user/<user_id>/gee-credentials/test", strict_slashes=False, methods=["POST"]
 )
 @jwt_required()
+@require_scope("gee:read")
 def test_user_gee_credentials_admin(user_id):
     """
     Test another user's Google Earth Engine credentials (Admin only).

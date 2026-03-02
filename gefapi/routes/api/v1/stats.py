@@ -11,6 +11,7 @@ from flask_jwt_extended import current_user, jwt_required
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.stats_service import StatsService
 from gefapi.utils.permissions import is_superadmin
+from gefapi.utils.scopes import require_scope
 from gefapi.utils.security_events import log_admin_action, log_security_event
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 @endpoints.route("/stats/dashboard", methods=["GET"])
 @jwt_required()
+@require_scope("stats:read")
 def get_dashboard_stats():
     """
     Get comprehensive dashboard statistics.
@@ -186,6 +188,7 @@ def get_dashboard_stats():
 
 @endpoints.route("/stats/executions", methods=["GET"])
 @jwt_required()
+@require_scope("stats:read")
 def get_execution_stats():
     """
     Get execution statistics and trends.
@@ -302,6 +305,7 @@ def get_execution_stats():
 
 @endpoints.route("/stats/users", methods=["GET"])
 @jwt_required()
+@require_scope("stats:read")
 def get_user_stats():
     """
     Get user statistics and geographical distribution.
@@ -405,6 +409,7 @@ def get_user_stats():
 
 @endpoints.route("/stats/health", methods=["GET"])
 @jwt_required()
+@require_scope("stats:read")
 def get_stats_health():
     """
     Get basic health check for stats endpoints.
@@ -461,6 +466,7 @@ def get_stats_health():
 
 @endpoints.route("/stats/cache", methods=["GET"])
 @jwt_required()
+@require_scope("stats:read")
 def get_cache_info():
     """
     Get information about the stats cache.
@@ -522,6 +528,7 @@ def get_cache_info():
 
 @endpoints.route("/stats/cache", methods=["DELETE"])
 @jwt_required()
+@require_scope("stats:read")
 def clear_cache():
     """
     Clear the stats cache.

@@ -173,9 +173,18 @@ class TestOAuth2ServiceCreateClient:
         with app.app_context():
             user = db.session.merge(regular_user)
             _, client = OAuth2Service.create_client(
-                user=user, name="Scoped", scopes="executions:read"
+                user=user, name="Scoped", scopes="execution:read"
             )
-            assert client.scopes == "executions:read"
+            assert client.scopes == "execution:read"
+
+    def test_create_client_invalid_scopes_rejected(self, app, regular_user):
+        """Invalid scopes are rejected at creation time."""
+        with app.app_context():
+            user = db.session.merge(regular_user)
+            with pytest.raises(NotAllowed):
+                OAuth2Service.create_client(
+                    user=user, name="Bad", scopes="nonexistent:scope"
+                )
 
     def test_create_client_with_expiry(self, app, regular_user):
         """expires_at is set when expires_in_days is provided."""
@@ -276,14 +285,17 @@ class TestOAuth2ServiceAuthenticate:
     """Tests for OAuth2Service.authenticate."""
 
     def test_authenticate_valid_credentials(self, app, regular_user):
-        """Valid client_id + client_secret returns the owning user."""
+        """Valid client_id + client_secret returns the owning user and client."""
         with app.app_context():
             user = db.session.merge(regular_user)
             raw_secret, client = OAuth2Service.create_client(
                 user=user, name="auth-test"
             )
-            authed_user = OAuth2Service.authenticate(client.client_id, raw_secret)
+            authed_user, authed_client = OAuth2Service.authenticate(
+                client.client_id, raw_secret
+            )
             assert authed_user.id == user.id
+            assert authed_client.client_id == client.client_id
 
     def test_authenticate_wrong_secret(self, app, regular_user):
         """Wrong client_secret raises AuthError."""
@@ -453,14 +465,14 @@ class TestOAuth2ClientManagementEndpoints:
             "/api/v1/oauth/clients",
             json={
                 "name": "Scoped",
-                "scopes": "exec:read",
+                "scopes": "execution:read",
                 "expires_in_days": 90,
             },
             headers=auth_headers_user,
         )
         assert resp.status_code == 201
         data = resp.get_json()["data"]
-        assert data["scopes"] == "exec:read"
+        assert data["scopes"] == "execution:read"
         assert data["expires_at"] is not None
 
     def test_create_client_missing_name(self, client, auth_headers_user):
@@ -540,6 +552,156 @@ class TestOAuth2ClientManagementEndpoints:
         fake_uuid = str(uuid.uuid4())
         resp = client.delete(
             f"/api/v1/oauth/clients/{fake_uuid}",
+            headers=auth_headers_user,
+        )
+        assert resp.status_code == 400
+
+
+# -------------------------------------------------------------------------
+# Scope validation unit tests
+# -------------------------------------------------------------------------
+
+
+class TestScopeValidation:
+    """Tests for the scopes utility module."""
+
+    def test_validate_scopes_valid(self):
+        """Valid scopes return None."""
+        from gefapi.utils.scopes import validate_scopes
+
+        assert validate_scopes("execution:read execution:write") is None
+        assert validate_scopes("all") is None
+        assert validate_scopes("") is None
+        assert validate_scopes("  ") is None
+
+    def test_validate_scopes_invalid(self):
+        """Invalid scopes return an error message."""
+        from gefapi.utils.scopes import validate_scopes
+
+        result = validate_scopes("execution:read bogus:scope")
+        assert result is not None
+        assert "bogus:scope" in result
+
+    def test_has_scope_regular_token_always_passes(self):
+        """Non-client_credentials tokens pass any scope check."""
+        from gefapi.utils.scopes import _has_scope
+
+        claims = {"grant_type": "password"}
+        assert _has_scope("execution:read", claims) is True
+
+    def test_has_scope_empty_means_full_access(self):
+        """Client token with empty scopes equals full access."""
+        from gefapi.utils.scopes import _has_scope
+
+        claims = {"grant_type": "client_credentials", "scopes": ""}
+        assert _has_scope("execution:write", claims) is True
+
+    def test_has_scope_all_means_full_access(self):
+        """Client token with 'all' scope equals full access."""
+        from gefapi.utils.scopes import _has_scope
+
+        claims = {"grant_type": "client_credentials", "scopes": "all"}
+        assert _has_scope("execution:write", claims) is True
+
+    def test_has_scope_specific_scope_present(self):
+        """Returns True when the required scope is in the claim."""
+        from gefapi.utils.scopes import _has_scope
+
+        claims = {
+            "grant_type": "client_credentials",
+            "scopes": "execution:read user:read",
+        }
+        assert _has_scope("execution:read", claims) is True
+
+    def test_has_scope_specific_scope_absent(self):
+        """Returns False when the required scope is NOT in the claim."""
+        from gefapi.utils.scopes import _has_scope
+
+        claims = {
+            "grant_type": "client_credentials",
+            "scopes": "execution:read user:read",
+        }
+        assert _has_scope("execution:write", claims) is False
+
+
+# -------------------------------------------------------------------------
+# Scope enforcement integration tests
+# -------------------------------------------------------------------------
+
+
+class TestScopeEnforcement:
+    """Integration tests verifying that scoped tokens are blocked/allowed."""
+
+    def _get_scoped_token(self, app, flask_client, regular_user, scopes):
+        """Helper: create a service client with *scopes* and return its access token."""
+        with app.app_context():
+            user = db.session.merge(regular_user)
+            raw_secret, svc = OAuth2Service.create_client(
+                user=user, name=f"scope-test-{scopes}", scopes=scopes
+            )
+            svc_client_id = svc.client_id
+
+        resp = flask_client.post(
+            "/api/v1/oauth/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": svc_client_id,
+                "client_secret": raw_secret,
+            },
+        )
+        assert resp.status_code == 200
+        return resp.get_json()["access_token"]
+
+    def test_all_scope_grants_full_access(self, app, client, regular_user):
+        """Token with 'all' scope can access any endpoint."""
+        token = self._get_scoped_token(app, client, regular_user, "all")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        resp = client.get("/api/v1/user/me", headers=headers)
+        assert resp.status_code == 200
+
+    def test_user_read_scope_allows_get_me(self, app, client, regular_user):
+        """Token with 'user:read' scope can GET /user/me."""
+        token = self._get_scoped_token(app, client, regular_user, "user:read")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        resp = client.get("/api/v1/user/me", headers=headers)
+        assert resp.status_code == 200
+
+    def test_execution_read_scope_denies_user_me(self, app, client, regular_user):
+        """Token with only 'execution:read' scope is denied from /user/me."""
+        token = self._get_scoped_token(app, client, regular_user, "execution:read")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        resp = client.get("/api/v1/user/me", headers=headers)
+        assert resp.status_code == 403
+        assert "Insufficient scope" in resp.get_json()["detail"]
+
+    def test_scoped_token_jwt_contains_scopes(self, app, client, regular_user):
+        """The JWT from a scoped client contains scope claims."""
+        from flask_jwt_extended import decode_token
+
+        token = self._get_scoped_token(
+            app, client, regular_user, "execution:read script:write"
+        )
+        with app.app_context():
+            decoded = decode_token(token)
+            assert decoded["grant_type"] == "client_credentials"
+            assert decoded["scopes"] == "execution:read script:write"
+
+    def test_empty_scopes_grants_full_access(self, app, client, regular_user):
+        """Token with empty scopes can access any endpoint (full access)."""
+        token = self._get_scoped_token(app, client, regular_user, "")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        resp = client.get("/api/v1/user/me", headers=headers)
+        assert resp.status_code == 200
+
+    def test_invalid_scopes_rejected_at_creation(self, app, client, auth_headers_user):
+        """POST /oauth/clients with invalid scopes returns an error."""
+        resp = client.post(
+            "/api/v1/oauth/clients",
+            json={"name": "Bad Scopes", "scopes": "not:a:valid:scope"},
             headers=auth_headers_user,
         )
         assert resp.status_code == 400

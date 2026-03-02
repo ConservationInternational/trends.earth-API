@@ -15,6 +15,7 @@ from gefapi.models.service_client import (
     CLIENT_SECRET_PREFIX,
     ServiceClient,
 )
+from gefapi.utils.scopes import validate_scopes
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,11 @@ class OAuth2Service:
         -------
         tuple[str, ServiceClient]
         """
+        # Validate scopes before creating
+        scope_error = validate_scopes(scopes)
+        if scope_error:
+            raise NotAllowed(message=scope_error)
+
         active_count = ServiceClient.query.filter_by(
             user_id=user.id, revoked=False
         ).count()
@@ -171,4 +177,4 @@ class OAuth2Service:
                 "Failed to update last_used_at for client %s", client.client_id
             )
 
-        return client.user
+        return client.user, client

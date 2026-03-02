@@ -29,6 +29,7 @@ from gefapi.utils.rate_limiting import (
     get_admin_aware_key,
     is_rate_limiting_disabled,
 )
+from gefapi.utils.scopes import require_scope
 from gefapi.validators import validate_user_creation, validate_user_update
 
 logger = logging.getLogger()
@@ -141,6 +142,7 @@ def create_user():
 
 @endpoints.route("/user", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("user:read")
 def get_users():
     """
     Retrieve list of users with filtering, sorting, and pagination.
@@ -262,6 +264,7 @@ def get_users():
 
 @endpoints.route("/user/<user>", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("user:read")
 def get_user(user):
     """
     Retrieve detailed information for a specific user (admin only).
@@ -341,6 +344,7 @@ def get_user(user):
 
 @endpoints.route("/user/me", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("user:read")
 def get_me():
     """
     Get current authenticated user's profile information.
@@ -381,6 +385,7 @@ def get_me():
 
 @endpoints.route("/user/me", strict_slashes=False, methods=["PATCH"])
 @jwt_required()
+@require_scope("user:write")
 def update_profile():
     """
     Update current user's profile information and preferences.
@@ -481,6 +486,7 @@ def update_profile():
 
 @endpoints.route("/user/me/change-password", strict_slashes=False, methods=["PATCH"])
 @jwt_required()
+@require_scope("user:write")
 def change_password():
     """
     Change current user's password with old password verification.
@@ -566,6 +572,7 @@ def change_password():
 
 @endpoints.route("/user/me", strict_slashes=False, methods=["DELETE"])
 @jwt_required()
+@require_scope("user:write")
 def delete_profile():
     """
     Delete current user's account and all associated data.
@@ -833,6 +840,7 @@ def reset_password_with_token():
 
 @endpoints.route("/user/<user>", strict_slashes=False, methods=["PATCH"])
 @jwt_required()
+@require_scope("user:write")
 @validate_user_update
 def update_user(user):
     """
@@ -927,6 +935,7 @@ def update_user(user):
 
 @endpoints.route("/user/<user>", strict_slashes=False, methods=["DELETE"])
 @jwt_required()
+@require_scope("user:write")
 def delete_user(user):
     """
     Delete another user's account and all associated data (admin only).
@@ -1019,6 +1028,7 @@ def delete_user(user):
     "/user/<user>/change-password", strict_slashes=False, methods=["PATCH"]
 )
 @jwt_required()
+@require_scope("user:write")
 def admin_change_password(user):
     """
     Change another user's password (admin only).

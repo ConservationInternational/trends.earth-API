@@ -17,6 +17,7 @@ from gefapi.routes.api.v1 import endpoints, error
 from gefapi.s3 import get_script_from_s3
 from gefapi.services import ScriptService
 from gefapi.utils.permissions import can_access_admin_features, is_admin_or_higher
+from gefapi.utils.scopes import require_scope
 from gefapi.validators import validate_file
 
 logger = logging.getLogger()
@@ -25,6 +26,7 @@ logger = logging.getLogger()
 # SCRIPT CREATION
 @endpoints.route("/script", strict_slashes=False, methods=["POST"])
 @jwt_required()
+@require_scope("script:write")
 @validate_file
 def create_script():
     """
@@ -103,6 +105,7 @@ def create_script():
 
 @endpoints.route("/script", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("script:read")
 def get_scripts():
     """
     Retrieve all scripts with flexible filtering, sorting, and pagination.
@@ -235,6 +238,7 @@ def get_scripts():
 
 @endpoints.route("/script/<script>", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("script:read")
 def get_script(script):
     """
     Retrieve details for a specific script by ID or slug.
@@ -305,6 +309,7 @@ def get_script(script):
 
 @endpoints.route("/script/<script>/publish", strict_slashes=False, methods=["POST"])
 @jwt_required()
+@require_scope("script:write")
 def publish_script(script):
     """
     Publish a script to make it available for execution.
@@ -370,6 +375,7 @@ def publish_script(script):
 
 @endpoints.route("/script/<script>/unpublish", strict_slashes=False, methods=["POST"])
 @jwt_required()
+@require_scope("script:write")
 def unpublish_script(script):
     """
     Unpublish a script to make it unavailable for new executions.
@@ -437,6 +443,7 @@ def unpublish_script(script):
 
 @endpoints.route("/script/<script>/download", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("script:read")
 def download_script(script):
     """
     Download a script's source code and files as a compressed archive.
@@ -504,6 +511,7 @@ def download_script(script):
 
 @endpoints.route("/script/<script>/log", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("script:read")
 def get_script_logs(script):
     """
     Retrieve processing and validation logs for a specific script.
@@ -591,6 +599,7 @@ def get_script_logs(script):
 
 @endpoints.route("/script/<script>", strict_slashes=False, methods=["PATCH"])
 @jwt_required()
+@require_scope("script:write")
 @validate_file
 def update_script(script):
     """
@@ -671,6 +680,7 @@ def update_script(script):
 
 @endpoints.route("/script/<script>", strict_slashes=False, methods=["DELETE"])
 @jwt_required()
+@require_scope("script:write")
 def delete_script(script):
     """
     Permanently delete a script and all associated data.

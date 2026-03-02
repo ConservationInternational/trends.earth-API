@@ -20,6 +20,7 @@ from gefapi.utils.rate_limiting import (
     get_admin_aware_key,
     is_rate_limiting_disabled,
 )
+from gefapi.utils.scopes import require_scope
 from gefapi.validators import validate_execution_log_creation, validate_execution_update
 
 logger = logging.getLogger()
@@ -33,6 +34,7 @@ logger = logging.getLogger()
     exempt_when=is_rate_limiting_disabled,
 )  # Rate limit script execution
 @jwt_required()
+@require_scope("execution:write")
 def run_script(script):
     """
     Execute a script with provided parameters.
@@ -148,6 +150,7 @@ def run_script(script):
 
 @endpoints.route("/execution/user", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("execution:read")
 def get_user_executions():
     """
     Retrieve executions for the current authenticated user.
@@ -311,6 +314,7 @@ def get_user_executions():
 
 @endpoints.route("/execution", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("execution:read")
 def get_executions():
     """
     Retrieve all executions with admin filtering and cross-user visibility.
@@ -464,6 +468,7 @@ def get_executions():
 
 @endpoints.route("/execution/<execution>", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("execution:read")
 def get_execution(execution):
     """
     Retrieve a specific execution by ID.
@@ -534,6 +539,7 @@ def get_execution(execution):
 
 @endpoints.route("/execution/<execution>", strict_slashes=False, methods=["PATCH"])
 @jwt_required()
+@require_scope("execution:write")
 @validate_execution_update
 def update_execution(execution):
     """
@@ -608,6 +614,7 @@ def update_execution(execution):
     "/execution/<execution>/cancel", strict_slashes=False, methods=["POST"]
 )
 @jwt_required()
+@require_scope("execution:write")
 def cancel_execution(execution):
     """
     Cancel a running execution and any associated Google Earth Engine tasks.
@@ -772,6 +779,7 @@ def cancel_execution(execution):
 
 @endpoints.route("/execution/<execution>/log", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("execution:read")
 def get_execution_logs(execution):
     """
     Retrieve logs for a specific execution.
@@ -858,6 +866,7 @@ def get_execution_logs(execution):
     "/execution/<execution>/download-results", strict_slashes=False, methods=["GET"]
 )
 @jwt_required()
+@require_scope("execution:read")
 def get_download_results(execution):
     """Download execution results as a JSON file.
 
@@ -906,6 +915,7 @@ def get_download_results(execution):
     "/execution/<execution>/docker-logs", strict_slashes=False, methods=["GET"]
 )
 @jwt_required()
+@require_scope("execution:read")
 def get_execution_docker_logs(execution):
     """
     Retrieve Docker service logs for a specific execution.
@@ -966,6 +976,7 @@ def get_execution_docker_logs(execution):
 
 @endpoints.route("/execution/<execution>/log", strict_slashes=False, methods=["POST"])
 @jwt_required()
+@require_scope("execution:write")
 @validate_execution_log_creation
 def create_execution_log(execution):
     """
