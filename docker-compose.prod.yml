@@ -198,15 +198,15 @@ services:
     user: root
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    # Run cleanup every 6 hours: prune containers, dangling images, and build cache
+    # Run cleanup every 6 hours: prune containers, unused images, and build cache
     # Uses alpine's built-in sleep; runs indefinitely
     command: |
       sh -c 'while true; do
         echo "[$$(date)] Starting Docker cleanup on node..."
         echo "Pruning stopped containers..."
         docker container prune -f
-        echo "Pruning dangling images..."
-        docker image prune -f
+        echo "Pruning unused images older than 168h..."
+        docker image prune -a -f --filter "until=168h"
         echo "Pruning build cache (older than 168h)..."
         docker builder prune -f --filter "until=168h" || true
         echo "Pruning unused volumes..."
