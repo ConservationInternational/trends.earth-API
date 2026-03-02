@@ -71,6 +71,14 @@ def validate_scopes(scopes_string: str) -> str | None:
             f"Invalid scope(s): {', '.join(sorted(invalid))}. "
             f"Valid scopes: {', '.join(sorted(VALID_SCOPES))}"
         )
+
+    if "all" in requested and len(requested) > 1:
+        return (
+            "The 'all' scope grants full access and cannot be combined "
+            "with other scopes. Use 'all' alone, or list only the "
+            "specific scopes you need."
+        )
+
     return None
 
 

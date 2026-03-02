@@ -582,6 +582,17 @@ class TestScopeValidation:
         assert result is not None
         assert "bogus:scope" in result
 
+    def test_validate_scopes_all_combined_with_others_rejected(self):
+        """The 'all' scope cannot be combined with specific scopes."""
+        from gefapi.utils.scopes import validate_scopes
+
+        result = validate_scopes("all execution:read")
+        assert result is not None
+        assert "all" in result.lower()
+
+        # 'all' alone is still fine
+        assert validate_scopes("all") is None
+
     def test_has_scope_regular_token_always_passes(self):
         """Non-client_credentials tokens pass any scope check."""
         from gefapi.utils.scopes import _has_scope
