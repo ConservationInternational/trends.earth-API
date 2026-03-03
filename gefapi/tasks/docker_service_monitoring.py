@@ -5,9 +5,10 @@ import logging
 
 from celery import Task
 import rollbar
+from sqlalchemy import or_
 
 from gefapi import db
-from gefapi.models import Execution, ExecutionLog
+from gefapi.models import Execution, ExecutionLog, Script
 from gefapi.services.docker_service import get_docker_client
 
 logger = logging.getLogger(__name__)
@@ -171,13 +172,26 @@ def monitor_failed_docker_services(self):
             # RUNNING: Executions that are currently running
             # FAILED: Executions that failed but may be restarting due to restart policy
             # PENDING: Executions that are queued to start
+            #
+            # IMPORTANT: Exclude batch-type executions — those run on AWS
+            # Batch, not Docker Swarm, and are monitored by the separate
+            # ``monitor_batch_executions`` task.  Without this filter,
+            # batch executions are immediately killed because no local
+            # Docker service exists for them.
             # Limit to recent executions to reduce memory usage and processing time
             active_executions = (
                 db.session.query(Execution)
+                .outerjoin(Script, Execution.script_id == Script.id)
                 .filter(Execution.status.in_(["PENDING", "READY", "RUNNING", "FAILED"]))
                 .filter(
                     Execution.start_date
                     >= datetime.datetime.utcnow() - datetime.timedelta(hours=24)
+                )
+                .filter(
+                    or_(
+                        Script.compute_type.is_(None),
+                        Script.compute_type != "batch",
+                    )
                 )
                 .order_by(Execution.start_date.desc())
                 .limit(

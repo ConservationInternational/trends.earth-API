@@ -6,10 +6,10 @@ import logging
 
 from celery import Task
 import rollbar
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 
 from gefapi import db
-from gefapi.models import Execution, ExecutionLog
+from gefapi.models import Execution, ExecutionLog, Script
 from gefapi.services.docker_service import get_docker_client
 
 logger = logging.getLogger(__name__)
@@ -51,12 +51,21 @@ def cleanup_stale_executions(self):
             # Limit the result set to avoid loading thousands of ORM
             # objects into memory (which causes OOM kills).  Remaining
             # rows will be processed on the next scheduled run.
+            #
+            # Exclude batch-type executions — those run on AWS Batch
+            # with their own timeout and are monitored by the separate
+            # ``monitor_batch_executions`` task.
             stale_executions = (
                 db.session.query(Execution)
+                .outerjoin(Script, Execution.script_id == Script.id)
                 .filter(
                     and_(
                         Execution.start_date < cutoff_date,
                         Execution.status.notin_(["FINISHED", "FAILED"]),
+                        or_(
+                            Script.compute_type.is_(None),
+                            Script.compute_type != "batch",
+                        ),
                     )
                 )
                 .limit(_CLEANUP_BATCH_SIZE)
