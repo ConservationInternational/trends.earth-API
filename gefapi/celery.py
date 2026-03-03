@@ -100,6 +100,8 @@ def make_celery(app):
         },
         # Batch monitoring – no Docker access needed, runs on default queue
         "gefapi.tasks.batch_monitoring.monitor_batch_executions": {"queue": "default"},
+        # Batch dispatch task – submit jobs to AWS Batch (no Docker needed)
+        "gefapi.services.batch_service.batch_run": {"queue": "default"},
         # All other tasks use default queue
     }
 
