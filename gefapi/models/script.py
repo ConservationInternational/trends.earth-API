@@ -61,6 +61,8 @@ class Script(db.Model):
     # AWS Batch-specific overrides (only relevant when compute_type == "batch")
     batch_job_definition = db.Column(db.String(255), default=None)
     batch_job_queue = db.Column(db.String(255), default=None)
+    # Full container image URI for batch execution (e.g. ECR URI)
+    batch_image = db.Column(db.String(512), default=None)
     # Optional build error field for reporting build failures
     build_error = db.Column(db.Text(), default=None)
 
@@ -78,6 +80,7 @@ class Script(db.Model):
         compute_type=None,
         batch_job_definition=None,
         batch_job_queue=None,
+        batch_image=None,
         allowed_roles=None,
         allowed_users=None,
         restricted=False,
@@ -94,6 +97,7 @@ class Script(db.Model):
         self.compute_type = compute_type or "docker"
         self.batch_job_definition = batch_job_definition
         self.batch_job_queue = batch_job_queue
+        self.batch_image = batch_image
         self.allowed_roles = allowed_roles
         self.allowed_users = allowed_users
         self.restricted = restricted
@@ -265,6 +269,7 @@ class Script(db.Model):
             if self.compute_type == "batch":
                 script["batch_job_definition"] = self.batch_job_definition
                 script["batch_job_queue"] = self.batch_job_queue
+                script["batch_image"] = self.batch_image
         if "access_control" in include:
             if user and is_admin_or_higher(user):
                 script["restricted"] = self.restricted or False

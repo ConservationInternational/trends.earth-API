@@ -76,6 +76,12 @@ BATCH_EXECUTION_ROLE_ARN = os.getenv("BATCH_EXECUTION_ROLE_ARN", "")
 BATCH_DEFAULT_VCPUS = os.getenv("BATCH_DEFAULT_VCPUS", "4")
 BATCH_DEFAULT_MEMORY_MIB = os.getenv("BATCH_DEFAULT_MEMORY_MIB", "30720")
 
+# ECR registry prefix for automatic image resolution.
+# When a script has no explicit ``batch_image``, the image URI is
+# constructed as ``{ECR_REGISTRY}/{slug}:latest``.
+# Set by the deploy workflow from the ECR login step output.
+ECR_REGISTRY = os.getenv("ECR_REGISTRY", "")
+
 
 # ---------------------------------------------------------------------------
 # AWS client factories
@@ -483,13 +489,38 @@ def batch_run(self, execution_id, image, environment, params):
             or DEFAULT_BATCH_JOB_QUEUE
         )
 
+        # Resolve the full container image URI.  Priority:
+        #   1. params["batch"]["image"]  (per-execution override)
+        #   2. script.batch_image        (set via configuration.json)
+        #   3. {ECR_REGISTRY}/{slug}:latest  (auto-constructed)
+        #   4. the raw slug passed in ``image`` (legacy fallback)
+        resolved_image = batch_overrides.get("image") or (
+            getattr(script, "batch_image", None) if script else None
+        )
+        if not resolved_image and ECR_REGISTRY:
+            resolved_image = f"{ECR_REGISTRY}/{image}:latest"
+        if not resolved_image:
+            resolved_image = image
+            logger.warning(
+                "[BATCH] Execution %s: using raw slug %r as image — "
+                "set ECR_REGISTRY or script.batch_image for a "
+                "fully qualified ECR URI",
+                execution_id,
+                image,
+            )
+
+        # If the resolved image is a short form (repo:tag without registry
+        # prefix, i.e. no dots in the hostname), prepend the ECR registry.
+        if ECR_REGISTRY and "." not in resolved_image.split("/")[0]:
+            resolved_image = f"{ECR_REGISTRY}/{resolved_image}"
+
         # Job definition: resolve explicit name (if any), then auto-ensure
         # the definition exists in AWS Batch for the execution's image.
         explicit_definition = batch_overrides.get("job_definition") or (
             getattr(script, "batch_job_definition", None) if script else None
         )
         job_definition = _ensure_job_definition(
-            image, definition_name=explicit_definition
+            resolved_image, definition_name=explicit_definition
         )
 
         timeout = batch_overrides.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS)
@@ -510,10 +541,11 @@ def batch_run(self, execution_id, image, environment, params):
                 )
 
         logger.info(
-            "[BATCH] Execution %s: resolved job_queue=%s, "
+            "[BATCH] Execution %s: resolved image=%s, job_queue=%s, "
             "job_definition=%s, timeout=%ss, command=%s, "
             "resource_overrides=%s, script=%s (compute_type=%s)",
             execution_id,
+            resolved_image,
             job_queue,
             job_definition,
             timeout,
