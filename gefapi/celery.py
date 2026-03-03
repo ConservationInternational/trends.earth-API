@@ -38,6 +38,21 @@ def make_celery(app):
     # multiple buffered tasks that were already pulled from the broker.
     celery.conf.worker_prefetch_multiplier = 1
 
+    # Recycle worker processes after N tasks to prevent memory leaks
+    # from accumulating SQLAlchemy sessions, Docker client objects,
+    # and Python heap fragmentation.  Without this, long-running
+    # prefork workers steadily grow until the container OOM-kills them
+    # (signal 9 / SIGKILL).
+    celery.conf.worker_max_tasks_per_child = 50
+
+    # Hard per-child memory ceiling (in KB).  If a single task causes
+    # a worker to exceed this, Celery replaces the process *before*
+    # the container runtime OOM-kills it — which avoids losing the
+    # task when task_reject_on_worker_lost is True.
+    # 350 MB ≈ 358400 KB — leaves headroom within the 1.5 GB container
+    # limit when running with the default concurrency.
+    celery.conf.worker_max_memory_per_child = 358400  # KB
+
     # Configure task routing - build tasks go to build queue
     celery.conf.task_routes = {
         "gefapi.services.docker_service.docker_build": {"queue": "build"},

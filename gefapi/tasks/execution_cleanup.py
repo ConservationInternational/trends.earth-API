@@ -14,6 +14,11 @@ from gefapi.services.docker_service import get_docker_client
 
 logger = logging.getLogger(__name__)
 
+# Maximum rows to load per task invocation.  Keeps memory bounded
+# so the worker isn't OOM-killed when the table is large.  Any
+# remaining rows will be picked up on the next scheduled run.
+_CLEANUP_BATCH_SIZE = 200
+
 
 class ExecutionCleanupTask(Task):
     """Base task for execution cleanup"""
@@ -42,7 +47,10 @@ def cleanup_stale_executions(self):
 
             logger.info(f"[TASK]: Looking for executions started before {cutoff_date}")
 
-            # Find stale executions that are not finished or failed
+            # Find stale executions that are not finished or failed.
+            # Limit the result set to avoid loading thousands of ORM
+            # objects into memory (which causes OOM kills).  Remaining
+            # rows will be processed on the next scheduled run.
             stale_executions = (
                 db.session.query(Execution)
                 .filter(
@@ -51,6 +59,7 @@ def cleanup_stale_executions(self):
                         Execution.status.notin_(["FINISHED", "FAILED"]),
                     )
                 )
+                .limit(_CLEANUP_BATCH_SIZE)
                 .all()
             )
 
@@ -254,7 +263,8 @@ def cleanup_finished_executions(self):
 
             logger.info(f"[TASK]: Looking for executions finished after {cutoff_date}")
 
-            # Find executions that finished within the past day
+            # Find executions that finished within the past day.
+            # Limit the result set to keep memory bounded.
             finished_executions = (
                 db.session.query(Execution)
                 .filter(
@@ -264,6 +274,7 @@ def cleanup_finished_executions(self):
                         Execution.end_date.isnot(None),
                     )
                 )
+                .limit(_CLEANUP_BATCH_SIZE)
                 .all()
             )
 
@@ -414,7 +425,8 @@ def cleanup_old_failed_executions(self):
                 f"[TASK]: Looking for failed executions older than {cutoff_date}"
             )
 
-            # Find failed executions older than 14 days
+            # Find failed executions older than 14 days.
+            # Limit the result set to keep memory bounded.
             old_failed_executions = (
                 db.session.query(Execution)
                 .filter(
@@ -424,6 +436,7 @@ def cleanup_old_failed_executions(self):
                         Execution.end_date.isnot(None),
                     )
                 )
+                .limit(_CLEANUP_BATCH_SIZE)
                 .all()
             )
 
