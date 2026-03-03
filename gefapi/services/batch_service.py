@@ -215,9 +215,7 @@ def _ensure_job_definition(image, definition_name=None):
         retryStrategy={"attempts": 1},
         timeout={"attemptDurationSeconds": DEFAULT_TIMEOUT_SECONDS},
     )
-    logger.info(
-        "[BATCH] Registered %s revision %d", definition_name, resp["revision"]
-    )
+    logger.info("[BATCH] Registered %s revision %d", definition_name, resp["revision"])
     return definition_name
 
 
@@ -559,8 +557,7 @@ def batch_run(self, execution_id, image, environment, params):
             )
 
         logger.info(
-            "[BATCH] Execution %s: submitted jobs=%s, "
-            "queue=%s, definition=%s",
+            "[BATCH] Execution %s: submitted jobs=%s, queue=%s, definition=%s",
             execution_id,
             job_ids,
             job_queue,
@@ -570,8 +567,7 @@ def batch_run(self, execution_id, image, environment, params):
         # User-visible log: job submitted
         _add_log(
             execution.id,
-            f"Batch job submitted (queue={job_queue}, "
-            f"definition={job_definition})",
+            f"Batch job submitted (queue={job_queue}, definition={job_definition})",
         )
 
         # Store Batch job IDs for tracking; final results will overwrite.
