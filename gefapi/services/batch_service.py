@@ -50,7 +50,7 @@ import rollbar
 from gefapi import celery as celery_app  # Rename to avoid mypy confusion
 from gefapi import db
 from gefapi.config import SETTINGS
-from gefapi.models import Execution, Script
+from gefapi.models import Execution, ExecutionLog, Script
 
 logger = logging.getLogger(__name__)
 
@@ -367,9 +367,31 @@ def batch_run(self, execution_id, image, environment, params):
         db.session.commit()
 
     except Exception as exc:
-        logger.error("[BATCH] Failed to submit for %s: %s", execution_id, exc)
+        import traceback as tb
+
+        error_msg = str(exc)
+        full_tb = tb.format_exc()
+        logger.error(
+            "[BATCH] Failed to submit for %s: %s\n%s",
+            execution_id,
+            error_msg,
+            full_tb,
+        )
         try:
             execution.status = "FAILED"
+            execution.end_date = __import__("datetime").datetime.utcnow()
+            execution.results = {
+                "error": f"Batch submission failed: {error_msg}",
+                "error_type": type(exc).__name__,
+                "traceback": full_tb,
+                "retry_attempt": self.request.retries,
+            }
+            log_entry = ExecutionLog(
+                text=f"Batch submission failed: {error_msg}",
+                level="ERROR",
+                execution_id=execution.id,
+            )
+            db.session.add(log_entry)
             db.session.add(execution)
             db.session.commit()
         except Exception:
