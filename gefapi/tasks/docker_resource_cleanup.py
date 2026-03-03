@@ -167,7 +167,7 @@ def cleanup_docker_build_cache(self):
                     volumes_removed += 1
                 except Exception:
                     # Volume still in use — skip silently.
-                    pass
+                    logger.debug("Volume %s still in use, skipping", vol.name)
 
             total_space_reclaimed += volume_space
 
