@@ -141,6 +141,13 @@ def monitor_batch_executions(self):
             for execution in active:
                 batch_jobs = (execution.results or {}).get("batch_jobs")
                 if not batch_jobs:
+                    logger.warning(
+                        "[BATCH-MONITOR] Execution %s (status=%s) has "
+                        "no batch_jobs in results — results=%s",
+                        execution.id,
+                        execution.status,
+                        execution.results,
+                    )
                     continue
                 exec_jobs[execution.id] = batch_jobs
                 all_job_ids.extend(batch_jobs.values())
@@ -229,6 +236,11 @@ def _process_execution(execution, batch_jobs, job_details):
             statuses[name] = {"status": "NOT_FOUND"}
 
     all_job_statuses = [s["status"] for s in statuses.values()]
+    logger.info(
+        "[BATCH-MONITOR] Execution %s: job statuses = %s",
+        execution.id,
+        {name: info["status"] for name, info in statuses.items()},
+    )
 
     # --- any failure → mark execution FAILED ---
     if any(s == "FAILED" for s in all_job_statuses):
@@ -253,6 +265,10 @@ def _process_execution(execution, batch_jobs, job_details):
         db.session.add(log_entry)
         db.session.add(execution)
         logger.info("[BATCH-MONITOR] Execution %s → FAILED", execution.id)
+        rollbar.report_message(
+            f"Batch execution {execution.id} failed: {'; '.join(reasons)}",
+            level="error",
+        )
         return "FAILED"
 
     # --- all succeeded → fetch results, mark FINISHED ---
@@ -267,6 +283,16 @@ def _process_execution(execution, batch_jobs, job_details):
                 "batch_statuses": statuses,
                 "note": "Batch job succeeded but no results file found in S3",
             }
+            warn_log = ExecutionLog(
+                text="Batch job succeeded but no results file was found in S3",
+                level="WARN",
+                execution_id=execution.id,
+            )
+            db.session.add(warn_log)
+            logger.warning(
+                "[BATCH-MONITOR] Execution %s succeeded but no results in S3",
+                execution.id,
+            )
 
         execution.status = "FINISHED"
         execution.end_date = datetime.datetime.utcnow()

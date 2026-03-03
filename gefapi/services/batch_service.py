@@ -70,6 +70,12 @@ PARAMS_S3_PREFIX = os.getenv("PARAMS_S3_PREFIX", "execution_params") or SETTINGS
 
 DEFAULT_TIMEOUT_SECONDS = int(os.getenv("BATCH_TIMEOUT_SECONDS", "14400"))
 
+# IAM roles for auto-registered job definitions
+BATCH_JOB_ROLE_ARN = os.getenv("BATCH_JOB_ROLE_ARN", "")
+BATCH_EXECUTION_ROLE_ARN = os.getenv("BATCH_EXECUTION_ROLE_ARN", "")
+BATCH_DEFAULT_VCPUS = os.getenv("BATCH_DEFAULT_VCPUS", "4")
+BATCH_DEFAULT_MEMORY_MIB = os.getenv("BATCH_DEFAULT_MEMORY_MIB", "30720")
+
 
 # ---------------------------------------------------------------------------
 # AWS client factories
@@ -102,6 +108,117 @@ def push_params_to_s3(params_dict, execution_id):
             fp.write(data)
         _get_s3_client().upload_file(str(gz_path), PARAMS_S3_BUCKET, key)
     return f"s3://{PARAMS_S3_BUCKET}/{key}"
+
+
+# ---------------------------------------------------------------------------
+# Job definition management
+# ---------------------------------------------------------------------------
+
+
+def _image_to_definition_name(image):
+    """Derive a Batch job definition name from a container image URI.
+
+    Examples
+    --------
+    >>> _image_to_definition_name("123.dkr.ecr.us-east-1.amazonaws.com/my-repo:v1")
+    'my-repo'
+    >>> _image_to_definition_name("my-repo:latest")
+    'my-repo'
+    """
+    image_path = image.split("/")[-1]  # "my-repo:tag" or "my-repo"
+    return image_path.split(":")[0]  # "my-repo"
+
+
+def _ensure_job_definition(image, definition_name=None):
+    """Ensure an AWS Batch job definition exists for *image*.
+
+    If *definition_name* resolves to an existing ACTIVE definition whose
+    latest revision already references the same *image*, it is reused.
+    Otherwise a new definition (or revision) is registered automatically
+    using standard IAM roles and logging configuration read from env vars.
+
+    This removes the need to manually create Batch job definitions when
+    on-boarding new analysis scripts – the API creates them on first use.
+
+    Parameters
+    ----------
+    image : str
+        Fully qualified container image URI (e.g. an ECR URI).
+    definition_name : str, optional
+        Explicit name for the job definition.  When *None*, a name is
+        derived from the image repository name.
+
+    Returns
+    -------
+    str
+        The job definition name to use with ``submit_job()``.
+    """
+    if not definition_name:
+        definition_name = _image_to_definition_name(image)
+
+    client = _get_batch_client()
+
+    # Check if an active definition already exists with the right image
+    try:
+        resp = client.describe_job_definitions(
+            jobDefinitionName=definition_name,
+            status="ACTIVE",
+        )
+        definitions = resp.get("jobDefinitions", [])
+        if definitions:
+            latest = max(definitions, key=lambda d: d["revision"])
+            current_image = latest.get("containerProperties", {}).get("image", "")
+            if current_image == image:
+                logger.info(
+                    "[BATCH] Reusing job definition %s (rev %d)",
+                    definition_name,
+                    latest["revision"],
+                )
+                return definition_name
+            logger.info(
+                "[BATCH] Image changed for %s (%s -> %s), registering new revision",
+                definition_name,
+                current_image,
+                image,
+            )
+    except Exception:
+        logger.info(
+            "[BATCH] No existing definition found for %s, will create",
+            definition_name,
+        )
+
+    # Register new definition (or new revision of existing name)
+    container_props = {
+        "image": image,
+        "resourceRequirements": [
+            {"type": "VCPU", "value": BATCH_DEFAULT_VCPUS},
+            {"type": "MEMORY", "value": BATCH_DEFAULT_MEMORY_MIB},
+        ],
+        "logConfiguration": {
+            "logDriver": "awslogs",
+            "options": {
+                "awslogs-group": "/aws/batch/job",
+                "awslogs-region": AWS_REGION,
+                "awslogs-stream-prefix": definition_name,
+            },
+        },
+    }
+    if BATCH_JOB_ROLE_ARN:
+        container_props["jobRoleArn"] = BATCH_JOB_ROLE_ARN
+    if BATCH_EXECUTION_ROLE_ARN:
+        container_props["executionRoleArn"] = BATCH_EXECUTION_ROLE_ARN
+
+    resp = client.register_job_definition(
+        jobDefinitionName=definition_name,
+        type="container",
+        containerProperties=container_props,
+        retryStrategy={"attempts": 1},
+        timeout={"attemptDurationSeconds": DEFAULT_TIMEOUT_SECONDS},
+    )
+    logger.info(
+        "[BATCH] Registered %s revision %d", definition_name, resp["revision"]
+    )
+    return definition_name
 
 
 # ---------------------------------------------------------------------------
@@ -149,11 +266,18 @@ def submit_single_job(
     job_definition=None,
     command=None,
     timeout_seconds=None,
+    resource_overrides=None,
 ):
     """Submit a single AWS Batch job for an execution.
 
     This is the simplest dispatch mode: one execution → one Batch job.
     The container runs its default command unless *command* is provided.
+
+    Parameters
+    ----------
+    resource_overrides : list[dict], optional
+        AWS Batch ``resourceRequirements`` entries to override the job
+        definition defaults (e.g. vCPUs, memory) at submit time.
 
     Returns
     -------
@@ -166,6 +290,8 @@ def submit_single_job(
     overrides = {"environment": container_env}
     if command:
         overrides["command"] = command
+    if resource_overrides:
+        overrides["resourceRequirements"] = resource_overrides
 
     resp = client.submit_job(
         jobName=f"te-{execution_id[:8]}",
@@ -186,6 +312,7 @@ def submit_pipeline(
     job_queue=None,
     job_definition=None,
     timeout_seconds=None,
+    resource_overrides=None,
 ):
     """Submit a multi-step pipeline to AWS Batch with inter-step dependencies.
 
@@ -200,6 +327,9 @@ def submit_pipeline(
         * ``job_definition`` (str, optional) – per-step override
         * ``job_queue`` (str, optional) – per-step override
         * ``timeout_seconds`` (int, optional) – per-step override
+
+    resource_overrides : list[dict], optional
+        Default ``resourceRequirements`` overrides applied to all steps.
 
     Returns
     -------
@@ -224,6 +354,8 @@ def submit_pipeline(
         overrides = {"environment": container_env}
         if step.get("command"):
             overrides["command"] = step["command"]
+        if resource_overrides:
+            overrides["resourceRequirements"] = resource_overrides
 
         submit_kwargs = {
             "jobName": f"te-{name}-{execution_id[:8]}",
@@ -278,6 +410,28 @@ def get_batch_job_status(job_id):
 
 
 # ---------------------------------------------------------------------------
+# Helpers for user-visible ExecutionLog entries
+# ---------------------------------------------------------------------------
+
+
+def _add_log(execution_id, text, level="INFO"):
+    """Create an ExecutionLog entry visible to the user via the API."""
+    try:
+        log_entry = ExecutionLog(
+            text=text,
+            level=level,
+            execution_id=execution_id,
+        )
+        db.session.add(log_entry)
+    except Exception:
+        logger.warning(
+            "[BATCH] Could not write ExecutionLog for %s: %s",
+            execution_id,
+            text,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Celery task – counterpart of ``docker_run`` for Batch-based executions
 # ---------------------------------------------------------------------------
 
@@ -302,17 +456,24 @@ def batch_run(self, execution_id, image, environment, params):
     2. The Script model's ``batch_job_definition`` / ``batch_job_queue``
     3. Environment-variable defaults
     """
+    import datetime
+    import traceback as tb
+
     logger.info("[BATCH] Starting batch_run for execution %s", execution_id)
 
     execution = Execution.query.get(execution_id)
     if not execution:
-        logger.error("[BATCH] Execution %s not found", execution_id)
+        logger.error("[BATCH] Execution %s not found — cannot proceed", execution_id)
+        rollbar.report_message(
+            f"batch_run: Execution {execution_id} not found", level="error"
+        )
         return
 
     try:
         execution.status = "READY"
         db.session.add(execution)
         db.session.commit()
+        logger.info("[BATCH] Execution %s → READY", execution_id)
 
         # ---- resolve Batch settings ----
         batch_overrides = params.get("batch", {})
@@ -323,17 +484,54 @@ def batch_run(self, execution_id, image, environment, params):
             or (getattr(script, "batch_job_queue", None) if script else None)
             or DEFAULT_BATCH_JOB_QUEUE
         )
-        job_definition = (
-            batch_overrides.get("job_definition")
-            or (getattr(script, "batch_job_definition", None) if script else None)
-            or DEFAULT_BATCH_JOB_DEFINITION
+
+        # Job definition: resolve explicit name (if any), then auto-ensure
+        # the definition exists in AWS Batch for the execution's image.
+        explicit_definition = batch_overrides.get("job_definition") or (
+            getattr(script, "batch_job_definition", None) if script else None
         )
+        job_definition = _ensure_job_definition(
+            image, definition_name=explicit_definition
+        )
+
         timeout = batch_overrides.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS)
         command = batch_overrides.get("command")
+
+        # Resource overrides – let callers tune vCPUs/memory per-execution
+        # without needing a separate job definition.
+        resource_overrides = None
+        if batch_overrides.get("vcpus") or batch_overrides.get("memory_mib"):
+            resource_overrides = []
+            if batch_overrides.get("vcpus"):
+                resource_overrides.append(
+                    {"type": "VCPU", "value": str(batch_overrides["vcpus"])}
+                )
+            if batch_overrides.get("memory_mib"):
+                resource_overrides.append(
+                    {"type": "MEMORY", "value": str(batch_overrides["memory_mib"])}
+                )
+
+        logger.info(
+            "[BATCH] Execution %s: resolved job_queue=%s, "
+            "job_definition=%s, timeout=%ss, command=%s, "
+            "resource_overrides=%s, script=%s (compute_type=%s)",
+            execution_id,
+            job_queue,
+            job_definition,
+            timeout,
+            command or "(default)",
+            resource_overrides or "(default)",
+            getattr(script, "slug", "?") if script else "none",
+            getattr(script, "compute_type", "?") if script else "none",
+        )
+
+        # User-visible log: about to upload params
+        _add_log(execution.id, "Preparing execution parameters for upload to S3")
 
         # ---- push params to S3 ----
         config_s3_uri = push_params_to_s3(params, str(execution_id))
         logger.info("[BATCH] Params uploaded to %s", config_s3_uri)
+        _add_log(execution.id, "Parameters uploaded — submitting to AWS Batch")
 
         # ---- submit ----
         pipeline_steps = params.get("pipeline")
@@ -346,6 +544,7 @@ def batch_run(self, execution_id, image, environment, params):
                 job_queue=job_queue,
                 job_definition=job_definition,
                 timeout_seconds=timeout,
+                resource_overrides=resource_overrides,
             )
         else:
             job_ids = submit_single_job(
@@ -356,19 +555,36 @@ def batch_run(self, execution_id, image, environment, params):
                 job_definition=job_definition,
                 command=command,
                 timeout_seconds=timeout,
+                resource_overrides=resource_overrides,
             )
 
-        logger.info("[BATCH] Submitted jobs: %s", job_ids)
+        logger.info(
+            "[BATCH] Execution %s: submitted jobs=%s, "
+            "queue=%s, definition=%s",
+            execution_id,
+            job_ids,
+            job_queue,
+            job_definition,
+        )
+
+        # User-visible log: job submitted
+        _add_log(
+            execution.id,
+            f"Batch job submitted (queue={job_queue}, "
+            f"definition={job_definition})",
+        )
 
         # Store Batch job IDs for tracking; final results will overwrite.
         execution.results = {"batch_jobs": job_ids, "status": "SUBMITTED"}
         execution.status = "RUNNING"
         db.session.add(execution)
         db.session.commit()
+        logger.info(
+            "[BATCH] Execution %s → RUNNING (Batch jobs dispatched)",
+            execution_id,
+        )
 
     except Exception as exc:
-        import traceback as tb
-
         error_msg = str(exc)
         full_tb = tb.format_exc()
         logger.error(
@@ -377,24 +593,27 @@ def batch_run(self, execution_id, image, environment, params):
             error_msg,
             full_tb,
         )
+        rollbar.report_exc_info()
         try:
             execution.status = "FAILED"
-            execution.end_date = __import__("datetime").datetime.utcnow()
+            execution.end_date = datetime.datetime.utcnow()
             execution.results = {
                 "error": f"Batch submission failed: {error_msg}",
                 "error_type": type(exc).__name__,
                 "traceback": full_tb,
                 "retry_attempt": self.request.retries,
             }
-            log_entry = ExecutionLog(
-                text=f"Batch submission failed: {error_msg}",
+            _add_log(
+                execution.id,
+                f"Batch submission failed: {error_msg}",
                 level="ERROR",
-                execution_id=execution.id,
             )
-            db.session.add(log_entry)
             db.session.add(execution)
             db.session.commit()
-        except Exception:
-            logger.error("[BATCH] Could not mark execution as FAILED")
-        rollbar.report_exc_info()
+        except Exception as inner:
+            logger.error(
+                "[BATCH] Could not mark execution %s as FAILED: %s",
+                execution_id,
+                inner,
+            )
         raise self.retry(exc=exc) from None
