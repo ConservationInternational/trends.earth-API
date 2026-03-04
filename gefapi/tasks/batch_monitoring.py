@@ -231,6 +231,7 @@ def _process_execution(execution, batch_jobs, job_details):
                 "reason": job.get("statusReason"),
                 "started_at": str(job.get("startedAt", "")),
                 "stopped_at": str(job.get("stoppedAt", "")),
+                "log_stream_name": (job.get("container") or {}).get("logStreamName"),
             }
         else:
             statuses[name] = {"status": "NOT_FOUND"}
@@ -275,6 +276,12 @@ def _process_execution(execution, batch_jobs, job_details):
     if all(s == "SUCCEEDED" for s in all_job_statuses):
         results = _fetch_results_from_s3(str(execution.id))
         if results is not None:
+            # Preserve batch_jobs and batch_statuses in the results so that
+            # the batch-logs endpoint can still look up CloudWatch streams
+            # after the execution finishes.
+            if isinstance(results, dict):
+                results.setdefault("batch_jobs", batch_jobs)
+                results.setdefault("batch_statuses", statuses)
             execution.results = results
         else:
             # Container succeeded but no results file – store batch info

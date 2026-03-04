@@ -476,9 +476,9 @@ def get_batch_logs(execution_id):
         except Exception as exc:
             logger.error("[BATCH-LOGS] describe_jobs failed: %s", exc)
 
-    if not described:
-        logger.warning("[BATCH-LOGS] No Batch jobs found for %s", execution_id)
-        return None
+    # Fallback: if describe_jobs didn't return a job (e.g. expired after 24h),
+    # use log stream names previously saved in batch_statuses by the monitor.
+    saved_statuses = (execution.results or {}).get("batch_statuses", {})
 
     # Collect log events from CloudWatch
     logs_client = _get_logs_client()
@@ -486,14 +486,24 @@ def get_batch_logs(execution_id):
 
     for step_name, job_id in job_entries:
         job = described.get(job_id)
-        if not job:
-            continue
-        log_stream = (job.get("container") or {}).get("logStreamName")
+        if job:
+            log_stream = (job.get("container") or {}).get("logStreamName")
+        else:
+            # Job expired from describe_jobs — try the saved log stream name
+            saved = saved_statuses.get(step_name, {})
+            log_stream = saved.get("log_stream_name")
+            if log_stream:
+                logger.info(
+                    "[BATCH-LOGS] Using saved log stream for job %s: %s",
+                    job_id,
+                    log_stream,
+                )
+
         if not log_stream:
             logger.info(
                 "[BATCH-LOGS] No logStreamName for job %s (status=%s)",
                 job_id,
-                job.get("status"),
+                job.get("status") if job else "EXPIRED",
             )
             continue
 
