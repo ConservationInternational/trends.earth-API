@@ -337,6 +337,7 @@ class ExecutionService:
         target_user_id=None,
         updated_at=None,
         status=None,
+        script_id=None,
         page=1,
         per_page=2000,
         paginate=True,
@@ -352,6 +353,7 @@ class ExecutionService:
             target_user_id (str, optional): Filter by specific user ID (admin only)
             updated_at (datetime, optional): Filter by start date
             status (str, optional): Filter by execution status
+            script_id (str, optional): Filter by script UUID
             page (int): Page number for pagination (default: 1)
             per_page (int): Results per page (default: 2000, max: 2000)
             paginate (bool): Whether to apply pagination (default: True)
@@ -412,6 +414,16 @@ class ExecutionService:
             query = query.filter(Execution.user_id == user.id)
 
         # Apply other filters
+        if script_id:
+            try:
+                if isinstance(script_id, UUID):
+                    validated_script_id = script_id
+                else:
+                    validated_script_id = UUID(script_id, version=4)
+            except Exception as error:
+                rollbar.report_exc_info()
+                raise error
+            query = query.filter(Execution.script_id == validated_script_id)
         if status:
             query = query.filter(func.lower(Execution.status) == status.lower())
         if updated_at:

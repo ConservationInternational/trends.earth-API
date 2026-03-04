@@ -253,6 +253,7 @@ def get_user_executions():
     exclude = request.args.get("exclude")
     exclude = exclude.split(",") if exclude else []
     filter_param = request.args.get("filter", None)
+    script_id = request.args.get("script_id", None)
     sort = request.args.get("sort", None)
 
     # Add support for updated_at filtering
@@ -285,6 +286,7 @@ def get_user_executions():
             target_user_id=str(current_user.id),  # Force user filtering
             updated_at=updated_at,
             status=None,
+            script_id=script_id,
             page=page,
             per_page=per_page,
             paginate=paginate,
@@ -404,6 +406,7 @@ def get_executions():
     """
     logger.info("[ROUTER]: Getting all executions: ")
     user_id = request.args.get("user_id", None)
+    script_id = request.args.get("script_id", None)
     updated_at = request.args.get("updated_at", None)
     if updated_at:
         updated_at = dateutil.parser.parse(updated_at)
@@ -439,6 +442,7 @@ def get_executions():
             target_user_id=user_id,
             updated_at=updated_at,
             status=status,
+            script_id=script_id,
             page=page,
             per_page=per_page,
             paginate=paginate,
