@@ -70,6 +70,11 @@ PARAMS_S3_PREFIX = os.getenv("PARAMS_S3_PREFIX", "execution_params") or SETTINGS
 
 DEFAULT_TIMEOUT_SECONDS = int(os.getenv("BATCH_TIMEOUT_SECONDS", "14400"))
 
+# Automatic retry on spot instance termination.  AWS Batch retries
+# individual array children independently, so only the interrupted
+# portions of an array job are re-run.
+BATCH_SPOT_RETRY_ATTEMPTS = int(os.getenv("BATCH_SPOT_RETRY_ATTEMPTS", "3"))
+
 # IAM roles for auto-registered job definitions
 BATCH_JOB_ROLE_ARN = os.getenv("BATCH_JOB_ROLE_ARN", "")
 BATCH_EXECUTION_ROLE_ARN = os.getenv("BATCH_EXECUTION_ROLE_ARN", "")
@@ -137,6 +142,46 @@ def _image_to_definition_name(image):
     """
     image_path = image.split("/")[-1]  # "my-repo:tag" or "my-repo"
     return image_path.split(":")[0]  # "my-repo"
+
+
+def _build_spot_retry_strategy(attempts=None):
+    """Build an AWS Batch retry strategy that retries on spot termination.
+
+    When a Spot instance is reclaimed, AWS Batch reports "Host EC2
+    (instance …) terminated" as the status reason.  The
+    ``evaluateOnExit`` rules below instruct Batch to automatically
+    retry those attempts while letting genuine application failures
+    propagate immediately.
+
+    For **array jobs** Batch retries each child independently, so only
+    the children that were interrupted are re-run — completed children
+    are not affected.
+
+    Parameters
+    ----------
+    attempts : int, optional
+        Maximum number of attempts (including the first try).  Defaults
+        to ``BATCH_SPOT_RETRY_ATTEMPTS`` (env var, default 3).
+    """
+    max_attempts = attempts if attempts is not None else BATCH_SPOT_RETRY_ATTEMPTS
+    # Clamp to the AWS Batch maximum of 10 attempts
+    max_attempts = max(1, min(max_attempts, 10))
+
+    return {
+        "attempts": max_attempts,
+        "evaluateOnExit": [
+            # Spot reclamation – always retry
+            {
+                "onStatusReason": "Host EC2*",
+                "action": "RETRY",
+            },
+            # Catch-all: do NOT retry for normal failures
+            {
+                "onExitCode": "*",
+                "action": "EXIT",
+            },
+        ],
+    }
 
 
 def _ensure_job_definition(image, definition_name=None):
@@ -222,7 +267,7 @@ def _ensure_job_definition(image, definition_name=None):
         jobDefinitionName=definition_name,
         type="container",
         containerProperties=container_props,
-        retryStrategy={"attempts": 1},
+        retryStrategy=_build_spot_retry_strategy(),
         timeout={"attemptDurationSeconds": DEFAULT_TIMEOUT_SECONDS},
     )
     logger.info("[BATCH] Registered %s revision %d", definition_name, resp["revision"])
@@ -306,6 +351,7 @@ def submit_single_job(
         jobQueue=job_queue or DEFAULT_BATCH_JOB_QUEUE,
         jobDefinition=job_definition or DEFAULT_BATCH_JOB_DEFINITION,
         containerOverrides=overrides,
+        retryStrategy=_build_spot_retry_strategy(),
         timeout={"attemptDurationSeconds": timeout_seconds or DEFAULT_TIMEOUT_SECONDS},
     )
     return {"job_id": resp["jobId"]}
@@ -358,6 +404,7 @@ def submit_pipeline(
         * ``timeout_seconds`` (int, optional) – per-step override
         * ``vcpus`` (int, optional) – per-step vCPU override
         * ``memory_mib`` (int, optional) – per-step memory override (MiB)
+        * ``retry_attempts`` (int, optional) – max attempts for spot retries
 
     resource_overrides : list[dict], optional
         Default ``resourceRequirements`` overrides applied to steps that
@@ -393,11 +440,16 @@ def submit_pipeline(
         if step_resources:
             overrides["resourceRequirements"] = step_resources
 
+        step_retry = _build_spot_retry_strategy(
+            attempts=step.get("retry_attempts"),
+        )
+
         submit_kwargs = {
             "jobName": f"te-{name}-{execution_id[:8]}",
             "jobQueue": step_queue,
             "jobDefinition": step_def,
             "containerOverrides": overrides,
+            "retryStrategy": step_retry,
             "timeout": {"attemptDurationSeconds": step_timeout},
         }
 

@@ -226,13 +226,22 @@ def _process_execution(execution, batch_jobs, job_details):
     for name, job_id in batch_jobs.items():
         job = job_details.get(job_id)
         if job:
+            attempts = job.get("attempts", [])
             statuses[name] = {
                 "status": job["status"],
                 "reason": job.get("statusReason"),
                 "started_at": str(job.get("startedAt", "")),
                 "stopped_at": str(job.get("stoppedAt", "")),
                 "log_stream_name": (job.get("container") or {}).get("logStreamName"),
+                "attempts": len(attempts),
             }
+            # For array jobs, include the per-status summary so we can
+            # see how many children succeeded / are being retried.
+            if job.get("arrayProperties"):
+                statuses[name]["array_size"] = job["arrayProperties"].get("size")
+                statuses[name]["array_status"] = job["arrayProperties"].get(
+                    "statusSummary", {}
+                )
         else:
             statuses[name] = {"status": "NOT_FOUND"}
 
