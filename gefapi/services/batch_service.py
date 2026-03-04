@@ -453,8 +453,9 @@ def submit_pipeline(
             "timeout": {"attemptDurationSeconds": step_timeout},
         }
 
-        if step.get("array_size"):
-            submit_kwargs["arrayProperties"] = {"size": max(step["array_size"], 1)}
+        array_size = step.get("array_size", 0)
+        if array_size > 1:
+            submit_kwargs["arrayProperties"] = {"size": array_size}
 
         if prev_job_id:
             # Plain dependency (no "type") means "wait for this job to
