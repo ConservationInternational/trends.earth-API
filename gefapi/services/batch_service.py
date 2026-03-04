@@ -405,7 +405,11 @@ def submit_pipeline(
             submit_kwargs["arrayProperties"] = {"size": max(step["array_size"], 1)}
 
         if prev_job_id:
-            submit_kwargs["dependsOn"] = [{"jobId": prev_job_id, "type": "SEQUENTIAL"}]
+            # Plain dependency (no "type") means "wait for this job to
+            # finish".  For array jobs this waits for ALL children.
+            # Note: "type": "SEQUENTIAL" is only valid when BOTH the
+            # dependent and the dependency are array jobs.
+            submit_kwargs["dependsOn"] = [{"jobId": prev_job_id}]
 
         resp = client.submit_job(**submit_kwargs)
         job_id = resp["jobId"]
