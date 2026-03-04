@@ -311,6 +311,27 @@ def submit_single_job(
     return {"job_id": resp["jobId"]}
 
 
+def _build_step_resources(step, default_overrides):
+    """Build ``resourceRequirements`` for a single pipeline step.
+
+    Per-step ``vcpus`` and ``memory_mib`` keys take precedence over the
+    global *default_overrides* list.  Returns ``None`` when there are no
+    overrides at all.
+    """
+    step_vcpus = step.get("vcpus")
+    step_memory = step.get("memory_mib")
+
+    if step_vcpus or step_memory:
+        reqs = []
+        if step_vcpus:
+            reqs.append({"type": "VCPU", "value": str(step_vcpus)})
+        if step_memory:
+            reqs.append({"type": "MEMORY", "value": str(step_memory)})
+        return reqs
+
+    return default_overrides
+
+
 def submit_pipeline(
     execution_id,
     config_s3_uri,
@@ -335,9 +356,12 @@ def submit_pipeline(
         * ``job_definition`` (str, optional) – per-step override
         * ``job_queue`` (str, optional) – per-step override
         * ``timeout_seconds`` (int, optional) – per-step override
+        * ``vcpus`` (int, optional) – per-step vCPU override
+        * ``memory_mib`` (int, optional) – per-step memory override (MiB)
 
     resource_overrides : list[dict], optional
-        Default ``resourceRequirements`` overrides applied to all steps.
+        Default ``resourceRequirements`` overrides applied to steps that
+        do not specify their own ``vcpus``/``memory_mib``.
 
     Returns
     -------
@@ -362,8 +386,12 @@ def submit_pipeline(
         overrides = {"environment": container_env}
         if step.get("command"):
             overrides["command"] = step["command"]
-        if resource_overrides:
-            overrides["resourceRequirements"] = resource_overrides
+
+        # Per-step resource overrides take precedence over the global
+        # resource_overrides parameter.
+        step_resources = _build_step_resources(step, resource_overrides)
+        if step_resources:
+            overrides["resourceRequirements"] = step_resources
 
         submit_kwargs = {
             "jobName": f"te-{name}-{execution_id[:8]}",
