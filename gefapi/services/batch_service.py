@@ -96,6 +96,10 @@ def _get_batch_client():
     return boto3.client("batch", region_name=AWS_REGION)
 
 
+def _get_logs_client():
+    return boto3.client("logs", region_name=AWS_REGION)
+
+
 # ---------------------------------------------------------------------------
 # S3 helpers
 # ---------------------------------------------------------------------------
@@ -411,6 +415,157 @@ def get_batch_job_status(job_id):
     if job["status"] == "FAILED":
         result["reason"] = job.get("statusReason", "Unknown")
     return result
+
+
+# ---------------------------------------------------------------------------
+# CloudWatch log retrieval
+# ---------------------------------------------------------------------------
+
+
+def get_batch_logs(execution_id):
+    """Retrieve CloudWatch logs for all Batch jobs belonging to *execution_id*.
+
+    The function inspects ``execution.results["batch_jobs"]`` to discover
+    the AWS Batch job IDs, then uses ``describe_jobs`` to find the
+    CloudWatch log stream for each job.  Finally it fetches events from
+    those log streams and returns them in a format consistent with the
+    Docker-logs endpoint.
+
+    Returns
+    -------
+    list[dict] | None
+        A list of ``{"id": int, "created_at": str, "text": str, "job_name": str}``
+        dicts, or ``None`` if no jobs / logs could be found.
+    """
+    from gefapi.models import Execution
+
+    execution = Execution.query.get(execution_id)
+    if not execution:
+        logger.warning("[BATCH-LOGS] Execution %s not found", execution_id)
+        return None
+
+    batch_jobs = (execution.results or {}).get("batch_jobs")
+    if not batch_jobs:
+        logger.warning(
+            "[BATCH-LOGS] Execution %s has no batch_jobs in results", execution_id
+        )
+        return None
+
+    # batch_jobs is either {"job_id": "xxx"} (single) or
+    # {"step_name": "job_id", ...} (pipeline).
+    if isinstance(batch_jobs, dict):
+        job_entries = list(batch_jobs.items())
+    else:
+        logger.warning(
+            "[BATCH-LOGS] Unexpected batch_jobs type for %s: %s",
+            execution_id,
+            type(batch_jobs),
+        )
+        return None
+
+    # Describe jobs to get their log stream names
+    job_ids = [jid for _, jid in job_entries]
+    batch_client = _get_batch_client()
+    described: dict = {}
+    for i in range(0, len(job_ids), 100):
+        chunk = job_ids[i : i + 100]
+        try:
+            resp = batch_client.describe_jobs(jobs=chunk)
+            for job in resp.get("jobs", []):
+                described[job["jobId"]] = job
+        except Exception as exc:
+            logger.error("[BATCH-LOGS] describe_jobs failed: %s", exc)
+
+    if not described:
+        logger.warning("[BATCH-LOGS] No Batch jobs found for %s", execution_id)
+        return None
+
+    # Collect log events from CloudWatch
+    logs_client = _get_logs_client()
+    all_events: list[dict] = []
+
+    for step_name, job_id in job_entries:
+        job = described.get(job_id)
+        if not job:
+            continue
+        log_stream = (job.get("container") or {}).get("logStreamName")
+        if not log_stream:
+            logger.info(
+                "[BATCH-LOGS] No logStreamName for job %s (status=%s)",
+                job_id,
+                job.get("status"),
+            )
+            continue
+
+        log_group = "/aws/batch/job"
+        try:
+            events = _fetch_log_events(logs_client, log_group, log_stream)
+            for evt in events:
+                all_events.append(
+                    {
+                        "timestamp": evt["timestamp"],
+                        "text": evt.get("message", ""),
+                        "job_name": step_name,
+                    }
+                )
+        except Exception as exc:
+            logger.error(
+                "[BATCH-LOGS] Failed to fetch logs for stream %s: %s",
+                log_stream,
+                exc,
+            )
+
+    if not all_events:
+        return None
+
+    # Sort by timestamp and assign sequential IDs
+    import datetime
+
+    all_events.sort(key=lambda e: e["timestamp"])
+    formatted = []
+    for i, evt in enumerate(all_events):
+        # Convert epoch-ms to ISO 8601
+        ts_seconds = evt["timestamp"] / 1000.0
+        created_at = (
+            datetime.datetime.fromtimestamp(ts_seconds, tz=datetime.UTC)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+        formatted.append(
+            {
+                "id": i,
+                "created_at": created_at,
+                "text": evt["text"],
+                "job_name": evt["job_name"],
+            }
+        )
+
+    return formatted
+
+
+def _fetch_log_events(logs_client, log_group, log_stream, limit=10000):
+    """Page through CloudWatch ``get_log_events`` and return all events.
+
+    Returns up to *limit* events from the given log stream.
+    """
+    events: list[dict] = []
+    kwargs = {
+        "logGroupName": log_group,
+        "logStreamName": log_stream,
+        "startFromHead": True,
+        "limit": min(limit, 10000),
+    }
+    prev_token = None
+    while len(events) < limit:
+        resp = logs_client.get_log_events(**kwargs)
+        batch = resp.get("events", [])
+        events.extend(batch)
+        next_token = resp.get("nextForwardToken")
+        if not batch or next_token == prev_token:
+            break
+        kwargs["nextToken"] = next_token
+        prev_token = next_token
+    return events[:limit]
 
 
 # ---------------------------------------------------------------------------

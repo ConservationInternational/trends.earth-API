@@ -974,6 +974,66 @@ def get_execution_docker_logs(execution):
         return error(status=500, detail="Internal Server Error")
 
 
+@endpoints.route(
+    "/execution/<execution>/batch-logs", strict_slashes=False, methods=["GET"]
+)
+@jwt_required()
+@require_scope("execution:read")
+def get_execution_batch_logs(execution):
+    """
+    Retrieve AWS Batch (CloudWatch) logs for a specific execution.
+
+    **Authentication**: JWT token required
+    **Access**: Restricted to ADMIN and SUPERADMIN users only
+    **Purpose**: Provides CloudWatch container logs for Batch-based
+      script executions, analogous to the Docker logs endpoint.
+
+    **Path Parameters**:
+    - `execution`: The ID of the execution to retrieve logs for.
+
+    **Success Response Schema**:
+    ```json
+    {
+      "data": [
+        {
+          "id": 0,
+          "created_at": "2025-08-04T10:30:00.123Z",
+          "text": "Log message from the container",
+          "job_name": "extract"
+        }
+      ]
+    }
+    ```
+
+    **Response Fields**:
+    - `id`: A sequential identifier for the log line (for ordering).
+    - `created_at`: The timestamp of the log entry (ISO 8601 format).
+    - `text`: The content of the log line.
+    - `job_name`: The Batch job step name that produced this log line.
+
+    **Error Responses**:
+    - `401 Unauthorized`: JWT token required.
+    - `403 Forbidden`: Insufficient privileges (ADMIN+ required).
+    - `404 Not Found`: The specified execution or its logs do not exist.
+    - `500 Internal Server Error`: Failed to retrieve logs due to a server-side
+      issue.
+    """
+    logger.info(f"[ROUTER]: Getting batch logs for execution {execution}")
+    user = current_user
+    if not is_admin_or_higher(user):
+        return error(status=403, detail="Forbidden")
+    try:
+        from gefapi.services.batch_service import get_batch_logs
+
+        logs = get_batch_logs(execution)
+        if logs is None:
+            return error(status=404, detail="Logs not found for execution")
+        return jsonify(data=logs), 200
+    except Exception as e:
+        logger.error(f"[ROUTER]: Error getting batch logs: {e}")
+        return error(status=500, detail="Internal Server Error")
+
+
 @endpoints.route("/execution/<execution>/log", strict_slashes=False, methods=["POST"])
 @jwt_required()
 @require_scope("execution:write")
