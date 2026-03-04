@@ -422,6 +422,35 @@ def sample_script(app, regular_user):
 
 
 @pytest.fixture
+def batch_script(app, regular_user):
+    """Create a sample batch-type script for testing"""
+    with app.app_context():
+        regular_user = db.session.merge(regular_user)
+
+        existing_script = Script.query.filter_by(slug="test-batch-script").first()
+        if existing_script:
+            existing_script.status = "SUCCESS"
+            existing_script.public = True
+            existing_script.compute_type = "batch"
+            db.session.add(existing_script)
+            db.session.commit()
+            return existing_script
+
+        script = Script(
+            name="Test Batch Script",
+            slug="test-batch-script",
+            user_id=regular_user.id,
+        )
+        script.status = "SUCCESS"
+        script.public = True
+        script.restricted = False
+        script.compute_type = "batch"
+        db.session.add(script)
+        db.session.commit()
+        return script
+
+
+@pytest.fixture
 def sample_execution(app, regular_user, sample_script):
     """Create sample execution for testing"""
     with app.app_context():

@@ -503,6 +503,151 @@ def get_batch_job_status(job_id):
 
 
 # ---------------------------------------------------------------------------
+# Job termination (cancellation)
+# ---------------------------------------------------------------------------
+
+# AWS Batch statuses that are still active and should be terminated
+_BATCH_CANCELLABLE = frozenset(
+    {"SUBMITTED", "PENDING", "RUNNABLE", "STARTING", "RUNNING"}
+)
+
+
+def terminate_batch_jobs(execution_id, reason="Cancelled by user"):
+    """Terminate all AWS Batch jobs associated with *execution_id*.
+
+    Reads ``execution.results["batch_jobs"]`` to discover the Batch job
+    IDs, describes them to check their current status, and calls
+    ``TerminateJob`` for any that are still active.
+
+    For pipeline executions this terminates every step; dependent steps
+    that are still ``PENDING`` will also be cancelled by AWS Batch when
+    their upstream dependency is terminated.
+
+    Parameters
+    ----------
+    execution_id : str
+        UUID of the execution whose Batch jobs should be terminated.
+    reason : str, optional
+        Human-readable reason passed to the ``TerminateJob`` API.
+
+    Returns
+    -------
+    dict
+        Summary with keys:
+
+        * ``jobs_terminated`` – list of dicts with ``job_id``, ``name``,
+          ``previous_status``, and ``success``.
+        * ``errors`` – list of error message strings.
+    """
+    from gefapi.models import Execution
+
+    result = {"jobs_terminated": [], "errors": []}
+
+    execution = Execution.query.get(execution_id)
+    if not execution:
+        result["errors"].append(f"Execution {execution_id} not found")
+        return result
+
+    batch_jobs = (execution.results or {}).get("batch_jobs")
+    if not batch_jobs:
+        logger.info(
+            "[BATCH-CANCEL] Execution %s has no batch_jobs in results",
+            execution_id,
+        )
+        return result
+
+    if not isinstance(batch_jobs, dict):
+        result["errors"].append(
+            f"Unexpected batch_jobs type: {type(batch_jobs).__name__}"
+        )
+        return result
+
+    client = _get_batch_client()
+
+    # Describe all jobs first to check which are still active
+    job_ids = list(batch_jobs.values())
+    described: dict = {}
+    for i in range(0, len(job_ids), 100):
+        chunk = job_ids[i : i + 100]
+        try:
+            resp = client.describe_jobs(jobs=chunk)
+            for job in resp.get("jobs", []):
+                described[job["jobId"]] = job
+        except Exception as exc:
+            error_msg = f"describe_jobs failed: {exc}"
+            logger.error("[BATCH-CANCEL] %s", error_msg)
+            result["errors"].append(error_msg)
+
+    # Terminate active jobs
+    for name, job_id in batch_jobs.items():
+        job = described.get(job_id)
+        if not job:
+            logger.info(
+                "[BATCH-CANCEL] Job %s (%s) not found — may have expired",
+                job_id,
+                name,
+            )
+            result["jobs_terminated"].append(
+                {
+                    "job_id": job_id,
+                    "name": name,
+                    "previous_status": "NOT_FOUND",
+                    "success": False,
+                }
+            )
+            continue
+
+        status = job["status"]
+        if status not in _BATCH_CANCELLABLE:
+            logger.info(
+                "[BATCH-CANCEL] Job %s (%s) already in terminal state %s",
+                job_id,
+                name,
+                status,
+            )
+            result["jobs_terminated"].append(
+                {
+                    "job_id": job_id,
+                    "name": name,
+                    "previous_status": status,
+                    "success": True,
+                }
+            )
+            continue
+
+        try:
+            client.terminate_job(jobId=job_id, reason=reason)
+            logger.info(
+                "[BATCH-CANCEL] Terminated job %s (%s), was %s",
+                job_id,
+                name,
+                status,
+            )
+            result["jobs_terminated"].append(
+                {
+                    "job_id": job_id,
+                    "name": name,
+                    "previous_status": status,
+                    "success": True,
+                }
+            )
+        except Exception as exc:
+            error_msg = f"Failed to terminate job {job_id} ({name}): {exc}"
+            logger.error("[BATCH-CANCEL] %s", error_msg)
+            result["errors"].append(error_msg)
+            result["jobs_terminated"].append(
+                {
+                    "job_id": job_id,
+                    "name": name,
+                    "previous_status": status,
+                    "success": False,
+                }
+            )
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # CloudWatch log retrieval
 # ---------------------------------------------------------------------------
 

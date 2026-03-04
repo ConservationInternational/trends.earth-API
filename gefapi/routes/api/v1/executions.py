@@ -670,6 +670,14 @@ def cancel_execution(execution):
           "previous_status": "RUNNING",
           "docker_service_stopped": true,
           "docker_container_stopped": false,
+          "batch_jobs_terminated": [
+            {
+              "job_id": "aws-batch-job-id-123",
+              "name": "extract",
+              "previous_status": "RUNNING",
+              "success": true
+            }
+          ],
           "gee_tasks_cancelled": [
             {
               "task_id": "6CIGR7EG2J45GJ2DN2J7X3WZ",
@@ -697,6 +705,11 @@ def cancel_execution(execution):
       - `previous_status`: Status before cancellation (e.g., "RUNNING", "PENDING")
       - `docker_service_stopped`: Whether Docker service was found and stopped
       - `docker_container_stopped`: Whether Docker container was found and stopped
+      - `batch_jobs_terminated`: Array of AWS Batch jobs that were terminated
+        - `job_id`: The AWS Batch job identifier
+        - `name`: Step name (or "job_id" for single jobs)
+        - `previous_status`: Batch job status before termination
+        - `success`: Whether the termination was successful
       - `gee_tasks_cancelled`: Array of Google Earth Engine tasks that were cancelled
         - `task_id`: The GEE task identifier
         - `success`: Whether the cancellation was successful
@@ -705,8 +718,9 @@ def cancel_execution(execution):
       - `errors`: Any errors encountered during cancellation process
 
     **Cancellation Process**:
-    1. **Docker Resources**: Stops and removes Docker services/containers associated
-       with the execution
+    1. **Compute Resources**: For batch executions, terminates AWS Batch jobs via
+       the TerminateJob API. For Docker executions, stops and removes Docker
+       services/containers associated with the execution
     2. **GEE Task Detection**: Scans execution logs for Google Earth Engine task IDs
        using patterns like:
        - "Starting GEE task 6CIGR7EG2J45GJ2DN2J7X3WZ"

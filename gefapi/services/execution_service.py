@@ -877,10 +877,11 @@ class ExecutionService:
     @staticmethod
     def cancel_execution(execution_id):
         """
-        Cancel an execution and any associated Google Earth Engine tasks.
+        Cancel an execution and any associated resources.
 
         This method performs a comprehensive cancellation process:
-        1. Stops Docker containers/services via Celery task
+        1. For batch executions: terminates AWS Batch jobs
+           For Docker executions: stops Docker containers/services
         2. Cancels any Google Earth Engine tasks found in execution logs
         3. Updates execution status to CANCELLED with detailed logging
         4. Creates status log entries for the transition
@@ -890,7 +891,7 @@ class ExecutionService:
 
         Returns:
             dict: Cancellation results including execution data and detailed
-                  cancellation information for Docker and GEE resources
+                  cancellation information for compute and GEE resources
 
         Raises:
             ExecutionNotFound: If execution doesn't exist
@@ -898,6 +899,7 @@ class ExecutionService:
         """
         logger.info(f"[SERVICE]: Canceling execution {execution_id}")
 
+        from gefapi.services.batch_service import terminate_batch_jobs
         from gefapi.services.gee_service import GEEService
 
         try:
@@ -912,121 +914,182 @@ class ExecutionService:
             if execution.status in ["FINISHED", "FAILED", "CANCELLED"]:
                 raise Exception(f"Cannot cancel execution in {execution.status} state")
 
+            # Determine whether this is a batch or Docker execution
+            script = (
+                Script.query.get(execution.script_id) if execution.script_id else None
+            )
+            is_batch = ExecutionService._is_batch_environment(script)
+
             cancellation_results = {
                 "execution_id": execution.id,
                 "previous_status": execution.status,
                 "docker_service_stopped": False,
                 "docker_container_stopped": False,
+                "batch_jobs_terminated": [],
                 "gee_tasks_cancelled": [],
                 "errors": [],
             }
 
-            # 1. Stop Docker service/container using Celery task
-            try:
-                if not celery_app:
-                    raise ImportError("Celery app not available")
+            # 1. Stop compute resources
+            if is_batch:
+                # --- AWS Batch cancellation ---
+                try:
+                    logger.info(
+                        f"[SERVICE]: Terminating Batch jobs for "
+                        f"execution {execution.id}"
+                    )
+                    batch_results = terminate_batch_jobs(
+                        str(execution.id),
+                        reason="Cancelled by user via API",
+                    )
+                    cancellation_results["batch_jobs_terminated"] = batch_results.get(
+                        "jobs_terminated", []
+                    )
+                    cancellation_results["errors"].extend(
+                        batch_results.get("errors", [])
+                    )
+                    logger.info(
+                        f"[SERVICE]: Batch cancellation completed for "
+                        f"execution {execution.id}"
+                    )
+                except Exception as batch_error:
+                    error_msg = f"Batch cancellation failed: {str(batch_error)}"
+                    logger.error(f"[SERVICE]: {error_msg}")
+                    cancellation_results["errors"].append(error_msg)
+                    rollbar.report_exc_info()
+            else:
+                # --- Docker cancellation ---
+                try:
+                    if not celery_app:
+                        raise ImportError("Celery app not available")
 
-                logger.info(
-                    f"[SERVICE]: Dispatching Docker cancellation task for "
-                    f"execution {execution.id}"
-                )
-                # Send task to build queue where Docker access is available
-                task_result = celery_app.send_task(
-                    "docker.cancel_execution",
-                    args=[execution.id],
-                    queue="build",  # Use build queue for Docker access
-                )
+                    logger.info(
+                        f"[SERVICE]: Dispatching Docker cancellation task for "
+                        f"execution {execution.id}"
+                    )
+                    # Send task to build queue where Docker access is available
+                    task_result = celery_app.send_task(
+                        "docker.cancel_execution",
+                        args=[execution.id],
+                        queue="build",  # Use build queue for Docker access
+                    )
 
-                # Wait for Docker cancellation to complete with timeout
-                docker_results = task_result.get(timeout=60)  # 1 minute timeout
+                    # Wait for Docker cancellation to complete with timeout
+                    docker_results = task_result.get(timeout=60)  # 1 minute timeout
 
-                # Merge Docker cancellation results
-                cancellation_results["docker_service_stopped"] = docker_results.get(
-                    "docker_service_stopped", False
-                )
-                cancellation_results["docker_container_stopped"] = docker_results.get(
-                    "docker_container_stopped", False
-                )
-                cancellation_results["errors"].extend(docker_results.get("errors", []))
+                    # Merge Docker cancellation results
+                    cancellation_results["docker_service_stopped"] = docker_results.get(
+                        "docker_service_stopped", False
+                    )
+                    cancellation_results["docker_container_stopped"] = (
+                        docker_results.get("docker_container_stopped", False)
+                    )
+                    cancellation_results["errors"].extend(
+                        docker_results.get("errors", [])
+                    )
 
-                logger.info(
-                    f"[SERVICE]: Docker cancellation completed for "
-                    f"execution {execution.id}"
-                )
+                    logger.info(
+                        f"[SERVICE]: Docker cancellation completed for "
+                        f"execution {execution.id}"
+                    )
 
-            except Exception as docker_error:
-                error_msg = f"Docker cancellation task failed: {str(docker_error)}"
-                logger.error(f"[SERVICE]: {error_msg}")
-                cancellation_results["errors"].append(error_msg)
-                rollbar.report_exc_info()
+                except Exception as docker_error:
+                    error_msg = f"Docker cancellation task failed: {str(docker_error)}"
+                    logger.error(f"[SERVICE]: {error_msg}")
+                    cancellation_results["errors"].append(error_msg)
+                    rollbar.report_exc_info()
 
             # 2. Get execution logs to scan for GEE task IDs
-            try:
-                logs = (
-                    ExecutionLog.query.filter(ExecutionLog.execution_id == execution.id)
-                    .order_by(ExecutionLog.register_date)
-                    .all()
-                )
-                log_texts = [log.text for log in logs if log.text]
-
-                if log_texts:
-                    logger.info(
-                        f"[SERVICE]: Scanning {len(log_texts)} log entries for "
-                        f"GEE task IDs"
+            # Skip for batch executions — batch containers manage their own
+            # GEE tasks and don't log task IDs to the API's execution logs.
+            if not is_batch:
+                try:
+                    logs = (
+                        ExecutionLog.query.filter(
+                            ExecutionLog.execution_id == execution.id
+                        )
+                        .order_by(ExecutionLog.register_date)
+                        .all()
                     )
-                    gee_results = GEEService.cancel_gee_tasks_from_execution(log_texts)
-                    cancellation_results["gee_tasks_cancelled"] = gee_results
+                    log_texts = [log.text for log in logs if log.text]
 
-                    # Log GEE cancellation results with better error categorization
-                    for gee_result in gee_results:
-                        if gee_result["success"]:
-                            logger.info(
-                                f"[SERVICE]: Successfully cancelled GEE task "
-                                f"{gee_result['task_id']}"
-                            )
-                        else:
-                            # Categorize error types for better logging
-                            error_msg = gee_result.get("error", "Unknown error")
-                            if "permission" in error_msg.lower():
-                                logger.warning(
-                                    f"[SERVICE]: Permission denied for GEE task "
-                                    f"{gee_result['task_id']} - service account may "
-                                    "lack earthengine.operations.get/cancel "
-                                    "permissions"
+                    if log_texts:
+                        logger.info(
+                            f"[SERVICE]: Scanning {len(log_texts)} log entries "
+                            f"for GEE task IDs"
+                        )
+                        gee_results = GEEService.cancel_gee_tasks_from_execution(
+                            log_texts
+                        )
+                        cancellation_results["gee_tasks_cancelled"] = gee_results
+
+                        # Log GEE cancellation results with better error
+                        # categorization
+                        for gee_result in gee_results:
+                            if gee_result["success"]:
+                                logger.info(
+                                    f"[SERVICE]: Successfully cancelled GEE "
+                                    f"task {gee_result['task_id']}"
                                 )
-                                # Don't add permission errors to main
-                                # error list to avoid noise
                             else:
-                                # Add all other errors (including "not found")
-                                # to errors list
-                                if "not found" in error_msg.lower():
-                                    logger.info(
-                                        f"[SERVICE]: GEE task {gee_result['task_id']} "
-                                        f"not found - may have already completed"
-                                    )
-                                else:
+                                # Categorize error types for better logging
+                                error_msg = gee_result.get("error", "Unknown error")
+                                if "permission" in error_msg.lower():
                                     logger.warning(
-                                        f"[SERVICE]: Failed to cancel GEE task "
-                                        f"{gee_result['task_id']}: {error_msg}"
+                                        f"[SERVICE]: Permission denied for GEE"
+                                        f" task {gee_result['task_id']} - "
+                                        "service account may "
+                                        "lack earthengine.operations."
+                                        "get/cancel permissions"
                                     )
-                                cancellation_results["errors"].append(
-                                    f"GEE task {gee_result['task_id']}: {error_msg}"
-                                )
-                else:
-                    logger.info("[SERVICE]: No logs found to scan for GEE task IDs")
-            except Exception as gee_error:
-                logger.error(
-                    f"[SERVICE]: Error processing GEE task cancellation: {gee_error}"
-                )
-                cancellation_results["errors"].append(
-                    f"GEE task cancellation error: {str(gee_error)}"
-                )
-                rollbar.report_exc_info()
+                                    # Don't add permission errors to main
+                                    # error list to avoid noise
+                                else:
+                                    # Add all other errors (including
+                                    # "not found") to errors list
+                                    if "not found" in error_msg.lower():
+                                        logger.info(
+                                            f"[SERVICE]: GEE task "
+                                            f"{gee_result['task_id']} "
+                                            f"not found - may have already "
+                                            f"completed"
+                                        )
+                                    else:
+                                        logger.warning(
+                                            f"[SERVICE]: Failed to cancel GEE"
+                                            f" task "
+                                            f"{gee_result['task_id']}: "
+                                            f"{error_msg}"
+                                        )
+                                    cancellation_results["errors"].append(
+                                        f"GEE task {gee_result['task_id']}: {error_msg}"
+                                    )
+                    else:
+                        logger.info("[SERVICE]: No logs found to scan for GEE task IDs")
+                except Exception as gee_error:
+                    logger.error(
+                        f"[SERVICE]: Error processing GEE task cancellation: "
+                        f"{gee_error}"
+                    )
+                    cancellation_results["errors"].append(
+                        f"GEE task cancellation error: {str(gee_error)}"
+                    )
+                    rollbar.report_exc_info()
 
             # 3. Update execution status to CANCELLED using helper function
             try:
                 # Add cancellation log entry
                 cancellation_summary = []
+                if cancellation_results["batch_jobs_terminated"]:
+                    terminated = [
+                        r
+                        for r in cancellation_results["batch_jobs_terminated"]
+                        if r["success"]
+                    ]
+                    total = len(cancellation_results["batch_jobs_terminated"])
+                    cancellation_summary.append(
+                        f"{len(terminated)}/{total} Batch jobs terminated"
+                    )
                 if cancellation_results["docker_service_stopped"]:
                     cancellation_summary.append("Docker service stopped")
                 if cancellation_results["docker_container_stopped"]:

@@ -21,6 +21,7 @@ from gefapi.services.batch_service import (  # noqa: E402
     push_params_to_s3,
     submit_pipeline,
     submit_single_job,
+    terminate_batch_jobs,
 )
 from gefapi.services.boundaries_service import BoundariesService  # noqa: E402
 from gefapi.services.docker_service import (
@@ -44,6 +45,7 @@ __all__ = [
     "push_params_to_s3",
     "submit_pipeline",
     "submit_single_job",
+    "terminate_batch_jobs",
     "BoundariesService",
     "DockerService",
     "docker_build",

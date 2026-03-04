@@ -579,6 +579,77 @@ class TestExecutionCancellationEndpoints:
 
 
 @pytest.mark.usefixtures("app", "db_session")
+class TestBatchExecutionCancellationEndpoint:
+    """Test cancellation of batch-type executions via REST endpoint"""
+
+    def test_cancel_batch_execution_terminates_jobs(
+        self, client, auth_headers_user, regular_user, batch_script, db_session
+    ):
+        """Test that cancelling a batch execution calls terminate_batch_jobs"""
+        regular_user = db_session.merge(regular_user)
+        batch_script = db_session.merge(batch_script)
+
+        # Create a RUNNING batch execution with Batch job IDs in results
+        execution = Execution(
+            script_id=batch_script.id,
+            params={"test": "param"},
+            user_id=regular_user.id,
+        )
+        execution.status = "RUNNING"
+        execution.results = {
+            "batch_jobs": {"extract": "batch-job-111", "match": "batch-job-222"},
+            "status": "SUBMITTED",
+        }
+        db_session.add(execution)
+        db_session.commit()
+
+        with (
+            patch(
+                "gefapi.services.execution_service.terminate_batch_jobs"
+            ) as mock_terminate,
+            patch(
+                "gefapi.services.gee_service.GEEService.cancel_gee_tasks_from_execution"
+            ) as mock_gee,
+        ):
+            mock_terminate.return_value = {
+                "jobs_terminated": [
+                    {
+                        "job_id": "batch-job-111",
+                        "name": "extract",
+                        "previous_status": "SUCCEEDED",
+                        "success": True,
+                    },
+                    {
+                        "job_id": "batch-job-222",
+                        "name": "match",
+                        "previous_status": "RUNNING",
+                        "success": True,
+                    },
+                ],
+                "errors": [],
+            }
+            mock_gee.return_value = []
+
+            response = client.post(
+                f"/api/v1/execution/{execution.id}/cancel",
+                headers=auth_headers_user,
+            )
+
+            assert response.status_code == 200
+            data = response.get_json()["data"]
+
+            assert data["execution"]["status"] == "CANCELLED"
+            details = data["cancellation_details"]
+            assert len(details["batch_jobs_terminated"]) == 2
+            assert details["docker_service_stopped"] is False
+            assert details["docker_container_stopped"] is False
+
+            mock_terminate.assert_called_once_with(
+                str(execution.id), reason="Cancelled by user via API"
+            )
+
+
+@pytest.mark.usefixtures("app", "db_session")
 class TestExecutionCancellationIntegration:
     """Integration tests for execution cancellation with all components"""
 
