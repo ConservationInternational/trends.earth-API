@@ -18,6 +18,7 @@ from gefapi.services import (
     UserService,
     batch_run,
     docker_run,
+    terminate_batch_jobs,
 )
 from gefapi.utils.permissions import is_admin_or_higher
 
@@ -899,7 +900,6 @@ class ExecutionService:
         """
         logger.info(f"[SERVICE]: Canceling execution {execution_id}")
 
-        from gefapi.services.batch_service import terminate_batch_jobs
         from gefapi.services.gee_service import GEEService
 
         try:

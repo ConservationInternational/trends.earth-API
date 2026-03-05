@@ -186,8 +186,10 @@ class TestExecutionCancellation:
             patch.object(
                 ExecutionService, "get_execution", return_value=mock_execution
             ),
+            patch("gefapi.services.execution_service.Script") as mock_script_model,
             patch("gefapi.services.execution_service.db") as mock_db,
         ):
+            mock_script_model.query.get.return_value = None
             ExecutionService.cancel_execution("test-execution-id")
 
         # Verify Celery task was called correctly
@@ -276,8 +278,10 @@ class TestExecutionCancellationCeleryTasks:
             patch.object(
                 GEEService, "cancel_gee_tasks_from_execution"
             ) as mock_gee_cancel,
+            patch("gefapi.services.execution_service.Script") as mock_script_model,
             patch("gefapi.services.execution_service.db"),
         ):
+            mock_script_model.query.get.return_value = None
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = [
                 mock_log
             ]
@@ -337,8 +341,10 @@ class TestExecutionCancellationCeleryTasks:
             patch.object(
                 GEEService, "cancel_gee_tasks_from_execution"
             ) as mock_gee_cancel,
+            patch("gefapi.services.execution_service.Script") as mock_script_model,
             patch("gefapi.services.execution_service.db"),
         ):
+            mock_script_model.query.get.return_value = None
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = []
             mock_gee_cancel.return_value = []
 
@@ -386,8 +392,10 @@ class TestExecutionCancellationCeleryTasks:
             patch.object(
                 GEEService, "cancel_gee_tasks_from_execution"
             ) as mock_gee_cancel,
+            patch("gefapi.services.execution_service.Script") as mock_script_model,
             patch("gefapi.services.execution_service.db"),
         ):
+            mock_script_model.query.get.return_value = None
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = []
             mock_gee_cancel.return_value = []
 
@@ -441,8 +449,10 @@ class TestExecutionCancellationCeleryTasks:
             patch.object(
                 GEEService, "cancel_gee_tasks_from_execution"
             ) as mock_gee_cancel,
+            patch("gefapi.services.execution_service.Script") as mock_script_model,
             patch("gefapi.services.execution_service.db"),
         ):
+            mock_script_model.query.get.return_value = None
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = mock_logs
             mock_gee_cancel.return_value = [
                 {
@@ -508,8 +518,10 @@ class TestExecutionCancellationCeleryTasks:
             patch.object(
                 GEEService, "cancel_gee_tasks_from_execution"
             ) as mock_gee_cancel,
+            patch("gefapi.services.execution_service.Script") as mock_script_model,
             patch("gefapi.services.execution_service.db") as mock_db,
         ):
+            mock_script_model.query.get.return_value = None
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = []
             mock_gee_cancel.return_value = [
                 {

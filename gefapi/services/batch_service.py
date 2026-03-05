@@ -539,8 +539,6 @@ def terminate_batch_jobs(execution_id, reason="Cancelled by user"):
           ``previous_status``, and ``success``.
         * ``errors`` – list of error message strings.
     """
-    from gefapi.models import Execution
-
     result = {"jobs_terminated": [], "errors": []}
 
     execution = Execution.query.get(execution_id)
@@ -667,8 +665,6 @@ def get_batch_logs(execution_id):
         A list of ``{"id": int, "created_at": str, "text": str, "job_name": str}``
         dicts, or ``None`` if no jobs / logs could be found.
     """
-    from gefapi.models import Execution
-
     execution = Execution.query.get(execution_id)
     if not execution:
         logger.warning("[BATCH-LOGS] Execution %s not found", execution_id)
