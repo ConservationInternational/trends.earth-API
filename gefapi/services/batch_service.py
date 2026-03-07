@@ -19,6 +19,27 @@ This makes it trivial to on-board new analysis scripts that need Batch
 compute – just set ``compute_type="batch"`` on the Script and,
 optionally, configure the job definition / queue.
 
+Batch override block
+~~~~~~~~~~~~~~~~~~~~
+Callers may include a ``params["batch"]`` dict to customise how the
+job is submitted.  Supported keys:
+
+* ``job_queue`` (str) – AWS Batch job queue name.
+* ``job_definition`` (str) – AWS Batch job definition name.
+* ``image`` (str) – fully-qualified container image URI.
+* ``timeout_seconds`` (int) – per-job attempt duration in seconds.
+* ``command`` (list[str]) – container command override (single-job
+  mode only).
+* ``vcpus`` (int) – vCPU resource override.
+* ``memory_mib`` (int) – memory resource override in MiB.
+* ``tags`` (dict[str, str]) – AWS cost-allocation tags applied to
+  every submitted Batch job **and** to the S3 parameter object.
+  Tags are also propagated to ECS tasks.  Example::
+
+      "batch": {
+          "tags": {"Project": "avoided-emissions"}
+      }
+
 Multi-step pipelines
 ~~~~~~~~~~~~~~~~~~~~
 If ``params`` contains a ``"pipeline"`` key, its value is expected to be
@@ -121,7 +142,25 @@ def push_params_to_s3(params_dict, execution_id):
         data = json.dumps(params_dict).encode()
         with gzip.open(gz_path, "wb") as fp:
             fp.write(data)
-        _get_s3_client().upload_file(str(gz_path), PARAMS_S3_BUCKET, key)
+
+        # Apply cost-allocation tags from the params["batch"]["tags"] dict
+        # if the caller provided them.  This lets downstream apps like
+        # avoided-emissions tag S3 objects without the API hard-coding
+        # project-specific values.
+        extra_args = {}
+        cost_tags = (params_dict.get("batch") or {}).get("tags")
+        if cost_tags and isinstance(cost_tags, dict):
+            from urllib.parse import quote
+
+            extra_args["Tagging"] = "&".join(
+                f"{quote(k)}={quote(v)}" for k, v in cost_tags.items()
+            )
+        _get_s3_client().upload_file(
+            str(gz_path),
+            PARAMS_S3_BUCKET,
+            key,
+            ExtraArgs=extra_args if extra_args else None,
+        )
     return f"s3://{PARAMS_S3_BUCKET}/{key}"
 
 
@@ -320,6 +359,7 @@ def submit_single_job(
     command=None,
     timeout_seconds=None,
     resource_overrides=None,
+    tags=None,
 ):
     """Submit a single AWS Batch job for an execution.
 
@@ -328,9 +368,30 @@ def submit_single_job(
 
     Parameters
     ----------
+    execution_id : str
+        UUID of the execution (used to build the job name and env vars).
+    config_s3_uri : str
+        ``s3://`` URI of the compressed JSON parameters file.
+    environment : dict
+        Key/value pairs injected as container environment variables.
+    job_queue : str, optional
+        AWS Batch job queue.  Falls back to ``DEFAULT_BATCH_JOB_QUEUE``.
+    job_definition : str, optional
+        AWS Batch job definition.  Falls back to
+        ``DEFAULT_BATCH_JOB_DEFINITION``.
+    command : list[str], optional
+        Container command override.
+    timeout_seconds : int, optional
+        Attempt duration in seconds.  Falls back to
+        ``DEFAULT_TIMEOUT_SECONDS``.
     resource_overrides : list[dict], optional
         AWS Batch ``resourceRequirements`` entries to override the job
         definition defaults (e.g. vCPUs, memory) at submit time.
+    tags : dict[str, str], optional
+        AWS resource tags applied to the Batch job.  When provided,
+        ``propagateTags`` is also set so that tags flow to the
+        underlying ECS task.  Typically used for cost-allocation
+        (e.g. ``{"Project": "avoided-emissions"}``).
 
     Returns
     -------
@@ -346,14 +407,21 @@ def submit_single_job(
     if resource_overrides:
         overrides["resourceRequirements"] = resource_overrides
 
-    resp = client.submit_job(
-        jobName=f"te-{execution_id[:8]}",
-        jobQueue=job_queue or DEFAULT_BATCH_JOB_QUEUE,
-        jobDefinition=job_definition or DEFAULT_BATCH_JOB_DEFINITION,
-        containerOverrides=overrides,
-        retryStrategy=_build_spot_retry_strategy(),
-        timeout={"attemptDurationSeconds": timeout_seconds or DEFAULT_TIMEOUT_SECONDS},
-    )
+    submit_kwargs = {
+        "jobName": f"te-{execution_id[:8]}",
+        "jobQueue": job_queue or DEFAULT_BATCH_JOB_QUEUE,
+        "jobDefinition": job_definition or DEFAULT_BATCH_JOB_DEFINITION,
+        "containerOverrides": overrides,
+        "retryStrategy": _build_spot_retry_strategy(),
+        "timeout": {
+            "attemptDurationSeconds": timeout_seconds or DEFAULT_TIMEOUT_SECONDS
+        },
+    }
+    if tags:
+        submit_kwargs["tags"] = tags
+        submit_kwargs["propagateTags"] = True
+
+    resp = client.submit_job(**submit_kwargs)
     return {"job_id": resp["jobId"]}
 
 
@@ -388,11 +456,18 @@ def submit_pipeline(
     job_definition=None,
     timeout_seconds=None,
     resource_overrides=None,
+    tags=None,
 ):
     """Submit a multi-step pipeline to AWS Batch with inter-step dependencies.
 
     Parameters
     ----------
+    execution_id : str
+        UUID of the execution.
+    config_s3_uri : str
+        ``s3://`` URI of the compressed JSON parameters file.
+    environment : dict
+        Key/value pairs injected as container environment variables.
     steps : list[dict]
         Each dict may contain:
 
@@ -406,9 +481,20 @@ def submit_pipeline(
         * ``memory_mib`` (int, optional) – per-step memory override (MiB)
         * ``retry_attempts`` (int, optional) – max attempts for spot retries
 
+    job_queue : str, optional
+        Default AWS Batch job queue for all steps.
+    job_definition : str, optional
+        Default AWS Batch job definition for all steps.
+    timeout_seconds : int, optional
+        Default attempt duration for all steps.
     resource_overrides : list[dict], optional
         Default ``resourceRequirements`` overrides applied to steps that
         do not specify their own ``vcpus``/``memory_mib``.
+    tags : dict[str, str], optional
+        AWS resource tags applied to every submitted Batch job in the
+        pipeline.  When provided, ``propagateTags`` is also set so
+        that tags flow to the underlying ECS tasks.  Typically used
+        for cost-allocation (e.g. ``{"Project": "avoided-emissions"}``).
 
     Returns
     -------
@@ -452,6 +538,9 @@ def submit_pipeline(
             "retryStrategy": step_retry,
             "timeout": {"attemptDurationSeconds": step_timeout},
         }
+        if tags:
+            submit_kwargs["tags"] = tags
+            submit_kwargs["propagateTags"] = True
 
         array_size = step.get("array_size", 0)
         if array_size > 1:
@@ -850,6 +939,21 @@ def batch_run(self, execution_id, image, environment, params):
     1. ``params["batch"]`` override block
     2. The Script model's ``batch_job_definition`` / ``batch_job_queue``
     3. Environment-variable defaults
+
+    Cost-allocation tags
+    ~~~~~~~~~~~~~~~~~~~~
+    If ``params["batch"]["tags"]`` contains a ``dict[str, str]``, those
+    tags are attached to the S3 parameter object and to every Batch job
+    (with ``propagateTags=True`` so they flow to ECS tasks).  This keeps
+    the API script-agnostic — callers supply their own tags.  Example::
+
+        params = {
+            ...,
+            "batch": {
+                "job_queue": "my-queue",
+                "tags": {"Project": "my-project"},
+            },
+        }
     """
     import datetime
     import traceback as tb
@@ -956,6 +1060,10 @@ def batch_run(self, execution_id, image, environment, params):
 
         # ---- submit ----
         pipeline_steps = params.get("pipeline")
+        # Cost-allocation tags: forwarded from the caller's params so
+        # that AWS Cost Explorer can attribute Batch spend per project.
+        cost_tags = batch_overrides.get("tags")
+
         if pipeline_steps:
             job_ids = submit_pipeline(
                 str(execution_id),
@@ -966,6 +1074,7 @@ def batch_run(self, execution_id, image, environment, params):
                 job_definition=job_definition,
                 timeout_seconds=timeout,
                 resource_overrides=resource_overrides,
+                tags=cost_tags,
             )
         else:
             job_ids = submit_single_job(
@@ -977,6 +1086,7 @@ def batch_run(self, execution_id, image, environment, params):
                 command=command,
                 timeout_seconds=timeout,
                 resource_overrides=resource_overrides,
+                tags=cost_tags,
             )
 
         logger.info(
