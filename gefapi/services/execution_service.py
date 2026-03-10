@@ -454,6 +454,7 @@ class ExecutionService:
         # Date comparisons (e.g. start_date>='2024-01-01') are handled here.
         join_scripts = False
         join_users = False
+        filter_clauses = []
 
         if filter_param:
             from sqlalchemy import and_
@@ -488,14 +489,8 @@ class ExecutionService:
                 string_field_names={"script_name", "user_name", "user_email"},
             )
 
-            if join_scripts:
-                query = query.join(Script, Execution.script_id == Script.id)
-            if join_users:
-                query = query.join(User, Execution.user_id == User.id)
-            if filter_clauses:
-                query = query.filter(and_(*filter_clauses))
-
         # Apply SQL-style sorting if present
+        order_clauses = []
         if sort:
 
             def _resolve_sort_column(field_name, direction):
@@ -561,12 +556,21 @@ class ExecutionService:
                 resolve_column=_resolve_sort_column,
             )
 
-            # Ensure JOINs are applied for sort columns
-            if join_scripts:
-                query = query.join(Script, Execution.script_id == Script.id)
-            if join_users:
-                query = query.join(User, Execution.user_id == User.id)
+        # Apply JOINs once (after both filter and sort have been processed)
+        # to avoid duplicate joins when both reference the same table.
+        if join_scripts:
+            query = query.join(Script, Execution.script_id == Script.id)
+        if join_users:
+            query = query.join(User, Execution.user_id == User.id)
 
+        # Apply filter clauses
+        if filter_clauses:
+            from sqlalchemy import and_
+
+            query = query.filter(and_(*filter_clauses))
+
+        # Apply sort clauses
+        if order_clauses:
             for clause in order_clauses:
                 if isinstance(clause, list):
                     for sub in clause:

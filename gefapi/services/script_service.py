@@ -252,6 +252,7 @@ class ScriptService:
 
         # SQL-style filter_param (supports OR groups)
         join_users = False
+        filter_clauses = []
         if filter_param:
             from sqlalchemy import and_
 
@@ -279,12 +280,9 @@ class ScriptService:
                 resolve_column=_resolve_script_filter_column,
                 string_field_names={"user_name", "user_email"},
             )
-            if join_users:
-                query = query.join(User, Script.user_id == User.id)
-            if filter_clauses:
-                query = query.filter(and_(*filter_clauses))
 
         # SQL-style sorting
+        order_clauses = []
         if sort:
             from gefapi.utils.query_filters import parse_sort_param
 
@@ -310,8 +308,20 @@ class ScriptService:
                 allowed_fields=SCRIPT_ALLOWED_SORT_FIELDS,
                 resolve_column=_resolve_script_sort_column,
             )
-            if join_users:
-                query = query.join(User, Script.user_id == User.id)
+
+        # Apply JOINs once (after both filter and sort have been processed)
+        # to avoid duplicate joins when both reference the same table.
+        if join_users:
+            query = query.join(User, Script.user_id == User.id)
+
+        # Apply filter clauses
+        if filter_clauses:
+            from sqlalchemy import and_
+
+            query = query.filter(and_(*filter_clauses))
+
+        # Apply sort clauses
+        if order_clauses:
             for clause in order_clauses:
                 query = query.order_by(clause)
         else:
