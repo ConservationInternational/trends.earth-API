@@ -58,6 +58,8 @@ SETTINGS = {
     "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY"),
     "DOCKER_HOST": os.getenv("DOCKER_HOST"),
     "REGISTRY_URL": os.getenv("REGISTRY_URL"),
+    # Orchestrator type: "docker" (Docker Swarm, current) or "k8s" (Kubernetes, future)
+    "ORCHESTRATOR": os.getenv("ORCHESTRATOR", "docker"),
     "SCRIPTS_S3_PREFIX": os.getenv("SCRIPTS_S3_PREFIX"),
     "SCRIPTS_S3_BUCKET": os.getenv("SCRIPTS_S3_BUCKET"),
     "PARAMS_S3_PREFIX": os.getenv("PARAMS_S3_PREFIX"),

@@ -340,3 +340,18 @@ def get_swarm_status():
     except Exception as e:
         logger.error(f"[ROUTER]: Error getting swarm status: {str(e)}")
         return error(status=500, detail="Error retrieving swarm status")
+
+
+@endpoints.route("/status/cluster", strict_slashes=False, methods=["GET"])
+@jwt_required()
+def get_cluster_status():
+    """Get cluster status (orchestrator-agnostic alias for /status/swarm).
+
+    Returns the same data as /status/swarm. This endpoint provides a
+    backend-agnostic name that will work for both Docker Swarm and
+    future Kubernetes deployments.
+
+    **Authentication**: JWT token required
+    **Access**: ADMIN and SUPERADMIN only
+    """
+    return get_swarm_status()

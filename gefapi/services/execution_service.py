@@ -22,6 +22,23 @@ from gefapi.services import (
 )
 from gefapi.utils.permissions import is_admin_or_higher
 
+
+def _dispatch_execution(execution_id, script_slug, environment, params, is_batch):
+    """Dispatch an execution to the appropriate runner.
+
+    Uses the ORCHESTRATOR config setting to determine the execution backend.
+    Currently supports "docker" (Docker Swarm). Future k8s support will add
+    a "k8s" path here.
+    """
+    orchestrator = SETTINGS.get("ORCHESTRATOR", "docker")
+    if orchestrator == "docker":
+        if is_batch:
+            batch_run.delay(execution_id, script_slug, environment, params)
+        else:
+            docker_run.delay(execution_id, script_slug, environment, params)
+    else:
+        raise ValueError(f"Unknown orchestrator: {orchestrator}")
+
 # Security: Explicitly allowed fields for filter and sort operations
 # to prevent unauthorized access to sensitive model fields
 EXECUTION_ALLOWED_FILTER_FIELDS = {
@@ -626,10 +643,13 @@ class ExecutionService:
             environment = ExecutionService._build_execution_environment(
                 user, execution.id, script=script
             )
-            if ExecutionService._is_batch_environment(script):
-                batch_run.delay(execution.id, script.slug, environment, params)
-            else:
-                docker_run.delay(execution.id, script.slug, environment, params)
+            _dispatch_execution(
+                execution.id,
+                script.slug,
+                environment,
+                params,
+                is_batch=ExecutionService._is_batch_environment(script),
+            )
         except Exception as e:
             rollbar.report_exc_info()
             raise e
