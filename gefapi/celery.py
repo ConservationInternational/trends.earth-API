@@ -146,6 +146,11 @@ def make_celery(app):
             "task": "gefapi.tasks.user_cleanup.cleanup_never_logged_in_users",
             "schedule": 604800.0,  # Every week (7 days = 604800 seconds)
         },
+        # GDPR compliance - clear expired email hashes from deletion audit
+        "cleanup-expired-email-hashes": {
+            "task": "gefapi.tasks.deletion_audit_cleanup.cleanup_expired_email_hashes",
+            "schedule": 86400.0,  # Every day (86400 seconds)
+        },
         "monitor-failed-docker-services": {
             "task": (
                 "gefapi.tasks.docker_service_monitoring.monitor_failed_docker_services"

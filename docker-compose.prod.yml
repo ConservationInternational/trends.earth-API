@@ -196,19 +196,26 @@ services:
   docker-cleanup:
     image: docker:24-cli
     user: root
+    environment:
+      # Set to "false" to disable cleanup (e.g. when staging shares the same swarm)
+      DOCKER_CLEANUP_ENABLED: ${DOCKER_CLEANUP_ENABLED:-true}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     # Run cleanup every 6 hours: prune containers, unused images, and build cache
-    # Uses alpine's built-in sleep; runs indefinitely
+    # Checks DOCKER_CLEANUP_ENABLED env var; if not "true", sleeps indefinitely.
     command: |
-      sh -c 'while true; do
+      sh -c 'if [ "$$DOCKER_CLEANUP_ENABLED" != "true" ]; then
+        echo "Docker cleanup disabled (DOCKER_CLEANUP_ENABLED=$$DOCKER_CLEANUP_ENABLED). Sleeping."
+        while true; do sleep 86400; done
+      fi
+      while true; do
         echo "[$$(date)] Starting Docker cleanup on node..."
         echo "Pruning stopped containers..."
         docker container prune -f
-        echo "Pruning unused images older than 168h..."
-        docker image prune -a -f --filter "until=168h"
-        echo "Pruning build cache (older than 168h)..."
-        docker builder prune -f --filter "until=168h" || true
+        echo "Pruning unused images older than 72h..."
+        docker image prune -a -f --filter "until=72h"
+        echo "Pruning build cache (older than 72h)..."
+        docker builder prune -f --filter "until=72h" || true
         echo "Skipping volume prune to protect persistent data volumes"
         echo "[$$(date)] Cleanup complete. Sleeping 6 hours..."
         sleep 21600
