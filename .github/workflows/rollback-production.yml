@@ -77,7 +77,7 @@ jobs:
         echo "✅ Configuration validated"
 
     - name: Configure AWS credentials via OIDC
-      uses: aws-actions/configure-aws-credentials@v5
+      uses: aws-actions/configure-aws-credentials@v6
       with:
         role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
         role-session-name: GitHubActionsProductionRollback
