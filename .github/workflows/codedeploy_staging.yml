@@ -198,7 +198,7 @@ jobs:
         # AWS Batch Configuration (for batch compute_type scripts)
         BATCH_JOB_ROLE_ARN: ${{ vars.BATCH_JOB_ROLE_ARN }}
         BATCH_EXECUTION_ROLE_ARN: ${{ vars.BATCH_EXECUTION_ROLE_ARN }}
-        BATCH_JOB_QUEUE: ${{ vars.BATCH_JOB_QUEUE || 'spot_fleet_1TB-io2-disk' }}
+        BATCH_JOB_QUEUE: ${{ vars.BATCH_JOB_QUEUE || 'spot_fleet_gp3' }}
         # Docker Configuration
         REGISTRY_URL: ${{ vars.REGISTRY_URL }}
         # Staging uses different subnets than production to avoid overlap
