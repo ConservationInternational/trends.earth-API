@@ -97,6 +97,11 @@ class UserService:
         "last_activity_at",
         "email_verified",
         "email_verified_at",
+        "role_title",
+        "sector",
+        "gender_identity",
+        "gee_license_acknowledged",
+        "purpose_of_use",
     }
     USER_ALLOWED_SORT_FIELDS = USER_ALLOWED_FILTER_FIELDS
 
@@ -131,6 +136,14 @@ class UserService:
         name = user.get("name", "notset")
         country = user.get("country", None)
         institution = user.get("institution", None)
+        role_title = user.get("role_title", None)
+        sector = user.get("sector", None)
+        sector_other = user.get("sector_other", None)
+        gender_identity = user.get("gender_identity", None)
+        gender_identity_description = user.get("gender_identity_description", None)
+        gee_license_acknowledged = user.get("gee_license_acknowledged", None)
+        purpose_of_use = user.get("purpose_of_use", None)
+        purpose_of_use_other = user.get("purpose_of_use_other", None)
 
         if role not in ROLES:
             role = "USER"
@@ -147,6 +160,17 @@ class UserService:
         # Check if this email was previously deleted (security monitoring)
         UserService._check_previously_deleted_email(email_addr)
 
+        extra_fields = {
+            "role_title": role_title,
+            "sector": sector,
+            "sector_other": sector_other,
+            "gender_identity": gender_identity,
+            "gender_identity_description": gender_identity_description,
+            "gee_license_acknowledged": gee_license_acknowledged,
+            "purpose_of_use": purpose_of_use,
+            "purpose_of_use_other": purpose_of_use_other,
+        }
+
         if legacy:
             return UserService._create_user_legacy(
                 email_addr=email_addr,
@@ -155,6 +179,7 @@ class UserService:
                 name=name,
                 country=country,
                 institution=institution,
+                **extra_fields,
             )
         return UserService._create_user_secure(
             email_addr=email_addr,
@@ -163,10 +188,13 @@ class UserService:
             name=name,
             country=country,
             institution=institution,
+            **extra_fields,
         )
 
     @staticmethod
-    def _create_user_legacy(email_addr, password, role, name, country, institution):
+    def _create_user_legacy(
+        email_addr, password, role, name, country, institution, **extra_fields
+    ):
         """Legacy user creation - emails plain-text password.
 
         This maintains backwards compatibility with the QGIS plugin
@@ -184,6 +212,7 @@ class UserService:
             name=name,
             country=country,
             institution=institution,
+            **extra_fields,
         )
         try:
             logger.info("[DB]: ADD")
@@ -208,7 +237,9 @@ class UserService:
         return user
 
     @staticmethod
-    def _create_user_secure(email_addr, password, role, name, country, institution):
+    def _create_user_secure(
+        email_addr, password, role, name, country, institution, **extra_fields
+    ):
         """Secure user creation - sends password reset link.
 
         Instead of emailing the password directly, this method:
@@ -240,6 +271,7 @@ class UserService:
             name=name,
             country=country,
             institution=institution,
+            **extra_fields,
         )
 
         try:
@@ -770,6 +802,24 @@ class UserService:
         current_user.name = user.get("name", current_user.name)
         current_user.country = user.get("country", current_user.country)
         current_user.institution = user.get("institution", current_user.institution)
+
+        # Update extended profile fields if provided
+        if "role_title" in user:
+            current_user.role_title = user.get("role_title")
+        if "sector" in user:
+            current_user.sector = user.get("sector")
+        if "sector_other" in user:
+            current_user.sector_other = user.get("sector_other")
+        if "gender_identity" in user:
+            current_user.gender_identity = user.get("gender_identity")
+        if "gender_identity_description" in user:
+            current_user.gender_identity_description = user.get(
+                "gender_identity_description"
+            )
+        if "purpose_of_use" in user:
+            current_user.purpose_of_use = user.get("purpose_of_use")
+        if "purpose_of_use_other" in user:
+            current_user.purpose_of_use_other = user.get("purpose_of_use_other")
 
         # Update email notification preferences if provided
         if "email_notifications_enabled" in user:

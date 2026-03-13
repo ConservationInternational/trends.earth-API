@@ -228,6 +228,15 @@ add_user_column.py
 user_migration_2025.py
 ```
 
+**CRITICAL - Migration Chain Verification**:
+Before creating a new migration, verify the current production migration head to ensure your migration chains correctly:
+1. **Check production's current migration**: Ask the user or check deployment logs to confirm the current `revision` on production
+2. **Set `down_revision` correctly**: Your migration's `down_revision` MUST point to the current production head, NOT just the latest migration file in the repository
+3. **Avoid creating branches**: If there are migrations in the repo that haven't been deployed to production yet, your new migration should chain off production's head, not the undeployed migrations
+4. **Verify with**: `Select-String -Path "migrations\versions\*.py" -Pattern "^down_revision"` to see the full migration chain
+
+**Why this matters**: Setting `down_revision` to a migration that doesn't exist in production creates a migration branch, causing deployment failures with "Target database is not up to date" or "Can't locate revision" errors.
+
 ### Common Issues and Solutions
 
 #### Docker Build Failures

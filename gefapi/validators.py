@@ -219,6 +219,107 @@ def validate_institution(institution):
     return clean_institution
 
 
+VALID_GENDER_IDENTITIES = {
+    "woman",
+    "man",
+    "non_binary",
+    "self_describe",
+    "prefer_not_to_say",
+}
+
+VALID_PURPOSE_OF_USE = {
+    "reporting",
+    "academic_research",
+    "policy_planning",
+    "land_restoration",
+    "project_monitoring",
+    "environmental_assessment",
+    "agriculture_forestry",
+    "teaching_education",
+    "conservation_planning",
+    "commercial",
+    "community_initiatives",
+    "other",
+}
+
+VALID_SECTORS = {
+    "gov_environment",
+    "gov_agriculture",
+    "gov_land_management",
+    "gov_other",
+    "international_org",
+    "ngo_development",
+    "ngo_community",
+    "ngo_conservation",
+    "ngo_other",
+    "academic",
+    "consulting",
+    "private_agri_forestry",
+    "private_other",
+    "independent_researcher",
+    "student",
+    "other",
+}
+
+
+def validate_role_title(role_title):
+    """Validate role/title field"""
+    if not role_title:
+        return role_title
+    return sanitize_text(role_title, max_length=200)
+
+
+def validate_sector(sector):
+    """Validate sector selection"""
+    if not sector:
+        return sector
+    sector = sector.strip().lower()
+    if sector not in VALID_SECTORS:
+        raise ValueError("Invalid sector selection")
+    return sector
+
+
+def validate_sector_other(description):
+    """Validate free-text sector description (when other is selected)"""
+    if not description:
+        return description
+    return sanitize_text(description, max_length=200)
+
+
+def validate_gender_identity(gender_identity):
+    """Validate gender identity selection"""
+    if not gender_identity:
+        return gender_identity
+    gender_identity = gender_identity.strip().lower()
+    if gender_identity not in VALID_GENDER_IDENTITIES:
+        raise ValueError("Invalid gender identity selection")
+    return gender_identity
+
+
+def validate_gender_identity_description(description):
+    """Validate free-text gender identity description"""
+    if not description:
+        return description
+    return sanitize_text(description, max_length=200)
+
+
+def validate_purpose_of_use(purpose):
+    """Validate purpose of use selection"""
+    if not purpose:
+        return purpose
+    purpose = purpose.strip().lower()
+    if purpose not in VALID_PURPOSE_OF_USE:
+        raise ValueError("Invalid purpose of use selection")
+    return purpose
+
+
+def validate_purpose_of_use_other(description):
+    """Validate free-text purpose of use description"""
+    if not description:
+        return description
+    return sanitize_text(description, max_length=200)
+
+
 def validate_script_name(name):
     """
     Validate script names
@@ -295,6 +396,49 @@ def validate_user_creation(func):
                     json_data["institution"]
                 )
 
+            # Validate new registration profile fields (all optional for
+            # backwards compatibility with older plugin versions)
+            if "role_title" in json_data:
+                json_data["role_title"] = validate_role_title(json_data["role_title"])
+
+            if "sector" in json_data:
+                json_data["sector"] = validate_sector(json_data["sector"])
+
+            if "sector_other" in json_data:
+                json_data["sector_other"] = validate_sector_other(
+                    json_data["sector_other"]
+                )
+
+            if "gender_identity" in json_data:
+                json_data["gender_identity"] = validate_gender_identity(
+                    json_data["gender_identity"]
+                )
+
+            if "gender_identity_description" in json_data:
+                json_data["gender_identity_description"] = (
+                    validate_gender_identity_description(
+                        json_data["gender_identity_description"]
+                    )
+                )
+
+            if "gee_license_acknowledged" in json_data:
+                val = json_data["gee_license_acknowledged"]
+                if not isinstance(val, bool):
+                    return error(
+                        status=400,
+                        detail="gee_license_acknowledged must be a boolean",
+                    )
+
+            if "purpose_of_use" in json_data:
+                json_data["purpose_of_use"] = validate_purpose_of_use(
+                    json_data["purpose_of_use"]
+                )
+
+            if "purpose_of_use_other" in json_data:
+                json_data["purpose_of_use_other"] = validate_purpose_of_use_other(
+                    json_data["purpose_of_use_other"]
+                )
+
             # Validate role
             if "role" in json_data:
                 role = json_data.get("role")
@@ -330,6 +474,40 @@ def validate_user_update(func):
             if "institution" in json_data:
                 json_data["institution"] = validate_institution(
                     json_data["institution"]
+                )
+
+            # Validate new registration profile fields on update
+            if "role_title" in json_data:
+                json_data["role_title"] = validate_role_title(json_data["role_title"])
+
+            if "sector" in json_data:
+                json_data["sector"] = validate_sector(json_data["sector"])
+
+            if "sector_other" in json_data:
+                json_data["sector_other"] = validate_sector_other(
+                    json_data["sector_other"]
+                )
+
+            if "gender_identity" in json_data:
+                json_data["gender_identity"] = validate_gender_identity(
+                    json_data["gender_identity"]
+                )
+
+            if "gender_identity_description" in json_data:
+                json_data["gender_identity_description"] = (
+                    validate_gender_identity_description(
+                        json_data["gender_identity_description"]
+                    )
+                )
+
+            if "purpose_of_use" in json_data:
+                json_data["purpose_of_use"] = validate_purpose_of_use(
+                    json_data["purpose_of_use"]
+                )
+
+            if "purpose_of_use_other" in json_data:
+                json_data["purpose_of_use_other"] = validate_purpose_of_use_other(
+                    json_data["purpose_of_use_other"]
                 )
 
             if "role" in json_data:

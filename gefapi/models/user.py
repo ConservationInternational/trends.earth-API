@@ -96,13 +96,47 @@ class User(db.Model):
     failed_login_count = db.Column(db.Integer(), default=0, nullable=False)
     locked_until = db.Column(db.DateTime(), nullable=True, index=True)
 
-    def __init__(self, email, password, name, country, institution, role="USER"):
+    # Extended registration profile fields
+    role_title = db.Column(db.String(200), nullable=True)
+    sector = db.Column(db.String(120), nullable=True)
+    sector_other = db.Column(db.String(200), nullable=True)
+    gender_identity = db.Column(db.String(50), nullable=True)
+    gender_identity_description = db.Column(db.String(200), nullable=True)
+    gee_license_acknowledged = db.Column(db.Boolean(), nullable=True)
+    purpose_of_use = db.Column(db.String(50), nullable=True)
+    purpose_of_use_other = db.Column(db.String(200), nullable=True)
+
+    def __init__(
+        self,
+        email,
+        password,
+        name,
+        country,
+        institution,
+        role="USER",
+        role_title=None,
+        sector=None,
+        sector_other=None,
+        gender_identity=None,
+        gender_identity_description=None,
+        gee_license_acknowledged=None,
+        purpose_of_use=None,
+        purpose_of_use_other=None,
+    ):
         self.email = email
         self.password = self.set_password(password)
         self.role = role if role in ["USER", "ADMIN", "SUPERADMIN"] else "USER"
         self.name = name
         self.country = country
         self.institution = institution
+        self.role_title = role_title
+        self.sector = sector
+        self.sector_other = sector_other
+        self.gender_identity = gender_identity
+        self.gender_identity_description = gender_identity_description
+        self.gee_license_acknowledged = gee_license_acknowledged
+        self.purpose_of_use = purpose_of_use
+        self.purpose_of_use_other = purpose_of_use_other
         # Ensure email_notifications_enabled gets the default value
         self.email_notifications_enabled = True
         # Initialize login/verification tracking fields
@@ -154,6 +188,14 @@ class User(db.Model):
             "email_verified_at": self.email_verified_at.isoformat()
             if self.email_verified_at
             else None,
+            "role_title": self.role_title,
+            "sector": self.sector,
+            "sector_other": self.sector_other,
+            "gender_identity": self.gender_identity,
+            "gender_identity_description": self.gender_identity_description,
+            "gee_license_acknowledged": self.gee_license_acknowledged,
+            "purpose_of_use": self.purpose_of_use,
+            "purpose_of_use_other": self.purpose_of_use_other,
         }
 
         # Include Google Groups preferences if requested
