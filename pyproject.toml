@@ -55,6 +55,8 @@ shapely = ">=2.0.0"
 # TopoJSON for converting TopoJSON to GeoJSON
 topojson = ">=1.0"
 brotlicffi = "^1.2.0.0"
+# Markdown to HTML conversion for news items
+markdown = ">=3.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"

@@ -3,6 +3,8 @@
 import datetime
 import uuid
 
+import markdown
+
 from gefapi import db
 from gefapi.models import GUID
 
@@ -121,10 +123,18 @@ class NewsItem(db.Model):
 
     def serialize(self):
         """Serialize news item to dictionary."""
+        # Convert markdown message to HTML for clients that need pre-rendered HTML
+        message_html = None
+        if self.message:
+            message_html = markdown.markdown(
+                self.message,
+                extensions=["extra", "nl2br", "sane_lists"],
+            )
         return {
             "id": str(self.id),
             "title": self.title,
             "message": self.message,
+            "message_html": message_html,
             "link_url": self.link_url,
             "link_text": self.link_text,
             "created_at": self.created_at.isoformat() if self.created_at else None,
