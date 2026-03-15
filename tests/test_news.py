@@ -119,7 +119,7 @@ class TestGetNews:
         """Test news retrieval with authentication"""
         with app.app_context():
             regular_user = db.session.merge(regular_user)
-            token = create_access_token(identity=regular_user)
+            token = create_access_token(identity=regular_user.id)
 
             response = client.get(
                 "/api/v1/news", headers={"Authorization": f"Bearer {token}"}
@@ -230,7 +230,7 @@ class TestAdminNewsEndpoints:
         """Test that admin endpoint includes inactive items"""
         with app.app_context():
             admin_user = db.session.merge(admin_user)
-            token = create_access_token(identity=admin_user)
+            token = create_access_token(identity=admin_user.id)
 
             response = client.get(
                 "/api/v1/admin/news", headers={"Authorization": f"Bearer {token}"}
@@ -248,7 +248,7 @@ class TestAdminNewsEndpoints:
         """Test that regular users cannot access admin endpoint"""
         with app.app_context():
             regular_user = db.session.merge(regular_user)
-            token = create_access_token(identity=regular_user)
+            token = create_access_token(identity=regular_user.id)
 
             response = client.get(
                 "/api/v1/admin/news", headers={"Authorization": f"Bearer {token}"}
@@ -259,7 +259,7 @@ class TestAdminNewsEndpoints:
         """Test creating a news item"""
         with app.app_context():
             admin_user = db.session.merge(admin_user)
-            token = create_access_token(identity=admin_user)
+            token = create_access_token(identity=admin_user.id)
 
             response = client.post(
                 "/api/v1/admin/news",
@@ -287,7 +287,7 @@ class TestAdminNewsEndpoints:
         """Test that creating news item requires title and message"""
         with app.app_context():
             admin_user = db.session.merge(admin_user)
-            token = create_access_token(identity=admin_user)
+            token = create_access_token(identity=admin_user.id)
 
             response = client.post(
                 "/api/v1/admin/news",
@@ -305,7 +305,7 @@ class TestAdminNewsEndpoints:
         """Test that regular users cannot create news items"""
         with app.app_context():
             regular_user = db.session.merge(regular_user)
-            token = create_access_token(identity=regular_user)
+            token = create_access_token(identity=regular_user.id)
 
             response = client.post(
                 "/api/v1/admin/news",
@@ -327,7 +327,7 @@ class TestAdminNewsEndpoints:
         with app.app_context():
             admin_user = db.session.merge(admin_user)
             news_item = db.session.merge(news_item)
-            token = create_access_token(identity=admin_user)
+            token = create_access_token(identity=admin_user.id)
 
             response = client.put(
                 f"/api/v1/admin/news/{news_item.id}",
@@ -351,7 +351,7 @@ class TestAdminNewsEndpoints:
         """Test updating a non-existent news item"""
         with app.app_context():
             admin_user = db.session.merge(admin_user)
-            token = create_access_token(identity=admin_user)
+            token = create_access_token(identity=admin_user.id)
 
             response = client.put(
                 "/api/v1/admin/news/00000000-0000-0000-0000-000000000000",
@@ -369,7 +369,7 @@ class TestAdminNewsEndpoints:
             admin_user = db.session.merge(admin_user)
             news_item = db.session.merge(news_item)
             news_id = str(news_item.id)
-            token = create_access_token(identity=admin_user)
+            token = create_access_token(identity=admin_user.id)
 
             response = client.delete(
                 f"/api/v1/admin/news/{news_id}",
@@ -385,7 +385,7 @@ class TestAdminNewsEndpoints:
         """Test deleting a non-existent news item"""
         with app.app_context():
             admin_user = db.session.merge(admin_user)
-            token = create_access_token(identity=admin_user)
+            token = create_access_token(identity=admin_user.id)
 
             response = client.delete(
                 "/api/v1/admin/news/00000000-0000-0000-0000-000000000000",
@@ -435,7 +435,7 @@ class TestNewsTypes:
         """Test creating a warning-type news item"""
         with app.app_context():
             admin_user = db.session.merge(admin_user)
-            token = create_access_token(identity=admin_user)
+            token = create_access_token(identity=admin_user.id)
 
             response = client.post(
                 "/api/v1/admin/news",
@@ -459,7 +459,7 @@ class TestNewsTypes:
         """Test that invalid news type is rejected"""
         with app.app_context():
             admin_user = db.session.merge(admin_user)
-            token = create_access_token(identity=admin_user)
+            token = create_access_token(identity=admin_user.id)
 
             response = client.post(
                 "/api/v1/admin/news",
