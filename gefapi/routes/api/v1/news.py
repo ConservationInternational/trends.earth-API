@@ -327,8 +327,8 @@ def create_news_item():
             return error(status=400, detail="Invalid expires_at date format")
 
     # Validate news_type
-    news_type = data.get("news_type", "info")
-    valid_types = ["info", "warning", "alert", "update"]
+    news_type = data.get("news_type", "announcement")
+    valid_types = ["announcement", "warning", "release", "tip", "maintenance"]
     if news_type not in valid_types:
         return error(
             status=400, detail=f"news_type must be one of: {', '.join(valid_types)}"
@@ -428,7 +428,7 @@ def update_news_item(news_id):
 
     # Validate news_type if provided
     if "news_type" in update_data:
-        valid_types = ["info", "warning", "alert", "update"]
+        valid_types = ["announcement", "warning", "release", "tip", "maintenance"]
         if update_data["news_type"] not in valid_types:
             return error(
                 status=400, detail=f"news_type must be one of: {', '.join(valid_types)}"

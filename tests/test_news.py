@@ -27,7 +27,7 @@ def news_item(app, admin_user):
             target_platforms="app,webapp,api-ui",
             is_active=True,
             priority=5,
-            news_type="info",
+            news_type="announcement",
             created_by_id=str(admin_user.id),
         )
         db.session.add(news)
@@ -48,7 +48,7 @@ def inactive_news_item(app, admin_user):
             target_platforms="app",
             is_active=False,
             priority=0,
-            news_type="info",
+            news_type="announcement",
             created_by_id=str(admin_user.id),
         )
         db.session.add(news)
@@ -69,7 +69,7 @@ def expired_news_item(app, admin_user):
             target_platforms="app,webapp",
             is_active=True,
             priority=0,
-            news_type="info",
+            news_type="announcement",
             expires_at=datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=1),
             created_by_id=str(admin_user.id),
         )
@@ -91,7 +91,7 @@ def version_specific_news_item(app, admin_user):
             target_platforms="app",
             is_active=True,
             priority=10,
-            news_type="update",
+            news_type="release",
             min_version="2.0.0",
             max_version="3.0.0",
             created_by_id=str(admin_user.id),
@@ -274,7 +274,7 @@ class TestAdminNewsEndpoints:
                         "link_url": "https://example.com",
                         "target_platforms": "app,webapp",
                         "priority": 10,
-                        "news_type": "info",
+                        "news_type": "announcement",
                     }
                 ),
             )
