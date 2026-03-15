@@ -14,6 +14,7 @@ import gefapi.routes.api.v1.executions  # noqa: E402, F401
 import gefapi.routes.api.v1.gee_credentials  # noqa: E402, F401
 import gefapi.routes.api.v1.google_groups  # noqa: E402, F401
 import gefapi.routes.api.v1.monitoring  # noqa: E402, F401
+import gefapi.routes.api.v1.news  # noqa: E402, F401
 import gefapi.routes.api.v1.oauth2  # noqa: E402, F401
 import gefapi.routes.api.v1.script_access  # noqa: E402, F401
 import gefapi.routes.api.v1.scripts  # noqa: E402, F401

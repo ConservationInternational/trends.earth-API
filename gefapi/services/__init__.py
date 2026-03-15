@@ -30,6 +30,7 @@ from gefapi.services.docker_service import (
     docker_run,
 )
 from gefapi.services.email_service import EmailService  # noqa: E402
+from gefapi.services.news_service import NewsService  # noqa: E402
 from gefapi.services.oauth2_service import OAuth2Service  # noqa: E402
 from gefapi.services.rate_limit_event_service import RateLimitEventService  # noqa: E402
 from gefapi.services.script_service import ScriptService  # noqa: E402
@@ -57,4 +58,5 @@ __all__ = [
     "StatusService",
     "UserService",
     "ExecutionService",
+    "NewsService",
 ]

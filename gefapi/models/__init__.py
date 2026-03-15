@@ -53,6 +53,7 @@ from gefapi.models.boundary import (  # noqa: E402
 )
 from gefapi.models.execution import Execution  # noqa: E402
 from gefapi.models.execution_log import ExecutionLog  # noqa: E402
+from gefapi.models.news import NewsItem  # noqa: E402
 from gefapi.models.password_reset_token import PasswordResetToken  # noqa: E402
 from gefapi.models.rate_limit_event import RateLimitEvent  # noqa: E402
 from gefapi.models.refresh_token import RefreshToken  # noqa: E402
@@ -82,4 +83,5 @@ __all__ = [
     "StatusLog",
     "User",
     "UserDeletionAudit",
+    "NewsItem",
 ]
