@@ -188,8 +188,9 @@ class StatusService:
 
             sorted_entries = sorted(
                 temp_results,
-                key=lambda item: item.get("_bucket_dt")
-                or datetime.min.replace(tzinfo=UTC),
+                key=lambda item: (
+                    item.get("_bucket_dt") or datetime.min.replace(tzinfo=UTC)
+                ),
             )
 
             cumulative_key_map = {
