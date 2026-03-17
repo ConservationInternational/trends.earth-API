@@ -102,6 +102,8 @@ def make_celery(app):
         "gefapi.tasks.batch_monitoring.monitor_batch_executions": {"queue": "default"},
         # Batch dispatch task – submit jobs to AWS Batch (no Docker needed)
         "gefapi.services.batch_service.batch_run": {"queue": "default"},
+        # Execution queue processor – dispatches queued executions (no Docker needed)
+        "gefapi.tasks.queue_processor.process_queued_executions": {"queue": "default"},
         # All other tasks use default queue
     }
 
@@ -169,6 +171,12 @@ def make_celery(app):
         "monitor-batch-executions": {
             "task": "gefapi.tasks.batch_monitoring.monitor_batch_executions",
             "schedule": 120.0,  # Every 2 minutes
+            "options": {"queue": "default"},
+        },
+        # Execution queue processor – dispatch queued executions when slots available
+        "process-queued-executions": {
+            "task": "gefapi.tasks.queue_processor.process_queued_executions",
+            "schedule": 30.0,  # Every 30 seconds for responsive queue processing
             "options": {"queue": "default"},
         },
         # Stats cache refresh tasks for performance optimization

@@ -23,6 +23,31 @@ from gefapi.services import (
 from gefapi.utils.permissions import is_admin_or_higher
 
 
+def _get_user_active_execution_count(user_id):
+    """Count executions in active states for a user.
+
+    Active states are those that consume resources or are about to:
+    - PENDING: About to start or waiting to be dispatched
+    - READY: Container is ready/starting
+    - RUNNING: Currently executing
+
+    Note: This excludes PENDING executions that have queued_at set, as those
+    are explicitly waiting in the queue and not consuming resources.
+
+    Args:
+        user_id: UUID of the user to count executions for
+
+    Returns:
+        int: Number of active executions for the user
+    """
+    return Execution.query.filter(
+        Execution.user_id == user_id,
+        Execution.status.in_(["PENDING", "READY", "RUNNING"]),
+        # Exclude queued executions (PENDING with queued_at set)
+        Execution.queued_at.is_(None),
+    ).count()
+
+
 def _dispatch_execution(execution_id, script_slug, environment, params, is_batch):
     """Dispatch an execution to the appropriate runner.
 
@@ -613,13 +638,18 @@ class ExecutionService:
         """
         Create a new execution from a script template.
 
+        If the user has reached their concurrent execution limit, the execution
+        is queued (status=PENDING with queued_at set) and will be dispatched
+        later by the queue processor task. Admin/superadmin users are exempt
+        from this limit.
+
         Args:
             script_id (str): UUID of the script to execute
             params (dict): Execution parameters and configuration
             user: User object creating the execution
 
         Returns:
-            Execution: Created execution object
+            Execution: Created execution object (may be queued)
 
         Raises:
             ScriptNotFound: If script doesn't exist
@@ -636,6 +666,23 @@ class ExecutionService:
                 message="Script with id " + script_id + " is not BUILT"
             )
         execution = Execution(script_id=script.id, params=params, user_id=user.id)
+
+        # Check if user should be queued (non-admin users over concurrent limit)
+        queue_config = SETTINGS.get("EXECUTION_QUEUE", {})
+        queue_enabled = queue_config.get("ENABLED", True)
+        max_concurrent = queue_config.get("MAX_CONCURRENT_PER_USER", 3)
+
+        should_queue = False
+        if queue_enabled and not is_admin_or_higher(user):
+            active_count = _get_user_active_execution_count(user.id)
+            if active_count >= max_concurrent:
+                should_queue = True
+                execution.queued_at = datetime.datetime.now(datetime.UTC)
+                logger.info(
+                    f"[SERVICE]: User {user.id} has {active_count} active executions "
+                    f"(limit: {max_concurrent}). Queueing execution."
+                )
+
         try:
             logger.info("[DB]: ADD")
             db.session.add(execution)
@@ -644,6 +691,14 @@ class ExecutionService:
             rollbar.report_exc_info()
             raise error
 
+        # If queued, don't dispatch yet - the queue processor will handle it
+        if should_queue:
+            logger.info(
+                f"[SERVICE]: Execution {execution.id} queued for user {user.id}"
+            )
+            return execution
+
+        # Dispatch immediately for admins or users under the limit
         try:
             environment = ExecutionService._build_execution_environment(
                 user, execution.id, script=script

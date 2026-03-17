@@ -29,6 +29,9 @@ class Execution(db.Model):
     end_date = db.Column(db.DateTime(), default=None, index=True)
     status = db.Column(db.String(20), default="PENDING", index=True)
     progress = db.Column(db.Integer(), default=0)
+    # Queue tracking: when set, indicates job is queued waiting for user's
+    # concurrent execution count to drop below the limit. NULL means not queued.
+    queued_at = db.Column(db.DateTime(), default=None, index=True)
     params = db.Column(JSONB, default=dict)
     results = db.Column(JSONB, default=dict)
     logs = db.relationship(
@@ -55,6 +58,9 @@ class Execution(db.Model):
         end_date_formatted = None
         if self.end_date:
             end_date_formatted = self.end_date.isoformat()
+        queued_at_formatted = None
+        if self.queued_at:
+            queued_at_formatted = self.queued_at.isoformat()
         execution = {
             "id": self.id,
             "script_id": self.script_id,
@@ -65,6 +71,7 @@ class Execution(db.Model):
             "progress": self.progress,
             "params": self.params,
             "results": self.results,
+            "queued_at": queued_at_formatted,
         }
         if "duration" in include:
             execution["duration"] = self.calculate_duration()

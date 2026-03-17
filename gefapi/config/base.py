@@ -123,6 +123,18 @@ SETTINGS = {
         + ":"
         + (os.getenv("REDIS_PORT_6379_TCP_PORT") or "6379")
     ),
+    # Execution queue configuration
+    # Limits concurrent executions per user to prevent API overload.
+    # When a user exceeds this limit, new executions are queued (PENDING with
+    # queued_at set) and processed FIFO when slots become available.
+    # ADMIN and SUPERADMIN users are exempt from this limit.
+    "EXECUTION_QUEUE": {
+        "ENABLED": os.getenv("EXECUTION_QUEUE_ENABLED", "true").lower() == "true",
+        "MAX_CONCURRENT_PER_USER": int(
+            os.getenv("MAX_CONCURRENT_EXECUTIONS_PER_USER", "3")
+        ),
+        "PROCESSOR_INTERVAL_SECONDS": int(os.getenv("QUEUE_PROCESSOR_INTERVAL", "30")),
+    },
     # Rate limiting configuration
     # Note: ADMIN and SUPERADMIN users are automatically exempt from all rate limits
     "RATE_LIMITING": {
