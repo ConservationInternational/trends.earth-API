@@ -84,4 +84,5 @@ __all__ = [
     "User",
     "UserDeletionAudit",
     "NewsItem",
+    "NewsItemTranslation",
 ]

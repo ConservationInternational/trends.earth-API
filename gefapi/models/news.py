@@ -137,8 +137,11 @@ class NewsItem(db.Model):
         if language and language != "en":
             translation = self.translations.filter_by(language_code=language).first()
             if translation:
-                title = translation.title
-                message = translation.message
+                # Only use translated values if they exist (fall back to English)
+                if translation.title:
+                    title = translation.title
+                if translation.message:
+                    message = translation.message
                 if translation.link_text:
                     link_text = translation.link_text
 
