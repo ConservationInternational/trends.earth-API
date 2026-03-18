@@ -62,6 +62,7 @@ from gefapi.models.script_log import ScriptLog  # noqa: E402
 from gefapi.models.service_client import ServiceClient  # noqa: E402
 from gefapi.models.status_log import StatusLog  # noqa: E402
 from gefapi.models.user import User  # noqa: E402
+from gefapi.models.user_client_metadata import UserClientMetadata  # noqa: E402
 from gefapi.models.user_deletion_audit import (  # noqa: E402
     DeletionReason,
     UserDeletionAudit,
@@ -82,6 +83,7 @@ __all__ = [
     "ServiceClient",
     "StatusLog",
     "User",
+    "UserClientMetadata",
     "UserDeletionAudit",
     "NewsItem",
     "NewsItemTranslation",

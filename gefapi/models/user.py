@@ -59,6 +59,13 @@ class User(db.Model):
         lazy="dynamic",
         back_populates="user",
     )
+    # Client metadata tracking (platform/version info)
+    client_metadata = db.relationship(
+        "UserClientMetadata",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+        back_populates="user",
+    )
     # Google Groups opt-in fields
     google_groups_trends_earth_users = db.Column(
         db.Boolean(), default=False, nullable=False

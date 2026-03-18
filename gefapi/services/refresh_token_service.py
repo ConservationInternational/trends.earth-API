@@ -92,6 +92,15 @@ class RefreshTokenService:
         # Generate new access token
         access_token = create_access_token(identity=user.id)
 
+        # Track client platform/version if X-TE-Client header is present
+        try:
+            from gefapi.services.client_tracking_service import ClientTrackingService
+
+            ClientTrackingService.track_client_access(user.id)
+        except Exception as e:
+            # Don't fail token refresh if client tracking fails
+            logger.warning(f"[SERVICE]: Failed to track client access: {e}")
+
         logger.info(f"[SERVICE]: Access token refreshed for user {user.email}")
         return access_token, user
 

@@ -24,6 +24,8 @@ from gefapi.services.batch_service import (  # noqa: E402
     terminate_batch_jobs,
 )
 from gefapi.services.boundaries_service import BoundariesService  # noqa: E402
+from gefapi.services.client_stats_service import ClientStatsService  # noqa: E402
+from gefapi.services.client_tracking_service import ClientTrackingService  # noqa: E402
 from gefapi.services.docker_service import (
     DockerService,  # noqa: E402
     docker_build,
@@ -48,6 +50,8 @@ __all__ = [
     "submit_single_job",
     "terminate_batch_jobs",
     "BoundariesService",
+    "ClientStatsService",
+    "ClientTrackingService",
     "DockerService",
     "docker_build",
     "docker_run",

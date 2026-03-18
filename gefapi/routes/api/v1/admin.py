@@ -9,7 +9,12 @@ from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 from gefapi import app, limiter
 from gefapi.models.refresh_token import RefreshToken
 from gefapi.routes.api.v1 import endpoints, error
-from gefapi.services import RateLimitEventService, UserService
+from gefapi.services import (
+    ClientStatsService,
+    ClientTrackingService,
+    RateLimitEventService,
+    UserService,
+)
 from gefapi.services.refresh_token_service import RefreshTokenService
 
 logger = logging.getLogger()
@@ -521,3 +526,142 @@ def revoke_all_user_sessions():
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
+
+
+# =============================================================================
+# Client Platform Tracking Endpoints
+# =============================================================================
+
+
+@endpoints.route("/user/me/clients", strict_slashes=False, methods=["GET"])
+@jwt_required()
+def get_user_clients():
+    """
+    Get current user's client platform metadata.
+
+    **Authentication**: JWT token required
+    **Purpose**: Shows which client platforms the user has accessed the API from
+
+    **Response Schema**:
+    ```json
+    {
+      "data": [
+        {
+          "id": "uuid",
+          "client_type": "qgis_plugin",
+          "client_version": "2.2.4",
+          "os": "Windows",
+          "qgis_version": "3.34.0",
+          "last_seen_at": "2026-03-18T12:00:00Z",
+          "created_at": "2026-01-15T10:30:00Z"
+        }
+      ]
+    }
+    ```
+
+    **Client Types**:
+    - `qgis_plugin`: Trends.Earth QGIS plugin
+    - `api_ui`: Web admin interface
+    - `cli`: Command-line interface
+
+    **Error Responses**:
+    - `401 Unauthorized`: JWT token required
+    - `500 Internal Server Error`: Failed to retrieve clients
+    """
+    identity = current_user
+    logger.info(f"[ROUTER]: Getting client metadata for user {identity.id}")
+
+    try:
+        clients = ClientTrackingService.get_user_clients(identity.id)
+        return jsonify(data=[c.serialize() for c in clients]), 200
+    except Exception as e:
+        logger.error(f"[ROUTER]: Error getting user clients: {e}")
+        return error(status=500, detail="Failed to retrieve client metadata")
+
+
+@endpoints.route("/admin/client-stats", strict_slashes=False, methods=["GET"])
+@jwt_required()
+def get_client_stats():
+    """
+    Get aggregated client platform usage statistics.
+
+    **Access**: Restricted to users with `role: "SUPERADMIN"`
+    **Purpose**: Provides visibility into client platform and version usage
+
+    **Query Parameters**:
+    - `days`: Time period in days (7, 14, 30, 60, 90). Default: 30
+    - `client_type`: Optional filter (qgis_plugin, api_ui, cli)
+
+    **Response Schema**:
+    ```json
+    {
+      "period_days": 30,
+      "generated_at": "2026-03-18T12:00:00Z",
+      "platform_summary": {
+        "qgis_plugin": {"active_users": 450, "total_users": 800},
+        "api_ui": {"active_users": 50, "total_users": 120}
+      },
+      "plugin_stats": {
+        "by_plugin_version": [
+          {
+            "version": "2.2.4",
+            "user_count": 450,
+            "by_qgis_version": [
+              {"qgis_version": "3.34", "count": 300}
+            ],
+            "by_os": [
+              {"os": "Windows", "count": 280}
+            ]
+          }
+        ],
+        "by_qgis_version": [
+          {
+            "qgis_version": "3.34",
+            "user_count": 500,
+            "by_plugin_version": [
+              {"version": "2.2.4", "count": 300}
+            ]
+          }
+        ],
+        "by_os": [
+          {"os": "Windows", "user_count": 520}
+        ]
+      },
+      "api_ui_stats": {
+        "by_version": [{"version": "1.5.2", "user_count": 35}]
+      },
+      "cli_stats": {
+        "by_version": [{"version": "1.0.0", "user_count": 10}]
+      }
+    }
+    ```
+
+    **Use Cases**:
+    - Monitor plugin version adoption
+    - Plan deprecation of old versions
+    - Understand platform and OS distribution
+    - Inform release decisions
+
+    **Error Responses**:
+    - `401 Unauthorized`: JWT token required
+    - `403 Forbidden`: Superadmin access required
+    - `500 Internal Server Error`: Failed to compute statistics
+    """
+    current_user_id = get_jwt_identity()
+    user = UserService.get_user(current_user_id)
+
+    if not user or user.role != "SUPERADMIN":
+        return jsonify({"msg": "Superadmin access required"}), 403
+
+    # Parse query parameters
+    days = request.args.get("days", 30, type=int)
+    client_type = request.args.get("client_type", None, type=str)
+
+    logger.info(f"[ROUTER]: Getting client stats (days={days}, type={client_type})")
+
+    try:
+        stats = ClientStatsService.get_client_stats(days=days, client_type=client_type)
+        return jsonify(stats), 200
+    except Exception as e:
+        logger.error(f"[ROUTER]: Error getting client stats: {e}")
+        return error(status=500, detail="Failed to compute client statistics")
