@@ -233,7 +233,22 @@ Before creating a new migration, verify the current production migration head to
 1. **Check production's current migration**: Ask the user or check deployment logs to confirm the current `revision` on production
 2. **Set `down_revision` correctly**: Your migration's `down_revision` MUST point to the current production head, NOT just the latest migration file in the repository
 3. **Avoid creating branches**: If there are migrations in the repo that haven't been deployed to production yet, your new migration should chain off production's head, not the undeployed migrations
-4. **Verify with**: `Select-String -Path "migrations\versions\*.py" -Pattern "^down_revision"` to see the full migration chain
+
+**Finding the Migration Head (PowerShell)**:
+To find the current migration head (the revision that no other migration references as its `down_revision`), use this approach:
+
+```powershell
+# Step 1: Find a candidate revision that looks recent
+Select-String -Path "migrations\versions\*.py" -Pattern "^revision = " | Select-Object -Last 5
+
+# Step 2: Verify that revision is NOT referenced in any down_revision
+# Replace "c5d6e7f8a9b0" with your candidate revision
+Select-String -Path "migrations\versions\*.py" -Pattern "c5d6e7f8a9b0"
+# If it only appears in its own file (revision =), it's the head
+# If it appears in another file's down_revision, it's NOT the head
+```
+
+**WARNING - Merge migrations**: Simple regex like `^down_revision = ` will miss revisions referenced inside tuples in merge migrations (e.g., `down_revision = ("8f2e1d0c9b8a", "3eedf39b54dd")`). Always verify by searching for the full revision ID string.
 
 **Why this matters**: Setting `down_revision` to a migration that doesn't exist in production creates a migration branch, causing deployment failures with "Target database is not up to date" or "Can't locate revision" errors.
 
