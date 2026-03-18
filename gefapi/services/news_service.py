@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import or_
 
 from gefapi import db
-from gefapi.models.news import NewsItem
+from gefapi.models.news import NewsItem, NewsItemTranslation
 
 logger = logging.getLogger()
 
@@ -243,4 +243,112 @@ class NewsService:
         db.session.commit()
 
         logger.info(f"[SERVICE]: Deleted news item {news_id}")
+        return True
+
+    @staticmethod
+    def update_translations(
+        news_id: str, translations_data: dict[str, dict | None]
+    ) -> dict[str, dict]:
+        """
+        Update translations for a news item.
+
+        Args:
+            news_id: The news item ID (UUID)
+            translations_data: Dictionary mapping language codes to translation data
+                               or None to delete that translation
+
+        Returns:
+            Dictionary of updated translations
+
+        Raises:
+            ValueError: If invalid language code or missing required fields
+        """
+        logger.info(f"[SERVICE]: Updating translations for news item {news_id}")
+
+        news_item = NewsService.get_news_item(news_id, include_inactive=True)
+        if not news_item:
+            raise ValueError("News item not found")
+
+        supported_langs = NewsItemTranslation.SUPPORTED_LANGUAGES
+
+        for lang, data in translations_data.items():
+            if lang not in supported_langs:
+                raise ValueError(
+                    f"Unsupported language: {lang}. "
+                    f"Supported: {', '.join(supported_langs)}"
+                )
+
+            # Find existing translation
+            existing = news_item.translations.filter_by(language_code=lang).first()
+
+            if data is None:
+                # Delete translation
+                if existing:
+                    db.session.delete(existing)
+            else:
+                # Validate required fields
+                if not data.get("title"):
+                    raise ValueError(f"title is required for {lang} translation")
+                if not data.get("message"):
+                    raise ValueError(f"message is required for {lang} translation")
+
+                if existing:
+                    # Update existing translation
+                    existing.title = data["title"]
+                    existing.message = data["message"]
+                    existing.link_text = data.get("link_text")
+                    existing.is_machine_translated = data.get(
+                        "is_machine_translated", True
+                    )
+                else:
+                    # Create new translation
+                    translation = NewsItemTranslation(
+                        news_item_id=news_id,
+                        language_code=lang,
+                        title=data["title"],
+                        message=data["message"],
+                        link_text=data.get("link_text"),
+                        is_machine_translated=data.get("is_machine_translated", True),
+                    )
+                    db.session.add(translation)
+
+        db.session.commit()
+
+        # Return updated translations
+        return {t.language_code: t.serialize() for t in news_item.translations.all()}
+
+    @staticmethod
+    def delete_translation(news_id: str, language_code: str) -> bool:
+        """
+        Delete a specific translation for a news item.
+
+        Args:
+            news_id: The news item ID (UUID)
+            language_code: Language code to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        logger.info(
+            f"[SERVICE]: Deleting {language_code} translation for news item {news_id}"
+        )
+
+        translation = (
+            db.session.query(NewsItemTranslation)
+            .filter(
+                NewsItemTranslation.news_item_id == news_id,
+                NewsItemTranslation.language_code == language_code,
+            )
+            .first()
+        )
+
+        if not translation:
+            return False
+
+        db.session.delete(translation)
+        db.session.commit()
+
+        logger.info(
+            f"[SERVICE]: Deleted {language_code} translation for news item {news_id}"
+        )
         return True

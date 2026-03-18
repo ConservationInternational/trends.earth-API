@@ -25,6 +25,7 @@ def get_news():
     **Query Parameters**:
     - `platform`: Filter by platform (app, webapp, api-ui)
     - `version`: Filter by plugin version compatibility
+    - `lang`: Language code for translations (e.g., 'es', 'fr', 'zh')
     - `sort`: Sort field (prefix with '-' for descending)
     - `page`: Page number for pagination (default: 1)
     - `per_page`: Items per page (1-100, default: 20)
@@ -88,6 +89,7 @@ def get_news():
     # Parse query parameters
     platform = request.args.get("platform")
     version = request.args.get("version")
+    lang = request.args.get("lang")  # Language for translations
     sort = request.args.get("sort")
 
     try:
@@ -112,7 +114,7 @@ def get_news():
 
         return jsonify(
             {
-                "data": [item.serialize() for item in news_items],
+                "data": [item.serialize(language=lang) for item in news_items],
                 "page": page,
                 "per_page": per_page,
                 "total": total,
@@ -250,7 +252,8 @@ def admin_get_news_item(news_id):
     if not news_item:
         return error(status=404, detail="News item not found")
 
-    return jsonify(news_item.serialize())
+    # Admin view always includes translations
+    return jsonify(news_item.serialize(include_translations=True))
 
 
 @endpoints.route("/admin/news", strict_slashes=False, methods=["POST"])
@@ -480,3 +483,163 @@ def delete_news_item(news_id):
     if NewsService.delete_news_item(news_id):
         return jsonify({"status": "success", "message": "News item deleted"})
     return error(status=404, detail="News item not found")
+
+
+# Translation endpoints
+
+
+@endpoints.route(
+    "/admin/news/<news_id>/translations", strict_slashes=False, methods=["GET"]
+)
+@jwt_required()
+def get_news_translations(news_id):
+    """
+    Get all translations for a news item.
+
+    **Authentication**: JWT token required
+    **Access**: ADMIN and SUPERADMIN only
+
+    **Path Parameters**:
+    - `news_id`: UUID of the news item
+
+    **Response**:
+    ```json
+    {
+      "data": {
+        "es": {
+          "id": "uuid",
+          "language_code": "es",
+          "title": "Título traducido",
+          "message": "Mensaje traducido...",
+          "link_text": "Leer más",
+          "is_machine_translated": true
+        },
+        "fr": { ... }
+      }
+    }
+    ```
+    """
+    logger.info(f"[ROUTER]: Getting translations for news item {news_id}")
+
+    identity = current_user
+    if not can_access_admin_features(identity):
+        return error(status=403, detail="Forbidden")
+
+    news_item = NewsService.get_news_item(news_id, include_inactive=True)
+    if not news_item:
+        return error(status=404, detail="News item not found")
+
+    translations = {
+        t.language_code: t.serialize() for t in news_item.translations.all()
+    }
+
+    return jsonify({"data": translations})
+
+
+@endpoints.route(
+    "/admin/news/<news_id>/translations", strict_slashes=False, methods=["PUT"]
+)
+@jwt_required()
+def update_news_translations(news_id):
+    """
+    Update translations for a news item.
+
+    **Authentication**: JWT token required
+    **Access**: ADMIN and SUPERADMIN only
+
+    **Path Parameters**:
+    - `news_id`: UUID of the news item
+
+    **Request Body**:
+    ```json
+    {
+      "translations": {
+        "es": {
+          "title": "Título traducido",
+          "message": "Mensaje traducido...",
+          "link_text": "Leer más",
+          "is_machine_translated": true
+        },
+        "fr": {
+          "title": "Titre traduit",
+          "message": "Message traduit...",
+          "link_text": "En savoir plus",
+          "is_machine_translated": true
+        }
+      }
+    }
+    ```
+
+    **Notes**:
+    - Supported languages: ar, es, fa, fr, pt, ru, sw, zh
+    - To delete a translation, pass null or omit it from the request
+    - `is_machine_translated` defaults to true
+
+    **Response**: Updated translations object
+
+    **Error Responses**:
+    - `400 Bad Request`: Invalid data
+    - `401 Unauthorized`: JWT token required
+    - `403 Forbidden`: Not authorized
+    - `404 Not Found`: News item not found
+    """
+    logger.info(f"[ROUTER]: Updating translations for news item {news_id}")
+
+    identity = current_user
+    if not can_access_admin_features(identity):
+        return error(status=403, detail="Forbidden")
+
+    news_item = NewsService.get_news_item(news_id, include_inactive=True)
+    if not news_item:
+        return error(status=404, detail="News item not found")
+
+    data = request.get_json()
+    if not data or "translations" not in data:
+        return error(status=400, detail="translations object required")
+
+    translations_data = data["translations"]
+
+    try:
+        updated = NewsService.update_translations(news_id, translations_data)
+        return jsonify({"data": updated})
+    except ValueError as e:
+        return error(status=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[ROUTER]: Error updating translations: {e}")
+        return error(status=500, detail="Failed to update translations")
+
+
+@endpoints.route(
+    "/admin/news/<news_id>/translations/<lang>",
+    strict_slashes=False,
+    methods=["DELETE"],
+)
+@jwt_required()
+def delete_news_translation(news_id, lang):
+    """
+    Delete a specific translation for a news item.
+
+    **Authentication**: JWT token required
+    **Access**: ADMIN and SUPERADMIN only
+
+    **Path Parameters**:
+    - `news_id`: UUID of the news item
+    - `lang`: Language code to delete (e.g., 'es', 'fr')
+
+    **Response**:
+    ```json
+    {
+      "status": "success",
+      "message": "Translation deleted"
+    }
+    ```
+    """
+    logger.info(f"[ROUTER]: Deleting {lang} translation for news item {news_id}")
+
+    identity = current_user
+    if not can_access_admin_features(identity):
+        return error(status=403, detail="Forbidden")
+
+    if NewsService.delete_translation(news_id, lang):
+        return jsonify({"status": "success", "message": "Translation deleted"})
+    return error(status=404, detail="Translation not found")
