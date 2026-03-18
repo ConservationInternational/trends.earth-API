@@ -10,8 +10,6 @@ from gefapi.models.user_client_metadata import UserClientMetadata
 
 logger = logging.getLogger(__name__)
 
-# Valid period options (in days)
-VALID_PERIODS = {7, 14, 30, 60, 90}
 DEFAULT_PERIOD = 30
 
 
@@ -25,13 +23,13 @@ class ClientStatsService:
         """Get comprehensive client usage statistics.
 
         Args:
-            days: Number of days to look back (7, 14, 30, 60, 90)
+            days: Number of days to look back (any positive integer)
             client_type: Optional filter for specific client type
 
         Returns:
             Dict with platform_summary, plugin_stats, api_ui_stats, cli_stats
         """
-        if days not in VALID_PERIODS:
+        if days < 1:
             days = DEFAULT_PERIOD
 
         cutoff_date = datetime.now(UTC) - timedelta(days=days)
