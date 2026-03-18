@@ -194,7 +194,7 @@ class NewsService:
         """
         logger.info(f"[SERVICE]: Updating news item {news_id}")
 
-        news_item = NewsService.get_news_item(news_id)
+        news_item = NewsService.get_news_item(news_id, include_inactive=True)
         if not news_item:
             return None
 
@@ -235,7 +235,7 @@ class NewsService:
         """
         logger.info(f"[SERVICE]: Deleting news item {news_id}")
 
-        news_item = NewsService.get_news_item(news_id)
+        news_item = NewsService.get_news_item(news_id, include_inactive=True)
         if not news_item:
             return False
 
