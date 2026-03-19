@@ -32,6 +32,10 @@ class Execution(db.Model):
     # Queue tracking: when set, indicates job is queued waiting for user's
     # concurrent execution count to drop below the limit. NULL means not queued.
     queued_at = db.Column(db.DateTime(), default=None, index=True)
+    # Dispatch tracking: set when the docker_run Celery task starts processing
+    # the execution. Used by the monitoring task's grace period to avoid killing
+    # executions before their Docker service has been created.
+    dispatched_at = db.Column(db.DateTime(), default=None, index=True)
     params = db.Column(JSONB, default=dict)
     results = db.Column(JSONB, default=dict)
     logs = db.relationship(
@@ -61,6 +65,9 @@ class Execution(db.Model):
         queued_at_formatted = None
         if self.queued_at:
             queued_at_formatted = self.queued_at.isoformat()
+        dispatched_at_formatted = None
+        if self.dispatched_at:
+            dispatched_at_formatted = self.dispatched_at.isoformat()
         execution = {
             "id": self.id,
             "script_id": self.script_id,
@@ -72,6 +79,7 @@ class Execution(db.Model):
             "params": self.params,
             "results": self.results,
             "queued_at": queued_at_formatted,
+            "dispatched_at": dispatched_at_formatted,
         }
         if "duration" in include:
             execution["duration"] = self.calculate_duration()

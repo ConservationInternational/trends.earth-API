@@ -429,6 +429,109 @@ docker compose -f docker-compose.develop.yml up
 docker compose -f docker-compose.develop.yml exec postgres psql -U trendsearth_develop -d trendsearth_develop_db
 ```
 
+## Debugging Job (Execution) Failures
+
+When a user reports a failing job/execution, use the production API to investigate. API credentials are stored in the `.env` file in the repository root (gitignored) with `CLIENT_ID` and `CLIENT_SECRET` values.
+
+### Authentication
+
+The API uses OAuth2 client credentials. Authenticate to get a bearer token (valid 30 minutes):
+
+```powershell
+# PowerShell
+$body = @{
+    grant_type    = "client_credentials"
+    client_id     = "<CLIENT_ID from .env>"
+    client_secret = "<CLIENT_SECRET from .env>"
+} | ConvertTo-Json
+$resp = Invoke-RestMethod -Uri "https://api.trends.earth/api/v1/oauth/token" `
+    -Method Post -Body $body -ContentType "application/json"
+$token = $resp.access_token
+$headers = @{ Authorization = "Bearer $token" }
+```
+
+### Key API Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/execution/<id>?include=script,user_email,logs&exclude=params,results` | Get execution summary |
+| `GET /api/v1/execution/<id>/log` | Get execution logs |
+| `GET /api/v1/script/<id>` | Get script details |
+| `GET /api/v1/execution?per_page=20&sort=-start_date&exclude=params,results` | List recent executions |
+
+**Query parameters:**
+- `include`: Comma-separated additional fields (`script`, `script_name`, `user_name`, `user_email`, `logs`)
+- `exclude`: Comma-separated fields to omit (`params`, `results`) — use these to keep responses small
+
+### Investigation Workflow
+
+1. **Get execution details** — check `status`, `start_date`, `end_date`, `queued_at`, `script_id`, `user_email`
+2. **Get execution logs** — look for ERROR-level entries explaining the failure
+3. **Get script info** — confirm the script name/slug and that it's in SUCCESS state
+4. **Compare with similar jobs** — find recent executions of the same script to see if others succeeded
+5. **Check timing** — compare duration of failed vs successful runs
+
+```powershell
+# Quick execution summary
+$exec = Invoke-RestMethod -Uri "https://api.trends.earth/api/v1/execution/<ID>?include=user_email&exclude=params,results" -Headers $headers
+Write-Host "Status: $($exec.data.status)  Start: $($exec.data.start_date)  End: $($exec.data.end_date)"
+
+# Get logs
+$logs = Invoke-RestMethod -Uri "https://api.trends.earth/api/v1/execution/<ID>/log" -Headers $headers
+$logs.data | ForEach-Object { Write-Host "[$($_.level)] $($_.register_date): $($_.text)" }
+```
+
+### Common Failure Patterns
+
+#### "Docker service not found" (monitor_failed_docker_services)
+
+**Symptom:** Log contains only one ERROR entry: `Cancelled by celery task 'monitor_failed_docker_services' - Docker service not found.` Execution lasted <2 minutes with no script debug logs.
+
+**Cause:** The `monitor_failed_docker_services` Celery task runs every 2 minutes. It queries all PENDING/READY/RUNNING executions and checks whether a matching Docker Swarm service (`execution-{id}`) exists. If no service is found and the execution isn't already FAILED, it marks it as FAILED.
+
+**Race condition:** When the Celery `docker_run` task is delayed (queue backlog, resource contention), the Docker service may not be created before the next monitor cycle. The monitor sees no service and kills the execution prematurely.
+
+**Key code:** `gefapi/tasks/docker_service_monitoring.py` — the monitor task; `gefapi/services/docker_service.py` `docker_run()` — creates Docker services.
+
+**Diagnosis checklist:**
+- Job has zero script-level logs (only the monitor error) → service was never created
+- Job duration is 27-68 seconds (killed on next monitor cycle)
+- Same script/user has successful runs with normal duration (minutes to hours)
+- `start_date` ≈ `queued_at` (near-instant, so it wasn't stuck in queue)
+
+#### "Docker service detected in restart loop or failed state"
+
+**Symptom:** Log contains: `Cancelled by celery task 'monitor_failed_docker_services' - Docker service detected in restart loop or failed state.`
+
+**Cause:** The Docker service was created but the container kept crashing. After ≥2 failed task attempts (`RESTART_LOOP_THRESHOLD`), the monitor marks it as failed.
+
+**Diagnosis:** Check for script bugs, missing dependencies, or resource limits in the container.
+
+#### Execution stuck in RUNNING with no recent logs
+
+**Symptom:** Execution has status RUNNING but no new log entries for a long time.
+
+**Related tasks:**
+- `monitor_failed_docker_services` (every 2 min) — checks Docker service health
+- `cleanup_stale_executions` (every hour) — cleans up executions running >3 days
+- `cleanup_finished_docker_services` (daily) — removes lingering Docker services for completed executions
+
+### Execution Lifecycle
+
+```
+User submits → PENDING (queued_at set if over concurrent limit)
+                 ↓ (queue_processor every 30s, or immediate dispatch)
+              PENDING (queued_at cleared, docker_run dispatched via Celery)
+                 ↓ (docker_run task picks up from Celery queue)
+              READY (docker_run sets status, creates Docker service)
+                 ↓ (container starts, script begins executing)
+              RUNNING (script reports progress via logs)
+                 ↓ (script finishes, GEE tasks complete)
+              FINISHED or FAILED
+```
+
+**Concurrency limits:** Non-admin users default to 3 concurrent executions (`MAX_CONCURRENT_PER_USER`). Per-user override via `user.max_concurrent_executions`. Admins bypass queueing.
+
 ## Trust These Instructions
 
 These instructions have been validated against the actual codebase and reflect the current working setup. The commands listed here work as documented. Only search for additional information if:

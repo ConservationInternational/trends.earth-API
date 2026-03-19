@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 # expire (max_attempts=3).
 RESTART_LOOP_THRESHOLD = 2
 
+# Grace period (in seconds) after an execution is dispatched before the monitor
+# will check for its Docker service.  This covers the window between
+# ``docker_run`` setting status=READY and the Docker service actually being
+# created (params S3 upload + Docker API call).
+DISPATCH_GRACE_PERIOD_SECONDS = 180  # 3 minutes
+
 
 class DockerServiceMonitoringTask(Task):
     """Base task for Docker service monitoring"""
@@ -147,17 +153,24 @@ def monitor_failed_docker_services(self):
     Monitor Docker services for failed executions and mark them as failed.
     Runs every 2 minutes to detect restart loops and failed executions.
 
-    Checks executions in PENDING, READY, RUNNING, or FAILED states because:
-    - READY: Executions that just started (Docker service created)
+    Checks executions in READY, RUNNING, or FAILED states because:
+    - READY: Executions where docker_run has started (Docker service should
+      exist or be in creation)
     - RUNNING: Executions that are currently running
     - FAILED: Executions that failed but may be restarting due to restart policy
-    - PENDING: Executions that are queued to start
+
+    PENDING executions are excluded because docker_run has not yet started
+    for them — no Docker service is expected to exist.
+
+    A grace period (DISPATCH_GRACE_PERIOD_SECONDS) protects recently
+    dispatched executions from being killed before their Docker service has
+    been created (covers S3 param upload + Docker API call latency).
 
     To prevent endless monitoring loops, executions with no Docker service
     (already cleaned up) are skipped rather than re-marked as failed.
 
     Optimizations:
-    - Limits to 50 most recent executions within 24 hours to reduce memory usage
+    - Limits to 100 most recent executions within 24 hours to reduce memory usage
     - Filters by start_date to avoid checking very old executions
     """
     logger.info("[TASK]: Starting Docker service monitoring")
@@ -167,11 +180,11 @@ def monitor_failed_docker_services(self):
 
     with app.app_context():
         try:
-            # Find executions in PENDING, READY, RUNNING, or FAILED state
-            # READY: Executions that just started (Docker service created)
+            # Find executions in READY, RUNNING, or FAILED state
+            # READY: docker_run has started (Docker service should exist)
             # RUNNING: Executions that are currently running
-            # FAILED: Executions that failed but may be restarting due to restart policy
-            # PENDING: Executions that are queued to start
+            # FAILED: Executions that failed but may be restarting
+            #
             #
             # IMPORTANT: Exclude batch-type executions — those run on AWS
             # Batch, not Docker Swarm, and are monitored by the separate
@@ -182,7 +195,7 @@ def monitor_failed_docker_services(self):
             active_executions = (
                 db.session.query(Execution)
                 .outerjoin(Script, Execution.script_id == Script.id)
-                .filter(Execution.status.in_(["PENDING", "READY", "RUNNING", "FAILED"]))
+                .filter(Execution.status.in_(["READY", "RUNNING", "FAILED"]))
                 .filter(
                     Execution.start_date
                     >= datetime.datetime.utcnow() - datetime.timedelta(hours=24)
@@ -236,9 +249,30 @@ def monitor_failed_docker_services(self):
             checked_count = 0
             failed_services_found = 0
             executions_marked_failed = 0
+            skipped_grace_period = 0
+
+            grace_cutoff = datetime.datetime.utcnow() - datetime.timedelta(
+                seconds=DISPATCH_GRACE_PERIOD_SECONDS
+            )
 
             for execution in active_executions:
                 try:
+                    # Grace period: skip recently dispatched executions.
+                    # docker_run sets dispatched_at when it starts; if the
+                    # execution was dispatched within the grace window, the
+                    # Docker service may not exist yet (S3 upload in progress).
+                    if (
+                        execution.dispatched_at
+                        and execution.dispatched_at > grace_cutoff
+                    ):
+                        logger.debug(
+                            f"[TASK]: Execution {execution.id} is within grace "
+                            f"period (dispatched_at={execution.dispatched_at}) "
+                            f"- skipping"
+                        )
+                        skipped_grace_period += 1
+                        continue
+
                     # Docker service name follows the pattern: execution-{execution_id}
                     docker_service_name = f"execution-{execution.id}"
 
@@ -391,13 +425,15 @@ def monitor_failed_docker_services(self):
             logger.info(
                 f"[TASK]: Docker service monitoring completed. "
                 f"Checked: {checked_count}, Failed services: {failed_services_found}, "
-                f"Executions marked failed: {executions_marked_failed}"
+                f"Executions marked failed: {executions_marked_failed}, "
+                f"Skipped (grace period): {skipped_grace_period}"
             )
 
             return {
                 "checked": checked_count,
                 "failed_services_found": failed_services_found,
                 "executions_marked_failed": executions_marked_failed,
+                "skipped_grace_period": skipped_grace_period,
             }
 
         except Exception as e:

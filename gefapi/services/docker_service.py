@@ -1,5 +1,6 @@
 """DOCKER SERVICE"""
 
+import datetime
 import gzip
 import json
 import logging
@@ -461,6 +462,7 @@ def docker_run(execution_id, image, environment, params):
         logger.error(f"Execution with id {execution_id} not found.")
         return
     try:
+        execution.dispatched_at = datetime.datetime.utcnow()
         execution.status = "READY"
     except Exception:
         logger.warning(
