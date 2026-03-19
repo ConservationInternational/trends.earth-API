@@ -65,6 +65,10 @@ class Script(db.Model):
     batch_image = db.Column(db.String(512), default=None)
     # Optional build error field for reporting build failures
     build_error = db.Column(db.Text(), default=None)
+    # Whether this script uses Google Earth Engine
+    uses_gee = db.Column(
+        db.Boolean(), default=True, nullable=False, server_default="true"
+    )
 
     def __init__(
         self,
@@ -84,6 +88,7 @@ class Script(db.Model):
         allowed_roles=None,
         allowed_users=None,
         restricted=False,
+        uses_gee=True,
     ):
         self.name = name
         self.slug = slug
@@ -101,6 +106,7 @@ class Script(db.Model):
         self.allowed_roles = allowed_roles
         self.allowed_users = allowed_users
         self.restricted = restricted
+        self.uses_gee = uses_gee
 
     def __repr__(self):
         return f"<Script {self.name!r}>"
@@ -250,6 +256,7 @@ class Script(db.Model):
             "cpu_limit": self.cpu_limit,
             "memory_reservation": self.memory_reservation,
             "memory_limit": self.memory_limit,
+            "uses_gee": self.uses_gee,
         }
         if "logs" in include:
             script["logs"] = self.serialize_logs

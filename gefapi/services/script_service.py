@@ -96,6 +96,7 @@ class ScriptService:
                 batch_job_definition = config.get("batch_job_definition", None)
                 batch_job_queue = config.get("batch_job_queue", None)
                 batch_image = config.get("batch_image", None)
+                uses_gee = config.get("uses_gee", True)
         except Exception as error:
             rollbar.report_exc_info()
             raise error
@@ -130,6 +131,7 @@ class ScriptService:
                 batch_job_definition=batch_job_definition,
                 batch_job_queue=batch_job_queue,
                 batch_image=batch_image,
+                uses_gee=uses_gee,
             )
         else:
             # Updating existing entity
@@ -156,6 +158,8 @@ class ScriptService:
                 script.batch_job_queue = batch_job_queue
             if batch_image is not None:
                 script.batch_image = batch_image
+            if uses_gee is not None:
+                script.uses_gee = uses_gee
         # TO DB
         try:
             logger.info("[DB]: ADD")

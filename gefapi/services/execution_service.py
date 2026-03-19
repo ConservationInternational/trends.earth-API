@@ -10,7 +10,12 @@ from sqlalchemy import case, func
 
 from gefapi import db
 from gefapi.config import SETTINGS
-from gefapi.errors import ExecutionNotFound, ScriptNotFound, ScriptStateNotValid
+from gefapi.errors import (
+    ExecutionNotFound,
+    GeeTermsRequiredError,
+    ScriptNotFound,
+    ScriptStateNotValid,
+)
 from gefapi.models import Execution, ExecutionLog, Script, StatusLog, User
 from gefapi.services import (
     EmailService,
@@ -665,6 +670,17 @@ class ExecutionService:
             raise ScriptStateNotValid(
                 message="Script with id " + script_id + " is not BUILT"
             )
+
+        # Enforce GEE terms acceptance for scripts that use GEE
+        gee_enforcement = SETTINGS.get("GEE_TERMS_ENFORCEMENT_ENABLED", False)
+        if (
+            gee_enforcement
+            and script.uses_gee
+            and not is_admin_or_higher(user)
+            and not user.gee_license_acknowledged
+        ):
+            raise GeeTermsRequiredError()
+
         execution = Execution(script_id=script.id, params=params, user_id=user.id)
 
         # Check if user should be queued (non-admin users over concurrent limit)

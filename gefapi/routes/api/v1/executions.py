@@ -11,7 +11,12 @@ from flask import Response, json, jsonify, request
 from flask_jwt_extended import current_user, jwt_required
 
 from gefapi import limiter
-from gefapi.errors import ExecutionNotFound, ScriptNotFound, ScriptStateNotValid
+from gefapi.errors import (
+    ExecutionNotFound,
+    GeeTermsRequiredError,
+    ScriptNotFound,
+    ScriptStateNotValid,
+)
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services import ExecutionService
 from gefapi.utils.permissions import can_access_admin_features, is_admin_or_higher
@@ -142,6 +147,9 @@ def run_script(script):
     except ScriptStateNotValid as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=400, detail=e.message)
+    except GeeTermsRequiredError as e:
+        logger.warning("[ROUTER]: GEE terms not accepted by user %s", user.email)
+        return jsonify(e.serialize), 403
     except Exception as e:
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")

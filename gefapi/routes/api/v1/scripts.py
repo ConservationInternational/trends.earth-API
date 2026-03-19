@@ -12,6 +12,7 @@ import dateutil.parser
 from flask import jsonify, request, send_from_directory
 from flask_jwt_extended import current_user, jwt_required
 
+from gefapi import db
 from gefapi.errors import InvalidFile, NotAllowed, ScriptDuplicated, ScriptNotFound
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.s3 import get_script_from_s3
@@ -676,6 +677,88 @@ def update_script(script):
     except Exception as e:
         logger.error(f"[ROUTER]: {e}")
         return error(status=500, detail=str(e))
+
+
+@endpoints.route("/script/<script>/config", strict_slashes=False, methods=["PATCH"])
+@jwt_required()
+@require_scope("script:write")
+def update_script_config(script):
+    """
+    Update script metadata without uploading a new script archive.
+
+    **Authentication**: JWT token required
+    **Authorization**: Admin or script owner access required
+    **Content-Type**: application/json
+
+    **Path Parameters**:
+    - `script`: Script identifier/slug or UUID
+
+    **Request Body** (all fields optional):
+    ```json
+    {
+      "name": "New Script Name",
+      "description": "Updated description",
+      "uses_gee": true
+    }
+    ```
+
+    **Updatable Fields**:
+    - `name`: Script display name
+    - `description`: Script description text
+    - `uses_gee`: Whether the script uses Google Earth Engine (boolean)
+
+    **Error Responses**:
+    - `400 Bad Request`: No valid fields provided
+    - `401 Unauthorized`: JWT token required
+    - `403 Forbidden`: Insufficient permissions
+    - `404 Not Found`: Script does not exist
+    """
+    logger.info("[ROUTER]: Updating script config for: %s", script)
+    user = current_user
+    try:
+        target_script = ScriptService.get_script(script, user)
+    except ScriptNotFound as e:
+        return error(status=404, detail=e.message)
+
+    if not target_script:
+        return error(status=404, detail="Script not found")
+
+    if not is_admin_or_higher(user) and user.id != target_script.user_id:
+        return error(
+            status=403,
+            detail="Only admins or the script owner can update script config",
+        )
+
+    data = request.get_json(silent=True)
+    if not data:
+        return error(status=400, detail="JSON body required")
+
+    import datetime
+
+    updated = False
+    if "name" in data and data["name"]:
+        target_script.name = data["name"]
+        updated = True
+    if "description" in data:
+        target_script.description = data["description"]
+        updated = True
+    if "uses_gee" in data and isinstance(data["uses_gee"], bool):
+        target_script.uses_gee = data["uses_gee"]
+        updated = True
+
+    if not updated:
+        return error(status=400, detail="No valid fields to update")
+
+    target_script.updated_at = datetime.datetime.now(datetime.UTC)
+    try:
+        db.session.add(target_script)
+        db.session.commit()
+    except Exception as e:
+        logger.error(f"[ROUTER]: Failed to update script config: {e}")
+        db.session.rollback()
+        return error(status=500, detail="Failed to update script config")
+
+    return jsonify(data=target_script.serialize(user=current_user)), 200
 
 
 @endpoints.route("/script/<script>", strict_slashes=False, methods=["DELETE"])

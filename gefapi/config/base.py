@@ -195,6 +195,12 @@ SETTINGS = {
         ).lower()
         == "true",
     },
+    # GEE terms enforcement: when enabled, users must accept GEE terms
+    # before running scripts that use Google Earth Engine
+    "GEE_TERMS_ENFORCEMENT_ENABLED": os.getenv(
+        "GEE_TERMS_ENFORCEMENT_ENABLED", "false"
+    ).lower()
+    == "true",
 }
 
 

@@ -76,3 +76,24 @@ class AccountLockedError(Error):
             "minutes_remaining": self.minutes_remaining,
             "requires_password_reset": self.requires_password_reset,
         }
+
+
+class GeeTermsRequiredError(Error):
+    """Raised when a user tries to run a GEE script without accepting GEE terms."""
+
+    def __init__(
+        self,
+        message: str = (
+            "This script requires Google Earth Engine. You must accept confirm "
+            "understanding of the GEE terms of use before running it. Please "
+            "update your profile in the Trends.Earth plugin settings to do so."
+        ),
+    ):
+        super().__init__(message)
+
+    @property
+    def serialize(self):
+        return {
+            "message": self.message,
+            "error_code": "gee_terms_required",
+        }

@@ -211,6 +211,8 @@ jobs:
         API_ENVIRONMENT_USER: ${{ secrets.API_ENVIRONMENT_USER }}
         API_ENVIRONMENT_USER_PASSWORD: ${{ secrets.API_ENVIRONMENT_USER_PASSWORD }}
         CORS_ORIGINS: ${{ vars.STAGING_CORS_ORIGINS || 'https://staging.trends.earth,https://api-staging.trends.earth' }}
+        # GEE Terms Enforcement
+        GEE_TERMS_ENFORCEMENT_ENABLED: ${{ vars.GEE_TERMS_ENFORCEMENT_ENABLED || 'false' }}
         # Rate Limiting
         RATE_LIMITING_ENABLED: ${{ vars.RATE_LIMITING_ENABLED || 'true' }}
         RATE_LIMIT_DEFAULT_LIMITS: ${{ vars.RATE_LIMIT_DEFAULT_LIMITS || '1000 per hour,100 per minute' }}
@@ -260,6 +262,9 @@ jobs:
           echo ""
           echo "# Redis Configuration (uses stack Redis service)"
           echo "REDIS_URL=redis://redis:6379/0"
+          echo ""
+          echo "# GEE Terms Enforcement"
+          echo "GEE_TERMS_ENFORCEMENT_ENABLED=$GEE_TERMS_ENFORCEMENT_ENABLED"
           echo ""
           echo "# Rate Limiting"
           echo "RATE_LIMITING_ENABLED=$RATE_LIMITING_ENABLED"
