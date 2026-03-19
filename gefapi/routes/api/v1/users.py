@@ -465,12 +465,14 @@ def update_profile():
         country = body.get("country", None)
         institution = body.get("institution", None)
         email_notifications_enabled = body.get("email_notifications_enabled", None)
+        gee_license_acknowledged = body.get("gee_license_acknowledged", None)
 
         if (
             name is not None
             or country is not None
             or institution is not None
             or email_notifications_enabled is not None
+            or gee_license_acknowledged is not None
         ):
             user = UserService.update_user(body, str(identity.id))
         else:

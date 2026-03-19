@@ -820,6 +820,10 @@ class UserService:
             current_user.purpose_of_use = user.get("purpose_of_use")
         if "purpose_of_use_other" in user:
             current_user.purpose_of_use_other = user.get("purpose_of_use_other")
+        if "gee_license_acknowledged" in user:
+            gee_val = user.get("gee_license_acknowledged")
+            if isinstance(gee_val, bool):
+                current_user.gee_license_acknowledged = gee_val
 
         # Update email notification preferences if provided
         if "email_notifications_enabled" in user:
