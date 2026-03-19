@@ -165,16 +165,21 @@ def process_queued_executions(self):
                     # Check user's current active execution count
                     active_count = _get_user_active_execution_count(user_id)
 
-                    if active_count >= max_concurrent:
+                    # Per-user override takes precedence over global default
+                    user_limit = max_concurrent
+                    if user.max_concurrent_executions is not None:
+                        user_limit = user.max_concurrent_executions
+
+                    if active_count >= user_limit:
                         logger.debug(
                             f"[QUEUE]: User {user_id} still at limit "
-                            f"({active_count}/{max_concurrent}), skipping"
+                            f"({active_count}/{user_limit}), skipping"
                         )
                         skipped += 1
                         continue
 
                     # Calculate how many slots are available
-                    available_slots = max_concurrent - active_count
+                    available_slots = user_limit - active_count
 
                     # Get oldest queued executions for this user (FIFO order)
                     queued_executions = (

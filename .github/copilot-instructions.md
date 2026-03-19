@@ -229,23 +229,29 @@ user_migration_2025.py
 ```
 
 **CRITICAL - Migration Chain Verification**:
-Before creating a new migration, verify the current production migration head to ensure your migration chains correctly:
-1. **Check production's current migration**: Ask the user or check deployment logs to confirm the current `revision` on production
-2. **Set `down_revision` correctly**: Your migration's `down_revision` MUST point to the current production head, NOT just the latest migration file in the repository
-3. **Avoid creating branches**: If there are migrations in the repo that haven't been deployed to production yet, your new migration should chain off production's head, not the undeployed migrations
+Before creating a new migration, you **MUST** verify the `down_revision` is correct. Getting this wrong breaks the entire migration chain.
+
+1. **Find the current migration head**: Use the PowerShell commands below to identify which revision is the HEAD (i.e., no other migration file references it as its `down_revision`). Your new migration's `down_revision` MUST equal this HEAD revision.
+2. **Verify the revision ID is unique**: Search all migration files to confirm your new `revision` ID does not already exist. Duplicate revision IDs cause Alembic errors.
+3. **Never guess or reuse**: Do not assume a revision ID from memory or a previous conversation. Always re-check the files on disk — other migrations may have been added since your last check.
+4. **Production awareness**: If there are migrations in the repo that haven't been deployed to production yet, ask the user whether to chain off the repo HEAD or production's HEAD. When in doubt, chain off the repo HEAD.
 
 **Finding the Migration Head (PowerShell)**:
-To find the current migration head (the revision that no other migration references as its `down_revision`), use this approach:
+To find the current migration head (the revision that no other migration references as its `down_revision`), **always run these commands before creating a migration**:
 
 ```powershell
-# Step 1: Find a candidate revision that looks recent
+# Step 1: List all revision IDs (look at the last few)
 Select-String -Path "migrations\versions\*.py" -Pattern "^revision = " | Select-Object -Last 5
 
-# Step 2: Verify that revision is NOT referenced in any down_revision
+# Step 2: For each candidate, verify it is NOT referenced as another file's down_revision
 # Replace "c5d6e7f8a9b0" with your candidate revision
 Select-String -Path "migrations\versions\*.py" -Pattern "c5d6e7f8a9b0"
-# If it only appears in its own file (revision =), it's the head
-# If it appears in another file's down_revision, it's NOT the head
+# ✅ HEAD: appears ONLY in its own file as `revision = `
+# ❌ NOT HEAD: appears in another file as `down_revision = `
+
+# Step 3: Verify your chosen NEW revision ID does not already exist
+Select-String -Path "migrations\versions\*.py" -Pattern "your_new_id_here"
+# Must return NO results
 ```
 
 **WARNING - Merge migrations**: Simple regex like `^down_revision = ` will miss revisions referenced inside tuples in merge migrations (e.g., `down_revision = ("8f2e1d0c9b8a", "3eedf39b54dd")`). Always verify by searching for the full revision ID string.

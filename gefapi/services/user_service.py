@@ -827,6 +827,14 @@ class UserService:
             if isinstance(email_notifications_enabled, bool):
                 current_user.email_notifications_enabled = email_notifications_enabled
 
+        # Update per-user execution queue limit if provided
+        if "max_concurrent_executions" in user:
+            value = user.get("max_concurrent_executions")
+            if value is None:
+                current_user.max_concurrent_executions = None
+            elif isinstance(value, int) and value >= 1:
+                current_user.max_concurrent_executions = value
+
         current_user.updated_at = datetime.datetime.utcnow()
         try:
             logger.info("[DB]: ADD")

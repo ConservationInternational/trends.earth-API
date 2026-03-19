@@ -688,6 +688,10 @@ class ExecutionService:
         queue_enabled = queue_config.get("ENABLED", True)
         max_concurrent = queue_config.get("MAX_CONCURRENT_PER_USER", 3)
 
+        # Per-user override takes precedence over global default
+        if user.max_concurrent_executions is not None:
+            max_concurrent = user.max_concurrent_executions
+
         should_queue = False
         if queue_enabled and not is_admin_or_higher(user):
             active_count = _get_user_active_execution_count(user.id)

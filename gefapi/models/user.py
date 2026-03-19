@@ -113,6 +113,11 @@ class User(db.Model):
     purpose_of_use = db.Column(db.String(50), nullable=True)
     purpose_of_use_other = db.Column(db.String(200), nullable=True)
 
+    # Per-user execution queue limit override
+    # NULL means use the global default (MAX_CONCURRENT_EXECUTIONS_PER_USER).
+    # A positive integer overrides the global default for this user.
+    max_concurrent_executions = db.Column(db.Integer(), nullable=True)
+
     def __init__(
         self,
         email,
@@ -154,6 +159,8 @@ class User(db.Model):
         # Initialize account lockout fields
         self.failed_login_count = 0
         self.locked_until = None
+        # Per-user execution queue limit (None = use global default)
+        self.max_concurrent_executions = None
 
     def __repr__(self):
         return f"<User {self.email!r}>"
@@ -203,6 +210,7 @@ class User(db.Model):
             "gee_license_acknowledged": self.gee_license_acknowledged,
             "purpose_of_use": self.purpose_of_use,
             "purpose_of_use_other": self.purpose_of_use_other,
+            "max_concurrent_executions": self.max_concurrent_executions,
         }
 
         # Include Google Groups preferences if requested

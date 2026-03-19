@@ -870,6 +870,8 @@ def update_user(user):
     - `institution`: User's organization (ADMIN+ can update)
     - `role`: User role (SUPERADMIN only)
     - `is_active`: Account active status (ADMIN+ can update)
+    - `max_concurrent_executions`: Per-user execution queue concurrency limit
+      (ADMIN+ can update). Positive integer or null to use global default.
 
     **Response Schema**:
     ```json
