@@ -108,9 +108,10 @@ class ClientTrackingService:
             client_version = client_info.get("version")
             os_name = client_info.get("os")
             qgis_version = client_info.get("qgis_version")
+            language = client_info.get("lang")
 
             # Build extra_metadata from any unrecognized fields
-            known_fields = {"type", "version", "os", "qgis_version"}
+            known_fields = {"type", "version", "os", "qgis_version", "lang"}
             extra = {k: v for k, v in client_info.items() if k not in known_fields}
             extra_metadata = extra if extra else None
 
@@ -120,6 +121,7 @@ class ClientTrackingService:
                     client_version=client_version,
                     os=os_name,
                     qgis_version=qgis_version,
+                    language=language,
                     extra_metadata=extra_metadata,
                 )
                 db.session.commit()
@@ -135,6 +137,7 @@ class ClientTrackingService:
                 client_version=client_version,
                 os=os_name,
                 qgis_version=qgis_version,
+                language=language,
                 extra_metadata=extra_metadata,
             )
             db.session.add(metadata)

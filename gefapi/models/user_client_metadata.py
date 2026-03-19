@@ -25,6 +25,7 @@ class UserClientMetadata(db.Model):
     client_version = db.Column(db.String(50), nullable=True)  # e.g., 2.2.4
     os = db.Column(db.String(50), nullable=True)  # Windows, macOS, Linux (plugin only)
     qgis_version = db.Column(db.String(20), nullable=True)  # e.g., 3.34.0 (plugin only)
+    language = db.Column(db.String(10), nullable=True)  # e.g., en, es, fr
     extra_metadata = db.Column(
         db.JSON, nullable=True
     )  # Future-proofing for unknown fields
@@ -45,6 +46,7 @@ class UserClientMetadata(db.Model):
         client_version=None,
         os=None,
         qgis_version=None,
+        language=None,
         extra_metadata=None,
     ):
         self.id = uuid.uuid4()
@@ -53,6 +55,7 @@ class UserClientMetadata(db.Model):
         self.client_version = client_version
         self.os = os
         self.qgis_version = qgis_version
+        self.language = language
         self.extra_metadata = extra_metadata
         self.last_seen_at = datetime.now(UTC)
         self.created_at = datetime.now(UTC)
@@ -64,7 +67,12 @@ class UserClientMetadata(db.Model):
         )
 
     def update_from_header(
-        self, client_version=None, os=None, qgis_version=None, extra_metadata=None
+        self,
+        client_version=None,
+        os=None,
+        qgis_version=None,
+        language=None,
+        extra_metadata=None,
     ):
         """Update metadata from a new X-TE-Client header."""
         if client_version:
@@ -73,6 +81,8 @@ class UserClientMetadata(db.Model):
             self.os = os
         if qgis_version:
             self.qgis_version = qgis_version
+        if language:
+            self.language = language
         if extra_metadata:
             self.extra_metadata = extra_metadata
         self.last_seen_at = datetime.now(UTC)
@@ -86,6 +96,7 @@ class UserClientMetadata(db.Model):
             "client_version": self.client_version,
             "os": self.os,
             "qgis_version": self.qgis_version,
+            "language": self.language,
             "extra_metadata": self.extra_metadata,
             "last_seen_at": self.last_seen_at.isoformat()
             if self.last_seen_at

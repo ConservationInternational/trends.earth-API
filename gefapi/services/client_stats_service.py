@@ -41,6 +41,9 @@ class ClientStatsService:
                 "platform_summary": ClientStatsService._get_platform_summary(
                     cutoff_date
                 ),
+                "language_stats": ClientStatsService._get_language_distribution(
+                    cutoff_date
+                ),
             }
 
             # Add platform-specific stats
@@ -100,10 +103,14 @@ class ClientStatsService:
         # OS distribution (simple)
         by_os = ClientStatsService._get_os_distribution(cutoff_date)
 
+        # Language distribution
+        by_language = ClientStatsService._get_language_distribution(cutoff_date)
+
         return {
             "by_plugin_version": by_plugin_version,
             "by_qgis_version": by_qgis_version,
             "by_os": by_os,
+            "by_language": by_language,
         }
 
     @staticmethod
@@ -244,6 +251,27 @@ class ClientStatsService:
 
         return [
             {"os": row.os or "unknown", "user_count": row.user_count}
+            for row in query.all()
+        ]
+
+    @staticmethod
+    def _get_language_distribution(cutoff_date: datetime) -> list:
+        """Get language distribution across all clients."""
+        query = (
+            db.session.query(
+                UserClientMetadata.language,
+                func.count().label("user_count"),
+            )
+            .filter(
+                UserClientMetadata.last_seen_at >= cutoff_date,
+                UserClientMetadata.language.isnot(None),
+            )
+            .group_by(UserClientMetadata.language)
+            .order_by(func.count().desc())
+        )
+
+        return [
+            {"language": row.language, "user_count": row.user_count}
             for row in query.all()
         ]
 
