@@ -55,7 +55,7 @@ class TestRateLimitingRollbarNotifications:
 
             # Check the message
             assert (
-                "Rate limit applied to user test@example.com (ID: 123)"
+                "Rate limit applied to user te***@exa***.com (ID: 123)"
                 in call_args[1]["message"]
             )
             assert "endpoint" in call_args[1]["message"]

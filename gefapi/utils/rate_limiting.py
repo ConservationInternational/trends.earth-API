@@ -258,7 +258,13 @@ def get_rate_limit_key_for_auth():
     except Exception as e:
         logger.debug(f"Failed to get current user for auth rate limiting: {e}")
 
-    email = request.json.get("email", "") if request.json else ""
+    email = ""
+    try:
+        json_data = request.get_json(silent=True)
+        if json_data:
+            email = json_data.get("email", "")
+    except Exception:
+        logger.debug("Failed to parse JSON body for rate limit key")
     ip = get_remote_address()
     if email:
         # Hash the email to prevent log leakage while maintaining rate limiting
