@@ -10,6 +10,7 @@ from googleapiclient.errors import HttpError
 
 from gefapi import db
 from gefapi.config import SETTINGS
+from gefapi.utils import mask_email
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,7 @@ class GoogleGroupsService:
                 .execute()
             )
 
-            logger.info(f"Successfully added {user_email} to {group_email}")
+            logger.info(f"Successfully added {mask_email(user_email)} to {group_email}")
             return {
                 "success": True,
                 "group": group_key,
@@ -119,7 +120,8 @@ class GoogleGroupsService:
 
             # Check if user is already a member
             if e.resp.status == 409:  # Conflict - already a member
-                logger.info(f"User {user_email} is already a member of {group_email}")
+                masked = mask_email(user_email)
+                logger.info(f"User {masked} is already a member of {group_email}")
                 return {
                     "success": True,
                     "group": group_key,
@@ -128,9 +130,8 @@ class GoogleGroupsService:
                     "timestamp": datetime.utcnow().isoformat(),
                 }
 
-            logger.error(
-                f"Failed to add {user_email} to {group_email}: {error_details}"
-            )
+            masked = mask_email(user_email)
+            logger.error(f"Failed to add {masked} to {group_email}: {error_details}")
             return {
                 "success": False,
                 "error": error_details,
@@ -139,7 +140,9 @@ class GoogleGroupsService:
             }
 
         except Exception as e:
-            logger.error(f"Unexpected error adding {user_email} to {group_key}: {e}")
+            logger.error(
+                f"Unexpected error adding {mask_email(user_email)} to {group_key}: {e}"
+            )
             return {"success": False, "error": str(e), "group": group_key}
 
     def remove_user_from_group(self, user_email: str, group_key: str) -> dict:
@@ -165,7 +168,9 @@ class GoogleGroupsService:
                 groupKey=group_email, memberKey=user_email
             ).execute()
 
-            logger.info(f"Successfully removed {user_email} from {group_email}")
+            logger.info(
+                f"Successfully removed {mask_email(user_email)} from {group_email}"
+            )
             return {
                 "success": True,
                 "group": group_key,
@@ -178,7 +183,9 @@ class GoogleGroupsService:
 
             # If user is not a member, consider it success
             if e.resp.status == 404:
-                logger.info(f"User {user_email} was not a member of {group_email}")
+                logger.info(
+                    f"User {mask_email(user_email)} was not a member of {group_email}"
+                )
                 return {
                     "success": True,
                     "group": group_key,
@@ -187,15 +194,15 @@ class GoogleGroupsService:
                     "timestamp": datetime.utcnow().isoformat(),
                 }
 
+            masked = mask_email(user_email)
             logger.error(
-                f"Failed to remove {user_email} from {group_email}: {error_details}"
+                f"Failed to remove {masked} from {group_email}: {error_details}"
             )
             return {"success": False, "error": error_details, "group": group_key}
 
         except Exception as e:
-            logger.error(
-                f"Unexpected error removing {user_email} from {group_key}: {e}"
-            )
+            masked = mask_email(user_email)
+            logger.error(f"Unexpected error removing {masked} from {group_key}: {e}")
             return {"success": False, "error": str(e), "group": group_key}
 
     def sync_user_groups(self, user) -> dict:
@@ -232,7 +239,9 @@ class GoogleGroupsService:
 
         try:
             db.session.commit()
-            logger.info(f"Updated Google Groups sync status for user {user.email}")
+            logger.info(
+                f"Updated Google Groups sync status for user {mask_email(user.email)}"
+            )
         except Exception as e:
             logger.error(f"Failed to update user sync status: {e}")
             db.session.rollback()

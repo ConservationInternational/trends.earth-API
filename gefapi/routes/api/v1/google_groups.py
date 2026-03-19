@@ -8,6 +8,7 @@ from flask_jwt_extended import current_user, jwt_required
 from gefapi import db
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.google_groups_service import google_groups_service
+from gefapi.utils import mask_email
 
 logger = logging.getLogger(__name__)
 
@@ -244,9 +245,10 @@ def update_user_google_groups_preferences():
         if google_groups_service.is_available():
             try:
                 sync_results = google_groups_service.sync_user_groups(user)
-                logger.info(f"Synced Google Groups for user {user.email}")
+                logger.info(f"Synced Google Groups for user {mask_email(user.email)}")
             except Exception as e:
-                logger.error(f"Failed to sync Google Groups for user {user.email}: {e}")
+                masked = mask_email(user.email)
+                logger.error(f"Failed to sync Google Groups for user {masked}: {e}")
                 # Don't fail the request if sync fails - preferences are still saved
                 sync_results = {
                     "error": f"Sync failed: {str(e)}",

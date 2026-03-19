@@ -10,6 +10,7 @@ from flask_limiter.util import get_remote_address
 import rollbar
 
 from gefapi.config import SETTINGS
+from gefapi.utils import mask_email
 from gefapi.utils.permissions import is_admin_or_higher
 from gefapi.utils.security_events import log_rate_limit_exceeded
 
@@ -338,7 +339,7 @@ def create_rate_limit_response(retry_after=None, limit_details=None):
         # Create a descriptive message for Rollbar
         if user_info:
             message = (
-                f"Rate limit applied to user {user_info['email']} "
+                f"Rate limit applied to user {mask_email(user_info['email'])} "
                 f"(ID: {user_id}) on endpoint {endpoint}"
             )
         else:

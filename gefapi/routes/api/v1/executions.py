@@ -255,7 +255,7 @@ def get_user_executions():
     - `401 Unauthorized`: JWT token required
     - `500 Internal Server Error`: Failed to retrieve executions
     """
-    logger.info(f"[ROUTER]: Getting executions for user: {current_user.email}")
+    logger.info(f"[ROUTER]: Getting executions for user: {current_user.id}")
     include = request.args.get("include")
     include = include.split(",") if include else []
     exclude = request.args.get("exclude")

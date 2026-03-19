@@ -20,8 +20,14 @@ from flask_jwt_extended import (
     jwt_required,
 )
 
+from gefapi import limiter
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.oauth2_service import OAuth2Service
+from gefapi.utils.rate_limiting import (
+    RateLimitConfig,
+    get_rate_limit_key_for_auth,
+    is_rate_limiting_disabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +42,11 @@ OAUTH2_TOKEN_LIFETIME_SECONDS = int(os.getenv("OAUTH2_TOKEN_LIFETIME_SECONDS", "
 
 
 @endpoints.route("/oauth/token", strict_slashes=False, methods=["POST"])
+@limiter.limit(
+    lambda: ";".join(RateLimitConfig.get_auth_limits()) or "100 per hour",
+    key_func=get_rate_limit_key_for_auth,
+    exempt_when=is_rate_limiting_disabled,
+)
 def oauth2_token():
     """Exchange client credentials for a short-lived access token.
 

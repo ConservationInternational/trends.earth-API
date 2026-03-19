@@ -25,6 +25,7 @@ from gefapi.services import (
     docker_run,
     terminate_batch_jobs,
 )
+from gefapi.utils import mask_email
 from gefapi.utils.permissions import is_admin_or_higher
 
 
@@ -304,7 +305,7 @@ class ExecutionService:
             if user.gee_credentials_type == "oauth":
                 # Add OAuth credentials for GEE authentication
                 logger.info(
-                    f"Adding OAuth credentials for user {user.email} "
+                    f"Adding OAuth credentials for user {mask_email(user.email)} "
                     f"execution {execution_id}"
                 )
 
@@ -325,12 +326,11 @@ class ExecutionService:
                             ),
                         }
                     )
-                    logger.info(
-                        f"OAuth environment variables added for user {user.email}"
-                    )
+                    masked = mask_email(user.email)
+                    logger.info(f"OAuth environment variables added for user {masked}")
                 else:
                     logger.warning(
-                        f"User {user.email} has OAuth credential type "
+                        f"User {mask_email(user.email)} has OAuth credential type "
                         "but missing tokens"
                     )
 
@@ -338,7 +338,7 @@ class ExecutionService:
                 # Add user's service account credentials
                 logger.info(
                     f"Adding user service account credentials for user "
-                    f"{user.email} execution {execution_id}"
+                    f"{mask_email(user.email)} execution {execution_id}"
                 )
 
                 service_account_data = user.get_gee_service_account()
@@ -352,12 +352,14 @@ class ExecutionService:
                         service_account_json.encode()
                     ).decode()
                     environment["EE_SERVICE_ACCOUNT_JSON"] = service_account_b64
+                    masked = mask_email(user.email)
                     logger.info(
-                        f"User service account credentials added for user {user.email}"
+                        f"User service account credentials added for user {masked}"
                     )
                 else:
+                    masked = mask_email(user.email)
                     logger.warning(
-                        f"User {user.email} has service account credential type "
+                        f"User {masked} has service account credential type "
                         "but missing data"
                     )
 
@@ -874,8 +876,9 @@ class ExecutionService:
                         rollbar.report_exc_info()
                         logger.info("Failed to send email - check email service")
                 else:
+                    masked = mask_email(user.email)
                     logger.info(
-                        f"Email notification skipped for user {user.email} - "
+                        f"Email notification skipped for user {masked} - "
                         "notifications disabled"
                     )
 

@@ -3,18 +3,72 @@
 import json
 import logging
 import os
+import secrets
 
 from flask import jsonify, request
 from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 
 from gefapi import db
+from gefapi.config import SETTINGS
 from gefapi.models.user import User
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.gee_service import GEEService
+from gefapi.utils import mask_email
 from gefapi.utils.permissions import is_admin_or_higher
 from gefapi.utils.scopes import require_scope
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Server-side OAuth state storage (Redis with in-memory fallback)
+# ---------------------------------------------------------------------------
+_OAUTH_STATE_TTL = 600  # 10 minutes
+_oauth_state_store: dict[str, str] = {}  # in-memory fallback
+
+
+def _get_redis_client():
+    """Return a Redis client or None when unavailable."""
+    try:
+        import redis as _redis_mod
+
+        redis_url = SETTINGS.get("CELERY_BROKER_URL")
+        if not redis_url:
+            return None
+        client = _redis_mod.from_url(redis_url)
+        client.ping()
+        return client
+    except Exception:
+        return None
+
+
+def _store_oauth_state(user_id: str, state: str) -> None:
+    """Persist an OAuth state token keyed by user ID."""
+    key = f"oauth_state:{user_id}"
+    client = _get_redis_client()
+    if client:
+        client.setex(key, _OAUTH_STATE_TTL, state)
+    else:
+        _oauth_state_store[key] = state
+
+
+def _verify_and_consume_oauth_state(user_id: str, state: str) -> bool:
+    """Validate *state* against the stored value and remove it."""
+    key = f"oauth_state:{user_id}"
+    client = _get_redis_client()
+    if client:
+        stored = client.get(key)
+        if stored is None:
+            return False
+        stored_str = stored.decode() if isinstance(stored, bytes) else stored
+        if not secrets.compare_digest(stored_str, state):
+            return False
+        client.delete(key)
+        return True
+
+    stored = _oauth_state_store.pop(key, None)
+    if stored is None:
+        return False
+    return secrets.compare_digest(stored, state)
 
 
 @endpoints.route("/user/me/gee-credentials", strict_slashes=False, methods=["GET"])
@@ -147,6 +201,10 @@ def initiate_gee_oauth():
             access_type="offline", include_granted_scopes="true", prompt="consent"
         )
 
+        # Persist state server-side so the callback can verify it
+        user_id = get_jwt_identity()
+        _store_oauth_state(str(user_id), state)
+
         return jsonify({"data": {"auth_url": auth_url, "state": state}})
 
     except Exception as e:
@@ -208,6 +266,11 @@ def handle_gee_oauth_callback():
         if "state" not in json_data:
             return error(status=400, detail="State parameter is required")
 
+        # Verify the state against the server-side stored value (CSRF check)
+        if not _verify_and_consume_oauth_state(str(user_id), json_data["state"]):
+            logger.warning(f"OAuth state mismatch for user {user_id} — possible CSRF")
+            return error(status=400, detail="Invalid or expired state parameter")
+
         # Exchange authorization code for tokens
         from google_auth_oauthlib.flow import Flow
 
@@ -246,7 +309,8 @@ def handle_gee_oauth_callback():
 
         db.session.commit()
 
-        logger.info(f"Successfully stored GEE OAuth credentials for user {user.email}")
+        masked = mask_email(user.email)
+        logger.info(f"Successfully stored GEE OAuth credentials for user {masked}")
 
         return jsonify({"message": "GEE OAuth credentials saved successfully"})
 
@@ -346,7 +410,9 @@ def upload_gee_service_account():
         user.set_gee_service_account(service_account_key)
         db.session.commit()
 
-        logger.info(f"Successfully stored GEE service account for user {user.email}")
+        logger.info(
+            f"Successfully stored GEE service account for user {mask_email(user.email)}"
+        )
 
         return jsonify(
             {"message": "GEE service account credentials saved successfully"}
@@ -400,7 +466,9 @@ def delete_gee_credentials():
         user.clear_gee_credentials()
         db.session.commit()
 
-        logger.info(f"Successfully deleted GEE credentials for user {user.email}")
+        logger.info(
+            f"Successfully deleted GEE credentials for user {mask_email(user.email)}"
+        )
 
         return jsonify({"message": "GEE credentials deleted successfully"})
 

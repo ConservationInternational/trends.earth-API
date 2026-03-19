@@ -261,7 +261,19 @@ class Script(db.Model):
         if "logs" in include:
             script["logs"] = self.serialize_logs
         if "user" in include:
-            script["user"] = self.user.serialize()
+            script["user"] = self.user.serialize(
+                exclude=[
+                    "gender_identity",
+                    "gender_identity_description",
+                    "sector",
+                    "sector_other",
+                    "purpose_of_use",
+                    "purpose_of_use_other",
+                    "role_title",
+                    "gee_license_acknowledged",
+                    "max_concurrent_executions",
+                ]
+            )
         # user_name/user_email: only for admin users, silently skip for non-admins
         if "user_name" in include and (not user or is_admin_or_higher(user)):
             script["user_name"] = getattr(self.user, "name", None)

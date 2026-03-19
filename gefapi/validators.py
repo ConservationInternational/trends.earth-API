@@ -1,10 +1,10 @@
 """GEFAPI VALIDATORS"""
 
 from functools import wraps
+from html.parser import HTMLParser
 import re
 import unicodedata
 
-import bleach
 from flask import request
 
 from gefapi.config import SETTINGS
@@ -12,6 +12,36 @@ from gefapi.routes.api.v1 import error
 
 ROLES = SETTINGS.get("ROLES")
 EMAIL_REGEX = re.compile(r"^[A-Za-z0-9\.\+_-]+@[A-Za-z0-9\._-]+\.[a-zA-Z]*$")
+
+
+class _HTMLStripper(HTMLParser):
+    """Strip HTML tags from text, optionally keeping allowed tags."""
+
+    def __init__(self, allowed_tags=None):
+        super().__init__(convert_charrefs=True)
+        self._allowed_tags = frozenset(allowed_tags) if allowed_tags else frozenset()
+        self._result = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self._allowed_tags:
+            self._result.append(f"<{tag}>")
+
+    def handle_endtag(self, tag):
+        if tag in self._allowed_tags:
+            self._result.append(f"</{tag}>")
+
+    def handle_data(self, data):
+        self._result.append(data)
+
+    def get_text(self):
+        return "".join(self._result)
+
+
+def _strip_html(text, allowed_tags=None):
+    """Remove HTML tags from text, optionally preserving allowed tags."""
+    stripper = _HTMLStripper(allowed_tags=allowed_tags)
+    stripper.feed(text)
+    return stripper.get_text()
 
 
 def sanitize_text(text, max_length=None, allow_html=False):
@@ -27,11 +57,11 @@ def sanitize_text(text, max_length=None, allow_html=False):
     # Remove or escape HTML/XML tags
     if not allow_html:
         # Remove all HTML tags but preserve international characters
-        text = bleach.clean(text, tags=[], strip=True)
+        text = _strip_html(text)
     else:
         # Allow only safe HTML tags
         allowed_tags = ["b", "i", "em", "strong", "p", "br", "ul", "ol", "li"]
-        text = bleach.clean(text, tags=allowed_tags, strip=True)
+        text = _strip_html(text, allowed_tags=allowed_tags)
 
     # Block dangerous patterns while preserving international text
     dangerous_patterns = [

@@ -8,6 +8,8 @@ from flask import has_request_context, request
 from flask_limiter.util import get_remote_address
 import rollbar
 
+from gefapi.utils import mask_email
+
 logger = logging.getLogger(__name__)
 
 # Security event types for consistent logging
@@ -81,7 +83,7 @@ def log_security_event(
     # Log locally
     log_message = f"SECURITY_EVENT: {event_type}"
     if user_email:
-        log_message += f" - User: {user_email}"
+        log_message += f" - User: {mask_email(user_email)}"
     if details:
         log_message += f" - Details: {details}"
 

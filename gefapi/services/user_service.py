@@ -20,6 +20,7 @@ from gefapi.errors import (
 )
 from gefapi.models import User
 from gefapi.services import EmailService
+from gefapi.utils import mask_email
 from gefapi.utils.security_events import (
     log_authentication_event,
     log_password_event,
@@ -463,7 +464,7 @@ class UserService:
     @staticmethod
     def change_password(user, old_password, new_password):
         """Change user password"""
-        logger.info(f"[SERVICE]: Changing password for user {user.email}")
+        logger.info(f"[SERVICE]: Changing password for user {mask_email(user.email)}")
         if not user.check_password(old_password):
             raise AuthError("Invalid current password")
         if old_password == new_password:
@@ -477,9 +478,8 @@ class UserService:
         try:
             db.session.add(user)
             db.session.commit()
-            logger.info(
-                f"[SERVICE]: Password for user {user.email} changed successfully"
-            )
+            masked = mask_email(user.email)
+            logger.info(f"[SERVICE]: Password for user {masked} changed successfully")
             # Log security event
             log_password_event(
                 "PASSWORD_CHANGE", str(user.id), user.email, admin_action=False
@@ -492,7 +492,7 @@ class UserService:
                 revoked_count = RefreshTokenService.invalidate_user_sessions(user.id)
                 logger.info(
                     f"[SERVICE]: Invalidated {revoked_count} sessions after "
-                    f"password change for {user.email}"
+                    f"password change for {mask_email(user.email)}"
                 )
             except Exception as e:
                 logger.warning(
@@ -502,7 +502,9 @@ class UserService:
 
         except Exception as e:
             db.session.rollback()
-            logger.error(f"[SERVICE]: Error changing password for {user.email}: {e}")
+            logger.error(
+                f"[SERVICE]: Error changing password for {mask_email(user.email)}: {e}"
+            )
             rollbar.report_exc_info()
             raise
         return user
@@ -510,7 +512,9 @@ class UserService:
     @staticmethod
     def admin_change_password(user, new_password):
         """Admin change user password (no old password verification required)"""
-        logger.info(f"[SERVICE]: Admin changing password for user {user.email}")
+        logger.info(
+            f"[SERVICE]: Admin changing password for user {mask_email(user.email)}"
+        )
         _validate_password_strength(new_password)
         user.password = user.set_password(new_password)
         # Clear any account lockout on admin password change
@@ -532,20 +536,23 @@ class UserService:
 
             try:
                 revoked_count = RefreshTokenService.invalidate_user_sessions(user.id)
+                masked = mask_email(user.email)
                 logger.info(
-                    f"[SERVICE]: Invalidated {revoked_count} sessions for {user.email} "
+                    f"[SERVICE]: Invalidated {revoked_count} sessions for {masked} "
                     f"after admin password change"
                 )
             except Exception as session_error:
                 logger.warning(
                     f"[SERVICE]: Failed to invalidate sessions for "
-                    f"{user.email}: {session_error}"
+                    f"{mask_email(user.email)}: {session_error}"
                 )
                 # Don't fail the password change if session invalidation fails
 
         except Exception as e:
             db.session.rollback()
-            logger.error(f"[SERVICE]: Error changing password for {user.email}: {e}")
+            logger.error(
+                f"[SERVICE]: Error changing password for {mask_email(user.email)}: {e}"
+            )
             rollbar.report_exc_info()
             raise
         return user
@@ -684,7 +691,9 @@ class UserService:
                     html=email_html,
                     subject="[trends.earth] Password Reset Request",
                 )
-                logger.info(f"[SERVICE]: Password reset email sent to {user.email}")
+                logger.info(
+                    f"[SERVICE]: Password reset email sent to {mask_email(user.email)}"
+                )
             except EmailError as error:
                 rollbar.report_exc_info()
                 raise error
@@ -739,8 +748,9 @@ class UserService:
             if not user.email_verified:
                 user.email_verified = True
                 user.email_verified_at = datetime.datetime.utcnow()
+                masked = mask_email(user.email)
                 logger.info(
-                    f"[SERVICE]: Email verified for {user.email} via password reset"
+                    f"[SERVICE]: Email verified for {masked} via password reset"
                 )
 
             # Mark token as used
@@ -751,7 +761,9 @@ class UserService:
             db.session.add(reset_token)
             db.session.commit()
 
-            logger.info(f"[SERVICE]: Password reset successful for {user.email}")
+            logger.info(
+                f"[SERVICE]: Password reset successful for {mask_email(user.email)}"
+            )
 
             # Log security event
             log_password_event(
@@ -992,11 +1004,13 @@ class UserService:
         """
         from gefapi.errors import AccountLockedError
 
-        logger.info(f"[AUTH]: Authentication attempt for {email}")
+        logger.info(f"[AUTH]: Authentication attempt for {mask_email(email)}")
         user = User.query.filter_by(email=email).first()
 
         if not user:
-            logger.warning(f"[AUTH]: Failed login - user not found: {email}")
+            logger.warning(
+                f"[AUTH]: Failed login - user not found: {mask_email(email)}"
+            )
             log_authentication_event(False, email, "user_not_found")
             return None
 
@@ -1004,7 +1018,9 @@ class UserService:
         if user.is_locked():
             minutes_remaining = user.get_lockout_minutes_remaining()
             if minutes_remaining is None:
-                logger.warning(f"[AUTH]: Account locked until password reset: {email}")
+                logger.warning(
+                    f"[AUTH]: Account locked until password reset: {mask_email(email)}"
+                )
                 log_authentication_event(False, email, "account_locked_permanent")
                 raise AccountLockedError(
                     "Your account is locked due to too many failed login attempts. "
@@ -1013,7 +1029,7 @@ class UserService:
                     requires_password_reset=True,
                 )
             logger.warning(
-                f"[AUTH]: Account temporarily locked for {email}, "
+                f"[AUTH]: Account temporarily locked for {mask_email(email)}, "
                 f"{minutes_remaining} minutes remaining"
             )
             log_authentication_event(
@@ -1027,7 +1043,9 @@ class UserService:
             )
 
         if not user.check_password(password):
-            logger.warning(f"[AUTH]: Failed login - invalid password: {email}")
+            logger.warning(
+                f"[AUTH]: Failed login - invalid password: {mask_email(email)}"
+            )
 
             # Record failed attempt and apply lockout if threshold reached
             try:
@@ -1039,7 +1057,7 @@ class UserService:
                     if lockout_minutes is None:
                         logger.warning(
                             f"[AUTH]: Account locked until password reset after "
-                            f"{user.failed_login_count} failures: {email}"
+                            f"{user.failed_login_count} failures: {mask_email(email)}"
                         )
                         log_authentication_event(
                             False, email, "account_locked_permanent"
@@ -1065,7 +1083,7 @@ class UserService:
                         )
                     logger.warning(
                         f"[AUTH]: Account locked for {lockout_minutes} minutes "
-                        f"after {user.failed_login_count} failures: {email}"
+                        f"after {user.failed_login_count} failures: {mask_email(email)}"
                     )
                     log_authentication_event(
                         False, email, f"account_locked_{lockout_minutes}m"
@@ -1096,10 +1114,12 @@ class UserService:
             user.last_activity_at = now
             db.session.add(user)
             db.session.commit()
-            logger.info(f"[AUTH]: Updated login timestamps for {email}")
+            logger.info(f"[AUTH]: Updated login timestamps for {mask_email(email)}")
         except Exception as e:
             # Don't fail login if we can't update the timestamp
-            logger.warning(f"[AUTH]: Failed to update timestamps for {email}: {e}")
+            logger.warning(
+                f"[AUTH]: Failed to update timestamps for {mask_email(email)}: {e}"
+            )
             db.session.rollback()
 
         # log_authentication_event(True, email)

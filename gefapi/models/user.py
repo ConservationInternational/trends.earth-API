@@ -17,6 +17,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from gefapi import db
 from gefapi.models import GUID
+from gefapi.utils import mask_email
 
 db.GUID = GUID
 
@@ -254,7 +255,7 @@ class User(db.Model):
     def check_password(self, password):
         """Check if provided password matches stored hash"""
         if not self.password:
-            logger.warning(f"User {self.email} has no password hash stored")
+            logger.warning(f"User {mask_email(self.email)} has no password hash stored")
             return False
 
         if not password:
@@ -264,7 +265,9 @@ class User(db.Model):
         try:
             return check_password_hash(self.password, password)
         except ValueError as e:
-            logger.error(f"Invalid password hash for user {self.email}: {e}")
+            logger.error(
+                f"Invalid password hash for user {mask_email(self.email)}: {e}"
+            )
             logger.error(f"Stored hash format: {repr(self.password[:50])}...")
             return False
 
@@ -441,7 +444,8 @@ class User(db.Model):
         try:
             decoded = base64.b64decode(encrypted_data.encode("utf-8"))
         except Exception as e:
-            logger.error(f"Failed to base64-decode GEE data for user {self.email}: {e}")
+            masked = mask_email(self.email)
+            logger.error(f"Failed to base64-decode GEE data for user {masked}: {e}")
             return None
 
         # Try current (HKDF-derived) key first
@@ -451,8 +455,9 @@ class User(db.Model):
         except InvalidToken:
             pass
         except Exception as e:
+            masked = mask_email(self.email)
             logger.error(
-                f"Unexpected error decrypting GEE data for user {self.email} "
+                f"Unexpected error decrypting GEE data for user {masked} "
                 f"with current key: {e}"
             )
 
@@ -461,20 +466,23 @@ class User(db.Model):
             legacy_key = self._get_legacy_encryption_key()
             fernet_legacy = Fernet(legacy_key)
             plaintext = fernet_legacy.decrypt(decoded).decode("utf-8")
+            masked = mask_email(self.email)
             logger.warning(
-                f"GEE credentials for user {self.email} were decrypted with "
+                f"GEE credentials for user {masked} were decrypted with "
                 f"the legacy key. They should be re-encrypted with the new "
                 f"HKDF-derived key."
             )
             return plaintext
         except InvalidToken:
             logger.error(
-                f"Failed to decrypt GEE data for user {self.email}: "
+                f"Failed to decrypt GEE data for user {mask_email(self.email)}: "
                 f"neither current nor legacy key could decrypt the data."
             )
             return None
         except Exception as e:
-            logger.error(f"Failed to decrypt GEE data for user {self.email}: {e}")
+            logger.error(
+                f"Failed to decrypt GEE data for user {mask_email(self.email)}: {e}"
+            )
             return None
 
     def set_gee_oauth_credentials(self, access_token: str, refresh_token: str) -> None:
@@ -509,8 +517,9 @@ class User(db.Model):
             try:
                 return json.loads(key_data)
             except json.JSONDecodeError as e:
+                masked = mask_email(self.email)
                 logger.error(
-                    f"Failed to parse service account key for user {self.email}: {e}"
+                    f"Failed to parse service account key for user {masked}: {e}"
                 )
         return None
 

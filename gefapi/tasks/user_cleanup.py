@@ -18,6 +18,8 @@ import os
 from celery import Task
 import rollbar
 
+from gefapi.utils import mask_email
+
 logger = logging.getLogger(__name__)
 
 # Number of days a user can remain unverified before cleanup
@@ -102,12 +104,13 @@ def cleanup_unverified_users(self):
                     deleted_count += 1
                     deleted_emails.append(email)
                     logger.info(
-                        f"[TASK]: Deleted unverified user: {email} "
+                        f"[TASK]: Deleted unverified user: {mask_email(email)} "
                         f"(created: {user.created_at})"
                     )
                 except Exception as e:
+                    masked = mask_email(user.email)
                     logger.error(
-                        f"[TASK]: Failed to delete unverified user {user.email}: {e}"
+                        f"[TASK]: Failed to delete unverified user {masked}: {e}"
                     )
                     continue
 
@@ -198,13 +201,13 @@ def cleanup_never_logged_in_users(self):
                     deleted_count += 1
                     deleted_emails.append(email)
                     logger.info(
-                        f"[TASK]: Deleted never-logged-in user: {email} "
+                        f"[TASK]: Deleted never-logged-in user: {mask_email(email)} "
                         f"(created: {user.created_at})"
                     )
                 except Exception as e:
                     logger.error(
                         f"[TASK]: Failed to delete never-logged-in user "
-                        f"{user.email}: {e}"
+                        f"{mask_email(user.email)}: {e}"
                     )
                     continue
 

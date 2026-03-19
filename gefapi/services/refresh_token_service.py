@@ -8,6 +8,7 @@ from flask_jwt_extended import create_access_token
 
 from gefapi import db
 from gefapi.models.refresh_token import RefreshToken
+from gefapi.utils import mask_email
 
 logger = logging.getLogger(__name__)
 
@@ -65,15 +66,20 @@ class RefreshTokenService:
 
             user.last_activity_at = datetime.datetime.utcnow()
             db.session.commit()
-            logger.debug(f"[SERVICE]: Updated last_activity_at for user {user.email}")
+            logger.debug(
+                f"[SERVICE]: Updated last_activity_at for user {mask_email(user.email)}"
+            )
         except Exception as e:
             # Don't fail token validation if we can't update the timestamp
+            masked = mask_email(user.email)
             logger.warning(
-                f"[SERVICE]: Failed to update last_activity_at for {user.email}: {e}"
+                f"[SERVICE]: Failed to update last_activity_at for {masked}: {e}"
             )
             db.session.rollback()
 
-        logger.info(f"[SERVICE]: Refresh token validated for user {user.email}")
+        logger.info(
+            f"[SERVICE]: Refresh token validated for user {mask_email(user.email)}"
+        )
         return refresh_token, user
 
     @staticmethod
@@ -101,7 +107,9 @@ class RefreshTokenService:
             # Don't fail token refresh if client tracking fails
             logger.warning(f"[SERVICE]: Failed to track client access: {e}")
 
-        logger.info(f"[SERVICE]: Access token refreshed for user {user.email}")
+        logger.info(
+            f"[SERVICE]: Access token refreshed for user {mask_email(user.email)}"
+        )
         return access_token, user
 
     @staticmethod

@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import rollbar
 
 from gefapi.config import SETTINGS
+from gefapi.utils import mask_email
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +199,9 @@ class GEEService:
 
             access_token, refresh_token = user.get_gee_oauth_credentials()
             if not access_token or not refresh_token:
-                logger.warning(f"Missing OAuth tokens for user {user.email}")
+                logger.warning(
+                    f"Missing OAuth tokens for user {mask_email(user.email)}"
+                )
                 return False
 
             # Create OAuth credentials
@@ -214,7 +217,9 @@ class GEEService:
             # Try to refresh token if needed
             try:
                 if credentials.expired and credentials.refresh_token:
-                    logger.info(f"Refreshing OAuth token for user {user.email}")
+                    logger.info(
+                        f"Refreshing OAuth token for user {mask_email(user.email)}"
+                    )
                     credentials.refresh(None)
                     # Update stored tokens
                     user.set_gee_oauth_credentials(
@@ -224,23 +229,22 @@ class GEEService:
 
                     db.session.commit()
             except RefreshError as e:
-                logger.error(
-                    f"Failed to refresh OAuth token for user {user.email}: {e}"
-                )
+                masked = mask_email(user.email)
+                logger.error(f"Failed to refresh OAuth token for user {masked}: {e}")
                 return False
 
             # Initialize Earth Engine with OAuth credentials
             ee.Initialize(credentials)  # type: ignore
             logger.info(
                 f"Successfully initialized Google Earth Engine with OAuth for "
-                f"user {user.email}"
+                f"user {mask_email(user.email)}"
             )
             return True
 
         except Exception as e:
             logger.error(
                 f"Failed to initialize Google Earth Engine with OAuth for "
-                f"user {user.email}: {e}"
+                f"user {mask_email(user.email)}: {e}"
             )
             return False
 
@@ -254,13 +258,17 @@ class GEEService:
 
             service_account_data = user.get_gee_service_account()
             if not service_account_data:
-                logger.warning(f"No service account data for user {user.email}")
+                logger.warning(
+                    f"No service account data for user {mask_email(user.email)}"
+                )
                 return False
 
             # Validate service account data structure
             required_fields = ["client_email", "private_key", "type"]
             if not all(field in service_account_data for field in required_fields):
-                logger.error(f"Invalid service account data for user {user.email}")
+                logger.error(
+                    f"Invalid service account data for user {mask_email(user.email)}"
+                )
                 return False
 
             # Write service account data to a temporary file

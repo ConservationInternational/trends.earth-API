@@ -1020,6 +1020,7 @@ def check_if_token_in_blocklist(jwt_header, jwt_payload):
 from gefapi.errors import AccountLockedError  # noqa:E402
 from gefapi.models import User  # noqa:E402
 from gefapi.services import UserService  # noqa:E402
+from gefapi.utils import mask_email  # noqa:E402
 
 
 @app.route("/auth", methods=["POST"])
@@ -1040,7 +1041,7 @@ def create_token():
     try:
         user = UserService.authenticate_user(email, password)
     except AccountLockedError as e:
-        logger.warning(f"[JWT]: Account locked for {email}")
+        logger.warning(f"[JWT]: Account locked for {mask_email(email)}")
         return jsonify(e.serialize), 401
     except Exception as e:
         logger.error(f"[JWT]: Error during authentication: {str(e)}")
