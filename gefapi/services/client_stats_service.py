@@ -103,8 +103,10 @@ class ClientStatsService:
         # OS distribution (simple)
         by_os = ClientStatsService._get_os_distribution(cutoff_date)
 
-        # Language distribution
-        by_language = ClientStatsService._get_language_distribution(cutoff_date)
+        # Language distribution (plugin users only)
+        by_language = ClientStatsService._get_language_distribution(
+            cutoff_date, client_type="qgis_plugin"
+        )
 
         return {
             "by_plugin_version": by_plugin_version,
@@ -255,19 +257,28 @@ class ClientStatsService:
         ]
 
     @staticmethod
-    def _get_language_distribution(cutoff_date: datetime) -> list:
-        """Get language distribution across all clients."""
-        query = (
-            db.session.query(
-                UserClientMetadata.language,
-                func.count().label("user_count"),
-            )
-            .filter(
-                UserClientMetadata.last_seen_at >= cutoff_date,
-                UserClientMetadata.language.isnot(None),
-            )
-            .group_by(UserClientMetadata.language)
-            .order_by(func.count().desc())
+    def _get_language_distribution(
+        cutoff_date: datetime, client_type: str | None = None
+    ) -> list:
+        """Get language distribution, counting each user only once.
+
+        Args:
+            cutoff_date: Only include records with last_seen_at >= this date
+            client_type: Optional filter for a specific client type
+        """
+        query = db.session.query(
+            UserClientMetadata.language,
+            func.count(func.distinct(UserClientMetadata.user_id)).label("user_count"),
+        ).filter(
+            UserClientMetadata.last_seen_at >= cutoff_date,
+            UserClientMetadata.language.isnot(None),
+        )
+
+        if client_type:
+            query = query.filter(UserClientMetadata.client_type == client_type)
+
+        query = query.group_by(UserClientMetadata.language).order_by(
+            func.count(func.distinct(UserClientMetadata.user_id)).desc()
         )
 
         return [
