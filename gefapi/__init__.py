@@ -1059,6 +1059,14 @@ def create_token():
     # Create refresh token
     refresh_token = RefreshTokenService.create_refresh_token(user.id)
 
+    # Track client platform/version if X-TE-Client header is present
+    try:
+        from gefapi.services.client_tracking_service import ClientTrackingService
+
+        ClientTrackingService.track_client_access(user.id)
+    except Exception as e:
+        logger.warning(f"[JWT]: Failed to track client access on login: {e}")
+
     return jsonify(
         {
             "access_token": access_token,
