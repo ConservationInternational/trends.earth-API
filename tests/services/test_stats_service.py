@@ -421,11 +421,18 @@ class TestStatsService:
 
     def test_normalize_task_name(self):
         """Test task name normalization."""
-        # Test version removal
+        # Test version removal (-vX.Y format)
         assert (
             StatsService._normalize_task_name("productivity-v2.1.0") == "productivity"
         )
         assert StatsService._normalize_task_name("land-cover-v1.5") == "land-cover"
+
+        # Test trailing digit-digit-digit version removal
+        assert (
+            StatsService._normalize_task_name("sdg-15-3-1-sub-indicators-2-2-4")
+            == "sdg-15-3-1-sub-indicators"
+        )
+        assert StatsService._normalize_task_name("landpks-1-0-3") == "landpks"
 
         # Test deprecated name mapping
         assert (
@@ -444,6 +451,35 @@ class TestStatsService:
         # Test edge cases
         assert StatsService._normalize_task_name("") == "unknown"
         assert StatsService._normalize_task_name(None) == "unknown"  # type: ignore[arg-type]
+
+    def test_parse_slug(self):
+        """Test slug parsing into (base_name, version) tuples."""
+        # Trailing digit-digit-digit version
+        assert StatsService._parse_slug("sdg-15-3-1-sub-indicators-2-2-4") == (
+            "sdg-15-3-1-sub-indicators",
+            "2.2.4",
+        )
+        assert StatsService._parse_slug("landpks-1-0-3") == ("landpks", "1.0.3")
+
+        # Legacy -vX.Y.Z format
+        assert StatsService._parse_slug("productivity-v2.1.0") == (
+            "productivity",
+            "2.1.0",
+        )
+
+        # No version
+        assert StatsService._parse_slug("drought") == ("drought", "")
+        assert StatsService._parse_slug("productivity") == ("productivity", "")
+
+        # Deprecated name mapping applied to base
+        assert StatsService._parse_slug("sdg-sub-indicators") == (
+            "sdg-15-3-1-sub-indicators",
+            "",
+        )
+
+        # Edge cases
+        assert StatsService._parse_slug("") == ("unknown", "")
+        assert StatsService._parse_slug(None) == ("unknown", "")  # type: ignore[arg-type]
 
     def test_normalize_user_group_by_alias(self):
         """Group by aliases should normalize to canonical values."""

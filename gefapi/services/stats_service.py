@@ -3,8 +3,10 @@ Statistics service for dashboard data aggregation.
 Provides comprehensive statistics for executions, users, and system metrics.
 """
 
+from collections import defaultdict
 from datetime import datetime, timedelta
 import logging
+import re
 from typing import Any
 
 from flask import has_app_context
@@ -684,7 +686,12 @@ class StatsService:
 
     @staticmethod
     def _get_task_performance(period: str) -> list[dict[str, Any]]:
-        """Get task performance metrics."""
+        """Get task performance metrics grouped by base script name.
+
+        Returns a list sorted by total_executions (descending).  Each entry
+        contains aggregate metrics **and** a ``versions`` list so the UI can
+        render stacked bars showing the contribution of each script version.
+        """
         cutoff_date = StatsService._get_time_filter(period)
 
         query = (
@@ -708,21 +715,56 @@ class StatsService:
 
         performance_data = query.group_by(Script.slug).all()
 
-        result = []
+        # ---- group rows by normalised base name ----
+        grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for row in performance_data:
-            success_rate = (
-                (row.success_count / row.total_executions * 100)
-                if row.total_executions > 0
-                else 0
+            base, version = StatsService._parse_slug(row.slug)
+            grouped[base].append(
+                {
+                    "version": version,
+                    "total_executions": row.total_executions,
+                    "success_count": row.success_count,
+                    "avg_duration_minutes": round(row.avg_duration_minutes or 0, 1),
+                }
             )
+
+        result: list[dict[str, Any]] = []
+        for task_name, versions in grouped.items():
+            total_execs = sum(v["total_executions"] for v in versions)
+            total_success = sum(v["success_count"] for v in versions)
+            success_rate = (total_success / total_execs * 100) if total_execs > 0 else 0
+
+            # Weighted-average duration
+            weighted_dur = sum(
+                v["avg_duration_minutes"] * v["total_executions"] for v in versions
+            )
+            avg_dur = weighted_dur / total_execs if total_execs > 0 else 0
+
+            # Per-version detail (newest first)
+            version_data = []
+            for v in sorted(versions, key=lambda x: x["version"], reverse=True):
+                v_rate = (
+                    (v["success_count"] / v["total_executions"] * 100)
+                    if v["total_executions"] > 0
+                    else 0
+                )
+                version_data.append(
+                    {
+                        "version": v["version"],
+                        "total_executions": v["total_executions"],
+                        "success_rate": round(v_rate, 1),
+                        "avg_duration_minutes": v["avg_duration_minutes"],
+                    }
+                )
 
             result.append(
                 {
-                    "task": StatsService._normalize_task_name(row.slug),
-                    "total_executions": row.total_executions,
+                    "task": task_name,
+                    "total_executions": total_execs,
                     "success_rate": round(success_rate, 1),
-                    "avg_duration_minutes": round(row.avg_duration_minutes or 0, 1),
-                    "failure_reasons": [],  # TODO: Extract from logs if needed
+                    "avg_duration_minutes": round(avg_dur, 1),
+                    "versions": version_data,
+                    "failure_reasons": [],
                 }
             )
 
@@ -864,40 +906,58 @@ class StatsService:
             "never_executed": max(0, never_executed),
         }
 
+    # Regex for trailing semver-style version segment (e.g. "-2-2-4", "-1-0-3").
+    # Requires the character immediately before the version to be non-digit so
+    # that names containing numbers (like sdg-15-3-1-sub-indicators) are not
+    # accidentally truncated.
+    _VERSION_RE = re.compile(r"^(.*\D)-(\d+-\d+-\d+)$")
+
     @staticmethod
-    def _normalize_task_name(slug: str) -> str:
-        """
-        Normalize script slugs to consistent task names for grouping.
+    def _parse_slug(slug: str) -> tuple[str, str]:
+        """Split a script slug into *(base_name, version)*.
 
-        Handles version removal, deprecated name mapping, and productivity variants
-        to ensure consistent task categorization across statistics.
+        Handles three version formats:
+        1. ``name-X-Y-Z``  (e.g. ``sdg-15-3-1-sub-indicators-2-2-4``)
+        2. ``name-vX.Y.Z`` (e.g. ``productivity-v2.1.0``)
+        3. No version      (e.g. ``drought``)
 
-        Args:
-            slug: Script slug from database (e.g., 'productivity-v2.1.0')
-
-        Returns:
-            str: Normalized task name (e.g., 'productivity') or 'unknown' for
-                invalid input
+        The *base_name* is further normalised (deprecated-name mapping,
+        productivity variant collapsing).  *version* is returned in dotted
+        form (``"2.2.4"``) or ``""`` when absent.
         """
         if not slug:
-            return "unknown"
+            return ("unknown", "")
 
-        # Remove version suffixes
-        task = slug.split("-v")[0]
+        version = ""
 
-        # Handle deprecated names
+        # 1. Try trailing digit-digit-digit pattern
+        m = StatsService._VERSION_RE.match(slug)
+        if m:
+            base = m.group(1)
+            version = m.group(2).replace("-", ".")
+        elif "-v" in slug:
+            # 2. Try legacy -vX.Y format
+            parts = slug.split("-v", 1)
+            base = parts[0]
+            version = parts[1] if len(parts) > 1 else ""
+        else:
+            base = slug
+
+        # Normalise the base name
         task_mapping = {
             "sdg-sub-indicators": "sdg-15-3-1-sub-indicators",
             "vegetation-productivity": "productivity",
         }
+        base = task_mapping.get(base, base)
+        if base.startswith("productivity-"):
+            base = "productivity"
 
-        task = task_mapping.get(task, task)
+        return (base, version)
 
-        # Handle productivity variants
-        if task.startswith("productivity-"):
-            task = "productivity"
-
-        return task
+    @staticmethod
+    def _normalize_task_name(slug: str) -> str:
+        """Return the normalised base name of a script slug (no version)."""
+        return StatsService._parse_slug(slug)[0]
 
     # ============================================================================
     # CACHE MANAGEMENT METHODS
