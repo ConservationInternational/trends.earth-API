@@ -223,7 +223,7 @@ class StatsService:
                     "geographic_distribution": StatsService._get_geographic_data(
                         period
                     ),
-                    "activity_stats": StatsService._get_activity_stats(),
+                    "activity_stats": StatsService._get_activity_stats(period),
                 }
 
                 return result
@@ -822,31 +822,34 @@ class StatsService:
         return result
 
     @staticmethod
-    def _get_activity_stats() -> dict[str, Any]:
-        """Get user activity statistics."""
-        now = datetime.utcnow()
+    def _get_activity_stats(period: str = "all") -> dict[str, Any]:
+        """Get user activity statistics for a given period.
 
-        # Users who have executed jobs in different periods
-        active_last_day = (
-            db.session.query(func.count(func.distinct(Execution.user_id)))
-            .filter(Execution.start_date >= now - timedelta(days=1))
-            .scalar()
-            or 0
-        )
+        Args:
+            period: Time period filter (last_day, last_week, last_month,
+                   last_year, all)
 
-        active_last_week = (
-            db.session.query(func.count(func.distinct(Execution.user_id)))
-            .filter(Execution.start_date >= now - timedelta(days=7))
-            .scalar()
-            or 0
-        )
+        Returns:
+            dict with active_users_in_period, active_users_countries,
+            and never_executed counts.
+        """
+        cutoff_date = StatsService._get_time_filter(period)
 
-        active_last_month = (
-            db.session.query(func.count(func.distinct(Execution.user_id)))
-            .filter(Execution.start_date >= now - timedelta(days=30))
-            .scalar()
-            or 0
+        # Active users (distinct users with executions in the period)
+        active_query = db.session.query(func.count(func.distinct(Execution.user_id)))
+        if cutoff_date:
+            active_query = active_query.filter(Execution.start_date >= cutoff_date)
+        active_users_in_period = active_query.scalar() or 0
+
+        # Distinct countries among active users in the period
+        country_query = (
+            db.session.query(func.count(func.distinct(User.country)))
+            .join(Execution, Execution.user_id == User.id)
+            .filter(User.country.isnot(None), User.country != "")
         )
+        if cutoff_date:
+            country_query = country_query.filter(Execution.start_date >= cutoff_date)
+        active_users_countries = country_query.scalar() or 0
 
         # Users who have never executed a job
         total_users = db.session.query(func.count(User.id)).scalar() or 0
@@ -856,9 +859,8 @@ class StatsService:
         never_executed = total_users - users_with_executions
 
         return {
-            "active_last_day": active_last_day,
-            "active_last_week": active_last_week,
-            "active_last_month": active_last_month,
+            "active_users_in_period": active_users_in_period,
+            "active_users_countries": active_users_countries,
             "never_executed": max(0, never_executed),
         }
 

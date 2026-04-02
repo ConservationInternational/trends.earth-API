@@ -102,9 +102,8 @@ class TestStatsAPIEndpoints:
                 {"country": "Brazil", "user_count": 75, "percentage": 30.0},
             ],
             "activity_stats": {
-                "active_last_day": 45,
-                "active_last_week": 234,
-                "active_last_month": 567,
+                "active_users_in_period": 234,
+                "active_users_countries": 45,
                 "never_executed": 123,
             },
         }

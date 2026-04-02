@@ -183,7 +183,10 @@ class TestStatsService:
                 "countries": {"USA": 100},
                 "total_users": 100,
             },
-            "activity_stats": {"active_last_day": 10, "active_last_week": 50},
+            "activity_stats": {
+                "active_users_in_period": 10,
+                "active_users_countries": 5,
+            },
         }
 
         self.mock_redis.get.return_value = expected_result
