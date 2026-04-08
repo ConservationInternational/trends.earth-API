@@ -1,0 +1,21 @@
+[Unit]
+Description=Refresh ECR credentials in Docker Swarm raft store
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/trendsearth-api-production/scripts/setup/refresh-ecr-credentials.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ecr-refresh
+
+# Needs Docker socket access
+User=root
+Group=root
+
+# Reasonable timeout for ECR login + service updates
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

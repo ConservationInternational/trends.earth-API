@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh ECR credentials in Docker Swarm raft store
+
+[Timer]
+# Run every 4 hours — well within the 12-hour ECR token lifetime.
+# This keeps Swarm able to re-pull ECR images even after docker image prune.
+OnCalendar=*-*-* 00/4:00:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
