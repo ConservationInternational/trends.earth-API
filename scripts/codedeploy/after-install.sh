@@ -14,6 +14,81 @@ source "${SCRIPT_DIR}/common.sh"
 
 log_info "AfterInstall hook started"
 
+# Detect environment
+ENVIRONMENT=$(detect_environment)
+log_info "Detected environment: $ENVIRONMENT"
+
+# Set application directory
+APP_DIR=$(get_app_directory "$ENVIRONMENT")
+log_info "Application directory: $APP_DIR"
+
+cd "$APP_DIR"
+
+# ============================================================================
+# Install ECR Credential Refresh Timer (ALL nodes)
+# ============================================================================
+# The refresh script keeps Swarm raft store credentials fresh so that
+# image pulls succeed even after docker image prune removes cached images.
+# Installed on ALL nodes because:
+#   - The Swarm leader can change (failover, rebalance)
+#   - The script itself checks for leader status and exits early on non-leaders
+#   - The timer must already be present when a node becomes leader
+
+SETUP_DIR="$APP_DIR/scripts/setup"
+if [ -f "$SETUP_DIR/refresh-ecr-credentials.sh" ]; then
+    log_info "Installing ECR credential refresh systemd units..."
+    chmod +x "$SETUP_DIR/refresh-ecr-credentials.sh"
+
+    # Install the service unit with correct ExecStart path
+    if [ -f "$SETUP_DIR/ecr-refresh.service" ]; then
+        sed "s|ExecStart=.*|ExecStart=${SETUP_DIR}/refresh-ecr-credentials.sh|" \
+            "$SETUP_DIR/ecr-refresh.service" > /etc/systemd/system/ecr-refresh.service
+    else
+        cat > /etc/systemd/system/ecr-refresh.service <<UNIT
+[Unit]
+Description=Refresh ECR credentials in Docker Swarm raft store
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=${SETUP_DIR}/refresh-ecr-credentials.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ecr-refresh
+User=root
+Group=root
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+    fi
+
+    if [ -f "$SETUP_DIR/ecr-refresh.timer" ]; then
+        cp "$SETUP_DIR/ecr-refresh.timer" /etc/systemd/system/ecr-refresh.timer
+    else
+        cat > /etc/systemd/system/ecr-refresh.timer <<UNIT
+[Unit]
+Description=Refresh ECR credentials in Docker Swarm raft store
+
+[Timer]
+OnCalendar=*-*-* 00/4:00:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+    fi
+
+    systemctl daemon-reload
+    systemctl enable --now ecr-refresh.timer
+    log_success "ECR credential refresh timer installed and enabled"
+else
+    log_info "No ECR refresh script found in $SETUP_DIR, skipping timer installation"
+fi
+
 # ============================================================================
 # Check if this node is the swarm leader
 # Only the leader needs to pull images; other nodes can skip
@@ -25,16 +100,6 @@ if ! is_swarm_leader; then
 fi
 
 log_info "This node is the Swarm leader - pulling images"
-
-# Detect environment
-ENVIRONMENT=$(detect_environment)
-log_info "Detected environment: $ENVIRONMENT"
-
-# Set application directory
-APP_DIR=$(get_app_directory "$ENVIRONMENT")
-log_info "Application directory: $APP_DIR"
-
-cd "$APP_DIR"
 
 # ============================================================================
 # Load Environment Variables
@@ -104,6 +169,7 @@ log_info "Setting file permissions..."
 chown -R ubuntu:ubuntu "$APP_DIR"
 chmod +x "$APP_DIR/scripts/"*.sh 2>/dev/null || true
 chmod +x "$APP_DIR/scripts/codedeploy/"*.sh 2>/dev/null || true
+chmod +x "$APP_DIR/scripts/setup/"*.sh 2>/dev/null || true
 chmod +x "$APP_DIR/entrypoint.sh" 2>/dev/null || true
 
 # ============================================================================

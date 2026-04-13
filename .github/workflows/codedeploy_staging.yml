@@ -356,6 +356,7 @@ jobs:
           docker-compose.yml \
           docker-compose.staging.yml \
           scripts/codedeploy/ \
+          scripts/setup/ \
           config/db/ \
           entrypoint.sh \
           -x "*.pyc" \

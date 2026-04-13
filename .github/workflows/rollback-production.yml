@@ -278,10 +278,12 @@ jobs:
         # Create deployment bundle
         echo "📦 Creating rollback deployment bundle..."
         mkdir -p deploy-bundle/scripts/codedeploy
+        mkdir -p deploy-bundle/scripts/setup
         
         # Copy CodeDeploy files
         cp appspec.yml deploy-bundle/
         cp scripts/codedeploy/*.sh deploy-bundle/scripts/codedeploy/
+        cp scripts/setup/*.sh deploy-bundle/scripts/setup/ 2>/dev/null || true
         cp docker-compose.prod.yml deploy-bundle/
         cp docker-compose.staging.yml deploy-bundle/ 2>/dev/null || true
         
