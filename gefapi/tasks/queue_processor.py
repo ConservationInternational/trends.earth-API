@@ -43,12 +43,13 @@ def _get_user_active_execution_count(user_id):
     - PENDING (without queued_at): About to start
     - READY: Container is ready/starting
     - RUNNING: Currently executing
+    - CANCELLING: Cancellation is in progress
 
     Excludes PENDING executions with queued_at set (those are in the queue).
     """
     return Execution.query.filter(
         Execution.user_id == user_id,
-        Execution.status.in_(["PENDING", "READY", "RUNNING"]),
+        Execution.status.in_(["PENDING", "READY", "RUNNING", "CANCELLING"]),
         Execution.queued_at.is_(None),
     ).count()
 

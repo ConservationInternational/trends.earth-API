@@ -690,6 +690,7 @@ def validate_execution_update(func):
                     "SUBMITTED",
                     "READY",
                     "RUNNING",
+                    "CANCELLING",
                     "FINISHED",
                     "FAILED",
                     "CANCELLED",

@@ -707,35 +707,20 @@ def cancel_execution(execution):
     ```
 
     **Response Fields**:
-    - `execution`: The updated execution object with CANCELLED status
-    - `cancellation_details`: Detailed information about what was cancelled:
-      - `execution_id`: ID of the cancelled execution
-      - `previous_status`: Status before cancellation (e.g., "RUNNING", "PENDING")
-      - `docker_service_stopped`: Whether Docker service was found and stopped
-      - `docker_container_stopped`: Whether Docker container was found and stopped
-      - `batch_jobs_terminated`: Array of AWS Batch jobs that were terminated
-        - `job_id`: The AWS Batch job identifier
-        - `name`: Step name (or "job_id" for single jobs)
-        - `previous_status`: Batch job status before termination
-        - `success`: Whether the termination was successful
-      - `gee_tasks_cancelled`: Array of Google Earth Engine tasks that were cancelled
-        - `task_id`: The GEE task identifier
-        - `success`: Whether the cancellation was successful
-        - `error`: Error message if cancellation failed
-        - `status`: Final status of the GEE task
-      - `errors`: Any errors encountered during cancellation process
+    - `execution`: The updated execution object with `CANCELLING` status
+    - `cancellation_details`: Dispatch metadata for background cancellation:
+      - `execution_id`: ID of the execution being cancelled
+      - `previous_status`: Status before cancellation request
+      - `new_status`: Set to `CANCELLING`
+      - `queued`: `true` when cancellation work was enqueued
+      - `task_id`: Celery task ID handling cancellation
+      - `errors`: Any immediate dispatch errors
 
-    **Cancellation Process**:
-    1. **Compute Resources**: For batch executions, terminates AWS Batch jobs via
-       the TerminateJob API. For Docker executions, stops and removes Docker
-       services/containers associated with the execution
-    2. **GEE Task Detection**: Scans execution logs for Google Earth Engine task IDs
-       using patterns like:
-       - "Starting GEE task 6CIGR7EG2J45GJ2DN2J7X3WZ"
-       - "Backing off ... for task YBKKBHM2V63JYBVIPCCRY7A2"
-    3. **GEE Task Cancellation**: Uses Google Earth Engine REST API to cancel
-       detected tasks
-    4. **Status Update**: Sets execution status to CANCELLED and logs the cancellation
+     **Cancellation Process**:
+     1. Request transitions execution to `CANCELLING`
+     2. API returns `202 Accepted` immediately
+     3. Background worker cancels compute resources and GEE tasks
+     4. Background worker sets final status to `CANCELLED`
 
     **Cancellable States**:
     - `PENDING`: Execution queued, waiting to start
@@ -746,6 +731,7 @@ def cancel_execution(execution):
     - `FINISHED`: Execution completed successfully
     - `FAILED`: Execution already failed
     - `CANCELLED`: Execution already cancelled
+    - `CANCELLING`: Cancellation already in progress
 
     **Error Responses**:
     - `400 Bad Request`: Execution is not in a cancellable state
@@ -753,6 +739,13 @@ def cancel_execution(execution):
       {
         "status": 400,
         "detail": "Cannot cancel execution in FINISHED state"
+      }
+      ```
+    - `409 Conflict`: Cancellation is already in progress
+      ```json
+      {
+        "status": 409,
+        "detail": "Cancellation already in progress for this execution"
       }
       ```
     - `401 Unauthorized`: JWT token required
@@ -784,6 +777,12 @@ def cancel_execution(execution):
             return error(status=403, detail="You can only cancel your own executions")
 
         # Check if execution is in a cancellable state
+        if execution_obj.status == "CANCELLING":
+            return error(
+                status=409,
+                detail="Cancellation already in progress for this execution",
+            )
+
         if execution_obj.status in ["FINISHED", "FAILED", "CANCELLED"]:
             return error(
                 status=400,
@@ -793,7 +792,7 @@ def cancel_execution(execution):
         # Cancel the execution
         result = ExecutionService.cancel_execution(execution)
 
-        return jsonify(data=result), 200
+        return jsonify(data=result), 202
 
     except ExecutionNotFound as e:
         logger.error("[ROUTER]: " + e.message)

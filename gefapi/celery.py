@@ -70,6 +70,9 @@ def make_celery(app):
         "gefapi.tasks.execution_cleanup.cleanup_old_failed_executions": {
             "queue": "build"
         },
+        "gefapi.tasks.execution_cancellation.cancel_execution_workflow": {
+            "queue": "build"
+        },
         "gefapi.tasks.refresh_token_cleanup.cleanup_expired_refresh_tokens": {
             "queue": "default"
         },

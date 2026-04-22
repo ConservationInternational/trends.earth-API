@@ -6,6 +6,7 @@ from gefapi.tasks import (
     deletion_audit_cleanup,  # noqa: F401
     docker_completed_monitoring,  # noqa: F401
     docker_service_monitoring,  # noqa: F401
+    execution_cancellation,  # noqa: F401
     execution_cleanup,  # noqa: F401
     queue_processor,  # noqa: F401
     refresh_token_cleanup,  # noqa: F401
