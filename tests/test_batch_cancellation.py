@@ -229,42 +229,31 @@ class TestCancelBatchExecution:
                 ExecutionService, "get_execution", return_value=mock_execution
             ),
             patch("gefapi.services.execution_service.Script") as mock_script_model,
-            patch(
-                "gefapi.services.execution_service.terminate_batch_jobs"
-            ) as mock_terminate,
             patch("gefapi.services.execution_service.celery_app") as mock_celery,
             patch("gefapi.services.execution_service.db"),
         ):
             mock_script_model.query.get.return_value = mock_script
-            mock_terminate.return_value = {
-                "jobs_terminated": [
-                    {
-                        "job_id": "batch-job-456",
-                        "name": "job_id",
-                        "previous_status": "RUNNING",
-                        "success": True,
-                    }
-                ],
-                "errors": [],
-            }
+            mock_task_result = Mock()
+            mock_task_result.id = "cancel-task-1"
+            mock_celery.send_task.return_value = mock_task_result
 
             result = ExecutionService.cancel_execution("batch-exec-id")
 
-        # Should have called terminate_batch_jobs
-        mock_terminate.assert_called_once_with(
-            "batch-exec-id", reason="Cancelled by user via API"
+        # Should have dispatched async cancellation workflow
+        mock_celery.send_task.assert_called_once_with(
+            "gefapi.tasks.execution_cancellation.cancel_execution_workflow",
+            args=["batch-exec-id"],
+            queue="build",
         )
 
-        # Should NOT have dispatched Docker cancellation task
-        mock_celery.send_task.assert_not_called()
+        # Should have set CANCELLING status
+        assert mock_execution.status == "CANCELLING"
 
-        # Should have set CANCELLED status
-        assert mock_execution.status == "CANCELLED"
-
-        # Result should contain batch_jobs_terminated
+        # Result should contain queued metadata
         details = result["cancellation_details"]
-        assert len(details["batch_jobs_terminated"]) == 1
-        assert details["batch_jobs_terminated"][0]["success"] is True
+        assert details["queued"] is True
+        assert details["new_status"] == "CANCELLING"
+        assert details["task_id"] == "cancel-task-1"
 
     @patch("gefapi.services.execution_service.ExecutionLog")
     @patch("gefapi.services.execution_service.rollbar")
@@ -289,20 +278,13 @@ class TestCancelBatchExecution:
         mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = []
 
         mock_task_result = Mock()
-        mock_task_result.get.return_value = {
-            "docker_service_stopped": True,
-            "docker_container_stopped": False,
-            "errors": [],
-        }
+        mock_task_result.id = "cancel-task-2"
 
         with (
             patch.object(
                 ExecutionService, "get_execution", return_value=mock_execution
             ),
             patch("gefapi.services.execution_service.Script") as mock_script_model,
-            patch(
-                "gefapi.services.execution_service.terminate_batch_jobs"
-            ) as mock_terminate,
             patch("gefapi.services.execution_service.celery_app") as mock_celery,
             patch("gefapi.services.execution_service.db"),
         ):
@@ -311,18 +293,18 @@ class TestCancelBatchExecution:
 
             result = ExecutionService.cancel_execution("docker-exec-id")
 
-        # Should NOT call terminate_batch_jobs
-        mock_terminate.assert_not_called()
-
-        # Should have dispatched Docker cancellation task
+        # Should have dispatched async cancellation workflow
         mock_celery.send_task.assert_called_once_with(
-            "docker.cancel_execution", args=["docker-exec-id"], queue="build"
+            "gefapi.tasks.execution_cancellation.cancel_execution_workflow",
+            args=["docker-exec-id"],
+            queue="build",
         )
 
-        # Result should contain Docker results, not batch results
+        # Result should contain queue metadata
         details = result["cancellation_details"]
-        assert details["docker_service_stopped"] is True
-        assert details["batch_jobs_terminated"] == []
+        assert details["queued"] is True
+        assert details["new_status"] == "CANCELLING"
+        assert details["task_id"] == "cancel-task-2"
 
     @patch("gefapi.services.execution_service.ExecutionLog")
     @patch("gefapi.services.execution_service.rollbar")
@@ -350,23 +332,20 @@ class TestCancelBatchExecution:
                 ExecutionService, "get_execution", return_value=mock_execution
             ),
             patch("gefapi.services.execution_service.Script") as mock_script_model,
-            patch(
-                "gefapi.services.execution_service.terminate_batch_jobs"
-            ) as mock_terminate,
-            patch("gefapi.services.execution_service.celery_app"),
+            patch("gefapi.services.execution_service.celery_app") as mock_celery,
             patch("gefapi.services.execution_service.db"),
         ):
             mock_script_model.query.get.return_value = mock_script
-            mock_terminate.side_effect = Exception("AWS Batch unavailable")
+            mock_task_result = Mock()
+            mock_task_result.id = "cancel-task-3"
+            mock_celery.send_task.return_value = mock_task_result
 
             result = ExecutionService.cancel_execution("batch-exec-fail")
 
-        # Execution should still be CANCELLED despite the error
-        assert mock_execution.status == "CANCELLED"
-
-        # Error should be recorded
+        assert mock_execution.status == "CANCELLING"
         details = result["cancellation_details"]
-        assert any("AWS Batch unavailable" in e for e in details["errors"])
+        assert details["queued"] is True
+        assert details["errors"] == []
 
     @patch("gefapi.services.execution_service.ExecutionLog")
     @patch("gefapi.services.execution_service.rollbar")
@@ -394,36 +373,18 @@ class TestCancelBatchExecution:
                 ExecutionService, "get_execution", return_value=mock_execution
             ),
             patch("gefapi.services.execution_service.Script") as mock_script_model,
-            patch(
-                "gefapi.services.execution_service.terminate_batch_jobs"
-            ) as mock_terminate,
-            patch("gefapi.services.execution_service.celery_app"),
+            patch("gefapi.services.execution_service.celery_app") as mock_celery,
             patch("gefapi.services.execution_service.db"),
         ):
             mock_script_model.query.get.return_value = mock_script
-            mock_terminate.return_value = {
-                "jobs_terminated": [
-                    {
-                        "job_id": "j1",
-                        "name": "extract",
-                        "previous_status": "RUNNING",
-                        "success": True,
-                    },
-                    {
-                        "job_id": "j2",
-                        "name": "match",
-                        "previous_status": "PENDING",
-                        "success": True,
-                    },
-                ],
-                "errors": [],
-            }
+            mock_task_result = Mock()
+            mock_task_result.id = "cancel-task-4"
+            mock_celery.send_task.return_value = mock_task_result
 
             ExecutionService.cancel_execution("batch-exec-summary")
 
-        # Verify the ExecutionLog was created with batch info in the text
+        # Verify the request log was created
         log_calls = mock_execution_log.call_args_list
         assert len(log_calls) >= 1
         log_text = log_calls[0].kwargs.get("text", "")
-        assert "Batch jobs terminated" in log_text
-        assert "2/2" in log_text
+        assert "Cancellation requested by user" in log_text

@@ -363,8 +363,7 @@ class TestDockerServiceTaskIntegration:
 
             # Verify the correct task was dispatched to the correct queue
             mock_celery_app.send_task.assert_called_once_with(
-                "docker.cancel_execution", args=["test-execution-id"], queue="build"
+                "gefapi.tasks.execution_cancellation.cancel_execution_workflow",
+                args=["test-execution-id"],
+                queue="build",
             )
-
-            # Verify task result was retrieved with timeout
-            mock_task_result.get.assert_called_once_with(timeout=60)

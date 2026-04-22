@@ -191,22 +191,15 @@ class TestExecutionCancellation:
         ):
             mock_script_model.query.get.return_value = None
             ExecutionService.cancel_execution("test-execution-id")
-
         # Verify Celery task was called correctly
         mock_celery_app.send_task.assert_called_once_with(
-            "docker.cancel_execution", args=["test-execution-id"], queue="build"
+            "gefapi.tasks.execution_cancellation.cancel_execution_workflow",
+            args=["test-execution-id"],
+            queue="build",
         )
 
-        # Verify task result was retrieved
-        mock_task_result.get.assert_called_once_with(timeout=60)
-
-        # Verify GEE tasks were cancelled
-        mock_gee_cancel.assert_called_once()
-
         # Verify execution was updated
-        assert mock_execution.status == "CANCELLED"
-        assert mock_execution.end_date is not None
-        assert mock_execution.progress == 100
+        assert mock_execution.status == "CANCELLING"
 
         # Verify database operations
         mock_db.session.add.assert_called()
@@ -298,22 +291,19 @@ class TestExecutionCancellationCeleryTasks:
 
             # Verify Celery task was called with correct parameters
             mock_celery_app.send_task.assert_called_once_with(
-                "docker.cancel_execution", args=["test-execution-id"], queue="build"
+                "gefapi.tasks.execution_cancellation.cancel_execution_workflow",
+                args=["test-execution-id"],
+                queue="build",
             )
 
-            # Verify task result was retrieved with timeout
-            mock_task_result.get.assert_called_once_with(timeout=60)
-
             # Verify execution was updated
-            assert mock_execution.status == "CANCELLED"
-            assert mock_execution.end_date is not None
-            assert mock_execution.progress == 100
+            assert mock_execution.status == "CANCELLING"
 
             # Verify return structure
             assert "execution" in result
             assert "cancellation_details" in result
-            assert result["cancellation_details"]["docker_service_stopped"] is True
-            assert result["cancellation_details"]["docker_container_stopped"] is False
+            assert result["cancellation_details"]["queued"] is True
+            assert result["cancellation_details"]["new_status"] == "CANCELLING"
 
     @patch("gefapi.services.execution_service.celery_app")
     def test_cancel_execution_celery_task_timeout(self, mock_celery_app):
@@ -326,10 +316,8 @@ class TestExecutionCancellationCeleryTasks:
         mock_execution.status = "RUNNING"
         mock_execution.user_id = "test-user-id"
 
-        # Mock Celery task timeout
-        mock_task_result = Mock()
-        mock_task_result.get.side_effect = Exception("Task timeout")
-        mock_celery_app.send_task.return_value = mock_task_result
+        # Mock enqueue failure
+        mock_celery_app.send_task.side_effect = Exception("Task timeout")
 
         with (
             patch.object(
@@ -348,19 +336,11 @@ class TestExecutionCancellationCeleryTasks:
             mock_execution_log.query.filter.return_value.order_by.return_value.all.return_value = []
             mock_gee_cancel.return_value = []
 
-            result = ExecutionService.cancel_execution("test-execution-id")
+            with pytest.raises(Exception, match="Task timeout"):
+                ExecutionService.cancel_execution("test-execution-id")
 
-            # Should still succeed with execution marked as cancelled
-            assert mock_execution.status == "CANCELLED"
-            assert mock_execution.end_date is not None
-
-            # Should have error in cancellation details
-            assert "cancellation_details" in result
-            assert len(result["cancellation_details"]["errors"]) > 0
-            assert (
-                "Docker cancellation task failed"
-                in result["cancellation_details"]["errors"][0]
-            )
+            # Enqueue failure should roll back CANCELLING to RUNNING
+            assert mock_execution.status == "RUNNING"
 
     @patch("gefapi.services.execution_service.celery_app")
     def test_cancel_execution_docker_partial_failure(self, mock_celery_app):
@@ -401,16 +381,14 @@ class TestExecutionCancellationCeleryTasks:
 
             result = ExecutionService.cancel_execution("test-execution-id")
 
-            # Should succeed with execution marked as cancelled
-            assert mock_execution.status == "CANCELLED"
+            # Should remain in CANCELLING after enqueue
+            assert mock_execution.status == "CANCELLING"
 
-            # Should have Docker errors in details
+            # Response now carries queue metadata
             details = result["cancellation_details"]
-            assert details["docker_service_stopped"] is False
-            assert details["docker_container_stopped"] is True
-            assert len(details["errors"]) >= 2
-            assert "Service not found" in details["errors"]
-            assert "Failed to remove service" in details["errors"]
+            assert details["queued"] is True
+            assert details["new_status"] == "CANCELLING"
+            assert details["errors"] == []
 
     @patch("gefapi.services.execution_service.celery_app")
     def test_cancel_execution_with_gee_and_docker_success(self, mock_celery_app):
@@ -471,22 +449,13 @@ class TestExecutionCancellationCeleryTasks:
 
             result = ExecutionService.cancel_execution("test-execution-id")
 
-            # Verify comprehensive results
-            assert mock_execution.status == "CANCELLED"
+            # Verify enqueue response
+            assert mock_execution.status == "CANCELLING"
 
             details = result["cancellation_details"]
-            assert details["docker_service_stopped"] is True
-            assert details["docker_container_stopped"] is True
-            assert len(details["gee_tasks_cancelled"]) == 2
-            assert all(task["success"] for task in details["gee_tasks_cancelled"])
+            assert details["queued"] is True
+            assert details["new_status"] == "CANCELLING"
             assert len(details["errors"]) == 0
-
-            # Verify GEE service was called with log texts
-            mock_gee_cancel.assert_called_once()
-            call_args = mock_gee_cancel.call_args[0][0]  # First argument (log_texts)
-            assert len(call_args) == 3
-            assert "Starting GEE task ABCD1234EFGH5678IJKL9012" in call_args
-            assert "Task XYZA9876BCDE5432FGHI1234 submitted" in call_args
 
     @patch("gefapi.services.execution_service.celery_app")
     def test_cancel_execution_logs_creation(self, mock_celery_app):
@@ -546,7 +515,7 @@ class TestExecutionCancellationCeleryTasks:
                 call_arg = call[0][0]  # First argument to add()
                 if (
                     hasattr(call_arg, "text")
-                    and "cancelled by user" in str(call_arg.text).lower()
+                    and "cancellation requested by user" in str(call_arg.text).lower()
                 ):
                     # Since ExecutionLog is mocked, we need to check the constructor call
                     break
@@ -567,7 +536,7 @@ class TestExecutionCancellationCeleryTasks:
                     log_call_args[0][2] if len(log_call_args[0]) > 2 else ""
                 )
 
-                assert "cancelled by user" in str(text_arg).lower()
+                assert "cancellation requested by user" in str(text_arg).lower()
                 assert str(level_arg) == "INFO"
                 assert str(execution_id_arg) == mock_execution.id
 

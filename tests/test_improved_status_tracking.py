@@ -307,11 +307,7 @@ class TestImprovedStatusTracking:
             # Mock celery task to avoid Docker dependencies in tests
             with patch("gefapi.services.execution_service.celery_app") as mock_celery:
                 mock_task = mock_celery.send_task.return_value
-                mock_task.get.return_value = {
-                    "docker_service_stopped": True,
-                    "docker_container_stopped": True,
-                    "errors": [],
-                }
+                mock_task.id = "cancel-task-status-test"
 
                 # Cancel the execution
                 result = ExecutionService.cancel_execution(execution_id)
@@ -320,7 +316,7 @@ class TestImprovedStatusTracking:
                 assert (
                     StatusLog.query.count() == initial_log_count + 1
                 )  # One log per status change
-                assert result["execution"]["status"] == "CANCELLED"
+                assert result["execution"]["status"] == "CANCELLING"
 
     def test_status_endpoint_with_new_schema(self, client, auth_headers_admin):
         """Test that the status endpoint works with the new schema"""

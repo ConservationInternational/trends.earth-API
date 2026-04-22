@@ -110,15 +110,13 @@ def cancel_execution_workflow(self, execution_id):
         else:
             try:
                 logger.info(
-                    "[TASK]: Dispatching docker cancellation task for execution %s",
+                    "[TASK]: Running docker cancellation for execution %s",
                     execution.id,
                 )
-                docker_task = celery.send_task(
-                    "docker.cancel_execution",
-                    args=[str(execution.id)],
-                    queue="build",
-                )
-                docker_results = docker_task.get(timeout=90)
+                # Avoid waiting on a nested Celery task within a task.
+                from gefapi.services.docker_service import cancel_execution_task
+
+                docker_results = cancel_execution_task(str(execution.id))
                 cancellation_results["docker_service_stopped"] = docker_results.get(
                     "docker_service_stopped", False
                 )

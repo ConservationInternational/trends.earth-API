@@ -1040,8 +1040,7 @@ class ExecutionService:
             except Exception:
                 rollback_log = ExecutionLog(
                     text=(
-                        "Cancellation dispatch failed; "
-                        "rolling back to previous status"
+                        "Cancellation dispatch failed; rolling back to previous status"
                     ),
                     level="ERROR",
                     execution_id=execution.id,
@@ -1067,7 +1066,7 @@ class ExecutionService:
                     "previous_status": previous_status,
                     "new_status": "CANCELLING",
                     "queued": True,
-                    "task_id": task_result.id,
+                    "task_id": str(task_result.id),
                     "errors": [],
                 },
             }

@@ -64,7 +64,7 @@ class TestExecutionCancellationEndpoints:
                 )
 
                 # Verify response
-                assert response.status_code == 200
+                assert response.status_code == 202
 
                 response_data = response.get_json()
                 assert "data" in response_data
@@ -73,20 +73,21 @@ class TestExecutionCancellationEndpoints:
 
                 # Verify execution status
                 execution_data = response_data["data"]["execution"]
-                assert execution_data["status"] == "CANCELLED"
-                assert execution_data["progress"] == 100
-                assert execution_data["end_date"] is not None
+                assert execution_data["status"] == "CANCELLING"
 
                 # Verify cancellation details
                 details = response_data["data"]["cancellation_details"]
                 assert details["execution_id"] == str(execution.id)
                 assert details["previous_status"] == "RUNNING"
-                assert details["docker_service_stopped"] is True
-                assert details["docker_container_stopped"] is False
+                assert details["queued"] is True
+                assert details["new_status"] == "CANCELLING"
+                assert details["task_id"] is not None
 
                 # Verify Celery task was called correctly
                 mock_send_task.assert_called_once_with(
-                    "docker.cancel_execution", args=[execution.id], queue="build"
+                    "gefapi.tasks.execution_cancellation.cancel_execution_workflow",
+                    args=[str(execution.id)],
+                    queue="build",
                 )
 
     def test_cancel_execution_admin_cancel_other_user(
@@ -133,15 +134,15 @@ class TestExecutionCancellationEndpoints:
                 )
 
                 # Verify response
-                assert response.status_code == 200
+                assert response.status_code == 202
 
                 response_data = response.get_json()
-                assert response_data["data"]["execution"]["status"] == "CANCELLED"
+                assert response_data["data"]["execution"]["status"] == "CANCELLING"
 
                 # Verify cancellation details
                 details = response_data["data"]["cancellation_details"]
-                assert details["docker_container_stopped"] is True
-                assert details["docker_service_stopped"] is False
+                assert details["queued"] is True
+                assert details["new_status"] == "CANCELLING"
 
     def test_cancel_execution_forbidden_other_user(
         self, client, auth_headers_user, admin_user, sample_script, db_session
@@ -306,12 +307,8 @@ class TestExecutionCancellationEndpoints:
             patch("gefapi.services.execution_service.celery_app") as mock_celery,
             patch.object(mock_celery, "send_task") as mock_send_task,
         ):
-            # Mock Celery task timeout
-            mock_task_result = Mock()
-            mock_task_result.get.side_effect = Exception(
-                "Worker lost"
-            )  # Generic exception instead of WorkerLostError
-            mock_send_task.return_value = mock_task_result
+            # Mock enqueue failure
+            mock_send_task.side_effect = Exception("Worker lost")
 
             # Re-query objects to attach to current session
             regular_user = db_session.merge(regular_user)
@@ -338,16 +335,12 @@ class TestExecutionCancellationEndpoints:
                     headers=auth_headers_user,
                 )
 
-                # Should still succeed but with error in details
-                assert response.status_code == 200
+                # Enqueue failure currently bubbles up as a server error
+                assert response.status_code == 500
 
                 response_data = response.get_json()
-                assert response_data["data"]["execution"]["status"] == "CANCELLED"
-
-                # Should have Docker error in cancellation details
-                details = response_data["data"]["cancellation_details"]
-                assert len(details["errors"]) > 0
-                assert "Docker cancellation task failed" in details["errors"][0]
+                assert "detail" in response_data
+                assert response_data["detail"] == "Failed to cancel execution"
 
     def test_cancel_execution_with_gee_tasks(
         self, client, auth_headers_user, regular_user, sample_script, db_session
@@ -419,16 +412,15 @@ class TestExecutionCancellationEndpoints:
                     headers=auth_headers_user,
                 )
 
-                assert response.status_code == 200
+                assert response.status_code == 202
 
                 response_data = response.get_json()
                 details = response_data["data"]["cancellation_details"]
 
-                # Verify GEE task cancellation results
-                assert len(details["gee_tasks_cancelled"]) == 2
-                assert details["gee_tasks_cancelled"][0]["success"] is True
-                assert details["gee_tasks_cancelled"][1]["success"] is False
-                assert "Task not found" in details["errors"][0]
+                # Verify async queue metadata
+                assert details["queued"] is True
+                assert details["new_status"] == "CANCELLING"
+                assert details["task_id"] is not None
 
     def test_cancel_execution_service_error_recovery(
         self, client, auth_headers_user, regular_user, sample_script, db_session
@@ -475,20 +467,16 @@ class TestExecutionCancellationEndpoints:
                     headers=auth_headers_user,
                 )
 
-                # Should still succeed with execution marked as cancelled
-                assert response.status_code == 200
+                # Should still return accepted response
+                assert response.status_code == 202
 
                 response_data = response.get_json()
-                assert response_data["data"]["execution"]["status"] == "CANCELLED"
+                assert response_data["data"]["execution"]["status"] == "CANCELLING"
 
-                # Should have both Docker and GEE errors
+                # Queue metadata is returned immediately
                 details = response_data["data"]["cancellation_details"]
-                assert len(details["errors"]) >= 2  # 2 Docker + 1 GEE (may be combined)
-
-                error_messages = " ".join(details["errors"])
-                assert "Docker service not found" in error_messages
-                assert "Docker container not found" in error_messages
-                # GEE error might be included or handled separately
+                assert details["queued"] is True
+                assert details["new_status"] == "CANCELLING"
 
     def test_cancel_execution_invalid_uuid(self, client, auth_headers_user):
         """Test cancellation with invalid execution ID format"""
@@ -556,7 +544,7 @@ class TestExecutionCancellationEndpoints:
                     headers=auth_headers_user,
                 )
 
-                assert response.status_code == 200
+                assert response.status_code == 202
 
                 # Verify cancellation log was created
                 logs = ExecutionLog.query.filter_by(execution_id=execution.id).all()
@@ -564,18 +552,15 @@ class TestExecutionCancellationEndpoints:
 
                 # Find the cancellation log
                 cancellation_log = next(
-                    (log for log in logs if "cancelled by user" in log.text.lower()),
+                    (
+                        log
+                        for log in logs
+                        if "cancellation requested by user" in log.text.lower()
+                    ),
                     None,
                 )
                 assert cancellation_log is not None
                 assert cancellation_log.level == "INFO"
-                # Check for key cancellation information in the log
-                log_text = cancellation_log.text
-                assert "Docker service stopped" in log_text
-                # GEE task info may be in a separate part of the log or formatted differently
-                assert any(
-                    phrase in log_text for phrase in ["GEE task", "1/1", "cancelled"]
-                )
 
 
 @pytest.mark.usefixtures("app", "db_session")
@@ -585,7 +570,7 @@ class TestBatchExecutionCancellationEndpoint:
     def test_cancel_batch_execution_terminates_jobs(
         self, client, auth_headers_user, regular_user, batch_script, db_session
     ):
-        """Test that cancelling a batch execution calls terminate_batch_jobs"""
+        """Test that cancelling a batch execution uses async cancellation workflow"""
         regular_user = db_session.merge(regular_user)
         batch_script = db_session.merge(batch_script)
 
@@ -604,30 +589,14 @@ class TestBatchExecutionCancellationEndpoint:
         db_session.commit()
 
         with (
-            patch(
-                "gefapi.services.execution_service.terminate_batch_jobs"
-            ) as mock_terminate,
+            patch("gefapi.services.execution_service.celery_app") as mock_celery,
             patch(
                 "gefapi.services.gee_service.GEEService.cancel_gee_tasks_from_execution"
             ) as mock_gee,
         ):
-            mock_terminate.return_value = {
-                "jobs_terminated": [
-                    {
-                        "job_id": "batch-job-111",
-                        "name": "extract",
-                        "previous_status": "SUCCEEDED",
-                        "success": True,
-                    },
-                    {
-                        "job_id": "batch-job-222",
-                        "name": "match",
-                        "previous_status": "RUNNING",
-                        "success": True,
-                    },
-                ],
-                "errors": [],
-            }
+            mock_task_result = Mock()
+            mock_task_result.id = "batch-cancel-task"
+            mock_celery.send_task.return_value = mock_task_result
             mock_gee.return_value = []
 
             response = client.post(
@@ -635,18 +604,14 @@ class TestBatchExecutionCancellationEndpoint:
                 headers=auth_headers_user,
             )
 
-            assert response.status_code == 200
+            assert response.status_code == 202
             data = response.get_json()["data"]
 
-            assert data["execution"]["status"] == "CANCELLED"
+            assert data["execution"]["status"] == "CANCELLING"
             details = data["cancellation_details"]
-            assert len(details["batch_jobs_terminated"]) == 2
-            assert details["docker_service_stopped"] is False
-            assert details["docker_container_stopped"] is False
-
-            mock_terminate.assert_called_once_with(
-                str(execution.id), reason="Cancelled by user via API"
-            )
+            assert details["queued"] is True
+            assert details["new_status"] == "CANCELLING"
+            assert details["task_id"] == "batch-cancel-task"
 
 
 @pytest.mark.usefixtures("app", "db_session")
@@ -723,7 +688,7 @@ class TestExecutionCancellationIntegration:
                 )
 
                 # Verify HTTP response
-                assert response.status_code == 200
+                assert response.status_code == 202
                 response_data = response.get_json()
 
                 # Verify response structure
@@ -734,42 +699,39 @@ class TestExecutionCancellationIntegration:
                 # Verify execution state in response
                 exec_data = response_data["data"]["execution"]
                 assert exec_data["id"] == str(initial_id)
-                assert exec_data["status"] == "CANCELLED"
-                assert exec_data["progress"] == 100
+                assert exec_data["status"] == "CANCELLING"
                 assert exec_data["start_date"] == initial_start_date.isoformat()
-                assert exec_data["end_date"] is not None
+                assert exec_data["end_date"] is None
 
                 # Verify cancellation details
                 details = response_data["data"]["cancellation_details"]
                 assert details["execution_id"] == str(initial_id)
                 assert details["previous_status"] == "RUNNING"
-                assert details["docker_service_stopped"] is True
-                assert details["docker_container_stopped"] is True
-                assert len(details["gee_tasks_cancelled"]) == 1
-                assert details["gee_tasks_cancelled"][0]["success"] is True
+                assert details["queued"] is True
+                assert details["new_status"] == "CANCELLING"
+                assert details["task_id"] is not None
 
                 # Verify database state
                 db_session.refresh(execution)
-                assert execution.status == "CANCELLED"
-                assert execution.progress == 100
-                assert execution.end_date is not None
-                assert execution.end_date > execution.start_date
+                assert execution.status == "CANCELLING"
 
                 # Verify logs were created
                 logs = ExecutionLog.query.filter_by(execution_id=execution.id).all()
                 assert len(logs) >= 3  # original 2 + cancellation log
 
                 cancellation_log = next(
-                    (log for log in logs if "cancelled by user" in log.text.lower()),
+                    (
+                        log
+                        for log in logs
+                        if "cancellation requested by user" in log.text.lower()
+                    ),
                     None,
                 )
                 assert cancellation_log is not None
-                assert "Docker service stopped" in cancellation_log.text
-                assert "Docker container stopped" in cancellation_log.text
-                assert "1/1 GEE tasks cancelled" in cancellation_log.text
 
                 # Verify service calls
                 mock_send_task.assert_called_once_with(
-                    "docker.cancel_execution", args=[execution.id], queue="build"
+                    "gefapi.tasks.execution_cancellation.cancel_execution_workflow",
+                    args=[str(execution.id)],
+                    queue="build",
                 )
-                mock_gee.assert_called_once()

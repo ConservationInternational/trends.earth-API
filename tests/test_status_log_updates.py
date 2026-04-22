@@ -299,23 +299,19 @@ class TestStatusLogUpdates:
             # Mock celery task to avoid Docker dependencies in tests
             with patch("gefapi.services.execution_service.celery_app") as mock_celery:
                 mock_task = mock_celery.send_task.return_value
-                mock_task.get.return_value = {
-                    "docker_service_stopped": True,
-                    "docker_container_stopped": True,
-                    "errors": [],
-                }
+                mock_task.id = "cancel-task-status-log"
 
                 # Cancel the execution
                 result = ExecutionService.cancel_execution(execution_id)
 
                 # Verify only one status log was created
                 assert StatusLog.query.count() == initial_log_count + 1
-                assert result["execution"]["status"] == "CANCELLED"
+                assert result["execution"]["status"] == "CANCELLING"
 
                 # Verify the status log has transition information
                 status_log = StatusLog.query.order_by(StatusLog.id.desc()).first()
                 assert status_log.status_from == "RUNNING"
-                assert status_log.status_to == "CANCELLED"
+                assert status_log.status_to == "CANCELLING"
                 assert status_log.execution_id == execution_id
 
     def test_helper_function_handles_terminal_states(self, app):
