@@ -220,7 +220,9 @@ class GEEService:
                     logger.info(
                         f"Refreshing OAuth token for user {mask_email(user.email)}"
                     )
-                    credentials.refresh(None)
+                    from google.auth.transport.requests import Request
+
+                    credentials.refresh(Request())
                     # Update stored tokens
                     user.set_gee_oauth_credentials(
                         credentials.token, credentials.refresh_token

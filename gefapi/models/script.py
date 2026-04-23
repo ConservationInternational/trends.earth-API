@@ -56,8 +56,9 @@ class Script(db.Model):
     memory_limit = db.Column(db.BigInteger(), default=int(1e9))
     environment = db.Column(db.Text(), default="trends.earth-environment")
     environment_version = db.Column(db.Text(), default="0.1.6")
-    # Compute dispatch target: "docker" (local daemon) or "batch" (AWS Batch)
-    compute_type = db.Column(db.String(40), default="docker", nullable=False)
+    # Compute dispatch target: "gee" (Google Earth Engine via Docker Swarm),
+    # "openeo" (openEO backend, also via Docker Swarm), or "batch" (AWS Batch)
+    compute_type = db.Column(db.String(40), default="gee", nullable=False)
     # AWS Batch-specific overrides (only relevant when compute_type == "batch")
     batch_job_definition = db.Column(db.String(255), default=None)
     batch_job_queue = db.Column(db.String(255), default=None)
@@ -69,6 +70,9 @@ class Script(db.Model):
     uses_gee = db.Column(
         db.Boolean(), default=True, nullable=False, server_default="true"
     )
+    # openEO-specific: URL of the backend to submit jobs to.
+    # When None, falls back to SETTINGS["OPENEO_DEFAULT_BACKEND_URL"].
+    openeo_backend_url = db.Column(db.String(512), default=None)
 
     def __init__(
         self,
@@ -89,6 +93,7 @@ class Script(db.Model):
         allowed_users=None,
         restricted=False,
         uses_gee=True,
+        openeo_backend_url=None,
     ):
         self.name = name
         self.slug = slug
@@ -99,7 +104,7 @@ class Script(db.Model):
         self.memory_limit = memory_limit
         self.environment = environment
         self.environment_version = environment_version
-        self.compute_type = compute_type or "docker"
+        self.compute_type = compute_type or "gee"
         self.batch_job_definition = batch_job_definition
         self.batch_job_queue = batch_job_queue
         self.batch_image = batch_image
@@ -107,6 +112,7 @@ class Script(db.Model):
         self.allowed_users = allowed_users
         self.restricted = restricted
         self.uses_gee = uses_gee
+        self.openeo_backend_url = openeo_backend_url
 
     def __repr__(self):
         return f"<Script {self.name!r}>"
@@ -284,11 +290,13 @@ class Script(db.Model):
         if "environment" in include:
             script["environment"] = self.environment
             script["environment_version"] = self.environment_version
-            script["compute_type"] = self.compute_type or "docker"
+            script["compute_type"] = self.compute_type or "gee"
             if self.compute_type == "batch":
                 script["batch_job_definition"] = self.batch_job_definition
                 script["batch_job_queue"] = self.batch_job_queue
                 script["batch_image"] = self.batch_image
+            if self.compute_type == "openeo":
+                script["openeo_backend_url"] = self.openeo_backend_url
         if "access_control" in include:
             if user and is_admin_or_higher(user):
                 script["restricted"] = self.restricted or False

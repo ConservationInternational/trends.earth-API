@@ -53,19 +53,37 @@ def _get_user_active_execution_count(user_id):
     ).count()
 
 
-def _dispatch_execution(execution_id, script_slug, environment, params, is_batch):
+def _dispatch_execution(execution_id, script_slug, environment, params, compute_type):
     """Dispatch an execution to the appropriate runner.
 
-    Uses the ORCHESTRATOR config setting to determine the execution backend.
-    Currently supports "docker" (Docker Swarm). Future k8s support will add
-    a "k8s" path here.
+    Routes based on the per-script ``compute_type`` string rather than a
+    system-wide orchestrator flag.  This allows multiple scripts with
+    different compute backends to be dispatched simultaneously.
+
+    Supported values:
+    * ``"gee"`` (default) – run a GEE script in a Docker Swarm container.
+    * ``"openeo"`` – run an openEO script in a Docker Swarm container, but
+      submit the computation to an external openEO backend rather than GEE.
+    * ``"batch"`` – submit to AWS Batch.
+
+    Both ``"gee"`` and ``"openeo"`` use the Docker Swarm orchestrator.  The
+    ``ORCHESTRATOR`` setting controls *how* the container is launched; the
+    ``compute_type`` field controls *what* the container computes against.
     """
+    if compute_type == "openeo":
+        from gefapi.services.openeo_service import openeo_run
+
+        openeo_run.delay(execution_id, script_slug, environment, params)
+        return
+
+    if compute_type == "batch":
+        batch_run.delay(execution_id, script_slug, environment, params)
+        return
+
+    # Default: gee (compute_type == "gee" or unrecognised value) — runs via Docker Swarm
     orchestrator = SETTINGS.get("ORCHESTRATOR", "docker")
     if orchestrator == "docker":
-        if is_batch:
-            batch_run.delay(execution_id, script_slug, environment, params)
-        else:
-            docker_run.delay(execution_id, script_slug, environment, params)
+        docker_run.delay(execution_id, script_slug, environment, params)
     else:
         raise ValueError(f"Unknown orchestrator: {orchestrator}")
 
@@ -379,6 +397,50 @@ class ExecutionService:
                     f"EE_SERVICE_ACCOUNT_JSON from OS env: "
                     f"{bool(os.getenv('EE_SERVICE_ACCOUNT_JSON'))}"
                 )
+
+        # Inject openEO-specific environment variables when the script uses
+        # the openEO compute type.  This allows the trends.earth-Environment
+        # entrypoint to skip GEE initialisation and lets the openEO service
+        # resolve credentials and the backend URL at dispatch time.
+        compute_type = (getattr(script, "compute_type", None) or "gee").lower()
+        if compute_type == "openeo":
+            environment["SKIP_GEE_INIT"] = "true"
+
+            # Inject per-user openEO credentials as JSON (plaintext; the
+            # container environment is ephemeral and encrypted in transit).
+            if user and user.has_openeo_credentials():
+                import json as _json
+
+                creds = user.get_openeo_credentials()
+                if creds:
+                    environment["OPENEO_CREDENTIALS"] = _json.dumps(creds)
+                    logger.info(
+                        "Injected per-user openEO credentials for execution %s",
+                        execution_id,
+                    )
+
+            # Backend URL: per-script override → SETTINGS default.
+            # Validate https:// before injecting into the container environment.
+            from urllib.parse import urlparse
+
+            backend_url = getattr(script, "openeo_backend_url", None) or SETTINGS.get(
+                "OPENEO_DEFAULT_BACKEND_URL"
+            )
+            if backend_url:
+                _parsed = urlparse(backend_url)
+                if _parsed.scheme != "https" or not _parsed.netloc:
+                    raise ValueError(
+                        f"openEO backend URL must use https://, got: '{backend_url}'."
+                    )
+                environment["OPENEO_BACKEND_URL"] = backend_url
+
+            # S3 output bucket / prefix for openEO job results
+            output_bucket = SETTINGS.get("OUTPUT_S3_BUCKET")
+            output_prefix = SETTINGS.get("OUTPUT_S3_PREFIX", "outputs")
+            if output_bucket:
+                environment["OUTPUT_S3_BUCKET"] = output_bucket
+            if output_prefix:
+                environment["OUTPUT_S3_PREFIX"] = output_prefix
 
         return environment
 
@@ -732,7 +794,7 @@ class ExecutionService:
                 script.slug,
                 environment,
                 params,
-                is_batch=ExecutionService._is_batch_environment(script),
+                compute_type=(getattr(script, "compute_type", None) or "gee").lower(),
             )
         except Exception as e:
             rollbar.report_exc_info()

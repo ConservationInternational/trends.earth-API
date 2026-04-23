@@ -226,8 +226,8 @@ Add these to GitHub Variables (Settings → Secrets and variables → Actions �
 | `GOOGLE_PROJECT_ID` | Google Cloud project ID for GEE | `gef-ld-toolbox` |
 | `GEE_ENDPOINT` | GEE API endpoint (optional) | `https://earthengine-highvolume.googleapis.com` |
 | `GOOGLE_OAUTH_CLIENT_ID` | OAuth client ID for user GEE authentication | From Google Cloud Console |
-| `STAGING_GOOGLE_OAUTH_REDIRECT_URI` | OAuth callback URL for staging | `https://api-staging.trends.earth/api/v1/user/me/gee-oauth/callback` |
-| `PRODUCTION_GOOGLE_OAUTH_REDIRECT_URI` | OAuth callback URL for production | `https://api.trends.earth/api/v1/user/me/gee-oauth/callback` |
+| `STAGING_GOOGLE_OAUTH_REDIRECT_URI` | OAuth callback URL for staging | `https://api-staging.trends.earth/gee-oauth-callback` |
+| `PRODUCTION_GOOGLE_OAUTH_REDIRECT_URI` | OAuth callback URL for production | `https://api.trends.earth/gee-oauth-callback` |
 
 #### S3 Storage (Shared between environments)
 

@@ -58,10 +58,9 @@ def _dispatch_queued_execution(execution, user, script):
     """Dispatch a queued execution.
 
     Clears the queued_at timestamp and dispatches to the appropriate runner.
+    Delegates to ``_dispatch_execution`` to avoid duplicating the routing logic.
     """
-    # Import here to avoid circular dependency
-    from gefapi.services import batch_run, docker_run
-    from gefapi.services.execution_service import ExecutionService
+    from gefapi.services.execution_service import ExecutionService, _dispatch_execution
 
     # Clear the queued_at timestamp
     execution.queued_at = None
@@ -72,16 +71,10 @@ def _dispatch_queued_execution(execution, user, script):
         user, execution.id, script=script
     )
 
-    orchestrator = SETTINGS.get("ORCHESTRATOR", "docker")
-    is_batch = (getattr(script, "compute_type", None) or "").lower() == "batch"
-
-    if orchestrator == "docker":
-        if is_batch:
-            batch_run.delay(execution.id, script.slug, environment, execution.params)
-        else:
-            docker_run.delay(execution.id, script.slug, environment, execution.params)
-    else:
-        raise ValueError(f"Unknown orchestrator: {orchestrator}")
+    compute_type = (getattr(script, "compute_type", None) or "gee").lower()
+    _dispatch_execution(
+        execution.id, script.slug, environment, execution.params, compute_type
+    )
 
     logger.info(
         f"[QUEUE]: Dispatched queued execution {execution.id} for user {user.id}"

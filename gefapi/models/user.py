@@ -85,6 +85,9 @@ class User(db.Model):
     gee_credentials_type = db.Column(db.String(20), nullable=True)
     gee_credentials_created_at = db.Column(db.DateTime(), nullable=True)
 
+    # openEO credentials (encrypted JSON stored as text, same mechanism as GEE)
+    openeo_credentials_enc = db.Column(db.Text(), nullable=True)
+
     # Email notification preferences
     email_notifications_enabled = db.Column(db.Boolean(), default=True, nullable=False)
 
@@ -233,6 +236,12 @@ class User(db.Model):
                 "created_at": self.gee_credentials_created_at.isoformat()
                 if self.gee_credentials_created_at
                 else None,
+            }
+
+        # Include openEO credentials status if requested (no secrets returned)
+        if "openeo_credentials" in include:
+            user["openeo_credentials"] = {
+                "has_credentials": self.has_openeo_credentials(),
             }
 
         if "scripts" in include:
@@ -534,3 +543,33 @@ class User(db.Model):
         self.gee_service_account_key = None
         self.gee_credentials_type = None
         self.gee_credentials_created_at = None
+
+    # ------------------------------------------------------------------
+    # openEO credential helpers (mirrors GEE credential pattern above)
+    # ------------------------------------------------------------------
+
+    def has_openeo_credentials(self) -> bool:
+        """Return True if openEO credentials are stored."""
+        return self.openeo_credentials_enc is not None
+
+    def set_openeo_credentials(self, credentials: dict) -> None:
+        """Encrypt and persist an openEO credentials dict."""
+        import json
+
+        self.openeo_credentials_enc = self._encrypt_gee_data(json.dumps(credentials))
+
+    def get_openeo_credentials(self) -> "dict | None":
+        """Decrypt and return openEO credentials, or None if not stored."""
+        import json
+
+        data = self._decrypt_gee_data(self.openeo_credentials_enc)
+        if data:
+            try:
+                return json.loads(data)
+            except json.JSONDecodeError:
+                return None
+        return None
+
+    def clear_openeo_credentials(self) -> None:
+        """Remove stored openEO credentials."""
+        self.openeo_credentials_enc = None

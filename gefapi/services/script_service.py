@@ -97,6 +97,7 @@ class ScriptService:
                 batch_job_queue = config.get("batch_job_queue", None)
                 batch_image = config.get("batch_image", None)
                 uses_gee = config.get("uses_gee", True)
+                openeo_backend_url = config.get("openeo_backend_url", None)
         except Exception as error:
             rollbar.report_exc_info()
             raise error
@@ -132,6 +133,7 @@ class ScriptService:
                 batch_job_queue=batch_job_queue,
                 batch_image=batch_image,
                 uses_gee=uses_gee,
+                openeo_backend_url=openeo_backend_url,
             )
         else:
             # Updating existing entity
@@ -160,6 +162,9 @@ class ScriptService:
                 script.batch_image = batch_image
             if uses_gee is not None:
                 script.uses_gee = uses_gee
+            openeo_backend_url = config.get("openeo_backend_url", None)
+            if openeo_backend_url is not None:
+                script.openeo_backend_url = openeo_backend_url
         # TO DB
         try:
             logger.info("[DB]: ADD")

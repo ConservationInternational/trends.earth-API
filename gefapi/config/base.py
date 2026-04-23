@@ -25,7 +25,12 @@ SETTINGS = {
         "PARAMS_S3_PREFIX": os.getenv("PARAMS_S3_PREFIX"),
         "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
         "CORS_ORIGINS": os.getenv("CORS_ORIGINS"),
-        # API configuration required for trends.earth-Environment integration
+        # openEO output bucket – separate from the params bucket so openEO
+        # jobs can write GeoTIFF results without commingling with job params.
+        "OUTPUT_S3_BUCKET": os.getenv("OUTPUT_S3_BUCKET"),
+        "OUTPUT_S3_PREFIX": os.getenv(
+            "OUTPUT_S3_PREFIX", "outputs"
+        ),  # API configuration required for trends.earth-Environment integration
         "API_ENVIRONMENT_USER": _environment_user,
         "API_ENVIRONMENT_USER_PASSWORD": os.getenv("API_ENVIRONMENT_USER_PASSWORD"),
         # API_URL for execution containers - use internal URL to bypass rate limiting
@@ -64,6 +69,11 @@ SETTINGS = {
     "SCRIPTS_S3_BUCKET": os.getenv("SCRIPTS_S3_BUCKET"),
     "PARAMS_S3_PREFIX": os.getenv("PARAMS_S3_PREFIX"),
     "PARAMS_S3_BUCKET": os.getenv("PARAMS_S3_BUCKET"),
+    # openEO output bucket – separate from the params bucket.
+    "OUTPUT_S3_BUCKET": os.getenv("OUTPUT_S3_BUCKET"),
+    "OUTPUT_S3_PREFIX": os.getenv("OUTPUT_S3_PREFIX", "outputs"),
+    # Default openEO backend URL (per-script override via Script.openeo_backend_url).
+    "OPENEO_DEFAULT_BACKEND_URL": os.getenv("OPENEO_DEFAULT_BACKEND_URL"),
     "UPLOAD_FOLDER": os.getenv(
         "UPLOAD_FOLDER", os.path.join(tempfile.gettempdir(), "scripts")
     ),

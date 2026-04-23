@@ -103,6 +103,8 @@ def make_celery(app):
         },
         # Batch monitoring – no Docker access needed, runs on default queue
         "gefapi.tasks.batch_monitoring.monitor_batch_executions": {"queue": "default"},
+        # openEO monitoring – polls openEO backends, no Docker access needed
+        "gefapi.tasks.openeo_monitoring.monitor_openeo_jobs": {"queue": "default"},
         # Batch dispatch task – submit jobs to AWS Batch (no Docker needed)
         "gefapi.services.batch_service.batch_run": {"queue": "default"},
         # Execution queue processor – dispatches queued executions (no Docker needed)
@@ -174,6 +176,12 @@ def make_celery(app):
         "monitor-batch-executions": {
             "task": "gefapi.tasks.batch_monitoring.monitor_batch_executions",
             "schedule": 120.0,  # Every 2 minutes
+            "options": {"queue": "default"},
+        },
+        # openEO execution monitoring – poll openEO backends for status changes
+        "monitor-openeo-jobs": {
+            "task": "gefapi.tasks.openeo_monitoring.monitor_openeo_jobs",
+            "schedule": 60.0,  # Every 60 seconds
             "options": {"queue": "default"},
         },
         # Execution queue processor – dispatch queued executions when slots available
