@@ -123,7 +123,7 @@ class TestUserGEECredentials:
             assert user.gee_credentials_created_at is not None
 
             # Get OAuth credentials
-            retrieved_access, retrieved_refresh = user.get_gee_oauth_credentials()
+            retrieved_access, retrieved_refresh, _ = user.get_gee_oauth_credentials()
             assert retrieved_access == access_token
             assert retrieved_refresh == refresh_token
 
