@@ -229,10 +229,12 @@ def initiate_gee_oauth():
             access_type="offline", include_granted_scopes="true", prompt="consent"
         )
 
-        # Capture PKCE code_verifier if the library generated one.
-        # google-auth-oauthlib 1.2+ adds PKCE automatically; the verifier
-        # must be round-tripped to the callback for fetch_token to succeed.
-        code_verifier = getattr(flow.oauth2session, "_pkce_code_verifier", None)
+        # Capture the PKCE code_verifier that google-auth-oauthlib auto-generates.
+        # authorization_url() stores it at flow.code_verifier
+        # (autogenerate_code_verifier=True by default). The verifier must be
+        # round-tripped to the callback so that flow.fetch_token() can send it
+        # to Google's token endpoint.
+        code_verifier = flow.code_verifier
 
         # Persist state (and code_verifier) server-side so the callback can verify it
         user_id = get_jwt_identity()
