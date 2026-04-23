@@ -84,7 +84,9 @@ class TestInitializeEEWithOAuthNotExpired:
         """EE should be initialized without calling refresh when token is fresh."""
         with app.app_context():
             user = _make_user()
-            user.set_gee_oauth_credentials("valid_token", "refresh_token", cloud_project="test-project")
+            user.set_gee_oauth_credentials(
+                "valid_token", "refresh_token", cloud_project="test-project"
+            )
 
             mock_creds = MagicMock()
             mock_creds.expired = False
@@ -97,7 +99,9 @@ class TestInitializeEEWithOAuthNotExpired:
 
             assert result is True
             mock_creds.refresh.assert_not_called()
-            mock_ee.Initialize.assert_called_once_with(mock_creds, project="test-project")
+            mock_ee.Initialize.assert_called_once_with(
+                mock_creds, project="test-project"
+            )
 
     @patch("gefapi.services.gee_service.ee")
     def test_succeeds_even_when_ee_already_initialized(self, mock_ee, app):
@@ -130,7 +134,9 @@ class TestInitializeEEWithOAuthExpiredToken:
         """refresh() must receive a google.auth.transport.requests.Request instance."""
         with app.app_context():
             user = _make_user()
-            user.set_gee_oauth_credentials("old_token", "refresh_token", cloud_project="test-project")
+            user.set_gee_oauth_credentials(
+                "old_token", "refresh_token", cloud_project="test-project"
+            )
 
             # Simulate an expired token
             mock_creds = MagicMock()
@@ -166,7 +172,9 @@ class TestInitializeEEWithOAuthExpiredToken:
 
         with app.app_context():
             user = _make_user()
-            user.set_gee_oauth_credentials("old_tok", "old_refresh", cloud_project="test-project")
+            user.set_gee_oauth_credentials(
+                "old_tok", "old_refresh", cloud_project="test-project"
+            )
             db.session.add(user)
             db.session.commit()
 
