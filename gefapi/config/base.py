@@ -72,6 +72,9 @@ SETTINGS = {
     # openEO output bucket – separate from the params bucket.
     "OUTPUT_S3_BUCKET": os.getenv("OUTPUT_S3_BUCKET"),
     "OUTPUT_S3_PREFIX": os.getenv("OUTPUT_S3_PREFIX", "outputs"),
+    # GCS bucket used for GEE batch export results.  This is the bucket the
+    # GEE service agent must have objectCreator access on.
+    "GCS_OUTPUT_BUCKET": os.getenv("GCS_OUTPUT_BUCKET", "ldmt"),
     # Default openEO backend URL (per-script override via Script.openeo_backend_url).
     "OPENEO_DEFAULT_BACKEND_URL": os.getenv("OPENEO_DEFAULT_BACKEND_URL"),
     "UPLOAD_FOLDER": os.getenv(

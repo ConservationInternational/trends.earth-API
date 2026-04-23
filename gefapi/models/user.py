@@ -87,6 +87,11 @@ class User(db.Model):
     # GCP project ID the user wants EE API calls billed to (OAuth only).
     # Not sensitive — stored as plain text.
     gee_cloud_project = db.Column(db.String(100), nullable=True)
+    # Numeric GCP project number (distinct from the human-readable project ID).
+    # Required to construct the GEE service agent email:
+    # service-{NUMBER}@gcp-sa-earthengine.iam.gserviceaccount.com
+    # Used to grant/revoke objectCreator on the output GCS bucket.
+    gee_cloud_project_number = db.Column(db.BigInteger(), nullable=True)
 
     # openEO credentials (encrypted JSON stored as text, same mechanism as GEE)
     openeo_credentials_enc = db.Column(db.Text(), nullable=True)
@@ -564,6 +569,7 @@ class User(db.Model):
         self.gee_credentials_type = None
         self.gee_credentials_created_at = None
         self.gee_cloud_project = None
+        self.gee_cloud_project_number = None
 
     # ------------------------------------------------------------------
     # openEO credential helpers (mirrors GEE credential pattern above)

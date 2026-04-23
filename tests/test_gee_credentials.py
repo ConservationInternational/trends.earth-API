@@ -886,3 +886,591 @@ class TestAdminGEECredentialsAPI:
                 response = client.delete(endpoint)
 
             assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Tests for PATCH /user/me/gee-credentials/project — project_number + IAM
+# ---------------------------------------------------------------------------
+
+
+class TestSetGeeCloudProject:
+    """Tests for the project-selection endpoint including IAM grant logic."""
+
+    def _set_oauth_creds(self, app, user_id):
+        """Helper: attach OAuth credentials to user identified by *user_id*."""
+        with app.app_context():
+            u = User.query.get(user_id)
+            u.set_gee_oauth_credentials("access_token", "refresh_token")
+            db.session.commit()
+
+    def test_project_number_supplied_directly_grants_iam(
+        self, client, user_with_token, app_with_db
+    ):
+        """When project_number is provided and CRM confirms it, IAM grant is called."""
+        user, token = user_with_token
+        self._set_oauth_creds(app_with_db, user.id)
+
+        mock_crm_response = Mock()
+        mock_crm_response.status_code = 200
+        mock_crm_response.json.return_value = {
+            "projectNumber": "123456789012",
+            "projectId": "my-project",
+        }
+
+        with (
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.AuthorizedSession"
+            ) as mock_session_cls,
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.grant_gee_service_agent_bucket_write"
+            ) as mock_grant,
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.revoke_gee_service_agent_bucket_write"
+            ),
+        ):
+            mock_session = Mock()
+            mock_session.get.return_value = mock_crm_response
+            mock_session_cls.return_value = mock_session
+
+            resp = client.patch(
+                "/api/v1/user/me/gee-credentials/project",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"cloud_project": "my-project", "project_number": 123456789012},
+            )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["gcs_write_access"] is True
+        mock_grant.assert_called_once()
+        # Verify the user's project_number is persisted.
+        with app_with_db.app_context():
+            u = User.query.get(user.id)
+            assert u.gee_cloud_project_number == 123456789012
+
+    def test_project_number_mismatch_with_crm_returns_400(
+        self, client, user_with_token, app_with_db
+    ):
+        """When supplied project_number doesn't match CRM response → 400 (ownership check)."""
+        user, token = user_with_token
+        self._set_oauth_creds(app_with_db, user.id)
+
+        mock_crm_response = Mock()
+        mock_crm_response.status_code = 200
+        mock_crm_response.json.return_value = {
+            "projectNumber": "999999999999",  # different from what user sent
+            "projectId": "my-project",
+        }
+
+        with patch(
+            "gefapi.routes.api.v1.gee_credentials.AuthorizedSession"
+        ) as mock_session_cls:
+            mock_session = Mock()
+            mock_session.get.return_value = mock_crm_response
+            mock_session_cls.return_value = mock_session
+
+            resp = client.patch(
+                "/api/v1/user/me/gee-credentials/project",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"cloud_project": "my-project", "project_number": 123456789012},
+            )
+
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "project_number" in data["detail"]
+
+    def test_project_number_with_crm_403_uses_supplied_number(
+        self, client, user_with_token, app_with_db
+    ):
+        """CRM 403 (scope missing) + manual project_number supplied → IAM grant proceeds."""
+        user, token = user_with_token
+        self._set_oauth_creds(app_with_db, user.id)
+
+        mock_crm_response = Mock()
+        mock_crm_response.status_code = 403
+
+        with (
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.AuthorizedSession"
+            ) as mock_session_cls,
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.grant_gee_service_agent_bucket_write"
+            ) as mock_grant,
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.revoke_gee_service_agent_bucket_write"
+            ),
+        ):
+            mock_session = Mock()
+            mock_session.get.return_value = mock_crm_response
+            mock_session_cls.return_value = mock_session
+
+            resp = client.patch(
+                "/api/v1/user/me/gee-credentials/project",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"cloud_project": "my-project", "project_number": 123456789012},
+            )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["gcs_write_access"] is True
+        mock_grant.assert_called_once()
+        args = mock_grant.call_args[0]
+        assert args[0] == 123456789012
+
+    def test_changing_project_revokes_old_grant(
+        self, client, user_with_token, app_with_db
+    ):
+        """Switching to a new project revokes the old service-agent binding first."""
+        user, token = user_with_token
+        with app_with_db.app_context():
+            u = User.query.get(user.id)
+            u.set_gee_oauth_credentials("access_token", "refresh_token")
+            u.gee_cloud_project = "old-project"
+            u.gee_cloud_project_number = 111111111111
+            db.session.commit()
+
+        mock_crm_response = Mock()
+        mock_crm_response.status_code = 200
+        mock_crm_response.json.return_value = {
+            "projectNumber": "222222222222",
+            "projectId": "new-project",
+        }
+
+        with (
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.AuthorizedSession"
+            ) as mock_session_cls,
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.grant_gee_service_agent_bucket_write"
+            ) as mock_grant,
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.revoke_gee_service_agent_bucket_write"
+            ) as mock_revoke,
+        ):
+            mock_session = Mock()
+            mock_session.get.return_value = mock_crm_response
+            mock_session_cls.return_value = mock_session
+
+            resp = client.patch(
+                "/api/v1/user/me/gee-credentials/project",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"cloud_project": "new-project"},
+            )
+
+        assert resp.status_code == 200
+        # Old project's service agent should have been revoked.
+        mock_revoke.assert_called_once()
+        revoke_args = mock_revoke.call_args[0]
+        assert revoke_args[0] == 111111111111  # old number
+        # New project's service agent should have been granted.
+        mock_grant.assert_called_once()
+        grant_args = mock_grant.call_args[0]
+        assert grant_args[0] == 222222222222  # new number
+
+    def test_crm_lookup_success_grants_iam(self, client, user_with_token, app_with_db):
+        """When project_number is NOT supplied, the route calls CRM to resolve it."""
+        user, token = user_with_token
+        self._set_oauth_creds(app_with_db, user.id)
+
+        mock_crm_response = Mock()
+        mock_crm_response.status_code = 200
+        mock_crm_response.json.return_value = {
+            "projectNumber": "987654321098",
+            "projectId": "my-project",
+        }
+
+        with (
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.AuthorizedSession"
+            ) as mock_session_cls,
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.grant_gee_service_agent_bucket_write"
+            ) as mock_grant,
+        ):
+            mock_session = Mock()
+            mock_session.get.return_value = mock_crm_response
+            mock_session_cls.return_value = mock_session
+
+            resp = client.patch(
+                "/api/v1/user/me/gee-credentials/project",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"cloud_project": "my-project"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["gcs_write_access"] is True
+        mock_grant.assert_called_once()
+        args = mock_grant.call_args[0]
+        assert args[0] == 987654321098  # numeric project number
+
+    def test_crm_403_saves_project_without_iam(
+        self, client, user_with_token, app_with_db
+    ):
+        """CRM 403 (scope missing) → project saved, gcs_write_access=False."""
+        user, token = user_with_token
+        self._set_oauth_creds(app_with_db, user.id)
+
+        mock_crm_response = Mock()
+        mock_crm_response.status_code = 403
+
+        with (
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.AuthorizedSession"
+            ) as mock_session_cls,
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.grant_gee_service_agent_bucket_write"
+            ) as mock_grant,
+        ):
+            mock_session = Mock()
+            mock_session.get.return_value = mock_crm_response
+            mock_session_cls.return_value = mock_session
+
+            resp = client.patch(
+                "/api/v1/user/me/gee-credentials/project",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"cloud_project": "my-project"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["gcs_write_access"] is False
+        assert "detail" in data
+        mock_grant.assert_not_called()
+        # Project ID still saved.
+        with app_with_db.app_context():
+            u = User.query.get(user.id)
+            assert u.gee_cloud_project == "my-project"
+
+    def test_crm_404_returns_400(self, client, user_with_token, app_with_db):
+        """CRM 404 → 400 error returned to caller."""
+        user, token = user_with_token
+        self._set_oauth_creds(app_with_db, user.id)
+
+        mock_crm_response = Mock()
+        mock_crm_response.status_code = 404
+
+        with patch(
+            "gefapi.routes.api.v1.gee_credentials.AuthorizedSession"
+        ) as mock_session_cls:
+            mock_session = Mock()
+            mock_session.get.return_value = mock_crm_response
+            mock_session_cls.return_value = mock_session
+
+            resp = client.patch(
+                "/api/v1/user/me/gee-credentials/project",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"cloud_project": "nonexistent-project"},
+            )
+
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "not found" in data["detail"].lower()
+
+    def test_iam_grant_failure_returns_gcs_write_access_false(
+        self, client, user_with_token, app_with_db
+    ):
+        """IAM grant failure → 200 with gcs_write_access=False, project still saved."""
+        user, token = user_with_token
+        self._set_oauth_creds(app_with_db, user.id)
+
+        with (
+            patch(
+                "gefapi.routes.api.v1.gee_credentials.grant_gee_service_agent_bucket_write",
+                side_effect=Exception("IAM API error"),
+            ),
+        ):
+            resp = client.patch(
+                "/api/v1/user/me/gee-credentials/project",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"cloud_project": "my-project", "project_number": 111222333444},
+            )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["gcs_write_access"] is False
+        assert "detail" in data
+
+    def test_invalid_project_number_type_returns_400(
+        self, client, user_with_token, app_with_db
+    ):
+        """Non-integer project_number in request body → 400."""
+        user, token = user_with_token
+        self._set_oauth_creds(app_with_db, user.id)
+
+        resp = client.patch(
+            "/api/v1/user/me/gee-credentials/project",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"cloud_project": "my-project", "project_number": "not-a-number"},
+        )
+
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "project_number" in data["detail"]
+
+    def test_invalid_cloud_project_format_returns_400(
+        self, client, user_with_token, app_with_db
+    ):
+        """cloud_project with disallowed characters → 400 (prevents URL injection)."""
+        user, token = user_with_token
+        self._set_oauth_creds(app_with_db, user.id)
+
+        for bad_value in [
+            "MY-PROJECT",  # uppercase
+            "my project",  # space
+            "a",  # too short
+            "my-project/../../other",  # path traversal
+            "my-project?key=val",  # query injection
+        ]:
+            resp = client.patch(
+                "/api/v1/user/me/gee-credentials/project",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"cloud_project": bad_value},
+            )
+            assert resp.status_code == 400, (
+                f"Expected 400 for cloud_project={bad_value!r}"
+            )
+            data = resp.get_json()
+            assert "cloud_project" in data["detail"]
+
+    def test_project_number_out_of_range_returns_400(
+        self, client, user_with_token, app_with_db
+    ):
+        """project_number outside the valid GCP range → 400."""
+        user, token = user_with_token
+        self._set_oauth_creds(app_with_db, user.id)
+
+        for bad_number in [0, -1, 10**14]:
+            resp = client.patch(
+                "/api/v1/user/me/gee-credentials/project",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"cloud_project": "my-project", "project_number": bad_number},
+            )
+            assert resp.status_code == 400, (
+                f"Expected 400 for project_number={bad_number}"
+            )
+            data = resp.get_json()
+            assert "project_number" in data["detail"]
+
+    def test_delete_credentials_calls_iam_revoke(
+        self, client, user_with_token, app_with_db
+    ):
+        """Deleting credentials should trigger IAM revoke when project_number is set."""
+        user, token = user_with_token
+
+        with app_with_db.app_context():
+            u = User.query.get(user.id)
+            u.set_gee_oauth_credentials("access_token", "refresh_token")
+            u.gee_cloud_project = "my-project"
+            u.gee_cloud_project_number = 123456789012
+            db.session.commit()
+
+        with patch(
+            "gefapi.routes.api.v1.gee_credentials.revoke_gee_service_agent_bucket_write"
+        ) as mock_revoke:
+            resp = client.delete(
+                "/api/v1/user/me/gee-credentials",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert resp.status_code == 200
+        mock_revoke.assert_called_once()
+        args = mock_revoke.call_args[0]
+        assert args[0] == 123456789012
+
+    def test_delete_credentials_no_project_number_skips_revoke(
+        self, client, user_with_token, app_with_db
+    ):
+        """Deleting credentials without a project_number skips IAM revoke."""
+        user, token = user_with_token
+
+        with app_with_db.app_context():
+            u = User.query.get(user.id)
+            u.set_gee_oauth_credentials("access_token", "refresh_token")
+            # No gee_cloud_project_number set
+            db.session.commit()
+
+        with patch(
+            "gefapi.routes.api.v1.gee_credentials.revoke_gee_service_agent_bucket_write"
+        ) as mock_revoke:
+            resp = client.delete(
+                "/api/v1/user/me/gee-credentials",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert resp.status_code == 200
+        mock_revoke.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for gefapi/services/gcs_iam_service.py
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.standalone
+class TestGcsIamService:
+    """Unit tests for grant/revoke IAM helpers."""
+
+    _SA_JSON = {
+        "type": "service_account",
+        "project_id": "ci-project",
+        "private_key_id": "key1",
+        "private_key": (
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA0Z3VS5JJcds3xHn/ygWep4\n"
+            "-----END RSA PRIVATE KEY-----\n"
+        ),
+        "client_email": "ci-sa@ci-project.iam.gserviceaccount.com",
+        "client_id": "1",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }
+
+    def _b64_sa(self):
+        import base64
+        import json
+
+        return base64.b64encode(json.dumps(self._SA_JSON).encode()).decode()
+
+    def test_grant_calls_set_iam_policy(self):
+        """grant_gee_service_agent_bucket_write should set IAM policy with correct member."""
+
+        from gefapi.services.gcs_iam_service import grant_gee_service_agent_bucket_write
+
+        mock_bucket = Mock()
+        mock_policy = Mock()
+        mock_policy.bindings = []
+        mock_bucket.get_iam_policy.return_value = mock_policy
+
+        mock_client = Mock()
+        mock_client.bucket.return_value = mock_bucket
+
+        b64_sa = self._b64_sa()
+
+        with (
+            patch(
+                "gefapi.services.gcs_iam_service.SETTINGS",
+                {"environment": {"EE_SERVICE_ACCOUNT_JSON": b64_sa}},
+            ),
+            patch("google.cloud.storage.Client", return_value=mock_client),
+            patch(
+                "google.oauth2.service_account.Credentials.from_service_account_info"
+            ),
+        ):
+            grant_gee_service_agent_bucket_write(123456789012, "ldmt")
+
+        mock_bucket.set_iam_policy.assert_called_once()
+        added = mock_policy.bindings[0]
+        assert added["role"] == "roles/storage.objectCreator"
+        expected_member = "serviceAccount:service-123456789012@gcp-sa-earthengine.iam.gserviceaccount.com"
+        assert expected_member in added["members"]
+
+    def test_grant_idempotent_when_binding_exists(self):
+        """grant should not call set_iam_policy when binding already present."""
+        from gefapi.services.gcs_iam_service import grant_gee_service_agent_bucket_write
+
+        member = "serviceAccount:service-99@gcp-sa-earthengine.iam.gserviceaccount.com"
+        mock_bucket = Mock()
+        mock_policy = Mock()
+        mock_policy.bindings = [
+            {"role": "roles/storage.objectCreator", "members": {member}}
+        ]
+        mock_bucket.get_iam_policy.return_value = mock_policy
+
+        mock_client = Mock()
+        mock_client.bucket.return_value = mock_bucket
+
+        b64_sa = self._b64_sa()
+
+        with (
+            patch(
+                "gefapi.services.gcs_iam_service.SETTINGS",
+                {"environment": {"EE_SERVICE_ACCOUNT_JSON": b64_sa}},
+            ),
+            patch("google.cloud.storage.Client", return_value=mock_client),
+            patch(
+                "google.oauth2.service_account.Credentials.from_service_account_info"
+            ),
+        ):
+            grant_gee_service_agent_bucket_write(99, "ldmt")
+
+        mock_bucket.set_iam_policy.assert_not_called()
+
+    def test_revoke_removes_member(self):
+        """revoke_gee_service_agent_bucket_write should remove member and call set_iam_policy."""
+        from gefapi.services.gcs_iam_service import (
+            revoke_gee_service_agent_bucket_write,
+        )
+
+        member = "serviceAccount:service-42@gcp-sa-earthengine.iam.gserviceaccount.com"
+        mock_bucket = Mock()
+        mock_policy = Mock()
+        mock_policy.bindings = [
+            {"role": "roles/storage.objectCreator", "members": {member}}
+        ]
+        mock_bucket.get_iam_policy.return_value = mock_policy
+
+        mock_client = Mock()
+        mock_client.bucket.return_value = mock_bucket
+
+        b64_sa = self._b64_sa()
+
+        with (
+            patch(
+                "gefapi.services.gcs_iam_service.SETTINGS",
+                {"environment": {"EE_SERVICE_ACCOUNT_JSON": b64_sa}},
+            ),
+            patch("google.cloud.storage.Client", return_value=mock_client),
+            patch(
+                "google.oauth2.service_account.Credentials.from_service_account_info"
+            ),
+        ):
+            revoke_gee_service_agent_bucket_write(42, "ldmt")
+
+        mock_bucket.set_iam_policy.assert_called_once()
+        # Binding with no remaining members should be excluded.
+        assert mock_policy.bindings == []
+
+    def test_revoke_idempotent_when_no_binding(self):
+        """revoke should not call set_iam_policy when there is no matching binding."""
+        from gefapi.services.gcs_iam_service import (
+            revoke_gee_service_agent_bucket_write,
+        )
+
+        mock_bucket = Mock()
+        mock_policy = Mock()
+        mock_policy.bindings = []
+        mock_bucket.get_iam_policy.return_value = mock_policy
+
+        mock_client = Mock()
+        mock_client.bucket.return_value = mock_bucket
+
+        b64_sa = self._b64_sa()
+
+        with (
+            patch(
+                "gefapi.services.gcs_iam_service.SETTINGS",
+                {"environment": {"EE_SERVICE_ACCOUNT_JSON": b64_sa}},
+            ),
+            patch("google.cloud.storage.Client", return_value=mock_client),
+            patch(
+                "google.oauth2.service_account.Credentials.from_service_account_info"
+            ),
+        ):
+            revoke_gee_service_agent_bucket_write(55, "ldmt")
+
+        mock_bucket.set_iam_policy.assert_not_called()
+
+    def test_missing_service_account_json_logs_warning(self, caplog):
+        """When EE_SERVICE_ACCOUNT_JSON is absent the helpers log a warning and return."""
+        import logging
+
+        from gefapi.services.gcs_iam_service import grant_gee_service_agent_bucket_write
+
+        with (
+            patch("gefapi.services.gcs_iam_service.SETTINGS", {"environment": {}}),
+            patch.dict(os.environ, {}, clear=True),
+            caplog.at_level(logging.WARNING, logger="gefapi.services.gcs_iam_service"),
+        ):
+            # Should not raise.
+            grant_gee_service_agent_bucket_write(1, "ldmt")
+
+        assert any("EE_SERVICE_ACCOUNT_JSON" in r.message for r in caplog.records)

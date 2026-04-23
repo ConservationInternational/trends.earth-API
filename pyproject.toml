@@ -45,6 +45,9 @@ google-auth-httplib2 = ">=0.1.0"
 google-api-python-client = ">=2.0.0"
 # Google Earth Engine API
 earthengine-api = ">=1.0.0"
+# Google Cloud Storage — for managing GCS bucket IAM (granting GEE service
+# agent objectCreator so OAuth users can export to the ldmt bucket)
+google-cloud-storage = ">=2.0.0"
 # Cryptography for secure credential storage - updated for security patches
 cryptography = ">=46.0.2"
 # GeoAlchemy2 for PostGIS spatial database support
