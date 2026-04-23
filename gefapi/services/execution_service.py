@@ -329,7 +329,9 @@ class ExecutionService:
                     f"execution {execution_id}"
                 )
 
-                access_token, refresh_token = user.get_gee_oauth_credentials()
+                access_token, refresh_token, cloud_project = (
+                    user.get_gee_oauth_credentials()
+                )
                 if access_token and refresh_token:
                     environment.update(
                         {
@@ -346,6 +348,8 @@ class ExecutionService:
                             ),
                         }
                     )
+                    if cloud_project:
+                        environment["GEE_CLOUD_PROJECT"] = cloud_project
                     masked = mask_email(user.email)
                     logger.info(f"OAuth environment variables added for user {masked}")
                 else:

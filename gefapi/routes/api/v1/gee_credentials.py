@@ -25,6 +25,15 @@ logger = logging.getLogger(__name__)
 _OAUTH_STATE_TTL = 600  # 10 minutes
 _oauth_state_store: dict[str, str] = {}  # in-memory fallback
 
+# OAuth scopes requested during the GEE consent flow.
+# earthengine  — required for EE API access.
+# cloudplatformprojects.readonly — lets us enumerate the user's GCP projects
+#   so the UI can offer a project-selection dropdown after OAuth completes.
+_GEE_OAUTH_SCOPES = [
+    "https://www.googleapis.com/auth/earthengine",
+    "https://www.googleapis.com/auth/cloudplatformprojects.readonly",
+]
+
 
 def _get_redis_client():
     """Return a Redis client or None when unavailable."""
@@ -42,14 +51,24 @@ def _get_redis_client():
 
 
 def _store_oauth_state(
-    user_id: str, state: str, code_verifier: str | None = None
+    user_id: str,
+    state: str,
+    code_verifier: str | None = None,
+    gee_cloud_project: str | None = None,
 ) -> None:
     """Persist an OAuth state token (and optional PKCE code_verifier) keyed by user ID.
 
-    Also stores the PKCE ``code_verifier`` when the library generates one.
+    Also stores the PKCE ``code_verifier`` when the library generates one, and the
+    user-supplied ``gee_cloud_project`` so it can be retrieved at callback time.
     """
     key = f"oauth_state:{user_id}"
-    value = json.dumps({"state": state, "code_verifier": code_verifier})
+    value = json.dumps(
+        {
+            "state": state,
+            "code_verifier": code_verifier,
+            "gee_cloud_project": gee_cloud_project,
+        }
+    )
     client = _get_redis_client()
     if client:
         client.setex(key, _OAUTH_STATE_TTL, value)
@@ -59,44 +78,50 @@ def _store_oauth_state(
 
 def _verify_and_consume_oauth_state(
     user_id: str, state: str
-) -> tuple[bool, str | None]:
-    """Validate *state* and return ``(True, code_verifier)`` on success.
+) -> tuple[bool, str | None, str | None]:
+    """Validate *state* and return ``(True, code_verifier, gee_cloud_project)``
+    on success.
 
-    Returns ``(False, None)`` on mismatch. The stored entry is consumed on success.
+    Returns ``(False, None, None)`` on mismatch. The stored entry is consumed
+    on success.
     """
     key = f"oauth_state:{user_id}"
     client = _get_redis_client()
     if client:
         stored = client.get(key)
         if stored is None:
-            return False, None
+            return False, None, None
         stored_str = stored.decode() if isinstance(stored, bytes) else stored
         try:
             stored_data = json.loads(stored_str)
             stored_state = stored_data.get("state", stored_str)
             code_verifier = stored_data.get("code_verifier")
+            gee_cloud_project = stored_data.get("gee_cloud_project")
         except (json.JSONDecodeError, AttributeError):
             stored_state = stored_str
             code_verifier = None
+            gee_cloud_project = None
         if not secrets.compare_digest(stored_state, state):
-            return False, None
+            return False, None, None
         client.delete(key)
-        return True, code_verifier
+        return True, code_verifier, gee_cloud_project
 
     stored = _oauth_state_store.pop(key, None)
     if stored is None:
-        return False, None
+        return False, None, None
     try:
         stored_data = json.loads(stored)
         stored_state = stored_data.get("state", stored)
         code_verifier = stored_data.get("code_verifier")
+        gee_cloud_project = stored_data.get("gee_cloud_project")
     except (json.JSONDecodeError, AttributeError):
         stored_state = stored
         code_verifier = None
+        gee_cloud_project = None
     if not secrets.compare_digest(stored_state, state):
         _oauth_state_store[key] = stored  # restore — state mismatch, not consumed
-        return False, None
-    return True, code_verifier
+        return False, None, None
+    return True, code_verifier, gee_cloud_project
 
 
 @endpoints.route("/user/me/gee-credentials", strict_slashes=False, methods=["GET"])
@@ -144,6 +169,9 @@ def get_user_gee_credentials():
                     "credentials_type": user.gee_credentials_type,
                     "created_at": user.gee_credentials_created_at.isoformat()
                     if user.gee_credentials_created_at
+                    else None,
+                    "cloud_project": user.gee_cloud_project
+                    if user.gee_credentials_type == "oauth"
                     else None,
                 }
             }
@@ -219,9 +247,7 @@ def initiate_gee_oauth():
         }
 
         # Create OAuth flow
-        flow = Flow.from_client_config(
-            oauth_config, scopes=["https://www.googleapis.com/auth/earthengine"]
-        )
+        flow = Flow.from_client_config(oauth_config, scopes=_GEE_OAUTH_SCOPES)
         flow.redirect_uri = oauth_config["web"]["redirect_uris"][0]
 
         # Generate authorization URL
@@ -302,7 +328,7 @@ def handle_gee_oauth_callback():
             return error(status=400, detail="State parameter is required")
 
         # Verify the state against the server-side stored value (CSRF check)
-        state_valid, code_verifier = _verify_and_consume_oauth_state(
+        state_valid, code_verifier, _ = _verify_and_consume_oauth_state(
             str(user_id), json_data["state"]
         )
         if not state_valid:
@@ -330,7 +356,7 @@ def handle_gee_oauth_callback():
 
         flow = Flow.from_client_config(
             oauth_config,
-            scopes=["https://www.googleapis.com/auth/earthengine"],
+            scopes=_GEE_OAUTH_SCOPES,
             state=json_data["state"],
         )
         flow.redirect_uri = oauth_config["web"]["redirect_uris"][0]
@@ -359,6 +385,140 @@ def handle_gee_oauth_callback():
         logger.error(f"Error handling OAuth callback: {e}")
         db.session.rollback()
         return error(status=500, detail="Failed to save OAuth credentials")
+
+
+@endpoints.route("/user/me/gee-projects", strict_slashes=False, methods=["GET"])
+@jwt_required()
+@require_scope("gee:read")
+def list_user_gee_projects():
+    """List accessible GCP projects via the current user's OAuth credentials.
+
+    Calls the Cloud Resource Manager v3 API with the user's stored token.
+    Requires the ``cloudplatformprojects.readonly`` scope to have been granted
+    during the OAuth consent flow.
+
+    Returns a JSON array of ``{"value": projectId, "label": displayName (projectId)}``
+    objects for all ACTIVE projects, plus ``"current"`` with the already-saved
+    project ID (may be ``null``).
+    """
+    try:
+        user = current_user
+        if not user:
+            return error(status=404, detail="User not found")
+
+        if user.gee_credentials_type != "oauth":
+            return error(
+                status=400,
+                detail="GCP project listing requires OAuth credentials. "
+                "Please connect your GEE account first.",
+            )
+
+        access_token, refresh_token, cloud_project = user.get_gee_oauth_credentials()
+        if not access_token or not refresh_token:
+            return error(status=400, detail="OAuth tokens not found")
+
+        from google.auth.exceptions import RefreshError as _RefreshError
+        from google.auth.transport.requests import AuthorizedSession
+        from google.oauth2.credentials import Credentials as _Credentials
+
+        env_settings = SETTINGS.get("environment", {})
+        credentials = _Credentials(
+            token=access_token,
+            refresh_token=refresh_token,
+            token_uri=env_settings.get(
+                "GOOGLE_OAUTH_TOKEN_URI", "https://oauth2.googleapis.com/token"
+            ),
+            client_id=env_settings.get("GOOGLE_OAUTH_CLIENT_ID"),
+            client_secret=env_settings.get("GOOGLE_OAUTH_CLIENT_SECRET"),
+            scopes=_GEE_OAUTH_SCOPES,
+        )
+
+        try:
+            session = AuthorizedSession(credentials)
+            resp = session.get(
+                "https://cloudresourcemanager.googleapis.com/v3/projects",
+                params={"pageSize": 100},
+                timeout=15,
+            )
+        except _RefreshError as e:
+            logger.warning(
+                f"OAuth token refresh failed for user {mask_email(user.email)}: {e}"
+            )
+            return error(
+                status=401,
+                detail="OAuth token expired. Please reconnect your GEE account.",
+            )
+
+        if not resp.ok:
+            logger.error(
+                f"Cloud Resource Manager API error {resp.status_code} for "
+                f"user {mask_email(user.email)}: {resp.text[:200]}"
+            )
+            return error(
+                status=502,
+                detail="Failed to fetch GCP projects. Ensure your Google account "
+                "has access to at least one GCP project with the Earth Engine "
+                "API enabled.",
+            )
+
+        data = resp.json()
+        projects = [
+            {
+                "value": p["projectId"],
+                "label": f"{p.get('displayName') or p['projectId']} ({p['projectId']})",
+            }
+            for p in data.get("projects", [])
+            if p.get("state") == "ACTIVE"
+        ]
+        projects.sort(key=lambda p: p["label"].lower())
+        return jsonify({"data": projects, "current": cloud_project})
+
+    except Exception as e:
+        logger.error(f"Error listing GCP projects: {e}")
+        return error(status=500, detail="Failed to list GCP projects")
+
+
+@endpoints.route(
+    "/user/me/gee-credentials/project", strict_slashes=False, methods=["PATCH"]
+)
+@jwt_required()
+@require_scope("gee:write")
+def set_gee_cloud_project():
+    """Save the user's selected GEE Cloud Project ID.
+
+    The project ID must correspond to a GCP project that has the Earth Engine
+    API enabled and that the user has access to.
+    """
+    try:
+        user = current_user
+        if not user:
+            return error(status=404, detail="User not found")
+
+        if user.gee_credentials_type != "oauth":
+            return error(
+                status=400,
+                detail="Cloud project selection only applies to OAuth credentials.",
+            )
+
+        json_data = request.get_json()
+        if not json_data:
+            return error(status=400, detail="JSON data required")
+
+        cloud_project = (json_data.get("cloud_project") or "").strip()
+        if not cloud_project:
+            return error(status=400, detail="cloud_project is required")
+
+        user.gee_cloud_project = cloud_project
+        db.session.commit()
+
+        masked = mask_email(user.email)
+        logger.info(f"GEE cloud project set to '{cloud_project}' for user {masked}")
+        return jsonify({"message": "GEE cloud project saved successfully"})
+
+    except Exception as e:
+        logger.error(f"Error setting GEE cloud project: {e}")
+        db.session.rollback()
+        return error(status=500, detail="Failed to save GEE cloud project")
 
 
 @endpoints.route("/user/me/gee-service-account", strict_slashes=False, methods=["POST"])

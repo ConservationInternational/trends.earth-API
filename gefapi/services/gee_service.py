@@ -203,10 +203,19 @@ class GEEService:
                 logger.error("Google Earth Engine API not available")
                 return False
 
-            access_token, refresh_token = user.get_gee_oauth_credentials()
+            access_token, refresh_token, cloud_project = (
+                user.get_gee_oauth_credentials()
+            )
             if not access_token or not refresh_token:
                 logger.warning(
                     f"Missing OAuth tokens for user {mask_email(user.email)}"
+                )
+                return False
+
+            if not cloud_project:
+                logger.error(
+                    f"No GEE cloud project set for user {mask_email(user.email)}. "
+                    "Please select a GCP project in the app after connecting GEE."
                 )
                 return False
 
@@ -232,7 +241,7 @@ class GEEService:
                     from google.auth.transport.requests import Request  # noqa: PLC0415
 
                     credentials.refresh(Request())
-                    # Update stored tokens
+                    # Update stored tokens (cloud_project preserved — not overwritten)
                     user.set_gee_oauth_credentials(
                         credentials.token, credentials.refresh_token
                     )
@@ -244,8 +253,9 @@ class GEEService:
                 logger.error(f"Failed to refresh OAuth token for user {masked}: {e}")
                 return False
 
-            # Initialize Earth Engine with OAuth credentials
-            ee.Initialize(credentials)  # type: ignore
+            # Initialize Earth Engine with the user's own GCP project so that
+            # EE API calls are billed to their project, not the server's.
+            ee.Initialize(credentials, project=cloud_project)  # type: ignore
             logger.info(
                 f"Successfully initialized Google Earth Engine with OAuth for "
                 f"user {mask_email(user.email)}"

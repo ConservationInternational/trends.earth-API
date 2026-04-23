@@ -84,6 +84,9 @@ class User(db.Model):
     # 'oauth' or 'service_account'
     gee_credentials_type = db.Column(db.String(20), nullable=True)
     gee_credentials_created_at = db.Column(db.DateTime(), nullable=True)
+    # GCP project ID the user wants EE API calls billed to (OAuth only).
+    # Not sensitive — stored as plain text.
+    gee_cloud_project = db.Column(db.String(100), nullable=True)
 
     # openEO credentials (encrypted JSON stored as text, same mechanism as GEE)
     openeo_credentials_enc = db.Column(db.Text(), nullable=True)
@@ -235,6 +238,9 @@ class User(db.Model):
                 "credentials_type": self.gee_credentials_type,
                 "created_at": self.gee_credentials_created_at.isoformat()
                 if self.gee_credentials_created_at
+                else None,
+                "cloud_project": self.gee_cloud_project
+                if self.gee_credentials_type == "oauth"
                 else None,
             }
 
@@ -494,12 +500,19 @@ class User(db.Model):
             )
             return None
 
-    def set_gee_oauth_credentials(self, access_token: str, refresh_token: str) -> None:
-        """Set OAuth credentials for GEE"""
+    def set_gee_oauth_credentials(
+        self,
+        access_token: str,
+        refresh_token: str,
+        cloud_project: str | None = None,
+    ) -> None:
+        """Set OAuth credentials for GEE."""
         self.gee_oauth_token = self._encrypt_gee_data(access_token)
         self.gee_refresh_token = self._encrypt_gee_data(refresh_token)
         self.gee_credentials_type = "oauth"
         self.gee_credentials_created_at = datetime.datetime.utcnow()
+        if cloud_project is not None:
+            self.gee_cloud_project = cloud_project.strip() or None
 
     def set_gee_service_account(self, service_account_key: dict[str, Any]) -> None:
         """Set service account credentials for GEE"""
@@ -509,13 +522,20 @@ class User(db.Model):
         self.gee_credentials_type = "service_account"
         self.gee_credentials_created_at = datetime.datetime.utcnow()
 
-    def get_gee_oauth_credentials(self) -> tuple[str | None, str | None]:
-        """Get OAuth credentials for GEE"""
+    def get_gee_oauth_credentials(
+        self,
+    ) -> tuple[str | None, str | None, str | None]:
+        """Get OAuth credentials for GEE.
+
+        Returns:
+            Tuple of (access_token, refresh_token, cloud_project).  Any element
+            may be ``None`` when not set.
+        """
         if self.gee_credentials_type != "oauth":
-            return None, None
+            return None, None, None
         access_token = self._decrypt_gee_data(self.gee_oauth_token)
         refresh_token = self._decrypt_gee_data(self.gee_refresh_token)
-        return access_token, refresh_token
+        return access_token, refresh_token, self.gee_cloud_project
 
     def get_gee_service_account(self) -> dict[str, Any] | None:
         """Get service account credentials for GEE"""
@@ -543,6 +563,7 @@ class User(db.Model):
         self.gee_service_account_key = None
         self.gee_credentials_type = None
         self.gee_credentials_created_at = None
+        self.gee_cloud_project = None
 
     # ------------------------------------------------------------------
     # openEO credential helpers (mirrors GEE credential pattern above)
