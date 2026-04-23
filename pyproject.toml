@@ -49,7 +49,7 @@ earthengine-api = ">=1.0.0"
 # agent objectCreator so OAuth users can export to the ldmt bucket)
 google-cloud-storage = ">=2.0.0"
 # Cryptography for secure credential storage - updated for security patches
-cryptography = ">=46.0.2"
+cryptography = ">=46.0.7"
 # GeoAlchemy2 for PostGIS spatial database support
 geoalchemy2 = ">=0.14.0"
 # Shapely for geometry manipulation
