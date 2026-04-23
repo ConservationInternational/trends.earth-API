@@ -7,10 +7,9 @@ Covers:
   (all openEO terminal states, still-running transitions, skip logic)
 """
 
-import datetime
 import json
 import os
-from unittest.mock import MagicMock, Mock, patch, call
+from unittest.mock import MagicMock, patch
 import uuid
 
 import pytest
@@ -18,7 +17,7 @@ import pytest
 from gefapi import db
 from gefapi.models import Execution, ExecutionLog, Script, User
 from gefapi.services import openeo_service
-from gefapi.services.openeo_service import _resolve_backend_url, _connect_openeo
+from gefapi.services.openeo_service import _connect_openeo, _resolve_backend_url
 from gefapi.tasks import openeo_monitoring
 from gefapi.tasks.openeo_monitoring import _poll_execution
 
@@ -105,9 +104,11 @@ class TestResolveBackendURL:
         assert url == "https://default.openeo.example.com"
 
     def test_raises_when_nothing_configured(self):
-        with patch("gefapi.services.openeo_service.SETTINGS", {}):
-            with pytest.raises(ValueError, match="No openEO backend URL"):
-                _resolve_backend_url({})
+        with (
+            patch("gefapi.services.openeo_service.SETTINGS", {}),
+            pytest.raises(ValueError, match="No openEO backend URL"),
+        ):
+            _resolve_backend_url({})
 
     def test_rejects_http_url(self):
         env = {"OPENEO_BACKEND_URL": "http://insecure.openeo.example.com"}
@@ -192,7 +193,7 @@ class TestConnectOpenEO:
         mock_openeo.connect.return_value = conn
         creds = {"type": "kerberos", "ticket": "TGT"}
         env = {"OPENEO_CREDENTIALS": json.dumps(creds)}
-        result = _connect_openeo("https://openeo.example.com", env)
+        _connect_openeo("https://openeo.example.com", env)
         conn.authenticate_basic.assert_not_called()
 
     @patch("gefapi.services.openeo_service.openeo")
@@ -204,9 +205,11 @@ class TestConnectOpenEO:
             _connect_openeo("https://openeo.example.com", env)
 
     def test_raises_import_error_when_openeo_missing(self):
-        with patch.object(openeo_service, "openeo", None):
-            with pytest.raises(ImportError, match="openeo"):
-                _connect_openeo("https://openeo.example.com", {})
+        with (
+            patch.object(openeo_service, "openeo", None),
+            pytest.raises(ImportError, match="openeo"),
+        ):
+            _connect_openeo("https://openeo.example.com", {})
 
 
 # ===========================================================================
@@ -347,9 +350,7 @@ class TestPollExecution:
 
     def test_skips_when_no_backend_url(self, app):
         with app.app_context():
-            execution = self._make_exec(
-                app, results={"openeo_job_id": "job-123"}
-            )
+            execution = self._make_exec(app, results={"openeo_job_id": "job-123"})
             execution = db.session.merge(execution)
             result = _poll_execution(execution)
         assert result is None
@@ -372,7 +373,9 @@ class TestPollExecution:
 
             job = MagicMock()
             job.status.return_value = "finished"
-            job.get_results.return_value = MagicMock(get_assets=MagicMock(return_value={}))
+            job.get_results.return_value = MagicMock(
+                get_assets=MagicMock(return_value={})
+            )
             conn.job.return_value = job
 
             result = _poll_execution(execution)
@@ -399,9 +402,7 @@ class TestPollExecution:
 
             job = MagicMock()
             job.status.return_value = "error"
-            job.logs.return_value = [
-                {"level": "error", "message": "out of memory"}
-            ]
+            job.logs.return_value = [{"level": "error", "message": "out of memory"}]
             conn.job.return_value = job
 
             result = _poll_execution(execution)
@@ -524,7 +525,9 @@ class TestPollExecution:
 
                 job = MagicMock()
                 job.status.return_value = "finished"
-                job.get_results.return_value = MagicMock(get_assets=MagicMock(return_value={}))
+                job.get_results.return_value = MagicMock(
+                    get_assets=MagicMock(return_value={})
+                )
                 conn.job.return_value = job
 
                 _poll_execution(execution)
@@ -590,7 +593,7 @@ class TestMonitorOpenEOJobs:
     def test_counts_finished_executions(self, mock_poll, app):
         user = _make_user(app)
         script = _make_script(app, user, compute_type="openeo")
-        execution = _make_execution(
+        _make_execution(
             app,
             user,
             script,
@@ -644,7 +647,7 @@ class TestMonitorOpenEOJobs:
         )
 
         with app.app_context():
-            result = openeo_monitoring.monitor_openeo_jobs()
+            openeo_monitoring.monitor_openeo_jobs()
 
         mock_poll.assert_not_called()
 

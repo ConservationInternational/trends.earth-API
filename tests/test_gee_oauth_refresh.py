@@ -6,10 +6,8 @@ Specifically covers the change from ``credentials.refresh(None)`` to
 """
 
 import os
-from unittest.mock import MagicMock, Mock, patch, call
+from unittest.mock import MagicMock, patch
 import uuid
-
-import pytest
 
 from gefapi.models.user import User
 from gefapi.services.gee_service import GEEService
@@ -153,9 +151,7 @@ class TestInitializeEEWithOAuthExpiredToken:
                     "gefapi.services.gee_service.GEEService._oauth_token_uri",
                     return_value="https://oauth2.googleapis.com/token",
                 ),
-                patch(
-                    "google.auth.transport.requests.Request", mock_request_cls
-                ),
+                patch("google.auth.transport.requests.Request", mock_request_cls),
             ):
                 result = GEEService._initialize_ee_with_oauth(user)
 
@@ -276,7 +272,9 @@ class TestInitializeEEDispatch:
         assert result is True
         mock_oauth_init.assert_called_once_with(user)
 
-    @patch("gefapi.services.gee_service.GEEService._initialize_ee_with_user_service_account")
+    @patch(
+        "gefapi.services.gee_service.GEEService._initialize_ee_with_user_service_account"
+    )
     @patch("gefapi.services.gee_service.ee")
     def test_dispatches_to_service_account_when_credential_type_matches(
         self, mock_ee, mock_sa_init, app
@@ -285,7 +283,9 @@ class TestInitializeEEDispatch:
         with app.app_context():
             user = _make_user()
             user.gee_credentials_type = "service_account"
-            user.gee_service_account_key = user._encrypt_gee_data('{"client_email": "test@sa.com"}')
+            user.gee_service_account_key = user._encrypt_gee_data(
+                '{"client_email": "test@sa.com"}'
+            )
 
             mock_ee.data.listOperations.side_effect = Exception("not init")
             mock_sa_init.return_value = True

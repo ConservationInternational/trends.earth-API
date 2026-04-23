@@ -186,7 +186,9 @@ class TestOpenEOCredentialServiceResolveBackendURL:
     def test_environment_dict_takes_second_priority(self):
         script = Mock(openeo_backend_url=None)
         env = {"OPENEO_BACKEND_URL": "https://env.openeo.example.com"}
-        url = OpenEOCredentialService._resolve_backend_url(script=script, environment=env)
+        url = OpenEOCredentialService._resolve_backend_url(
+            script=script, environment=env
+        )
         assert url == "https://env.openeo.example.com"
 
     def test_settings_default_used_when_no_override(self):
@@ -200,11 +202,11 @@ class TestOpenEOCredentialServiceResolveBackendURL:
 
     def test_raises_when_nothing_configured(self):
         script = Mock(openeo_backend_url=None)
-        with patch(
-            "gefapi.services.openeo_credential_service.SETTINGS", {}
+        with (
+            patch("gefapi.services.openeo_credential_service.SETTINGS", {}),
+            pytest.raises(ValueError, match="No openEO backend URL"),
         ):
-            with pytest.raises(ValueError, match="No openEO backend URL"):
-                OpenEOCredentialService._resolve_backend_url(script=script)
+            OpenEOCredentialService._resolve_backend_url(script=script)
 
     def test_script_http_url_rejected(self):
         script = Mock(openeo_backend_url="http://insecure.openeo.example.com")
@@ -237,7 +239,7 @@ class TestOpenEOCredentialServiceConnect:
                 "gefapi.services.openeo_credential_service.SETTINGS",
                 {"OPENEO_DEFAULT_BACKEND_URL": "https://openeo.example.com"},
             ):
-                result = OpenEOCredentialService.connect(user=user)
+                OpenEOCredentialService.connect(user=user)
 
         conn.authenticate_oidc_refresh_token.assert_called_once()
         call_kwargs = conn.authenticate_oidc_refresh_token.call_args.kwargs
@@ -257,7 +259,7 @@ class TestOpenEOCredentialServiceConnect:
                 "gefapi.services.openeo_credential_service.SETTINGS",
                 {"OPENEO_DEFAULT_BACKEND_URL": "https://openeo.example.com"},
             ):
-                result = OpenEOCredentialService.connect(user=user)
+                OpenEOCredentialService.connect(user=user)
 
         conn.authenticate_basic.assert_called_once_with("user@example.com", "hunter2")
 
@@ -283,7 +285,7 @@ class TestOpenEOCredentialServiceConnect:
                     "environment": env_settings,
                 },
             ):
-                result = OpenEOCredentialService.connect(user=user)
+                OpenEOCredentialService.connect(user=user)
 
         conn.authenticate_oidc_refresh_token.assert_called_once()
         kw = conn.authenticate_oidc_refresh_token.call_args.kwargs
@@ -309,7 +311,7 @@ class TestOpenEOCredentialServiceConnect:
                     "environment": env_settings,
                 },
             ):
-                result = OpenEOCredentialService.connect(user=user)
+                OpenEOCredentialService.connect(user=user)
 
         conn.authenticate_basic.assert_called_once_with("sysuser", "syspass")
 
@@ -328,7 +330,7 @@ class TestOpenEOCredentialServiceConnect:
                     "environment": {},
                 },
             ):
-                result = OpenEOCredentialService.connect(user=user)
+                OpenEOCredentialService.connect(user=user)
 
         conn.authenticate_oidc_refresh_token.assert_not_called()
         conn.authenticate_basic.assert_not_called()
@@ -360,7 +362,7 @@ class TestOpenEOCredentialServiceConnect:
                     "environment": env_settings,
                 },
             ):
-                result = OpenEOCredentialService.connect(user=user)
+                OpenEOCredentialService.connect(user=user)
 
         assert conn.authenticate_oidc_refresh_token.call_count == 2
 
@@ -600,7 +602,9 @@ class TestCheckOpenEOCredentialsRoute:
         assert data["valid"] is False
         assert "No credentials" in data["message"]
 
-    @patch("gefapi.routes.api.v1.openeo_credentials.OpenEOCredentialService.validate_credentials")
+    @patch(
+        "gefapi.routes.api.v1.openeo_credentials.OpenEOCredentialService.validate_credentials"
+    )
     def test_check_returns_valid_when_credentials_work(
         self, mock_validate, app, client, regular_user
     ):
@@ -620,7 +624,9 @@ class TestCheckOpenEOCredentialsRoute:
         data = resp.get_json()["data"]
         assert data["valid"] is True
 
-    @patch("gefapi.routes.api.v1.openeo_credentials.OpenEOCredentialService.validate_credentials")
+    @patch(
+        "gefapi.routes.api.v1.openeo_credentials.OpenEOCredentialService.validate_credentials"
+    )
     def test_check_returns_invalid_when_credentials_fail(
         self, mock_validate, app, client, regular_user
     ):
@@ -639,7 +645,10 @@ class TestCheckOpenEOCredentialsRoute:
         assert resp.status_code == 200
         data = resp.get_json()["data"]
         assert data["valid"] is False
-        assert "invalid" in data["message"].lower() or "unreachable" in data["message"].lower()
+        assert (
+            "invalid" in data["message"].lower()
+            or "unreachable" in data["message"].lower()
+        )
 
     def test_requires_authentication(self, client):
         resp = client.get("/api/v1/user/me/openeo-credentials/check")

@@ -184,7 +184,8 @@ def _poll_execution(execution):
     try:
         if openeo is None:
             logger.error(
-                "[OPENEO-MONITOR]: openeo package not installed — cannot poll execution %s",
+                "[OPENEO-MONITOR]: openeo package not installed "
+                "— cannot poll execution %s",
                 execution.id,
             )
             return None
