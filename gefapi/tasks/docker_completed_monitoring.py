@@ -54,6 +54,30 @@ def monitor_completed_docker_services(self):
 
     with app.app_context():
         try:
+            # Check Docker availability before querying for executions
+            try:
+                docker_client = get_docker_client()
+                if docker_client is None:
+                    logger.warning(
+                        "[TASK]: Docker client not available, skipping monitoring"
+                    )
+                    return {
+                        "checked": 0,
+                        "completed_services_found": 0,
+                        "executions_marked_finished": 0,
+                        "services_removed": 0,
+                        "error": "Docker unavailable",
+                    }
+            except Exception as e:
+                logger.error(f"[TASK]: Failed to get Docker client: {e}")
+                return {
+                    "checked": 0,
+                    "completed_services_found": 0,
+                    "executions_marked_finished": 0,
+                    "services_removed": 0,
+                    "error": str(e),
+                }
+
             # Find executions that are already marked as FAILED or FINISHED
             # but may still have Docker services consuming resources
             # Focus on recent executions to avoid checking very old ones
@@ -81,29 +105,6 @@ def monitor_completed_docker_services(self):
                     "completed_services_found": 0,
                     "executions_marked_finished": 0,
                     "services_removed": 0,
-                }
-
-            try:
-                docker_client = get_docker_client()
-                if docker_client is None:
-                    logger.warning(
-                        "[TASK]: Docker client not available, skipping monitoring"
-                    )
-                    return {
-                        "checked": 0,
-                        "completed_services_found": 0,
-                        "executions_marked_finished": 0,
-                        "services_removed": 0,
-                        "error": "Docker unavailable",
-                    }
-            except Exception as e:
-                logger.error(f"[TASK]: Failed to get Docker client: {e}")
-                return {
-                    "checked": 0,
-                    "completed_services_found": 0,
-                    "executions_marked_finished": 0,
-                    "services_removed": 0,
-                    "error": str(e),
                 }
 
             checked_count = 0

@@ -24,8 +24,8 @@ except ImportError:
 
 # Import google.oauth2 at module level for test mocking, but allow ImportError
 try:
-    from google.oauth2.credentials import Credentials
     from google.auth.exceptions import RefreshError
+    from google.oauth2.credentials import Credentials
 except ImportError:
     Credentials = None  # type: ignore
     RefreshError = Exception  # type: ignore
@@ -220,9 +220,12 @@ class GEEService:
                 scopes=["https://www.googleapis.com/auth/earthengine"],
             )
 
-            # Try to refresh token if needed
+            # Try to refresh token if needed.
+            # credentials.expired is only True when an expiry timestamp was set;
+            # we don't persist expiry, so also refresh when expiry is unknown.
             try:
-                if credentials.expired and credentials.refresh_token:
+                needs_refresh = credentials.expired or credentials.expiry is None
+                if needs_refresh and credentials.refresh_token:
                     logger.info(
                         f"Refreshing OAuth token for user {mask_email(user.email)}"
                     )

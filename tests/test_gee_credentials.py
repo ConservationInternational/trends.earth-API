@@ -478,6 +478,7 @@ class TestGEECredentialsAPI:
             "https://accounts.google.com/oauth2/auth?...",
             "test_state",
         )
+        mock_flow_instance.code_verifier = "test_pkce_verifier"
         mock_flow.from_client_config.return_value = mock_flow_instance
 
         response = client.post(

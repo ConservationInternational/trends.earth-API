@@ -385,9 +385,18 @@ class TestExecutionCleanup:
     ):
         """Test cleanup of recently finished executions with Docker service"""
         with app.app_context():
-            # Clean up any existing finished executions to ensure test isolation
+            # Save the id before any commits to avoid DetachedInstanceError
+            sample_execution_id = sample_execution.id
+
+            # Clean up any existing finished executions to ensure test isolation,
+            # but exclude sample_execution so it isn't deleted before we can use it
             existing_finished_executions = (
-                db_session.query(Execution).filter_by(status="FINISHED").all()
+                db_session.query(Execution)
+                .filter(
+                    Execution.status == "FINISHED",
+                    Execution.id != sample_execution_id,
+                )
+                .all()
             )
             for exec in existing_finished_executions:
                 db_session.delete(exec)

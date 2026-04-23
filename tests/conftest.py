@@ -477,6 +477,7 @@ def sample_execution(app, regular_user, sample_script):
         if existing_execution:
             db.session.expunge(existing_execution)
             existing_execution = db.session.merge(existing_execution)
+            db.session.refresh(existing_execution)
             return existing_execution
 
         execution = Execution(
@@ -487,6 +488,11 @@ def sample_execution(app, regular_user, sample_script):
         execution.status = "FINISHED"
         db.session.add(execution)
         db.session.commit()
+        # Refresh to load all attributes into __dict__ while the session is active.
+        # When the inner app_context exits and db.session.remove() is called, the
+        # object becomes detached but retains the loaded attribute values, so
+        # tests can safely access execution.id without a DetachedInstanceError.
+        db.session.refresh(execution)
         return execution
 
 
