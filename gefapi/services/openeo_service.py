@@ -31,6 +31,12 @@ from gefapi.models import Execution, ExecutionLog
 
 logger = logging.getLogger(__name__)
 
+# Import openeo at module level for test mocking, but allow ImportError
+try:
+    import openeo  # type: ignore
+except ImportError:
+    openeo = None  # type: ignore
+
 
 class OpenEOServiceTask(Task):
     """Base task class for openEO dispatch."""
@@ -80,13 +86,11 @@ def _connect_openeo(backend_url, environment):
     """
     import json
 
-    try:
-        import openeo  # type: ignore
-    except ImportError as exc:
+    if openeo is None:
         raise ImportError(
             "The 'openeo' package is required for openEO execution support. "
             "Install it with: pip install openeo"
-        ) from exc
+        )
 
     connection = openeo.connect(backend_url)
 
@@ -250,7 +254,6 @@ def openeo_run(self, execution_id, script_slug, environment, params):
             log_entry = ExecutionLog(
                 text=f"openEO job submitted: {job_id} on {backend_url}",
                 level="INFO",
-                register_date=__import__("datetime").datetime.utcnow(),
                 execution_id=execution_id,
             )
             db.session.add(log_entry)

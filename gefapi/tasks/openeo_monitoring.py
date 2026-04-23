@@ -37,6 +37,12 @@ from gefapi.models import Execution, ExecutionLog, Script, User
 
 logger = logging.getLogger(__name__)
 
+# Import openeo at module level for test mocking, but allow ImportError
+try:
+    import openeo  # type: ignore
+except ImportError:
+    openeo = None  # type: ignore
+
 # How far back to look for active openEO executions.
 _LOOKBACK_DAYS = 3
 
@@ -176,7 +182,12 @@ def _poll_execution(execution):
         return None
 
     try:
-        import openeo  # type: ignore
+        if openeo is None:
+            logger.error(
+                "[OPENEO-MONITOR]: openeo package not installed — cannot poll execution %s",
+                execution.id,
+            )
+            return None
 
         connection = openeo.connect(backend_url)
 
@@ -208,12 +219,6 @@ def _poll_execution(execution):
             if isinstance(status_info, str)
             else status_info.get("status", "")
         )
-    except ImportError:
-        logger.error(
-            "[OPENEO-MONITOR]: openeo package not installed — cannot poll execution %s",
-            execution.id,
-        )
-        return None
     except Exception as exc:
         logger.error(
             "[OPENEO-MONITOR]: Failed to poll job %s for execution %s: %s",
@@ -304,7 +309,6 @@ def _poll_execution(execution):
     log_entry = ExecutionLog(
         text=f"openEO job {job_id} reached status: {openeo_status}",
         level="INFO" if new_status == "FINISHED" else "ERROR",
-        register_date=datetime.datetime.utcnow(),
         execution_id=execution.id,
     )
     db.session.add(log_entry)

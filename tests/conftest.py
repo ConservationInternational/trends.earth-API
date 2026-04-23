@@ -132,6 +132,7 @@ def app_no_rate_limiting():
                     # (might already exist or not needed)
                     print(f"Warning: Could not create PostGIS extensions: {e}")
 
+            db.drop_all()
             db.create_all()
             yield app
         finally:
@@ -238,6 +239,7 @@ def app():
                     # (might already exist or not needed)
                     print(f"Warning: Could not create PostGIS extensions: {e}")
 
+            db.drop_all()
             db.create_all()
             yield app
         finally:

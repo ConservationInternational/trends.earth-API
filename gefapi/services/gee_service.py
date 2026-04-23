@@ -22,6 +22,14 @@ try:
 except ImportError:
     ee = None
 
+# Import google.oauth2 at module level for test mocking, but allow ImportError
+try:
+    from google.oauth2.credentials import Credentials
+    from google.auth.exceptions import RefreshError
+except ImportError:
+    Credentials = None  # type: ignore
+    RefreshError = Exception  # type: ignore
+
 
 class GEEService:
     """Service for managing Google Earth Engine tasks"""
@@ -194,8 +202,6 @@ class GEEService:
             if ee is None:
                 logger.error("Google Earth Engine API not available")
                 return False
-            from google.auth.exceptions import RefreshError
-            from google.oauth2.credentials import Credentials
 
             access_token, refresh_token = user.get_gee_oauth_credentials()
             if not access_token or not refresh_token:
@@ -220,7 +226,7 @@ class GEEService:
                     logger.info(
                         f"Refreshing OAuth token for user {mask_email(user.email)}"
                     )
-                    from google.auth.transport.requests import Request
+                    from google.auth.transport.requests import Request  # noqa: PLC0415
 
                     credentials.refresh(Request())
                     # Update stored tokens

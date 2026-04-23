@@ -187,7 +187,7 @@ class User(db.Model):
         include = include if include else []
         exclude = exclude if exclude else []
         user = {
-            "id": self.id,
+            "id": str(self.id),
             "email": self.email,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
