@@ -41,34 +41,62 @@ def _get_redis_client():
         return None
 
 
-def _store_oauth_state(user_id: str, state: str) -> None:
-    """Persist an OAuth state token keyed by user ID."""
+def _store_oauth_state(
+    user_id: str, state: str, code_verifier: str | None = None
+) -> None:
+    """Persist an OAuth state token (and optional PKCE code_verifier) keyed by user ID.
+
+    Also stores the PKCE ``code_verifier`` when the library generates one.
+    """
     key = f"oauth_state:{user_id}"
+    value = json.dumps({"state": state, "code_verifier": code_verifier})
     client = _get_redis_client()
     if client:
-        client.setex(key, _OAUTH_STATE_TTL, state)
+        client.setex(key, _OAUTH_STATE_TTL, value)
     else:
-        _oauth_state_store[key] = state
+        _oauth_state_store[key] = value
 
 
-def _verify_and_consume_oauth_state(user_id: str, state: str) -> bool:
-    """Validate *state* against the stored value and remove it."""
+def _verify_and_consume_oauth_state(
+    user_id: str, state: str
+) -> tuple[bool, str | None]:
+    """Validate *state* and return ``(True, code_verifier)`` on success.
+
+    Returns ``(False, None)`` on mismatch. The stored entry is consumed on success.
+    """
     key = f"oauth_state:{user_id}"
     client = _get_redis_client()
     if client:
         stored = client.get(key)
         if stored is None:
-            return False
+            return False, None
         stored_str = stored.decode() if isinstance(stored, bytes) else stored
-        if not secrets.compare_digest(stored_str, state):
-            return False
+        try:
+            stored_data = json.loads(stored_str)
+            stored_state = stored_data.get("state", stored_str)
+            code_verifier = stored_data.get("code_verifier")
+        except (json.JSONDecodeError, AttributeError):
+            stored_state = stored_str
+            code_verifier = None
+        if not secrets.compare_digest(stored_state, state):
+            return False, None
         client.delete(key)
-        return True
+        return True, code_verifier
 
     stored = _oauth_state_store.pop(key, None)
     if stored is None:
-        return False
-    return secrets.compare_digest(stored, state)
+        return False, None
+    try:
+        stored_data = json.loads(stored)
+        stored_state = stored_data.get("state", stored)
+        code_verifier = stored_data.get("code_verifier")
+    except (json.JSONDecodeError, AttributeError):
+        stored_state = stored
+        code_verifier = None
+    if not secrets.compare_digest(stored_state, state):
+        _oauth_state_store[key] = stored  # restore — state mismatch, not consumed
+        return False, None
+    return True, code_verifier
 
 
 @endpoints.route("/user/me/gee-credentials", strict_slashes=False, methods=["GET"])
@@ -201,9 +229,14 @@ def initiate_gee_oauth():
             access_type="offline", include_granted_scopes="true", prompt="consent"
         )
 
-        # Persist state server-side so the callback can verify it
+        # Capture PKCE code_verifier if the library generated one.
+        # google-auth-oauthlib 1.2+ adds PKCE automatically; the verifier
+        # must be round-tripped to the callback for fetch_token to succeed.
+        code_verifier = getattr(flow.oauth2session, "_pkce_code_verifier", None)
+
+        # Persist state (and code_verifier) server-side so the callback can verify it
         user_id = get_jwt_identity()
-        _store_oauth_state(str(user_id), state)
+        _store_oauth_state(str(user_id), state, code_verifier=code_verifier)
 
         return jsonify({"data": {"auth_url": auth_url, "state": state}})
 
@@ -267,7 +300,10 @@ def handle_gee_oauth_callback():
             return error(status=400, detail="State parameter is required")
 
         # Verify the state against the server-side stored value (CSRF check)
-        if not _verify_and_consume_oauth_state(str(user_id), json_data["state"]):
+        state_valid, code_verifier = _verify_and_consume_oauth_state(
+            str(user_id), json_data["state"]
+        )
+        if not state_valid:
             logger.warning(f"OAuth state mismatch for user {user_id} — possible CSRF")
             return error(status=400, detail="Invalid or expired state parameter")
 
@@ -297,8 +333,11 @@ def handle_gee_oauth_callback():
         )
         flow.redirect_uri = oauth_config["web"]["redirect_uris"][0]
 
-        # Fetch tokens
-        flow.fetch_token(code=json_data["code"])
+        # Fetch tokens — include code_verifier if PKCE was used during initiation
+        fetch_kwargs = {"code": json_data["code"]}
+        if code_verifier:
+            fetch_kwargs["code_verifier"] = code_verifier
+        flow.fetch_token(**fetch_kwargs)
 
         credentials = flow.credentials
 
