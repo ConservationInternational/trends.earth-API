@@ -24,10 +24,10 @@ depends_on = None
 
 def upgrade():
     op.add_column(
-        "users",
+        "user",
         sa.Column("gee_cloud_project", sa.String(length=100), nullable=True),
     )
 
 
 def downgrade():
-    op.drop_column("users", "gee_cloud_project")
+    op.drop_column("user", "gee_cloud_project")
