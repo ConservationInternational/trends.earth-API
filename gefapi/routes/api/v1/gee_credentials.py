@@ -35,9 +35,12 @@ _OAUTH_STATE_TTL = 600  # 10 minutes
 _oauth_state_store: dict[str, str] = {}  # in-memory fallback
 
 # OAuth scopes requested during the GEE consent flow.
-# earthengine  — required for EE API access.
+# earthengine              — required for EE API access and to call
+#                            projects.initialize (provisions the EE service
+#                            agent so GCS exports work).
 # cloudplatformprojects.readonly — lets us enumerate the user's GCP projects
-#   so the UI can offer a project-selection dropdown after OAuth completes.
+#                                  so the UI can offer a project-selection
+#                                  dropdown after OAuth completes.
 _GEE_OAUTH_SCOPES = [
     "https://www.googleapis.com/auth/earthengine",
     "https://www.googleapis.com/auth/cloudplatformprojects.readonly",
@@ -490,37 +493,52 @@ def list_user_gee_projects():
         return error(status=500, detail="Failed to list GCP projects")
 
 
-def _provision_gee_service_agent(session, cloud_project: str) -> None:
-    """Call generateServiceIdentity for earthengine.googleapis.com using the
-    user's OAuth session, ensuring the GEE service agent exists before we
-    attempt to grant it bucket access.
+def _provision_gee_service_agent(session, cloud_project: str) -> bool | None:
+    """Initialize a Cloud Project with Earth Engine using the user's OAuth
+    session.  Calling ``projects.initialize`` causes Google to provision the
+    EE service agent (``service-{N}@gcp-sa-earthengine.iam.gserviceaccount.com``)
+    for the project, which must exist before we can grant it bucket access.
 
-    Best-effort: logs warnings on failure but does not raise.
+    This only requires the ``earthengine`` scope — no ``cloud-platform`` needed.
+
+    Returns:
+        True   — initialization succeeded (agent now exists / already existed).
+        None   — token lacks the required ``earthengine`` scope (shouldn't
+                 happen, but signals the caller to prompt re-auth).
+        False  — unexpected error; provisioning failed for other reasons.
     """
-    url = (
-        f"https://serviceusage.googleapis.com/v1beta1/projects/{cloud_project}"
-        f"/services/earthengine.googleapis.com:generateServiceIdentity"
-    )
+    url = f"https://earthengine.googleapis.com/v1/projects/{cloud_project}:initialize"
     try:
         resp = session.post(url, json={}, timeout=30)
         if resp.status_code in (200, 204):
             logger.info(
-                "GEE service agent provisioned/confirmed for project %s",
+                "EE project initialized / service agent confirmed for project %s",
                 cloud_project,
             )
-        else:
-            logger.warning(
-                "generateServiceIdentity returned %d for project %s: %s",
-                resp.status_code,
-                cloud_project,
-                resp.text[:200],
-            )
+            return True
+        if resp.status_code == 403:
+            body = resp.text
+            if "insufficient" in body.lower() and "scope" in body.lower():
+                logger.warning(
+                    "projects.initialize 403 (scope missing) for project %s —"
+                    " user must re-connect their GEE account.",
+                    cloud_project,
+                )
+                return None  # sentinel: needs re-auth
+        logger.warning(
+            "projects.initialize returned %d for project %s: %s",
+            resp.status_code,
+            cloud_project,
+            resp.text[:200],
+        )
+        return False
     except Exception as exc:
         logger.warning(
-            "Failed to provision GEE service agent for project %s: %s",
+            "Failed to initialize EE project %s: %s",
             cloud_project,
             exc,
         )
+        return False
 
 
 @endpoints.route(
@@ -728,22 +746,37 @@ def set_gee_cloud_project():
             if old_number is not None and old_number != project_number:
                 revoke_gee_service_agent_bucket_write(old_number, bucket_name)
 
-            # Ensure the GEE service agent exists before granting it access.
-            # Uses the user's own OAuth token — they authorise provisioning on
-            # their own project (owners/editors have
-            # serviceusage.services.generateServiceIdentity by default).
+            # Initialize the EE project so Google provisions the service agent
+            # (service-N@gcp-sa-earthengine.iam.gserviceaccount.com) before we
+            # attempt to grant it bucket access.  Uses only the earthengine
+            # scope — no cloud-platform needed.
+            provision_result = None
             if _user_session is not None:
-                _provision_gee_service_agent(_user_session, cloud_project)
+                provision_result = _provision_gee_service_agent(
+                    _user_session, cloud_project
+                )
 
             gcs_write_access = grant_gee_service_agent_bucket_write(
                 project_number, bucket_name
             )
             if not gcs_write_access:
-                gcs_write_detail = (
-                    "Project saved, but the bucket write permission could not be "
-                    "configured automatically. Ensure the Earth Engine API is "
-                    "enabled in your GCP project, then save the project again."
-                )
+                if provision_result is None:
+                    # Token lacked cloud-platform scope → provisioning skipped
+                    # or failed due to missing scope.
+                    gcs_write_detail = (
+                        "Project saved, but bucket write access could not be "
+                        "configured because your Google account connection needs "
+                        "to be refreshed. Please disconnect and re-connect your "
+                        "GEE account (Settings → GEE Credentials), then save "
+                        "the project again."
+                    )
+                else:
+                    gcs_write_detail = (
+                        "Project saved, but the bucket write permission could "
+                        "not be configured automatically. Ensure the Earth "
+                        "Engine API is enabled in your GCP project, then save "
+                        "the project again."
+                    )
 
         # ----------------------------------------------------------------
         # Persist.
