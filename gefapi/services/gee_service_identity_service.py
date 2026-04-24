@@ -43,7 +43,11 @@ def get_user_email_from_oauth_token(
             token_uri=token_uri,
             client_id=client_id,
             client_secret=client_secret,
-            scopes=["https://www.googleapis.com/auth/earthengine"],
+            scopes=[
+                "openid",
+                "email",
+                "https://www.googleapis.com/auth/earthengine",
+            ],
         )
 
         # Get user info including email

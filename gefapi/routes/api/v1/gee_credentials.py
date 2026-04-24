@@ -35,10 +35,12 @@ _OAUTH_STATE_TTL = 600  # 10 minutes
 _oauth_state_store: dict[str, str] = {}  # in-memory fallback
 
 # OAuth scopes requested during the GEE consent flow.
-# openid — required to retrieve user email for bucket write access configuration.
-# earthengine — required for EE API access.
+# openid — required base scope for OpenID Connect (enables userinfo endpoint).
+# email — adds email address to the userinfo response (needed for bucket access).
+# earthengine — required for Earth Engine API access.
 _GEE_OAUTH_SCOPES = [
     "openid",
+    "email",
     "https://www.googleapis.com/auth/earthengine",
 ]
 
