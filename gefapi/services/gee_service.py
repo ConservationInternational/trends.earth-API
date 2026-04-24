@@ -228,7 +228,7 @@ class GEEService:
                 client_secret=os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
                 scopes=[
                     "https://www.googleapis.com/auth/earthengine",
-                    "https://www.googleapis.com/auth/devstorage.read_write",
+                    "https://www.googleapis.com/auth/devstorage.full_control",
                 ],
             )
 
