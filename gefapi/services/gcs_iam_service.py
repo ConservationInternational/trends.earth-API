@@ -68,19 +68,20 @@ def _get_sa_gcs_client():
         return None
 
 
-def grant_gee_service_agent_bucket_write(project_number: int, bucket_name: str) -> None:
+def grant_gee_service_agent_bucket_write(project_number: int, bucket_name: str) -> bool:
     """Grant ``roles/storage.objectCreator`` on *bucket_name* to the GEE
     service agent for *project_number*.
 
     Idempotent — does nothing if the binding already exists.
-    Logs a warning and returns silently on any failure so callers are never
-    blocked.
+    Logs a warning and returns ``False`` on any failure so callers can
+    report the outcome without being blocked.
+    Returns ``True`` on success (including when the binding already existed).
     """
     member = _GEE_SERVICE_AGENT_TEMPLATE.format(project_number=project_number)
     try:
         client = _get_sa_gcs_client()
         if client is None:
-            return
+            return False
 
         bucket = client.bucket(bucket_name)
         policy = bucket.get_iam_policy(requested_policy_version=3)
@@ -94,11 +95,12 @@ def grant_gee_service_agent_bucket_write(project_number: int, bucket_name: str) 
                     bucket_name,
                     _ROLE,
                 )
-                return
+                return True
 
         policy.bindings.append({"role": _ROLE, "members": {member}})
         bucket.set_iam_policy(policy)
         logger.info("Granted %s to %s on gs://%s", _ROLE, member, bucket_name)
+        return True
     except Exception as exc:
         logger.warning(
             "Failed to grant GCS IAM binding for project %s on bucket %s: %s",
@@ -106,6 +108,7 @@ def grant_gee_service_agent_bucket_write(project_number: int, bucket_name: str) 
             bucket_name,
             exc,
         )
+        return False
 
 
 def revoke_gee_service_agent_bucket_write(

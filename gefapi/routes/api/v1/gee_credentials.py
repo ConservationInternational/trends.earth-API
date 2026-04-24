@@ -182,6 +182,9 @@ def get_user_gee_credentials():
                     "cloud_project": user.gee_cloud_project
                     if user.gee_credentials_type == "oauth"
                     else None,
+                    "cloud_project_number": user.gee_cloud_project_number
+                    if user.gee_credentials_type == "oauth"
+                    else None,
                 }
             }
         )
@@ -487,6 +490,39 @@ def list_user_gee_projects():
         return error(status=500, detail="Failed to list GCP projects")
 
 
+def _provision_gee_service_agent(session, cloud_project: str) -> None:
+    """Call generateServiceIdentity for earthengine.googleapis.com using the
+    user's OAuth session, ensuring the GEE service agent exists before we
+    attempt to grant it bucket access.
+
+    Best-effort: logs warnings on failure but does not raise.
+    """
+    url = (
+        f"https://serviceusage.googleapis.com/v1beta1/projects/{cloud_project}"
+        f"/services/earthengine.googleapis.com:generateServiceIdentity"
+    )
+    try:
+        resp = session.post(url, json={}, timeout=30)
+        if resp.status_code in (200, 204):
+            logger.info(
+                "GEE service agent provisioned/confirmed for project %s",
+                cloud_project,
+            )
+        else:
+            logger.warning(
+                "generateServiceIdentity returned %d for project %s: %s",
+                resp.status_code,
+                cloud_project,
+                resp.text[:200],
+            )
+    except Exception as exc:
+        logger.warning(
+            "Failed to provision GEE service agent for project %s: %s",
+            cloud_project,
+            exc,
+        )
+
+
 @endpoints.route(
     "/user/me/gee-credentials/project", strict_slashes=False, methods=["PATCH"]
 )
@@ -573,6 +609,7 @@ def set_gee_cloud_project():
 
         # Always attempt CRM lookup to verify the user can access the project.
         access_token, refresh_token, _ = user.get_gee_oauth_credentials()
+        _user_session = None  # saved for later use in service-agent provisioning
         if access_token and refresh_token:
             from google.auth.exceptions import RefreshError as _RefreshError
             from google.auth.transport.requests import AuthorizedSession
@@ -591,6 +628,7 @@ def set_gee_cloud_project():
             )
             try:
                 session = AuthorizedSession(credentials)
+                _user_session = session
                 crm_resp = session.get(
                     f"https://cloudresourcemanager.googleapis.com/v3/projects/{cloud_project}",
                     timeout=15,
@@ -690,16 +728,17 @@ def set_gee_cloud_project():
             if old_number is not None and old_number != project_number:
                 revoke_gee_service_agent_bucket_write(old_number, bucket_name)
 
-            try:
-                grant_gee_service_agent_bucket_write(project_number, bucket_name)
-                gcs_write_access = True
-            except Exception as iam_exc:
-                logger.warning(
-                    "GCS IAM grant failed for project %s (user %s): %s",
-                    project_number,
-                    mask_email(user.email),
-                    iam_exc,
-                )
+            # Ensure the GEE service agent exists before granting it access.
+            # Uses the user's own OAuth token — they authorise provisioning on
+            # their own project (owners/editors have
+            # serviceusage.services.generateServiceIdentity by default).
+            if _user_session is not None:
+                _provision_gee_service_agent(_user_session, cloud_project)
+
+            gcs_write_access = grant_gee_service_agent_bucket_write(
+                project_number, bucket_name
+            )
+            if not gcs_write_access:
                 gcs_write_detail = (
                     "Project saved, but the bucket write permission could not be "
                     "configured automatically. Ensure the Earth Engine API is "
