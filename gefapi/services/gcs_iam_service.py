@@ -1,17 +1,15 @@
-"""GCS IAM helpers for granting/revoking GEE service-agent bucket access.
+"""GCS IAM helpers for granting/revoking bucket access to OAuth users.
 
 When a user runs GEE batch exports under their own OAuth credentials, GEE
-executes the export using that project's GEE service agent:
+executes the export **as the user**. Therefore, we need to grant the user's
+Google account write access to the output bucket.
 
-    service-{PROJECT_NUMBER}@gcp-sa-earthengine.iam.gserviceaccount.com
+The functions here grant and revoke ``roles/storage.objectCreator`` on the
+output bucket for the user's email address, using the service account
+credentials stored in ``EE_SERVICE_ACCOUNT_JSON``.
 
-This service agent has no write access to the ``ldmt`` bucket (owned by the
-service's GCP project).  The functions here grant and revoke
-``roles/storage.objectCreator`` on the output bucket for that service agent,
-using the service account credentials stored in ``EE_SERVICE_ACCOUNT_JSON``.
-
-The grant is made once when the user selects their GCP project, and revoked
-when they remove their credentials.  All operations are idempotent and
+The grant is made once when the user connects their OAuth credentials, and
+revoked when they remove their credentials. All operations are idempotent and
 best-effort: failures are logged but never propagated to callers.
 """
 
@@ -23,9 +21,6 @@ from gefapi.config.base import SETTINGS
 
 logger = logging.getLogger(__name__)
 
-_GEE_SERVICE_AGENT_TEMPLATE = (
-    "serviceAccount:service-{project_number}@gcp-sa-earthengine.iam.gserviceaccount.com"
-)
 _ROLE = "roles/storage.objectCreator"
 
 
@@ -68,16 +63,16 @@ def _get_sa_gcs_client():
         return None
 
 
-def grant_gee_service_agent_bucket_write(project_number: int, bucket_name: str) -> bool:
-    """Grant ``roles/storage.objectCreator`` on *bucket_name* to the GEE
-    service agent for *project_number*.
+def grant_user_bucket_write(user_email: str, bucket_name: str) -> bool:
+    """Grant ``roles/storage.objectCreator`` on *bucket_name* to the user's
+    Google account.
 
     Idempotent — does nothing if the binding already exists.
     Logs a warning and returns ``False`` on any failure so callers can
     report the outcome without being blocked.
     Returns ``True`` on success (including when the binding already existed).
     """
-    member = _GEE_SERVICE_AGENT_TEMPLATE.format(project_number=project_number)
+    member = f"user:{user_email}"
     try:
         client = _get_sa_gcs_client()
         if client is None:
@@ -103,24 +98,22 @@ def grant_gee_service_agent_bucket_write(project_number: int, bucket_name: str) 
         return True
     except Exception as exc:
         logger.warning(
-            "Failed to grant GCS IAM binding for project %s on bucket %s: %s",
-            project_number,
+            "Failed to grant GCS IAM binding for user %s on bucket %s: %s",
+            user_email,
             bucket_name,
             exc,
         )
         return False
 
 
-def revoke_gee_service_agent_bucket_write(
-    project_number: int, bucket_name: str
-) -> None:
-    """Revoke ``roles/storage.objectCreator`` on *bucket_name* from the GEE
-    service agent for *project_number*.
+def revoke_user_bucket_write(user_email: str, bucket_name: str) -> None:
+    """Revoke ``roles/storage.objectCreator`` on *bucket_name* from the user's
+    Google account.
 
     Idempotent — does nothing if no matching binding exists.
     Logs a warning and returns silently on any failure.
     """
-    member = _GEE_SERVICE_AGENT_TEMPLATE.format(project_number=project_number)
+    member = f"user:{user_email}"
     try:
         client = _get_sa_gcs_client()
         if client is None:
@@ -153,8 +146,8 @@ def revoke_gee_service_agent_bucket_write(
         logger.info("Revoked %s from %s on gs://%s", _ROLE, member, bucket_name)
     except Exception as exc:
         logger.warning(
-            "Failed to revoke GCS IAM binding for project %s on bucket %s: %s",
-            project_number,
+            "Failed to revoke GCS IAM binding for user %s on bucket %s: %s",
+            user_email,
             bucket_name,
             exc,
         )

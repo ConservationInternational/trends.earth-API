@@ -84,14 +84,12 @@ class User(db.Model):
     # 'oauth' or 'service_account'
     gee_credentials_type = db.Column(db.String(20), nullable=True)
     gee_credentials_created_at = db.Column(db.DateTime(), nullable=True)
+    # Google account email from OAuth (used for GCS bucket IAM grants).
+    # Not sensitive — stored as plain text. May differ from user.email.
+    gee_google_email = db.Column(db.String(255), nullable=True)
     # GCP project ID the user wants EE API calls billed to (OAuth only).
     # Not sensitive — stored as plain text.
     gee_cloud_project = db.Column(db.String(100), nullable=True)
-    # Numeric GCP project number (distinct from the human-readable project ID).
-    # Required to construct the GEE service agent email:
-    # service-{NUMBER}@gcp-sa-earthengine.iam.gserviceaccount.com
-    # Used to grant/revoke objectCreator on the output GCS bucket.
-    gee_cloud_project_number = db.Column(db.BigInteger(), nullable=True)
 
     # openEO credentials (encrypted JSON stored as text, same mechanism as GEE)
     openeo_credentials_enc = db.Column(db.Text(), nullable=True)
@@ -510,6 +508,7 @@ class User(db.Model):
         access_token: str,
         refresh_token: str,
         cloud_project: str | None = None,
+        google_email: str | None = None,
     ) -> None:
         """Set OAuth credentials for GEE."""
         self.gee_oauth_token = self._encrypt_gee_data(access_token)
@@ -518,6 +517,8 @@ class User(db.Model):
         self.gee_credentials_created_at = datetime.datetime.utcnow()
         if cloud_project is not None:
             self.gee_cloud_project = cloud_project.strip() or None
+        if google_email is not None:
+            self.gee_google_email = google_email.strip() or None
 
     def set_gee_service_account(self, service_account_key: dict[str, Any]) -> None:
         """Set service account credentials for GEE"""
@@ -568,8 +569,8 @@ class User(db.Model):
         self.gee_service_account_key = None
         self.gee_credentials_type = None
         self.gee_credentials_created_at = None
+        self.gee_google_email = None
         self.gee_cloud_project = None
-        self.gee_cloud_project_number = None
 
     # ------------------------------------------------------------------
     # openEO credential helpers (mirrors GEE credential pattern above)

@@ -35,12 +35,9 @@ _OAUTH_STATE_TTL = 600  # 10 minutes
 _oauth_state_store: dict[str, str] = {}  # in-memory fallback
 
 # OAuth scopes requested during the GEE consent flow.
-# earthengine              — required for EE API access and to call
-#                            projects.initialize (provisions the EE service
-#                            agent so GCS exports work).
+# earthengine — required for EE API access.
 # cloudplatformprojects.readonly — lets us enumerate the user's GCP projects
-#                                  so the UI can offer a project-selection
-#                                  dropdown after OAuth completes.
+#   so the UI can offer a project-selection dropdown after OAuth completes.
 _GEE_OAUTH_SCOPES = [
     "https://www.googleapis.com/auth/earthengine",
     "https://www.googleapis.com/auth/cloudplatformprojects.readonly",
@@ -183,9 +180,6 @@ def get_user_gee_credentials():
                     if user.gee_credentials_created_at
                     else None,
                     "cloud_project": user.gee_cloud_project
-                    if user.gee_credentials_type == "oauth"
-                    else None,
-                    "cloud_project_number": user.gee_cloud_project_number
                     if user.gee_credentials_type == "oauth"
                     else None,
                 }
@@ -384,9 +378,28 @@ def handle_gee_oauth_callback():
 
         credentials = flow.credentials
 
-        # Store credentials
+        # Retrieve the user's Google email for GCS bucket IAM grants
+        from gefapi.services.gee_service_identity_service import (
+            get_user_email_from_oauth_token,
+        )
+
+        env_settings = SETTINGS.get("environment", {})
+        google_email = get_user_email_from_oauth_token(
+            access_token=credentials.token,
+            refresh_token=credentials.refresh_token,
+            client_id=env_settings.get("GOOGLE_OAUTH_CLIENT_ID"),
+            client_secret=env_settings.get("GOOGLE_OAUTH_CLIENT_SECRET"),
+            token_uri=env_settings.get(
+                "GOOGLE_OAUTH_TOKEN_URI",
+                "https://oauth2.googleapis.com/token",
+            ),
+        )
+
+        # Store credentials (including Google email for bucket access management)
         user.set_gee_oauth_credentials(
-            access_token=credentials.token, refresh_token=credentials.refresh_token
+            access_token=credentials.token,
+            refresh_token=credentials.refresh_token,
+            google_email=google_email,
         )
 
         db.session.commit()
@@ -493,52 +506,7 @@ def list_user_gee_projects():
         return error(status=500, detail="Failed to list GCP projects")
 
 
-def _provision_gee_service_agent(session, cloud_project: str) -> bool | None:
-    """Initialize a Cloud Project with Earth Engine using the user's OAuth
-    session.  Calling ``projects.initialize`` causes Google to provision the
-    EE service agent (``service-{N}@gcp-sa-earthengine.iam.gserviceaccount.com``)
-    for the project, which must exist before we can grant it bucket access.
-
-    This only requires the ``earthengine`` scope — no ``cloud-platform`` needed.
-
-    Returns:
-        True   — initialization succeeded (agent now exists / already existed).
-        None   — token lacks the required ``earthengine`` scope (shouldn't
-                 happen, but signals the caller to prompt re-auth).
-        False  — unexpected error; provisioning failed for other reasons.
-    """
-    url = f"https://earthengine.googleapis.com/v1/projects/{cloud_project}:initialize"
-    try:
-        resp = session.post(url, json={}, timeout=30)
-        if resp.status_code in (200, 204):
-            logger.info(
-                "EE project initialized / service agent confirmed for project %s",
-                cloud_project,
-            )
-            return True
-        if resp.status_code == 403:
-            body = resp.text
-            if "insufficient" in body.lower() and "scope" in body.lower():
-                logger.warning(
-                    "projects.initialize 403 (scope missing) for project %s —"
-                    " user must re-connect their GEE account.",
-                    cloud_project,
-                )
-                return None  # sentinel: needs re-auth
-        logger.warning(
-            "projects.initialize returned %d for project %s: %s",
-            resp.status_code,
-            cloud_project,
-            resp.text[:200],
-        )
-        return False
-    except Exception as exc:
-        logger.warning(
-            "Failed to initialize EE project %s: %s",
-            cloud_project,
-            exc,
-        )
-        return False
+# Service identity provisioning removed - now handled by gee_service_identity_service
 
 
 @endpoints.route(
@@ -547,21 +515,16 @@ def _provision_gee_service_agent(session, cloud_project: str) -> bool | None:
 @jwt_required()
 @require_scope("gee:write")
 def set_gee_cloud_project():
-    """Save the user's selected GEE Cloud Project ID and grant the GEE service
-    agent write access to the output GCS bucket.
+    """Save the user's selected GEE Cloud Project ID and grant bucket write access.
 
     The project ID must correspond to a GCP project that has the Earth Engine
     API enabled and that the user has access to.
 
     **Request body** (JSON):
     - ``cloud_project`` (str, required): GCP project ID (e.g. ``my-gee-project``)
-    - ``project_number`` (int, optional): Numeric GCP project number.  When
-      supplied the CRM lookup is skipped.  Required when the user's OAuth token
-      lacks the ``cloudplatformprojects.readonly`` scope (i.e. when the project
-      dropdown could not be populated and manual entry was used).
 
     **Response** adds ``gcs_write_access`` (bool) to indicate whether the IAM
-    grant succeeded.  When ``false`` a ``detail`` field explains why.
+    grant succeeded. When ``false`` a ``detail`` field explains why.
     """
     try:
         user = current_user
@@ -592,205 +555,65 @@ def set_gee_cloud_project():
             )
 
         # ----------------------------------------------------------------
-        # Resolve numeric project number (needed for GCS IAM grant).
+        # Grant GCS bucket write access to the user's Google account.
+        # OAuth users run EE tasks as themselves, not via a service account.
         # ----------------------------------------------------------------
-        project_number: int | None = None
         gcs_write_access = False
         gcs_write_detail: str | None = None
 
-        # Caller may supply project_number directly (manual-entry UX path used
-        # when the user's OAuth token lacks the cloudplatformprojects.readonly
-        # scope).  We still attempt a CRM lookup to verify ownership: if CRM
-        # returns 200 the supplied number must match; only when CRM 403s (scope
-        # genuinely absent) do we fall back to trusting the supplied value.
-        raw_number = json_data.get("project_number")
-        manually_supplied_number: int | None = None
-        if raw_number is not None:
-            try:
-                manually_supplied_number = int(raw_number)
-            except (TypeError, ValueError):
-                return error(
-                    status=400,
-                    detail="project_number must be an integer.",
-                )
-            if not (
-                _GCP_PROJECT_NUMBER_MIN
-                <= manually_supplied_number
-                <= _GCP_PROJECT_NUMBER_MAX
-            ):
-                return error(
-                    status=400,
-                    detail=(
-                        "project_number is not in the valid range for a GCP project."
-                    ),
-                )
-
-        # Always attempt CRM lookup to verify the user can access the project.
         access_token, refresh_token, _ = user.get_gee_oauth_credentials()
-        _user_session = None  # saved for later use in service-agent provisioning
         if access_token and refresh_token:
-            from google.auth.exceptions import RefreshError as _RefreshError
-            from google.auth.transport.requests import AuthorizedSession
-            from google.oauth2.credentials import Credentials as _Credentials
+            from gefapi.services.gcs_iam_service import grant_user_bucket_write
+            from gefapi.services.gee_service_identity_service import (
+                get_user_email_from_oauth_token,
+            )
 
             env_settings = SETTINGS.get("environment", {})
-            credentials = _Credentials(
-                token=access_token,
+            bucket_name = SETTINGS.get("GCS_OUTPUT_BUCKET", "ldmt")
+
+            # Get the user's email from their OAuth credentials
+            user_email = get_user_email_from_oauth_token(
+                access_token=access_token,
                 refresh_token=refresh_token,
+                client_id=env_settings.get("GOOGLE_OAUTH_CLIENT_ID"),
+                client_secret=env_settings.get("GOOGLE_OAUTH_CLIENT_SECRET"),
                 token_uri=env_settings.get(
                     "GOOGLE_OAUTH_TOKEN_URI",
                     "https://oauth2.googleapis.com/token",
                 ),
-                client_id=env_settings.get("GOOGLE_OAUTH_CLIENT_ID"),
-                client_secret=env_settings.get("GOOGLE_OAUTH_CLIENT_SECRET"),
-            )
-            try:
-                session = AuthorizedSession(credentials)
-                _user_session = session
-                crm_resp = session.get(
-                    f"https://cloudresourcemanager.googleapis.com/v3/projects/{cloud_project}",
-                    timeout=15,
-                )
-                if crm_resp.status_code == 200:
-                    crm_data = crm_resp.json()
-                    raw = crm_data.get("projectNumber") or crm_data.get("name", "")
-                    # CRM v3 returns projectNumber as string; name is
-                    # "projects/123456789012".
-                    if isinstance(raw, str) and raw.startswith("projects/"):
-                        raw = raw.split("/")[-1]
-                    try:
-                        crm_number = int(raw)
-                    except (TypeError, ValueError):
-                        logger.warning(
-                            "CRM response did not contain a parseable project "
-                            "number for project '%s': %s",
-                            cloud_project,
-                            crm_data,
-                        )
-                        crm_number = None
-
-                    if crm_number is not None:
-                        # If the caller supplied a project_number, it must match
-                        # what CRM returned — reject mismatches to prevent a user
-                        # from claiming a project number they don't own.
-                        if (
-                            manually_supplied_number is not None
-                            and manually_supplied_number != crm_number
-                        ):
-                            return error(
-                                status=400,
-                                detail=(
-                                    "project_number does not match the project "
-                                    f"'{cloud_project}'. Verify the number in "
-                                    "the GCP Console."
-                                ),
-                            )
-                        project_number = crm_number
-
-                elif crm_resp.status_code == 404:
-                    return error(
-                        status=400,
-                        detail=(
-                            f"Project '{cloud_project}' not found. "
-                            "Ensure the Earth Engine API is enabled in your "
-                            "GCP project."
-                        ),
-                    )
-                elif crm_resp.status_code == 403:
-                    # Scope missing — fall back to the manually supplied number
-                    # if one was provided; otherwise skip IAM grant entirely.
-                    logger.info(
-                        "CRM returned 403 for user %s (missing "
-                        "cloudplatformprojects.readonly scope); "
-                        "falling back to manually supplied project_number=%s.",
-                        mask_email(user.email),
-                        manually_supplied_number,
-                    )
-                    if manually_supplied_number is not None:
-                        project_number = manually_supplied_number
-                    else:
-                        gcs_write_detail = (
-                            "Project saved, but automatic bucket write access could "
-                            "not be configured because your Google account connection "
-                            "lacks the required scope. Re-connect your GEE account or "
-                            "enter your Project Number manually to enable it."
-                        )
-                else:
-                    logger.warning(
-                        "CRM lookup for project '%s' returned %d for user %s: %s",
-                        cloud_project,
-                        crm_resp.status_code,
-                        mask_email(user.email),
-                        crm_resp.text[:200],
-                    )
-            except _RefreshError:
-                logger.warning(
-                    "OAuth token refresh failed during CRM lookup for user %s",
-                    mask_email(user.email),
-                )
-
-        # ----------------------------------------------------------------
-        # Perform the GCS IAM grant when we have a project number.
-        # ----------------------------------------------------------------
-        if project_number is not None:
-            from gefapi.services.gcs_iam_service import (
-                grant_gee_service_agent_bucket_write,
-                revoke_gee_service_agent_bucket_write,
             )
 
-            bucket_name = SETTINGS.get("GCS_OUTPUT_BUCKET", "ldmt")
+            if user_email:
+                # Store the Google email for later revocation
+                user.gee_google_email = user_email
 
-            # Revoke the previous project's grant before issuing a new one so
-            # stale service-agent bindings don't accumulate on the bucket.
-            old_number = user.gee_cloud_project_number
-            if old_number is not None and old_number != project_number:
-                revoke_gee_service_agent_bucket_write(old_number, bucket_name)
+                # Grant bucket write access to the user's Google account
+                gcs_write_access = grant_user_bucket_write(user_email, bucket_name)
 
-            # Initialize the EE project so Google provisions the service agent
-            # (service-N@gcp-sa-earthengine.iam.gserviceaccount.com) before we
-            # attempt to grant it bucket access.  Uses only the earthengine
-            # scope — no cloud-platform needed.
-            provision_result = None
-            if _user_session is not None:
-                provision_result = _provision_gee_service_agent(
-                    _user_session, cloud_project
-                )
-
-            gcs_write_access = grant_gee_service_agent_bucket_write(
-                project_number, bucket_name
-            )
-            if not gcs_write_access:
-                if provision_result is None:
-                    # Token lacked cloud-platform scope → provisioning skipped
-                    # or failed due to missing scope.
+                if not gcs_write_access:
                     gcs_write_detail = (
                         "Project saved, but bucket write access could not be "
-                        "configured because your Google account connection needs "
-                        "to be refreshed. Please disconnect and re-connect your "
-                        "GEE account (Settings → GEE Credentials), then save "
-                        "the project again."
+                        "configured automatically. Please contact support if "
+                        "Earth Engine exports fail."
                     )
-                else:
-                    gcs_write_detail = (
-                        "Project saved, but the bucket write permission could "
-                        "not be configured automatically. Ensure the Earth "
-                        "Engine API is enabled in your GCP project, then save "
-                        "the project again."
-                    )
+            else:
+                gcs_write_access = False
+                gcs_write_detail = (
+                    "Project saved, but could not retrieve your email address "
+                    "to configure bucket write access. Earth Engine exports may "
+                    "fail. Try reconnecting your Google account."
+                )
 
         # ----------------------------------------------------------------
         # Persist.
         # ----------------------------------------------------------------
         user.gee_cloud_project = cloud_project
-        user.gee_cloud_project_number = project_number
         db.session.commit()
 
         masked = mask_email(user.email)
         logger.info(
-            "GEE cloud project set to '%s' (number=%s, gcs_write_access=%s) "
-            "for user %s",
+            "GEE cloud project set to '%s' (gcs_write_access=%s) for user %s",
             cloud_project,
-            project_number,
             gcs_write_access,
             masked,
         )
@@ -952,16 +775,12 @@ def delete_gee_credentials():
             return error(status=404, detail="No GEE credentials found")
 
         # Revoke the GCS IAM binding before clearing credentials so we can
-        # still read the project number from the user object.
-        if user.gee_cloud_project_number is not None:
-            from gefapi.services.gcs_iam_service import (
-                revoke_gee_service_agent_bucket_write,
-            )
+        # still read the Google email from the user object.
+        if user.gee_google_email is not None:
+            from gefapi.services.gcs_iam_service import revoke_user_bucket_write
 
             bucket_name = SETTINGS.get("GCS_OUTPUT_BUCKET", "ldmt")
-            revoke_gee_service_agent_bucket_write(
-                user.gee_cloud_project_number, bucket_name
-            )
+            revoke_user_bucket_write(user.gee_google_email, bucket_name)
 
         # Clear credentials
         user.clear_gee_credentials()
@@ -1279,6 +1098,13 @@ def delete_user_gee_credentials_admin(user_id):
 
         if not user.has_gee_credentials():
             return error(status=404, detail="No GEE credentials found for user")
+
+        # Revoke the GCS IAM binding before clearing credentials
+        if user.gee_google_email is not None:
+            from gefapi.services.gcs_iam_service import revoke_user_bucket_write
+
+            bucket_name = SETTINGS.get("GCS_OUTPUT_BUCKET", "ldmt")
+            revoke_user_bucket_write(user.gee_google_email, bucket_name)
 
         # Clear credentials
         user.clear_gee_credentials()

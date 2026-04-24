@@ -922,6 +922,9 @@ class TestSetGeeCloudProject:
                 "gefapi.routes.api.v1.gee_credentials.AuthorizedSession"
             ) as mock_session_cls,
             patch(
+                "gefapi.routes.api.v1.gee_credentials._provision_gee_service_agent"
+            ) as mock_provision,
+            patch(
                 "gefapi.routes.api.v1.gee_credentials.grant_gee_service_agent_bucket_write"
             ) as mock_grant,
             patch(
@@ -931,6 +934,8 @@ class TestSetGeeCloudProject:
             mock_session = Mock()
             mock_session.get.return_value = mock_crm_response
             mock_session_cls.return_value = mock_session
+            mock_provision.return_value = True
+            mock_grant.return_value = True
 
             resp = client.patch(
                 "/api/v1/user/me/gee-credentials/project",
@@ -993,6 +998,9 @@ class TestSetGeeCloudProject:
                 "gefapi.routes.api.v1.gee_credentials.AuthorizedSession"
             ) as mock_session_cls,
             patch(
+                "gefapi.routes.api.v1.gee_credentials._provision_gee_service_agent"
+            ) as mock_provision,
+            patch(
                 "gefapi.routes.api.v1.gee_credentials.grant_gee_service_agent_bucket_write"
             ) as mock_grant,
             patch(
@@ -1002,6 +1010,8 @@ class TestSetGeeCloudProject:
             mock_session = Mock()
             mock_session.get.return_value = mock_crm_response
             mock_session_cls.return_value = mock_session
+            mock_provision.return_value = True
+            mock_grant.return_value = True
 
             resp = client.patch(
                 "/api/v1/user/me/gee-credentials/project",
@@ -1040,6 +1050,9 @@ class TestSetGeeCloudProject:
                 "gefapi.routes.api.v1.gee_credentials.AuthorizedSession"
             ) as mock_session_cls,
             patch(
+                "gefapi.routes.api.v1.gee_credentials._provision_gee_service_agent"
+            ) as mock_provision,
+            patch(
                 "gefapi.routes.api.v1.gee_credentials.grant_gee_service_agent_bucket_write"
             ) as mock_grant,
             patch(
@@ -1049,6 +1062,8 @@ class TestSetGeeCloudProject:
             mock_session = Mock()
             mock_session.get.return_value = mock_crm_response
             mock_session_cls.return_value = mock_session
+            mock_provision.return_value = True
+            mock_grant.return_value = True
 
             resp = client.patch(
                 "/api/v1/user/me/gee-credentials/project",
@@ -1083,12 +1098,17 @@ class TestSetGeeCloudProject:
                 "gefapi.routes.api.v1.gee_credentials.AuthorizedSession"
             ) as mock_session_cls,
             patch(
+                "gefapi.routes.api.v1.gee_credentials._provision_gee_service_agent"
+            ) as mock_provision,
+            patch(
                 "gefapi.routes.api.v1.gee_credentials.grant_gee_service_agent_bucket_write"
             ) as mock_grant,
         ):
             mock_session = Mock()
             mock_session.get.return_value = mock_crm_response
             mock_session_cls.return_value = mock_session
+            mock_provision.return_value = True
+            mock_grant.return_value = True
 
             resp = client.patch(
                 "/api/v1/user/me/gee-credentials/project",
@@ -1175,10 +1195,14 @@ class TestSetGeeCloudProject:
 
         with (
             patch(
+                "gefapi.routes.api.v1.gee_credentials._provision_gee_service_agent"
+            ) as mock_provision,
+            patch(
                 "gefapi.routes.api.v1.gee_credentials.grant_gee_service_agent_bucket_write",
-                side_effect=Exception("IAM API error"),
+                return_value=False,
             ),
         ):
+            mock_provision.return_value = True
             resp = client.patch(
                 "/api/v1/user/me/gee-credentials/project",
                 headers={"Authorization": f"Bearer {token}"},
