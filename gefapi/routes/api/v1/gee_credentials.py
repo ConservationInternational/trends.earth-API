@@ -381,9 +381,9 @@ def handle_gee_oauth_callback():
         flow.fetch_token(**fetch_kwargs)
 
         credentials = flow.credentials
-        
+
         # Log the actual scopes granted by Google (for debugging)
-        granted_scopes = getattr(credentials, 'scopes', None)
+        granted_scopes = getattr(credentials, "scopes", None)
         if granted_scopes:
             logger.info(f"Scopes granted by Google OAuth: {granted_scopes}")
         else:
