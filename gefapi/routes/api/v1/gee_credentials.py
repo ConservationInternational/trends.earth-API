@@ -35,12 +35,11 @@ _OAUTH_STATE_TTL = 600  # 10 minutes
 _oauth_state_store: dict[str, str] = {}  # in-memory fallback
 
 # OAuth scopes requested during the GEE consent flow.
+# openid — required to retrieve user email for bucket write access configuration.
 # earthengine — required for EE API access.
-# cloudplatformprojects.readonly — lets us enumerate the user's GCP projects
-#   so the UI can offer a project-selection dropdown after OAuth completes.
 _GEE_OAUTH_SCOPES = [
+    "openid",
     "https://www.googleapis.com/auth/earthengine",
-    "https://www.googleapis.com/auth/cloudplatformprojects.readonly",
 ]
 
 
@@ -413,100 +412,6 @@ def handle_gee_oauth_callback():
         logger.error(f"Error handling OAuth callback: {e}")
         db.session.rollback()
         return error(status=500, detail="Failed to save OAuth credentials")
-
-
-@endpoints.route("/user/me/gee-projects", strict_slashes=False, methods=["GET"])
-@jwt_required()
-@require_scope("gee:read")
-def list_user_gee_projects():
-    """List accessible GCP projects via the current user's OAuth credentials.
-
-    Calls the Cloud Resource Manager v3 API with the user's stored token.
-    Requires the ``cloudplatformprojects.readonly`` scope to have been granted
-    during the OAuth consent flow.
-
-    Returns a JSON array of ``{"value": projectId, "label": displayName (projectId)}``
-    objects for all ACTIVE projects, plus ``"current"`` with the already-saved
-    project ID (may be ``null``).
-    """
-    try:
-        user = current_user
-        if not user:
-            return error(status=404, detail="User not found")
-
-        if user.gee_credentials_type != "oauth":
-            return error(
-                status=400,
-                detail="GCP project listing requires OAuth credentials. "
-                "Please connect your GEE account first.",
-            )
-
-        access_token, refresh_token, cloud_project = user.get_gee_oauth_credentials()
-        if not access_token or not refresh_token:
-            return error(status=400, detail="OAuth tokens not found")
-
-        from google.auth.exceptions import RefreshError as _RefreshError
-        from google.auth.transport.requests import AuthorizedSession
-        from google.oauth2.credentials import Credentials as _Credentials
-
-        env_settings = SETTINGS.get("environment", {})
-        credentials = _Credentials(
-            token=access_token,
-            refresh_token=refresh_token,
-            token_uri=env_settings.get(
-                "GOOGLE_OAUTH_TOKEN_URI", "https://oauth2.googleapis.com/token"
-            ),
-            client_id=env_settings.get("GOOGLE_OAUTH_CLIENT_ID"),
-            client_secret=env_settings.get("GOOGLE_OAUTH_CLIENT_SECRET"),
-            scopes=_GEE_OAUTH_SCOPES,
-        )
-
-        try:
-            session = AuthorizedSession(credentials)
-            resp = session.get(
-                "https://cloudresourcemanager.googleapis.com/v3/projects",
-                params={"pageSize": 100},
-                timeout=15,
-            )
-        except _RefreshError as e:
-            logger.warning(
-                f"OAuth token refresh failed for user {mask_email(user.email)}: {e}"
-            )
-            return error(
-                status=401,
-                detail="OAuth token expired. Please reconnect your GEE account.",
-            )
-
-        if not resp.ok:
-            logger.error(
-                f"Cloud Resource Manager API error {resp.status_code} for "
-                f"user {mask_email(user.email)}: {resp.text[:200]}"
-            )
-            return error(
-                status=502,
-                detail="Failed to fetch GCP projects. Ensure your Google account "
-                "has access to at least one GCP project with the Earth Engine "
-                "API enabled.",
-            )
-
-        data = resp.json()
-        projects = [
-            {
-                "value": p["projectId"],
-                "label": f"{p.get('displayName') or p['projectId']} ({p['projectId']})",
-            }
-            for p in data.get("projects", [])
-            if p.get("state") == "ACTIVE"
-        ]
-        projects.sort(key=lambda p: p["label"].lower())
-        return jsonify({"data": projects, "current": cloud_project})
-
-    except Exception as e:
-        logger.error(f"Error listing GCP projects: {e}")
-        return error(status=500, detail="Failed to list GCP projects")
-
-
-# Service identity provisioning removed - now handled by gee_service_identity_service
 
 
 @endpoints.route(
