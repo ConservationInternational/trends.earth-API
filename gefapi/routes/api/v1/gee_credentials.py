@@ -364,10 +364,12 @@ def handle_gee_oauth_callback():
             }
         }
 
+        # Don't pass state to Flow constructor - it triggers strict scope validation
+        # that fails when Google normalizes scopes (e.g., "email" -> "userinfo.email").
+        # State validation was already done above via _verify_and_consume_oauth_state().
         flow = Flow.from_client_config(
             oauth_config,
             scopes=_GEE_OAUTH_SCOPES,
-            state=json_data["state"],
         )
         flow.redirect_uri = oauth_config["web"]["redirect_uris"][0]
 
