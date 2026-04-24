@@ -382,13 +382,6 @@ def handle_gee_oauth_callback():
 
         credentials = flow.credentials
 
-        # Log the actual scopes granted by Google (for debugging)
-        granted_scopes = getattr(credentials, "scopes", None)
-        if granted_scopes:
-            logger.info(f"Scopes granted by Google OAuth: {granted_scopes}")
-        else:
-            logger.warning("Credentials object has no scopes attribute")
-
         # Retrieve the user's Google email for GCS bucket IAM grants
         from gefapi.services.gee_service_identity_service import (
             get_user_email_from_oauth_token,
@@ -411,7 +404,6 @@ def handle_gee_oauth_callback():
             access_token=credentials.token,
             refresh_token=credentials.refresh_token,
             google_email=google_email,
-            scopes=granted_scopes,
         )
 
         db.session.commit()

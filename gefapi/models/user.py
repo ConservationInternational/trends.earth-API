@@ -90,9 +90,6 @@ class User(db.Model):
     # GCP project ID the user wants EE API calls billed to (OAuth only).
     # Not sensitive — stored as plain text.
     gee_cloud_project = db.Column(db.String(100), nullable=True)
-    # OAuth scopes granted by Google (plain text, space-separated).
-    # Stored for debugging/verification purposes.
-    gee_oauth_scopes = db.Column(db.Text(), nullable=True)
 
     # openEO credentials (encrypted JSON stored as text, same mechanism as GEE)
     openeo_credentials_enc = db.Column(db.Text(), nullable=True)
@@ -512,7 +509,6 @@ class User(db.Model):
         refresh_token: str,
         cloud_project: str | None = None,
         google_email: str | None = None,
-        scopes: list[str] | None = None,
     ) -> None:
         """Set OAuth credentials for GEE."""
         self.gee_oauth_token = self._encrypt_gee_data(access_token)
@@ -523,9 +519,6 @@ class User(db.Model):
             self.gee_cloud_project = cloud_project.strip() or None
         if google_email is not None:
             self.gee_google_email = google_email.strip() or None
-        if scopes is not None:
-            # Store scopes as space-separated string for easy verification
-            self.gee_oauth_scopes = " ".join(sorted(scopes)) if scopes else None
 
     def set_gee_service_account(self, service_account_key: dict[str, Any]) -> None:
         """Set service account credentials for GEE"""
@@ -578,7 +571,6 @@ class User(db.Model):
         self.gee_credentials_created_at = None
         self.gee_google_email = None
         self.gee_cloud_project = None
-        self.gee_oauth_scopes = None
 
     # ------------------------------------------------------------------
     # openEO credential helpers (mirrors GEE credential pattern above)
