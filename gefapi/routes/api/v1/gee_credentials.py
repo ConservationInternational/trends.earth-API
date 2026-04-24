@@ -36,11 +36,12 @@ _oauth_state_store: dict[str, str] = {}  # in-memory fallback
 
 # OAuth scopes requested during the GEE consent flow.
 # openid — required base scope for OpenID Connect (enables userinfo endpoint).
-# email — adds email address to the userinfo response (needed for bucket access).
+# userinfo.email — adds email address to the userinfo response (needed for bucket access).
+#   Use full URL form to avoid Google normalization issues during OAuth validation.
 # earthengine — required for Earth Engine API access.
 _GEE_OAUTH_SCOPES = [
     "openid",
-    "email",
+    "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/earthengine",
 ]
 
@@ -364,12 +365,10 @@ def handle_gee_oauth_callback():
             }
         }
 
-        # Don't pass state to Flow constructor - it triggers strict scope validation
-        # that fails when Google normalizes scopes (e.g., "email" -> "userinfo.email").
-        # State validation was already done above via _verify_and_consume_oauth_state().
         flow = Flow.from_client_config(
             oauth_config,
             scopes=_GEE_OAUTH_SCOPES,
+            state=json_data["state"],
         )
         flow.redirect_uri = oauth_config["web"]["redirect_uris"][0]
 
