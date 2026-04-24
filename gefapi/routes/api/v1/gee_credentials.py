@@ -36,13 +36,17 @@ _oauth_state_store: dict[str, str] = {}  # in-memory fallback
 
 # OAuth scopes requested during the GEE consent flow.
 # openid — required base scope for OpenID Connect (enables userinfo endpoint).
-# userinfo.email — adds email address to the userinfo response (needed for bucket access).
+# userinfo.email — adds email address to the userinfo response (for bucket access).
 #   Use full URL form to avoid Google normalization issues during OAuth validation.
 # earthengine — required for Earth Engine API access.
+# devstorage.read_write — required for Earth Engine to write exports to GCS on user's behalf.
+#   Note: IAM bucket permissions alone are insufficient; EE needs the OAuth scope to access
+#   GCS APIs when running tasks under user OAuth credentials.
 _GEE_OAUTH_SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/earthengine",
+    "https://www.googleapis.com/auth/devstorage.read_write",
 ]
 
 
