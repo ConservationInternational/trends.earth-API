@@ -226,7 +226,10 @@ class GEEService:
                 token_uri=GEEService._oauth_token_uri(),
                 client_id=os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
                 client_secret=os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
-                scopes=["https://www.googleapis.com/auth/earthengine"],
+                scopes=[
+                    "https://www.googleapis.com/auth/earthengine",
+                    "https://www.googleapis.com/auth/devstorage.read_write",
+                ],
             )
 
             # Try to refresh token if needed.
