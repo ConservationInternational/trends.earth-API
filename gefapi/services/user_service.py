@@ -114,28 +114,28 @@ class UserService:
     USER_ALLOWED_SORT_FIELDS = USER_ALLOWED_FILTER_FIELDS
 
     @staticmethod
-    def create_user(user, legacy=True):
+    def create_user(user, legacy=False):
         """Create a new user account.
 
         Args:
             user: Dictionary with user data (email, password, name, etc.)
-            legacy: If True (default), emails the password directly for
-                backwards compatibility with existing QGIS plugin.
-                If False, sends a password reset link instead.
+            legacy: If True, emails the password directly for backwards
+                compatibility with older QGIS plugin versions.
+                Defaults to False (secure mode).
 
         Returns:
             User object
 
-        When legacy=True (default):
-            - Generates password if not provided
-            - Emails the plain-text password to the user
-            - Maintains backwards compatibility with QGIS plugin
-
-        When legacy=False (secure mode):
+        When legacy=False (default, secure mode):
             - Creates user with a temporary locked password
             - Sends a password reset email with a secure token link
             - User must click the link to set their own password
             - Token expires after 1 hour
+
+        When legacy=True (deprecated):
+            - Generates password if not provided
+            - Emails the plain-text password to the user
+            - Use only for backwards compatibility with older QGIS plugin
         """
         logger.info("[SERVICE]: Creating user")
         email_addr = user.get("email", None)
@@ -203,9 +203,28 @@ class UserService:
     ):
         """Legacy user creation - emails plain-text password.
 
-        This maintains backwards compatibility with the QGIS plugin
-        which expects the password to be included in the welcome email.
+        DEPRECATED: This method is maintained for backwards compatibility with
+        older QGIS plugin versions. New integrations must use _create_user_secure
+        (legacy=False).
+
+        Security concerns:
+        - Plain-text password is transmitted via email (CWE-312)
+        - Password is stored in email server logs and recipient's mail archive
         """
+        import warnings
+
+        warnings.warn(
+            "_create_user_legacy emails a plain-text password (CWE-312) and is "
+            "deprecated. Pass legacy=False to use secure token-based registration.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        rollbar.report_message(
+            "SECURITY: Legacy plain-text password email path invoked for new user "
+            "creation (CWE-312). Migrate callers to legacy=False.",
+            level="warning",
+            extra_data={"user_email": mask_email(email_addr)},
+        )
         if password is None:
             password = _generate_secure_password()
         else:
@@ -568,16 +587,16 @@ class UserService:
         """Initiate password recovery for a user account.
 
         Supports two modes:
-        - Legacy mode (default): Generates a new password and emails it directly.
-          This maintains backwards compatibility with existing QGIS plugin
-          installations.
-        - Secure mode (legacy=False): Sends a secure reset link that expires
-          after 1 hour. More secure but requires client support.
+        - Secure mode (default, legacy=False): Sends a time-limited reset link.
+          Recommended for all new integrations.
+        - Legacy mode (legacy=True, deprecated): Generates a new password and
+          emails it directly. Maintained only for backwards compatibility with
+          older QGIS plugin versions.
 
         Args:
             user_id: User identifier (email or ID)
-            legacy: If True (default), use legacy password-email flow for
-                backwards compatibility. If False, use secure token-based flow.
+            legacy: If True, use the deprecated plain-text password email flow.
+                Defaults to False (secure token-based flow).
 
         Returns:
             User object

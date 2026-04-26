@@ -269,17 +269,17 @@ class TestPasswordRecoveryEndpoint:
 class TestSecureUserCreation:
     """Tests for secure user creation with backwards compatibility."""
 
-    def test_create_user_defaults_to_legacy_mode(self, app):
-        """Test that create_user defaults to legacy=True for backwards compat."""
+    def test_create_user_defaults_to_secure_mode(self, app):
+        """Test that create_user defaults to legacy=False (secure token flow)."""
         import inspect
 
         from gefapi.services.user_service import UserService
 
-        # Check the function signature has legacy=True as default
+        # Check the function signature has legacy=False as default (secure mode)
         sig = inspect.signature(UserService.create_user)
         legacy_param = sig.parameters.get("legacy")
         assert legacy_param is not None
-        assert legacy_param.default is True
+        assert legacy_param.default is False
 
     def test_legacy_user_creation_emails_password(self, app):
         """Test that legacy mode emails the plain-text password."""
@@ -296,6 +296,22 @@ class TestSecureUserCreation:
         # Should email the password directly (old insecure behavior)
         # Note: Check for the string content in the source, handling multi-line concatenation
         assert "Password: " in source
+
+    def test_legacy_user_creation_emits_deprecation_warning(self, app):
+        """Test that legacy mode emits a DeprecationWarning (CWE-312 mitigation)."""
+        import inspect
+
+        from gefapi.services.user_service import UserService
+
+        source = inspect.getsource(UserService._create_user_legacy)
+
+        # Should emit a DeprecationWarning so tools and test runners surface it
+        assert "DeprecationWarning" in source
+        assert "warnings.warn" in source
+
+        # Should alert via Rollbar so security team can track remaining callers
+        assert "rollbar.report_message" in source
+        assert "CWE-312" in source
 
     def test_secure_user_creation_sends_reset_link(self, app):
         """Test that secure mode (legacy=False) sends a password reset link."""

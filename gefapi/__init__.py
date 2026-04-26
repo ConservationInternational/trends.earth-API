@@ -372,14 +372,11 @@ INSECURE_KEY_PATTERNS = [
 ]
 
 if not jwt_secret:
-    if os.getenv("ENVIRONMENT") == "prod":
-        raise RuntimeError(
-            "CRITICAL SECURITY ERROR: JWT_SECRET_KEY must be set in production. "
-            "Set the JWT_SECRET_KEY or SECRET_KEY environment variable."
-        )
-    logger.warning(
-        "JWT_SECRET_KEY is not set. This is insecure and must be fixed before "
-        "deploying to production. Set JWT_SECRET_KEY or SECRET_KEY."
+    raise RuntimeError(
+        "CRITICAL SECURITY ERROR: JWT_SECRET_KEY (or SECRET_KEY) environment "
+        "variable must be set. Without it authentication is completely non-functional. "
+        "Set JWT_SECRET_KEY to a cryptographically secure random string of at least "
+        "32 characters."
     )
 elif jwt_secret.lower() in INSECURE_KEY_PATTERNS or len(jwt_secret) < 32:
     if os.getenv("ENVIRONMENT") == "prod":
