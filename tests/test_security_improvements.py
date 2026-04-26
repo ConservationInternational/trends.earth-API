@@ -182,16 +182,16 @@ class TestPasswordRecoveryEndpoint:
     """Tests for the password recovery flow with backwards compatibility."""
 
     def test_recover_password_defaults_to_legacy_mode(self, app):
-        """Test that recover_password defaults to legacy=True for backwards compat."""
+        """Test that recover_password defaults to legacy=False (secure token flow)."""
         import inspect
 
         from gefapi.services.user_service import UserService
 
-        # Check the function signature has legacy=True as default
+        # Check the function signature has legacy=False as default (secure flow is now default)
         sig = inspect.signature(UserService.recover_password)
         legacy_param = sig.parameters.get("legacy")
         assert legacy_param is not None
-        assert legacy_param.default is True
+        assert legacy_param.default is False
 
     def test_legacy_mode_emails_password_directly(self, app):
         """Test that legacy mode maintains old behavior of emailing password."""
