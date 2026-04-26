@@ -1,6 +1,6 @@
 """The GEF API MODULE"""
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 import hmac
 import logging
 import os
@@ -494,7 +494,7 @@ def health_check():
 
     response_data = {
         "status": health_status,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "database": db_status,
         "version": "1.0",
     }
@@ -527,7 +527,11 @@ def health_check():
 def ping():
     """Simple ping endpoint without database dependency"""
     return jsonify(
-        {"status": "ok", "timestamp": datetime.utcnow().isoformat(), "message": "pong"}
+        {
+            "status": "ok",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "message": "pong",
+        }
     ), 200
 
 
@@ -691,7 +695,7 @@ def generate_openapi_spec_from_app():
                 ),
                 "contact": {
                     "name": "Trends.Earth Team",
-                    "email": "azvoleff@conservation.org",
+                    "email": "gef.land.degradation@gmail.com",
                 },
                 "license": {
                     "name": "MIT",
@@ -1097,12 +1101,13 @@ def create_token():
     except Exception as e:
         logger.warning(f"[JWT]: Failed to track client access on login: {e}")
 
+    _jwt_expires = app.config.get("JWT_ACCESS_TOKEN_EXPIRES") or timedelta(hours=1)
     return jsonify(
         {
             "access_token": access_token,
             "refresh_token": refresh_token.token,
             "user_id": user.id,
-            "expires_in": 3600,  # 1 hour in seconds
+            "expires_in": int(_jwt_expires.total_seconds()),
         }
     )
 
@@ -1120,11 +1125,11 @@ def refresh_token():
     if not refresh_token_string:
         return jsonify({"msg": "Refresh token is required"}), 400
 
-    # ?legacy=true (default) preserves the old behaviour: the same refresh
-    # token is returned unchanged, so unpatched clients keep working.
-    # ?legacy=false opts into full token rotation (RFC 6749 / OAuth 2.0 BCP).
-    legacy_param = request.args.get("legacy", "true").lower()
-    rotate = legacy_param not in ("true", "1", "yes")
+    # Token rotation (RFC 6749 / OAuth 2.0 Security BCP §2.2.2) is disabled by
+    # default.  Pass ?rotate=true to opt in for clients that update their
+    # stored refresh token on each response.
+    rotate_param = request.args.get("rotate", "false").lower()
+    rotate = rotate_param in ("true", "1", "yes")
 
     # Import here to avoid circular imports
     from gefapi.services.refresh_token_service import RefreshTokenService
@@ -1136,12 +1141,13 @@ def refresh_token():
     if not access_token:
         return jsonify({"msg": "Invalid or expired refresh token"}), 401
 
+    _jwt_exp2 = app.config.get("JWT_ACCESS_TOKEN_EXPIRES") or timedelta(hours=1)
     return jsonify(
         {
             "access_token": access_token,
             "refresh_token": new_refresh_token.token,
             "user_id": user.id,
-            "expires_in": 3600,  # 1 hour in seconds
+            "expires_in": int(_jwt_exp2.total_seconds()),
         }
     )
 

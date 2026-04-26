@@ -8,6 +8,7 @@ import string
 from uuid import UUID
 
 import rollbar
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from gefapi import db
 from gefapi.config import SETTINGS
@@ -28,8 +29,13 @@ from gefapi.utils.security_events import (
 
 ROLES = SETTINGS.get("ROLES")
 
-
 logger = logging.getLogger()
+
+# Pre-computed dummy hash used in the user-not-found path of authenticate_user
+# to equalise timing with the real password-check path (mitigates CWE-208).
+_DUMMY_PASSWORD_HASH = generate_password_hash(
+    "__dummy_password_for_timing_only__", method="scrypt"
+)
 
 MIN_PASSWORD_LENGTH = 12
 SPECIAL_CHARACTERS = "!@#$%^&*()-_=+[]{}|;:,.<>?/"
@@ -365,7 +371,8 @@ class UserService:
                         if deletion_record.deleted_at
                         else None,
                         "days_since_deletion": (
-                            datetime.datetime.utcnow() - deletion_record.deleted_at
+                            datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+                            - deletion_record.deleted_at
                         ).days
                         if deletion_record.deleted_at
                         else None,
@@ -446,10 +453,10 @@ class UserService:
         try:
             # If user_id is already a UUID object, use it directly
             if isinstance(user_id, UUID):
-                user = User.query.get(user_id)
+                user = db.session.get(User, user_id)
             else:
                 UUID(user_id, version=4)
-                user = User.query.get(user_id)
+                user = db.session.get(User, user_id)
         except ValueError:
             user = User.query.filter_by(email=user_id).first()
         except Exception as error:
@@ -556,7 +563,7 @@ class UserService:
         return user
 
     @staticmethod
-    def recover_password(user_id, legacy=True):
+    def recover_password(user_id, legacy=False):
         """Initiate password recovery for a user account.
 
         Supports two modes:
@@ -731,7 +738,7 @@ class UserService:
         _validate_password_strength(new_password)
 
         # Get the user
-        user = User.query.get(reset_token.user_id)
+        user = db.session.get(User, reset_token.user_id)
         if not user:
             raise UserNotFound(message="User not found")
 
@@ -745,7 +752,9 @@ class UserService:
             # Mark user as email verified - they proved email access by using the token
             if not user.email_verified:
                 user.email_verified = True
-                user.email_verified_at = datetime.datetime.utcnow()
+                user.email_verified_at = (
+                    datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+                )
                 masked = mask_email(user.email)
                 logger.info(
                     f"[SERVICE]: Email verified for {masked} via password reset"
@@ -849,7 +858,9 @@ class UserService:
             elif isinstance(value, int) and value >= 1:
                 current_user.max_concurrent_executions = value
 
-        current_user.updated_at = datetime.datetime.utcnow()
+        current_user.updated_at = datetime.datetime.now(datetime.UTC).replace(
+            tzinfo=None
+        )
         try:
             logger.info("[DB]: ADD")
             db.session.add(current_user)
@@ -1006,6 +1017,9 @@ class UserService:
         user = User.query.filter_by(email=email).first()
 
         if not user:
+            # Perform a constant-time dummy password check to prevent user
+            # enumeration via response-time differences (CWE-208).
+            check_password_hash(_DUMMY_PASSWORD_HASH, password)
             logger.warning(
                 f"[AUTH]: Failed login - user not found: {mask_email(email)}"
             )
@@ -1106,7 +1120,7 @@ class UserService:
 
         # Successful authentication - clear failed login count and update timestamps
         try:
-            now = datetime.datetime.utcnow()
+            now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
             user.clear_failed_logins()  # Reset lockout state
             user.last_login_at = now
             user.last_activity_at = now

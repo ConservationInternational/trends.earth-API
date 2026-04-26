@@ -120,7 +120,7 @@ class OAuth2Service:
         """
         from gefapi.utils.permissions import is_admin_or_higher
 
-        client = ServiceClient.query.get(client_db_id)
+        client = db.session.get(ServiceClient, client_db_id)
         if client is None:
             raise NotAllowed(message="Service client not found")
         if str(client.user_id) != str(user.id) and not is_admin_or_higher(user):

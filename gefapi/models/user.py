@@ -396,6 +396,14 @@ class User(db.Model):
         Raises:
             RuntimeError: If no encryption key is configured or the default
                 insecure key is in use.
+
+        Note — key rotation:
+            The derived key is cached for the lifetime of the worker process
+            via ``lru_cache``.  If ``GEE_ENCRYPTION_KEY`` is rotated in the
+            environment, **all API workers must be restarted** before the new
+            key takes effect.  Without a restart the old key will continue to
+            be used, and any credentials re-encrypted under the new key will
+            fail to decrypt.
         """
 
         key = os.getenv("GEE_ENCRYPTION_KEY")

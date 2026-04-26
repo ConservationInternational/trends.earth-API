@@ -64,7 +64,9 @@ class RefreshTokenService:
         try:
             import datetime
 
-            user.last_activity_at = datetime.datetime.utcnow()
+            user.last_activity_at = datetime.datetime.now(
+                datetime.UTC
+            ).replace(tzinfo=None)
             db.session.commit()
             logger.debug(
                 f"[SERVICE]: Updated last_activity_at for user {mask_email(user.email)}"
@@ -209,7 +211,10 @@ class RefreshTokenService:
 
         active_tokens = (
             RefreshToken.query.filter_by(user_id=user_id, is_revoked=False)
-            .filter(RefreshToken.expires_at > datetime.datetime.utcnow())
+            .filter(
+                RefreshToken.expires_at
+                > datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+            )
             .all()
         )
 
@@ -249,7 +254,8 @@ class RefreshTokenService:
         logger.info("[SERVICE]: Cleaning up expired refresh tokens")
 
         expired_tokens = RefreshToken.query.filter(
-            RefreshToken.expires_at <= datetime.datetime.utcnow()
+            RefreshToken.expires_at
+            <= datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
         ).all()
 
         for token in expired_tokens:
