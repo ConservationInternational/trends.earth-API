@@ -33,6 +33,7 @@ _GCP_PROJECT_NUMBER_MAX = 10**13
 # ---------------------------------------------------------------------------
 _OAUTH_STATE_TTL = 600  # 10 minutes
 _oauth_state_store: dict[str, str] = {}  # in-memory fallback
+_oauth_state_reverse: dict[str, str] = {}  # state → user_id reverse map
 
 # OAuth scopes requested during the GEE consent flow.
 # openid — required base scope for OpenID Connect (enables userinfo endpoint).
@@ -68,73 +69,113 @@ def _store_oauth_state(
     state: str,
     code_verifier: str | None = None,
     gee_cloud_project: str | None = None,
+    redirect_uri: str | None = None,
+    client_type: str | None = None,
 ) -> None:
     """Persist an OAuth state token (and optional PKCE code_verifier) keyed by user ID.
 
-    Also stores the PKCE ``code_verifier`` when the library generates one, and the
-    user-supplied ``gee_cloud_project`` so it can be retrieved at callback time.
+    Also stores the PKCE ``code_verifier`` when the library generates one, the
+    user-supplied ``gee_cloud_project``, the ``redirect_uri`` used in the flow
+    (needed to reconstruct the Flow at callback time), and the ``client_type``
+    (e.g. ``"qgis_plugin"``) detected from the X-TE-Client header so the
+    callback page can tailor its success message.
     """
     key = f"oauth_state:{user_id}"
+    rev_key = f"state_map:{state}"
     value = json.dumps(
         {
             "state": state,
             "code_verifier": code_verifier,
             "gee_cloud_project": gee_cloud_project,
+            "redirect_uri": redirect_uri,
+            "client_type": client_type,
         }
     )
-    client = _get_redis_client()
-    if client:
-        client.setex(key, _OAUTH_STATE_TTL, value)
+    redis_client = _get_redis_client()
+    if redis_client:
+        redis_client.setex(key, _OAUTH_STATE_TTL, value)
+        redis_client.setex(rev_key, _OAUTH_STATE_TTL, user_id)
     else:
         _oauth_state_store[key] = value
+        _oauth_state_reverse[rev_key] = user_id
+
+
+def _lookup_user_id_from_state(state: str) -> str | None:
+    """Return the user ID associated with *state* via the reverse mapping.
+
+    Used by the anonymous callback endpoint to identify the user without a JWT.
+    The reverse mapping is written by :func:`_store_oauth_state` and is
+    consumed (deleted) by :func:`_verify_and_consume_oauth_state`.
+    """
+    rev_key = f"state_map:{state}"
+    redis_client = _get_redis_client()
+    if redis_client:
+        result = redis_client.get(rev_key)
+        if result is None:
+            return None
+        return result.decode() if isinstance(result, bytes) else result
+    return _oauth_state_reverse.get(rev_key)
 
 
 def _verify_and_consume_oauth_state(
     user_id: str, state: str
-) -> tuple[bool, str | None, str | None]:
-    """Validate *state* and return ``(True, code_verifier, gee_cloud_project)``
+) -> tuple[bool, str | None, str | None, str | None, str | None]:
+    """Validate *state* and return
+    ``(True, code_verifier, gee_cloud_project, redirect_uri, client_type)``
     on success.
 
-    Returns ``(False, None, None)`` on mismatch. The stored entry is consumed
-    on success.
+    Returns ``(False, None, None, None, None)`` on mismatch. The stored entry
+    (both forward key ``oauth_state:{user_id}`` and reverse key
+    ``state_map:{state}``) is consumed on success.
     """
     key = f"oauth_state:{user_id}"
-    client = _get_redis_client()
-    if client:
-        stored = client.get(key)
+    rev_key = f"state_map:{state}"
+    redis_client = _get_redis_client()
+    if redis_client:
+        stored = redis_client.get(key)
         if stored is None:
-            return False, None, None
+            return False, None, None, None, None
         stored_str = stored.decode() if isinstance(stored, bytes) else stored
         try:
             stored_data = json.loads(stored_str)
             stored_state = stored_data.get("state", stored_str)
             code_verifier = stored_data.get("code_verifier")
             gee_cloud_project = stored_data.get("gee_cloud_project")
+            redirect_uri = stored_data.get("redirect_uri")
+            client_type = stored_data.get("client_type")
         except (json.JSONDecodeError, AttributeError):
             stored_state = stored_str
             code_verifier = None
             gee_cloud_project = None
+            redirect_uri = None
+            client_type = None
         if not secrets.compare_digest(stored_state, state):
-            return False, None, None
-        client.delete(key)
-        return True, code_verifier, gee_cloud_project
+            return False, None, None, None, None
+        redis_client.delete(key)
+        redis_client.delete(rev_key)
+        return True, code_verifier, gee_cloud_project, redirect_uri, client_type
 
     stored = _oauth_state_store.pop(key, None)
     if stored is None:
-        return False, None, None
+        return False, None, None, None, None
     try:
         stored_data = json.loads(stored)
         stored_state = stored_data.get("state", stored)
         code_verifier = stored_data.get("code_verifier")
         gee_cloud_project = stored_data.get("gee_cloud_project")
+        redirect_uri = stored_data.get("redirect_uri")
+        client_type = stored_data.get("client_type")
     except (json.JSONDecodeError, AttributeError):
         stored_state = stored
         code_verifier = None
         gee_cloud_project = None
+        redirect_uri = None
+        client_type = None
     if not secrets.compare_digest(stored_state, state):
         _oauth_state_store[key] = stored  # restore — state mismatch, not consumed
-        return False, None, None
-    return True, code_verifier, gee_cloud_project
+        return False, None, None, None, None
+    _oauth_state_reverse.pop(rev_key, None)
+    return True, code_verifier, gee_cloud_project, redirect_uri, client_type
 
 
 @endpoints.route("/user/me/gee-credentials", strict_slashes=False, methods=["GET"])
@@ -275,9 +316,22 @@ def initiate_gee_oauth():
         # to Google's token endpoint.
         code_verifier = flow.code_verifier
 
-        # Persist state (and code_verifier) server-side so the callback can verify it
+        # Detect client type from X-TE-Client header so the callback page
+        # can show a tailored success message (e.g. "open QGIS settings").
+        te_client_header = request.headers.get("X-TE-Client", "")
+        client_type = "qgis_plugin" if "type=qgis_plugin" in te_client_header else None
+
+        # Persist state (code_verifier, redirect_uri, client_type) so the
+        # callback — whether authenticated or anonymous — can verify & use it.
+        redirect_uri_val = oauth_config["web"]["redirect_uris"][0]
         user_id = get_jwt_identity()
-        _store_oauth_state(str(user_id), state, code_verifier=code_verifier)
+        _store_oauth_state(
+            str(user_id),
+            state,
+            code_verifier=code_verifier,
+            redirect_uri=redirect_uri_val,
+            client_type=client_type,
+        )
 
         return jsonify({"data": {"auth_url": auth_url, "state": state}})
 
@@ -341,8 +395,8 @@ def handle_gee_oauth_callback():
             return error(status=400, detail="State parameter is required")
 
         # Verify the state against the server-side stored value (CSRF check)
-        state_valid, code_verifier, _ = _verify_and_consume_oauth_state(
-            str(user_id), json_data["state"]
+        state_valid, code_verifier, _, _redirect_uri, _client_type = (
+            _verify_and_consume_oauth_state(str(user_id), json_data["state"])
         )
         if not state_valid:
             logger.warning(f"OAuth state mismatch for user {user_id} — possible CSRF")
@@ -417,6 +471,151 @@ def handle_gee_oauth_callback():
         logger.error(f"Error handling OAuth callback: {e}")
         db.session.rollback()
         return error(status=500, detail="Failed to save OAuth credentials")
+
+
+@endpoints.route("/gee-oauth/callback", strict_slashes=False, methods=["POST"])
+def handle_gee_oauth_callback_anonymous():
+    """
+    Complete GEE OAuth flow without requiring a JWT — for clients (e.g. the QGIS
+    plugin) that open the browser but cannot receive the Google redirect directly.
+
+    The user ID is resolved from the ``state`` parameter via the reverse mapping
+    written by the initiate endpoint, so no authentication header is needed.
+
+    **Content-Type**: application/json
+
+    **Request Body**:
+    - ``code`` (str, required): Authorization code from Google
+    - ``state`` (str, required): CSRF state token from the initiate call
+
+    **Response**:
+    ```json
+    {
+      "data": {
+        "status": "connected",
+        "gee_google_email": "user@gmail.com",
+        "client_type": "qgis_plugin"
+      }
+    }
+    ```
+
+    ``client_type`` reflects the originating client (``"qgis_plugin"`` or ``null``)
+    and is used by the callback page to show a context-appropriate success message.
+
+    **Error Responses**:
+    - ``400``: Missing/invalid code or state
+    - ``404``: User not found
+    - ``500``: Token exchange or save failure
+    """
+    try:
+        json_data = request.get_json()
+        if not json_data:
+            return error(status=400, detail="JSON data required")
+
+        code = json_data.get("code")
+        state = json_data.get("state")
+
+        if not code:
+            return error(status=400, detail="Authorization code is required")
+        if not state:
+            return error(status=400, detail="State parameter is required")
+
+        # Resolve user from the reverse state mapping (no JWT needed)
+        user_id = _lookup_user_id_from_state(state)
+        if not user_id:
+            logger.warning("Anonymous GEE callback: unknown or expired state")
+            return error(status=400, detail="Invalid or expired state parameter")
+
+        user = User.query.get(user_id)
+        if not user:
+            return error(status=404, detail="User not found")
+
+        # Verify + consume the state (also returns redirect_uri and client_type)
+        state_valid, code_verifier, _gee_cloud_project, redirect_uri, client_type = (
+            _verify_and_consume_oauth_state(str(user_id), state)
+        )
+        if not state_valid:
+            logger.warning(f"Anonymous GEE callback: state mismatch for user {user_id}")
+            return error(status=400, detail="Invalid or expired state parameter")
+
+        # Exchange authorization code for tokens
+        from google_auth_oauthlib.flow import Flow
+
+        client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+        if not client_id:
+            return error(status=500, detail="OAuth not configured")
+
+        # Use the redirect_uri that was stored at initiate time; fall back to env var
+        effective_redirect_uri = redirect_uri or os.getenv(
+            "GOOGLE_OAUTH_REDIRECT_URI",
+            "http://localhost:3000/api/v1/user/me/gee-oauth/callback",
+        )
+
+        oauth_config = {
+            "web": {
+                "client_id": client_id,
+                "client_secret": os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [effective_redirect_uri],
+            }
+        }
+
+        flow = Flow.from_client_config(
+            oauth_config, scopes=_GEE_OAUTH_SCOPES, state=state
+        )
+        flow.redirect_uri = effective_redirect_uri
+
+        fetch_kwargs: dict = {"code": code}
+        if code_verifier:
+            fetch_kwargs["code_verifier"] = code_verifier
+        flow.fetch_token(**fetch_kwargs)
+
+        credentials = flow.credentials
+
+        from gefapi.services.gee_service_identity_service import (
+            get_user_email_from_oauth_token,
+        )
+
+        env_settings = SETTINGS.get("environment", {})
+        google_email = get_user_email_from_oauth_token(
+            access_token=credentials.token,
+            refresh_token=credentials.refresh_token,
+            client_id=env_settings.get("GOOGLE_OAUTH_CLIENT_ID"),
+            client_secret=env_settings.get("GOOGLE_OAUTH_CLIENT_SECRET"),
+            token_uri=env_settings.get(
+                "GOOGLE_OAUTH_TOKEN_URI",
+                "https://oauth2.googleapis.com/token",
+            ),
+        )
+
+        user.set_gee_oauth_credentials(
+            access_token=credentials.token,
+            refresh_token=credentials.refresh_token,
+            google_email=google_email,
+        )
+        db.session.commit()
+
+        masked = mask_email(user.email)
+        logger.info(
+            f"Anonymous GEE OAuth callback: stored credentials for user {masked}"
+            f" (client_type={client_type!r})"
+        )
+
+        return jsonify(
+            {
+                "data": {
+                    "status": "connected",
+                    "gee_google_email": google_email or "",
+                    "client_type": client_type,
+                }
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error in anonymous GEE OAuth callback: {e}")
+        db.session.rollback()
+        return error(status=500, detail="Failed to complete OAuth flow")
 
 
 @endpoints.route(
