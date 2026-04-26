@@ -425,6 +425,17 @@ class User(db.Model):
             raise RuntimeError("Insecure encryption key configured for GEE credentials")
 
         if source == "SECRET_KEY":
+            env = os.getenv("ENVIRONMENT", "dev").lower()
+            if env == "prod":
+                logger.error(
+                    "GEE_ENCRYPTION_KEY must be set in production. "
+                    "Falling back to SECRET_KEY is not permitted in prod."
+                )
+                raise RuntimeError(
+                    "GEE_ENCRYPTION_KEY must be configured in production. "
+                    "Falling back to SECRET_KEY couples JWT signing and credential "
+                    "encryption to a single secret."
+                )
             logger.warning(
                 "Falling back to SECRET_KEY for GEE credential encryption. Set "
                 "GEE_ENCRYPTION_KEY to avoid using the application secret."

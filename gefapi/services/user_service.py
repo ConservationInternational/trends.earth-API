@@ -1,6 +1,7 @@
 """SCRIPT SERVICE"""
 
 import datetime
+from html import escape
 import logging
 import re
 import secrets
@@ -296,7 +297,7 @@ class UserService:
 
             # Send welcome email with reset link
             email_html = f"""
-            <p>Hello {user.name},</p>
+            <p>Hello {escape(user.name)},</p>
 
             <p>Welcome to Trends.Earth! Your account has been created.</p>
 
@@ -669,7 +670,7 @@ class UserService:
 
             # Send email with reset link (not the password itself)
             email_html = f"""
-            <p>Hello {user.name},</p>
+            <p>Hello {escape(user.name)},</p>
 
             <p>A password reset was requested for your Trends.Earth account.</p>
 

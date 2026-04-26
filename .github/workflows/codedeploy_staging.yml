@@ -180,6 +180,7 @@ jobs:
         JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
         DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         # GEE Configuration
+        GEE_ENCRYPTION_KEY: ${{ secrets.GEE_ENCRYPTION_KEY }}
         EE_SERVICE_ACCOUNT_JSON: ${{ secrets.EE_SERVICE_ACCOUNT_JSON }}
         GOOGLE_PROJECT_ID: ${{ vars.GOOGLE_PROJECT_ID }}
         GEE_ENDPOINT: ${{ vars.GEE_ENDPOINT || 'https://earthengine-highvolume.googleapis.com' }}
@@ -279,6 +280,7 @@ jobs:
           echo "INTERNAL_NETWORKS=$RATE_LIMIT_INTERNAL_NETWORKS"
           echo ""
           echo "# Google Earth Engine"
+          echo "GEE_ENCRYPTION_KEY=$GEE_ENCRYPTION_KEY"
           echo "EE_SERVICE_ACCOUNT_JSON=$EE_SERVICE_ACCOUNT_JSON"
           echo "GOOGLE_PROJECT_ID=$GOOGLE_PROJECT_ID"
           echo "GEE_ENDPOINT=$GEE_ENDPOINT"

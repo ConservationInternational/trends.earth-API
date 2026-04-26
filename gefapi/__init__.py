@@ -393,6 +393,22 @@ elif jwt_secret.lower() in INSECURE_KEY_PATTERNS or len(jwt_secret) < 32:
         "This must be fixed before deploying to production."
     )
 
+# Security: Ensure JWT signing key and GEE encryption key are distinct secrets
+# so that a compromise of one does not expose both domains.
+_gee_key_for_check = os.getenv("GEE_ENCRYPTION_KEY")
+if jwt_secret and _gee_key_for_check and jwt_secret == _gee_key_for_check:
+    if os.getenv("ENVIRONMENT") == "prod":
+        raise RuntimeError(
+            "CRITICAL SECURITY ERROR: JWT_SECRET_KEY and GEE_ENCRYPTION_KEY must "
+            "be distinct secrets. Using the same value for both allows a single key "
+            "compromise to expose both authentication tokens and encrypted credentials."
+        )
+    logger.warning(
+        "JWT_SECRET_KEY and GEE_ENCRYPTION_KEY are set to the same value. "
+        "They must be distinct secrets before deploying to production."
+    )
+del _gee_key_for_check
+
 app.config["JWT_SECRET_KEY"] = jwt_secret
 app.config["JWT_ALGORITHM"] = SETTINGS.get("JWT_ALGORITHM", "HS256")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = SETTINGS.get("JWT_ACCESS_TOKEN_EXPIRES")
