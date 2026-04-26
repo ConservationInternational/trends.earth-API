@@ -4,14 +4,14 @@ OAuth2 service clients for external service-to-service authentication
 using the Client Credentials grant (RFC 6749 §4.4).
 
 Each service client is associated with a user and inherits that user's
-permissions.  The client secret is stored as an SHA-256 hash — the raw
-secret is shown exactly once at creation time and cannot be retrieved
-later.
+permissions.  The client secret is stored as a scrypt hash (via Werkzeug's
+generate_password_hash) — the raw secret is shown exactly once at creation
+time and cannot be retrieved later.
 
-Note: The client secret has 256 bits of entropy (secrets.token_hex(32)),
-making offline brute-force attacks computationally infeasible regardless
-of the hash algorithm.  Secret comparison uses hmac.compare_digest() to
-prevent timing-based side-channel attacks.
+Backward compatibility: clients created before the scrypt migration have
+their secrets stored as SHA-256 hex digests (64 chars).  verify_secret()
+automatically detects the hash format and falls back to the legacy SHA-256
+check so that existing clients continue to work without re-enrollment.
 """
 
 import datetime
@@ -20,6 +20,8 @@ import hmac
 import logging
 import secrets
 import uuid
+
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from gefapi import db
 from gefapi.models import GUID
@@ -49,8 +51,9 @@ class ServiceClient(db.Model):
     name = db.Column(db.String(120), nullable=False)
     # Deterministic client_id exposed to callers (not secret)
     client_id = db.Column(db.String(64), nullable=False, unique=True, index=True)
-    # SHA-256 hash of the full raw client_secret
-    client_secret_hash = db.Column(db.String(64), nullable=False)
+    # scrypt (new) or SHA-256 hex digest (legacy) of the full raw client_secret.
+    # Column is 256 chars to accommodate scrypt hashes; legacy SHA-256 is 64 chars.
+    client_secret_hash = db.Column(db.String(256), nullable=False)
     # First 8 hex chars after the prefix so users can identify secrets
     secret_prefix = db.Column(db.String(16), nullable=False)
     # Space-delimited OAuth2 scopes (empty string = full access)
@@ -78,19 +81,19 @@ class ServiceClient(db.Model):
 
         * ``client_id`` is a non-secret identifier sent in plain text.
         * ``raw_secret`` is the one-time secret shown to the user.
-        * ``secret_hash`` is the SHA-256 stored in the database.
+        * ``secret_hash`` is the scrypt hash stored in the database.
         """
         cid = f"{CLIENT_ID_PREFIX}{secrets.token_hex(CLIENT_ID_BYTE_LENGTH)}"
         raw_secret = (
             f"{CLIENT_SECRET_PREFIX}{secrets.token_hex(CLIENT_SECRET_BYTE_LENGTH)}"
         )
-        secret_hash = hashlib.sha256(raw_secret.encode()).hexdigest()
+        secret_hash = generate_password_hash(raw_secret, method="scrypt")
         return cid, raw_secret, secret_hash
 
     @classmethod
     def hash_secret(cls, raw_secret: str) -> str:
-        """Hash a raw client secret for comparison."""
-        return hashlib.sha256(raw_secret.encode()).hexdigest()
+        """Hash a raw client secret using scrypt KDF."""
+        return generate_password_hash(raw_secret, method="scrypt")
 
     @classmethod
     def lookup(cls, client_id: str):
@@ -104,12 +107,18 @@ class ServiceClient(db.Model):
     def verify_secret(self, raw_secret: str) -> bool:
         """Return ``True`` if *raw_secret* matches the stored hash.
 
-        Uses hmac.compare_digest() to prevent timing-based side-channel
-        attacks (CWE-208).
+        Supports both new scrypt hashes (werkzeug format, starting with
+        ``scrypt:``) and legacy SHA-256 hex digests for backward
+        compatibility.  Uses constant-time comparison in both paths to
+        prevent timing-based side-channel attacks (CWE-208).
         """
-        return hmac.compare_digest(
-            self.client_secret_hash, self.hash_secret(raw_secret)
-        )
+        stored = self.client_secret_hash
+        # New format: werkzeug scrypt / pbkdf2 hash
+        if ":" in stored:
+            return check_password_hash(stored, raw_secret)
+        # Legacy format: plain SHA-256 hex digest (64 hex chars)
+        legacy_hash = hashlib.sha256(raw_secret.encode()).hexdigest()
+        return hmac.compare_digest(stored, legacy_hash)
 
     def is_expired(self) -> bool:
         if self.expires_at is None:

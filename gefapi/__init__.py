@@ -311,6 +311,9 @@ def set_security_headers(response):
     # Additional security headers
     response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
 
+    # Remove server fingerprinting header (L5)
+    response.headers.pop("Server", None)
+
     # Cross-Origin-* headers are browser document-level directives and must
     # only be applied to HTML page responses.  Setting them on JSON API
     # responses is meaningless and can confuse API clients or proxies.
@@ -529,6 +532,7 @@ def ping():
 
 
 @app.route("/debug/routes", methods=["GET"])
+@limiter.limit("30 per minute")
 def debug_routes():
     """Debug endpoint to show all registered routes.
 
@@ -756,10 +760,10 @@ def extract_route_info_from_app(rule, endpoint_func) -> dict[str, dict]:
         },
     }
 
-    # Add authentication requirement for protected routes
-    if "jwt_required" in doc.lower() or "@jwt_required" in inspect.getsource(
-        endpoint_func
-    ):
+    # Add authentication requirement for protected routes.
+    # Check the docstring only — using inspect.getsource() to inspect source
+    # code at runtime is fragile and raises OSError in bytecode-only deployments.
+    if "jwt_required" in doc.lower() or "authorization" in doc.lower():
         operation["security"] = [{"bearerAuth": []}]
 
     # Add parameters for path variables

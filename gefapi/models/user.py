@@ -24,6 +24,16 @@ db.GUID = GUID
 logger = logging.getLogger(__name__)
 
 
+def _utcnow() -> datetime.datetime:
+    """Return current time in UTC as a naive datetime.
+
+    Uses datetime.now(UTC) rather than the deprecated utcnow() while keeping
+    the result naive for compatibility with the existing DB schema which uses
+    timezone-unaware TIMESTAMP columns.
+    """
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+
+
 class User(db.Model):
     """User Model"""
 
@@ -38,8 +48,8 @@ class User(db.Model):
     country = db.Column(db.String(120))
     institution = db.Column(db.String(120))
     password = db.Column(db.String(200), nullable=False)
-    created_at = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
-    updated_at = db.Column(db.DateTime(), default=datetime.datetime.utcnow)
+    created_at = db.Column(db.DateTime(), default=_utcnow)
+    updated_at = db.Column(db.DateTime(), default=_utcnow)
     role = db.Column(db.String(10))
     scripts = db.relationship(
         "Script",
@@ -78,6 +88,9 @@ class User(db.Model):
     google_groups_last_sync = db.Column(db.DateTime(), default=None)
 
     # Google Earth Engine credentials fields
+    # NOTE: These columns store Fernet-encrypted ciphertext, not raw tokens.
+    # Use set_gee_oauth_credentials() / get_gee_oauth_credentials() to
+    # read/write them.  Direct column access will return encrypted bytes.
     gee_oauth_token = db.Column(db.Text(), nullable=True)
     gee_refresh_token = db.Column(db.Text(), nullable=True)
     gee_service_account_key = db.Column(db.Text(), nullable=True)
@@ -311,7 +324,7 @@ class User(db.Model):
         """
         if self.locked_until is None:
             return False
-        now = datetime.datetime.utcnow()
+        now = _utcnow()
         # Return True if lock hasn't expired yet
         return self.locked_until > now
 
@@ -325,7 +338,7 @@ class User(db.Model):
             return 0
         if self.locked_until is None:
             return None  # Shouldn't happen, but be safe
-        now = datetime.datetime.utcnow()
+        now = _utcnow()
         remaining = self.locked_until - now
         return max(1, int(remaining.total_seconds() / 60))
 
@@ -345,7 +358,7 @@ class User(db.Model):
                 lockout_minutes = minutes
 
         if lockout_minutes is not None:
-            self.locked_until = datetime.datetime.utcnow() + datetime.timedelta(
+            self.locked_until = _utcnow() + datetime.timedelta(
                 minutes=lockout_minutes
             )
             return True, lockout_minutes
@@ -353,7 +366,7 @@ class User(db.Model):
         if count >= self.LOCKOUT_THRESHOLDS[-1][0]:
             # Permanent lock (until password reset)
             # Set to far future date
-            self.locked_until = datetime.datetime.utcnow() + datetime.timedelta(
+            self.locked_until = _utcnow() + datetime.timedelta(
                 days=365 * 100
             )
             return True, None
@@ -514,7 +527,7 @@ class User(db.Model):
         self.gee_oauth_token = self._encrypt_gee_data(access_token)
         self.gee_refresh_token = self._encrypt_gee_data(refresh_token)
         self.gee_credentials_type = "oauth"
-        self.gee_credentials_created_at = datetime.datetime.utcnow()
+        self.gee_credentials_created_at = _utcnow()
         if cloud_project is not None:
             self.gee_cloud_project = cloud_project.strip() or None
         if google_email is not None:
@@ -526,7 +539,7 @@ class User(db.Model):
             json.dumps(service_account_key)
         )
         self.gee_credentials_type = "service_account"
-        self.gee_credentials_created_at = datetime.datetime.utcnow()
+        self.gee_credentials_created_at = _utcnow()
 
     def get_gee_oauth_credentials(
         self,

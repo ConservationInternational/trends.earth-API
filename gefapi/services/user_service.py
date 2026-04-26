@@ -154,9 +154,7 @@ class UserService:
         # Check for existing user
         current_user = User.query.filter_by(email=email_addr).first()
         if current_user:
-            raise UserDuplicated(
-                message="User with email " + email_addr + " already exists"
-            )
+            raise UserDuplicated(message="Email address is already registered")
 
         # Check if this email was previously deleted (security monitoring)
         UserService._check_previously_deleted_email(email_addr)
