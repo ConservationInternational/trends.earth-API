@@ -83,9 +83,28 @@ class RefreshTokenService:
         return refresh_token, user
 
     @staticmethod
-    def refresh_access_token(refresh_token_string):
-        """Generate a new access token using a valid refresh token"""
-        logger.info("[SERVICE]: Refreshing access token")
+    def refresh_access_token(refresh_token_string, rotate=True):
+        """Generate a new access token, optionally rotating the refresh token.
+
+        When ``rotate=True`` (the secure default for updated clients), implements
+        refresh token rotation (RFC 6749 / OAuth 2.0 Security BCP §2.2.2): the
+        presented refresh token is revoked and a fresh one is issued.  The caller
+        MUST store and use the new refresh token; the old one is immediately
+        invalid.
+
+        When ``rotate=False`` (legacy mode for older clients that cannot store a
+        new refresh token), the original token is kept valid and returned
+        unchanged.  This exists purely for backwards compatibility and should
+        not be used by new client code.
+
+        Returns:
+            Tuple[str, RefreshToken, User] on success.
+            Tuple[None, None, None] if the token is invalid or expired.
+        """
+        logger.info(
+            "[SERVICE]: Refreshing access token (%s)",
+            "with rotation" if rotate else "legacy/no-rotation",
+        )
 
         refresh_token, user = RefreshTokenService.validate_refresh_token(
             refresh_token_string
@@ -93,7 +112,32 @@ class RefreshTokenService:
 
         if not refresh_token or not user:
             logger.warning("[SERVICE]: Invalid refresh token provided")
-            return None, None
+            return None, None, None
+
+        if rotate:
+            # Revoke the used refresh token immediately (rotation)
+            refresh_token.revoke()
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"[SERVICE]: Failed to revoke old refresh token: {e}")
+                raise
+
+            # Issue a new refresh token for the same device
+            new_refresh_token = RefreshToken(
+                user_id=user.id, device_info=refresh_token.device_info
+            )
+            try:
+                db.session.add(new_refresh_token)
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"[SERVICE]: Failed to create new refresh token: {e}")
+                raise
+        else:
+            # Legacy mode: reuse the existing token
+            new_refresh_token = refresh_token
 
         # Generate new access token
         access_token = create_access_token(identity=user.id)
@@ -110,7 +154,7 @@ class RefreshTokenService:
         logger.info(
             f"[SERVICE]: Access token refreshed for user {mask_email(user.email)}"
         )
-        return access_token, user
+        return access_token, new_refresh_token, user
 
     @staticmethod
     def revoke_refresh_token(token_string):

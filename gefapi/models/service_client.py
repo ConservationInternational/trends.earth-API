@@ -4,13 +4,19 @@ OAuth2 service clients for external service-to-service authentication
 using the Client Credentials grant (RFC 6749 §4.4).
 
 Each service client is associated with a user and inherits that user's
-permissions.  The client secret is stored as a salted SHA-256 hash — the
-raw secret is shown exactly once at creation time and cannot be retrieved
+permissions.  The client secret is stored as an SHA-256 hash — the raw
+secret is shown exactly once at creation time and cannot be retrieved
 later.
+
+Note: The client secret has 256 bits of entropy (secrets.token_hex(32)),
+making offline brute-force attacks computationally infeasible regardless
+of the hash algorithm.  Secret comparison uses hmac.compare_digest() to
+prevent timing-based side-channel attacks.
 """
 
 import datetime
 import hashlib
+import hmac
 import logging
 import secrets
 import uuid
@@ -96,8 +102,14 @@ class ServiceClient(db.Model):
     # ------------------------------------------------------------------
 
     def verify_secret(self, raw_secret: str) -> bool:
-        """Return ``True`` if *raw_secret* matches the stored hash."""
-        return self.client_secret_hash == self.hash_secret(raw_secret)
+        """Return ``True`` if *raw_secret* matches the stored hash.
+
+        Uses hmac.compare_digest() to prevent timing-based side-channel
+        attacks (CWE-208).
+        """
+        return hmac.compare_digest(
+            self.client_secret_hash, self.hash_secret(raw_secret)
+        )
 
     def is_expired(self) -> bool:
         if self.expires_at is None:

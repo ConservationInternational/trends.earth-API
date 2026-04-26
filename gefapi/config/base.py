@@ -90,6 +90,7 @@ SETTINGS = {
     "COMPRESSION_MIN_SIZE": int(os.getenv("COMPRESSION_MIN_SIZE", 1000)),  # 1KB minimum
     "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 1),
     "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=30),  # 30 days for refresh tokens
+    "JWT_ALGORITHM": "HS256",  # Explicit algorithm — never rely on library defaults
     "JWT_TOKEN_LOCATION": ["headers"],
     "JWT_IDENTITY_CLAIM": "sub",  # Standard JWT subject claim for identity
     "JWT_BLOCKLIST_ENABLED": True,  # Enable token blocklist for revocation

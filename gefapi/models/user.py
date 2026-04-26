@@ -268,7 +268,7 @@ class User(db.Model):
         return [item.serialize() for item in self.scripts]
 
     def set_password(self, password):
-        return generate_password_hash(password)
+        return generate_password_hash(password, method="scrypt")
 
     def check_password(self, password):
         """Check if provided password matches stored hash"""

@@ -106,10 +106,11 @@ def create_user():
     logger.info("[ROUTER]: Creating user")
     body = request.get_json()
 
-    # Check for legacy query parameter (defaults to true for backwards
-    # compatibility with QGIS plugin)
-    legacy_param = request.args.get("legacy", "true")
-    legacy = legacy_param.lower() != "false"
+    # Check for legacy query parameter (defaults to false — secure mode).
+    # Set ?legacy=true explicitly for backwards compatibility with the QGIS
+    # plugin, which expects the password to be emailed directly.
+    legacy_param = request.args.get("legacy", "false")
+    legacy = legacy_param.lower() == "true"
 
     if request.headers.get("Authorization", None) is not None:
 
@@ -728,9 +729,11 @@ def recover_password(user):
     """
     logger.info("[ROUTER]: Recovering password")
 
-    # Parse legacy parameter - defaults to True for backwards compatibility
-    legacy_param = request.args.get("legacy", "true").lower()
-    use_legacy = legacy_param not in ("false", "0", "no")
+    # Parse legacy parameter - defaults to False (secure token-based flow).
+    # Set ?legacy=true explicitly for backwards compatibility with older QGIS
+    # plugin versions that expect a password to be emailed directly.
+    legacy_param = request.args.get("legacy", "false").lower()
+    use_legacy = legacy_param in ("true", "1", "yes")
 
     # Generic success message returned regardless of whether the user exists.
     # This prevents user enumeration via the password recovery endpoint

@@ -1,6 +1,7 @@
 """The GEF API MODULE"""
 
 from datetime import datetime
+import hmac
 import logging
 import os
 import sys
@@ -309,9 +310,19 @@ def set_security_headers(response):
 
     # Additional security headers
     response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
-    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
-    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+
+    # Cross-Origin-* headers are browser document-level directives and must
+    # only be applied to HTML page responses.  Setting them on JSON API
+    # responses is meaningless and can confuse API clients or proxies.
+    if request.path == "/api/docs/":
+        # COEP + COOP together enable cross-origin isolation for the docs page
+        # (required for SharedArrayBuffer / high-resolution timers).
+        response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    # Cross-Origin-Resource-Policy tells *other* origins whether they may load
+    # this resource.  For API endpoints that are meant to be called
+    # cross-origin (CORS), we must not set this to "same-origin".
+    # We omit it on API responses so the browser falls back to CORS rules.
 
     return response
 
@@ -380,6 +391,7 @@ elif jwt_secret.lower() in INSECURE_KEY_PATTERNS or len(jwt_secret) < 32:
     )
 
 app.config["JWT_SECRET_KEY"] = jwt_secret
+app.config["JWT_ALGORITHM"] = SETTINGS.get("JWT_ALGORITHM", "HS256")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = SETTINGS.get("JWT_ACCESS_TOKEN_EXPIRES")
 app.config["JWT_TOKEN_LOCATION"] = SETTINGS.get("JWT_TOKEN_LOCATION")
 app.config["broker_url"] = SETTINGS.get("CELERY_BROKER_URL")
@@ -482,12 +494,26 @@ def health_check():
         "timestamp": datetime.utcnow().isoformat(),
         "database": db_status,
         "version": "1.0",
-        "deployment": {
+    }
+
+    # Expose deployment details only in non-production environments or
+    # when the X-Health-Token header matches a shared secret (for monitoring).
+    # This prevents leaking infrastructure details (commit SHA, branch name)
+    # to unauthenticated callers in production.
+    health_token = os.getenv("HEALTH_CHECK_TOKEN")
+    request_token = request.headers.get("X-Health-Token")
+    environment = os.getenv("ENVIRONMENT", "dev")
+    expose_deployment_info = environment != "prod" or (
+        health_token
+        and request_token
+        and hmac.compare_digest(health_token, request_token)
+    )
+    if expose_deployment_info:
+        response_data["deployment"] = {
             "commit_sha": commit_sha,
             "branch": git_branch,
             "environment": deployment_env,
-        },
-    }
+        }
 
     # Return 200 even if database is unhealthy - this allows the service to be
     # considered "up" while database issues are being resolved
@@ -1090,10 +1116,18 @@ def refresh_token():
     if not refresh_token_string:
         return jsonify({"msg": "Refresh token is required"}), 400
 
+    # ?legacy=true (default) preserves the old behaviour: the same refresh
+    # token is returned unchanged, so unpatched clients keep working.
+    # ?legacy=false opts into full token rotation (RFC 6749 / OAuth 2.0 BCP).
+    legacy_param = request.args.get("legacy", "true").lower()
+    rotate = legacy_param not in ("true", "1", "yes")
+
     # Import here to avoid circular imports
     from gefapi.services.refresh_token_service import RefreshTokenService
 
-    access_token, user = RefreshTokenService.refresh_access_token(refresh_token_string)
+    access_token, new_refresh_token, user = RefreshTokenService.refresh_access_token(
+        refresh_token_string, rotate=rotate
+    )
 
     if not access_token:
         return jsonify({"msg": "Invalid or expired refresh token"}), 401
@@ -1101,6 +1135,7 @@ def refresh_token():
     return jsonify(
         {
             "access_token": access_token,
+            "refresh_token": new_refresh_token.token,
             "user_id": user.id,
             "expires_in": 3600,  # 1 hour in seconds
         }
