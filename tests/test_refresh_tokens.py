@@ -58,8 +58,8 @@ class TestRefreshTokens:
             refresh_token = RefreshTokenService.create_refresh_token(regular_user.id)
 
             # Refresh access token — service returns (access_token, new_refresh_token, user)
-            access_token, new_refresh_token, user = RefreshTokenService.refresh_access_token(
-                refresh_token.token
+            access_token, new_refresh_token, user = (
+                RefreshTokenService.refresh_access_token(refresh_token.token)
             )
 
             assert access_token is not None
