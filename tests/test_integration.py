@@ -18,9 +18,12 @@ class TestAPIIntegration:
         """Test complete user workflow: create user, login, create script,
         run execution"""
 
-        # Step 1: Admin creates a new user
+        # Step 1: Admin creates a new user.
+        # Use ?legacy=true so the provided password is stored directly and can
+        # be used to log in immediately (legacy mode emails the plain-text
+        # password; in this test the email is mocked).
         response = client.post(
-            "/api/v1/user",
+            "/api/v1/user?legacy=true",
             json=sample_user_data,
             headers=auth_headers_admin,
         )

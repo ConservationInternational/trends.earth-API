@@ -57,12 +57,13 @@ class TestRefreshTokens:
             # Create refresh token
             refresh_token = RefreshTokenService.create_refresh_token(regular_user.id)
 
-            # Refresh access token
-            access_token, user = RefreshTokenService.refresh_access_token(
+            # Refresh access token — service returns (access_token, new_refresh_token, user)
+            access_token, new_refresh_token, user = RefreshTokenService.refresh_access_token(
                 refresh_token.token
             )
 
             assert access_token is not None
+            assert new_refresh_token is not None
             assert user is not None
             assert user.id == regular_user.id
 

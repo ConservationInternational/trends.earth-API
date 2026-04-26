@@ -39,11 +39,16 @@ class TestServiceClientModel:
 
     def test_generate_credentials_format(self):
         """Generated credentials have the expected prefixes and lengths."""
+        from werkzeug.security import check_password_hash
+
         client_id, raw_secret, secret_hash = ServiceClient.generate_credentials()
 
         assert client_id.startswith(CLIENT_ID_PREFIX)
         assert raw_secret.startswith(CLIENT_SECRET_PREFIX)
-        assert len(secret_hash) == 64  # SHA-256 hex digest
+        # Secret is stored as a scrypt KDF hash (werkzeug format), not a raw hex digest.
+        assert secret_hash.startswith("scrypt:")
+        # Verify the hash can authenticate the raw secret.
+        assert check_password_hash(secret_hash, raw_secret)
 
     def test_generate_credentials_unique(self):
         """Each call produces unique credentials."""
@@ -52,12 +57,18 @@ class TestServiceClientModel:
         assert creds_a[0] != creds_b[0]  # client_id
         assert creds_a[1] != creds_b[1]  # raw_secret
 
-    def test_hash_secret_deterministic(self):
-        """Hashing the same secret twice gives the same result."""
+    def test_hash_secret_verifiable(self):
+        """Hashing a secret produces a hash that verifies against the original secret."""
+        from werkzeug.security import check_password_hash
+
         secret = "te_cs_abc123"
+        # scrypt uses a random salt, so two hashes of the same input will differ.
         h1 = ServiceClient.hash_secret(secret)
         h2 = ServiceClient.hash_secret(secret)
-        assert h1 == h2
+        assert h1 != h2  # Different salts → different digests
+        # Both hashes must still verify correctly against the original secret.
+        assert check_password_hash(h1, secret)
+        assert check_password_hash(h2, secret)
 
     def test_verify_secret_correct(self):
         """verify_secret returns True for the matching raw secret."""
