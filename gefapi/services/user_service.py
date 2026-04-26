@@ -752,8 +752,8 @@ class UserService:
             # Mark user as email verified - they proved email access by using the token
             if not user.email_verified:
                 user.email_verified = True
-                user.email_verified_at = (
-                    datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+                user.email_verified_at = datetime.datetime.now(datetime.UTC).replace(
+                    tzinfo=None
                 )
                 masked = mask_email(user.email)
                 logger.info(

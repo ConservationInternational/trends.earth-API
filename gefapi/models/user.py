@@ -358,17 +358,13 @@ class User(db.Model):
                 lockout_minutes = minutes
 
         if lockout_minutes is not None:
-            self.locked_until = _utcnow() + datetime.timedelta(
-                minutes=lockout_minutes
-            )
+            self.locked_until = _utcnow() + datetime.timedelta(minutes=lockout_minutes)
             return True, lockout_minutes
 
         if count >= self.LOCKOUT_THRESHOLDS[-1][0]:
             # Permanent lock (until password reset)
             # Set to far future date
-            self.locked_until = _utcnow() + datetime.timedelta(
-                days=365 * 100
-            )
+            self.locked_until = _utcnow() + datetime.timedelta(days=365 * 100)
             return True, None
 
         return False, None
