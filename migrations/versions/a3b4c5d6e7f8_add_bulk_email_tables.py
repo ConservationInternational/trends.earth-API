@@ -5,7 +5,7 @@ Adds three tables for the Bulk Email feature:
   - bulk_email: draft and sent bulk emails with HTML content
   - bulk_email_verification_token: 6-digit OTP for confirming large sends
 
-Revision ID: d1e2f3a4b5c6
+Revision ID: a3b4c5d6e7f8
 Revises: c0d1e2f3a4b5
 Create Date: 2026-05-01
 """
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "d1e2f3a4b5c6"
+revision = "a3b4c5d6e7f8"
 down_revision = "c0d1e2f3a4b5"
 branch_labels = None
 depends_on = None
