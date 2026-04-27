@@ -1,4 +1,4 @@
-﻿"""Bulk Email routes for the Trends.Earth API.
+"""Bulk Email routes for the Trends.Earth API.
 
 All routes require SUPERADMIN role and that the caller's email is listed
 in BULK_EMAIL_APPROVED_SENDERS (checked inside the service layer).

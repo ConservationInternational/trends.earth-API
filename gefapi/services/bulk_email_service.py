@@ -1,4 +1,4 @@
-﻿"""BULK EMAIL SERVICE"""
+"""BULK EMAIL SERVICE"""
 
 import datetime
 import logging
