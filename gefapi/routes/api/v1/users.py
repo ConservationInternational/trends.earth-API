@@ -26,7 +26,9 @@ from gefapi.utils.permissions import (
 )
 from gefapi.utils.rate_limiting import (
     RateLimitConfig,
+    _is_current_user_admin,
     get_admin_aware_key,
+    get_non_exempt_key,
     is_rate_limiting_disabled,
 )
 from gefapi.utils.scopes import require_scope
@@ -668,8 +670,15 @@ def delete_profile():
     "/user/<user>/recover-password", strict_slashes=False, methods=["POST"]
 )
 @limiter.limit(
-    lambda: ";".join(RateLimitConfig.get_password_reset_limits()) or "3 per hour",
-    key_func=get_admin_aware_key,
+    lambda: (
+        ";".join(
+            RateLimitConfig.get_password_reset_limits_admin()
+            if _is_current_user_admin()
+            else RateLimitConfig.get_password_reset_limits()
+        )
+        or "3 per hour"
+    ),
+    key_func=get_non_exempt_key,
     exempt_when=is_rate_limiting_disabled,
 )
 def recover_password(user):
@@ -767,8 +776,15 @@ def recover_password(user):
 
 @endpoints.route("/user/reset-password", strict_slashes=False, methods=["POST"])
 @limiter.limit(
-    lambda: ";".join(RateLimitConfig.get_password_reset_limits()) or "3 per hour",
-    key_func=get_admin_aware_key,
+    lambda: (
+        ";".join(
+            RateLimitConfig.get_password_reset_limits_admin()
+            if _is_current_user_admin()
+            else RateLimitConfig.get_password_reset_limits()
+        )
+        or "3 per hour"
+    ),
+    key_func=get_non_exempt_key,
     exempt_when=is_rate_limiting_disabled,
 )
 def reset_password_with_token():

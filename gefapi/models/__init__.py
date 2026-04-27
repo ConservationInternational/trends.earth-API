@@ -51,6 +51,13 @@ from gefapi.models.boundary import (  # noqa: E402
     AdminBoundary1Metadata,
     AdminBoundary1Unit,
 )
+from gefapi.models.bulk_email import BulkEmail  # noqa: E402
+from gefapi.models.bulk_email_recipient_list import (  # noqa: E402
+    BulkEmailRecipientList,
+)
+from gefapi.models.bulk_email_verification_token import (  # noqa: E402
+    BulkEmailVerificationToken,
+)
 from gefapi.models.execution import Execution  # noqa: E402
 from gefapi.models.execution_log import ExecutionLog  # noqa: E402
 from gefapi.models.news import NewsItem, NewsItemTranslation  # noqa: E402
@@ -73,6 +80,9 @@ __all__ = [
     "AdminBoundary1Metadata",
     "AdminBoundary1Unit",
     "DeletionReason",
+    "BulkEmail",
+    "BulkEmailRecipientList",
+    "BulkEmailVerificationToken",
     "Execution",
     "ExecutionLog",
     "PasswordResetToken",

@@ -29,11 +29,28 @@ from gefapi.config import SETTINGS
 from gefapi.utils.permissions import is_admin_or_higher
 from gefapi.utils.rate_limiting import (
     RateLimitConfig,
-    get_rate_limit_key_for_auth,
+    _is_current_user_admin,
+    get_non_exempt_key,
     get_user_id_or_ip,
     is_internal_network_request,
     is_rate_limiting_disabled,
     rate_limit_error_handler,
+)
+
+# Endpoints that must ALWAYS be rate-limited, even for admin/superadmin users.
+# These are listed by their Flask endpoint name (rule.endpoint) and are checked
+# in should_skip_rate_limiting() before the admin-exemption path.
+ALWAYS_RATE_LIMITED_ENDPOINTS = frozenset(
+    {
+        "create_token",
+        "refresh_token",
+        "endpoints.recover_password",
+        "endpoints.reset_password_with_token",
+        "endpoints.send_bulk_email",
+        "endpoints.send_verification",
+        "endpoints.send_test_bulk_email",
+        "endpoints.oauth2_token",
+    }
 )
 
 # Flask App
@@ -443,6 +460,11 @@ def should_skip_rate_limiting():
     """
     Request filter to exempt internal network requests and admin users.
     Returns True if the request should be skipped from rate limiting.
+
+    Security note: endpoints listed in ALWAYS_RATE_LIMITED_ENDPOINTS are
+    NEVER exempted here — their own @limiter.limit decorators use
+    get_non_exempt_key() which never returns None for authenticated users,
+    so they are always counted regardless of this filter.
     """
     # Check if rate limiting is disabled globally
     if not RateLimitConfig.is_enabled():
@@ -451,6 +473,16 @@ def should_skip_rate_limiting():
     # Check if this is an internal network request (health checks, etc.)
     if is_internal_network_request():
         return True
+
+    # Security-critical endpoints must always be rate-limited; skip the
+    # admin-exemption block below for them.
+    try:
+        from flask import request as _req
+
+        if _req.endpoint in ALWAYS_RATE_LIMITED_ENDPOINTS:
+            return False
+    except Exception as exc:
+        logger.debug("Could not check endpoint for rate-limit override: %s", exc)
 
     # Check if this is an admin user
     try:
@@ -1072,8 +1104,15 @@ from gefapi.utils import mask_email  # noqa:E402
 
 @app.route("/auth", methods=["POST"])
 @limiter.limit(
-    lambda: ";".join(RateLimitConfig.get_auth_limits()) or "100 per hour",
-    key_func=get_rate_limit_key_for_auth,
+    lambda: (
+        ";".join(
+            RateLimitConfig.get_auth_limits_admin()
+            if _is_current_user_admin()
+            else RateLimitConfig.get_auth_limits()
+        )
+        or "5 per hour"
+    ),
+    key_func=get_non_exempt_key,
     exempt_when=is_rate_limiting_disabled,
 )
 def create_token():
@@ -1127,8 +1166,15 @@ def create_token():
 
 @app.route("/auth/refresh", methods=["POST"])
 @limiter.limit(
-    lambda: ";".join(RateLimitConfig.get_auth_limits()) or "100 per hour",
-    key_func=get_rate_limit_key_for_auth,
+    lambda: (
+        ";".join(
+            RateLimitConfig.get_auth_limits_admin()
+            if _is_current_user_admin()
+            else RateLimitConfig.get_auth_limits()
+        )
+        or "5 per hour"
+    ),
+    key_func=get_non_exempt_key,
     exempt_when=is_rate_limiting_disabled,
 )
 def refresh_token():

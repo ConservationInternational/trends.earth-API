@@ -215,6 +215,20 @@ SETTINGS = {
         "GEE_TERMS_ENFORCEMENT_ENABLED", "false"
     ).lower()
     == "true",
+    # Bulk Email configuration
+    # BULK_EMAIL_APPROVED_SENDERS: comma-separated superadmin emails
+    # allowed to send bulk emails. Empty = all superadmins may send.
+    "BULK_EMAIL_APPROVED_SENDERS": [
+        e.strip().lower()
+        for e in os.getenv("BULK_EMAIL_APPROVED_SENDERS", "").split(",")
+        if e.strip()
+    ],
+    # BULK_EMAIL_MAX_RECIPIENTS: threshold above which 2FA (OTP) is required
+    "BULK_EMAIL_MAX_RECIPIENTS": int(os.getenv("BULK_EMAIL_MAX_RECIPIENTS", "50")),
+    # BULK_EMAIL_FROM_EMAIL: SparkPost from_email address for bulk email sends
+    "BULK_EMAIL_FROM_EMAIL": os.getenv(
+        "BULK_EMAIL_FROM_EMAIL", "noreply@trends.earth"
+    ),
 }
 
 
@@ -237,4 +251,12 @@ if not os.getenv("SPARKPOST_API_KEY"):
     logger.warning(
         "SPARKPOST_API_KEY is not set. Email functionality will be disabled. "
         "Set SPARKPOST_API_KEY environment variable to enable email notifications."
+    )
+elif not SETTINGS.get("BULK_EMAIL_APPROVED_SENDERS"):
+    raise RuntimeError(
+        "BULK_EMAIL_APPROVED_SENDERS must be set when SPARKPOST_API_KEY is "
+        "configured. Set it to a comma-separated list of superadmin email "
+        "addresses authorised to send bulk emails "
+        "(e.g. 'admin@example.com,ops@example.com'). "
+        "This prevents any superadmin from triggering bulk email sends via SparkPost."
     )

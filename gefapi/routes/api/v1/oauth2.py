@@ -25,7 +25,8 @@ from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.oauth2_service import OAuth2Service
 from gefapi.utils.rate_limiting import (
     RateLimitConfig,
-    get_rate_limit_key_for_auth,
+    _is_current_user_admin,
+    get_non_exempt_key,
     is_rate_limiting_disabled,
 )
 
@@ -43,8 +44,15 @@ OAUTH2_TOKEN_LIFETIME_SECONDS = int(os.getenv("OAUTH2_TOKEN_LIFETIME_SECONDS", "
 
 @endpoints.route("/oauth/token", strict_slashes=False, methods=["POST"])
 @limiter.limit(
-    lambda: ";".join(RateLimitConfig.get_auth_limits()) or "100 per hour",
-    key_func=get_rate_limit_key_for_auth,
+    lambda: (
+        ";".join(
+            RateLimitConfig.get_auth_limits_admin()
+            if _is_current_user_admin()
+            else RateLimitConfig.get_auth_limits()
+        )
+        or "5 per hour"
+    ),
+    key_func=get_non_exempt_key,
     exempt_when=is_rate_limiting_disabled,
 )
 def oauth2_token():

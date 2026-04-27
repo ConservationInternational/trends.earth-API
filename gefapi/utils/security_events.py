@@ -28,6 +28,15 @@ SECURITY_EVENTS = {
     "DATA_EXPORT": "Sensitive data exported",
     "SCRIPT_EXECUTION": "Script execution started",
     "OAUTH2_CLIENT_AUTH": "OAuth2 client credentials authentication used",
+    # Bulk Email Manager events
+    "BULK_EMAIL_RECIPIENT_LIST_CREATED": "Bulk email recipient list created",
+    "BULK_EMAIL_DRAFT_CREATED": "Bulk email draft created",
+    "BULK_EMAIL_DRAFT_UPDATED": "Bulk email draft updated",
+    "BULK_EMAIL_VERIFICATION_CODE_SENT": "Bulk email verification code sent",
+    "BULK_EMAIL_SEND_ATTEMPTED": "Bulk email send attempted",
+    "BULK_EMAIL_SEND_SUCCESS": "Bulk email sent successfully",
+    "BULK_EMAIL_SEND_FAILED": "Bulk email send failed",
+    "BULK_EMAIL_TEST_SEND": "Bulk email test send to superadmins",
 }
 
 

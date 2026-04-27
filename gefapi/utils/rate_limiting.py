@@ -298,6 +298,38 @@ def get_admin_aware_key():
     return f"ip:{get_remote_address()}"
 
 
+def get_non_exempt_key():
+    """
+    Rate-limit key that is NEVER None for admins — used on security-critical
+    endpoints (auth, bulk email send, password recovery) where even superadmins
+    must be subject to *some* limit.  Internal-network requests remain exempt.
+    """
+    if is_internal_network_request():
+        return None  # Exempt only for internal execution containers
+
+    try:
+        verify_jwt_in_request(optional=True)
+        current_user = get_current_user()
+        if current_user:
+            return f"user:{current_user.id}"
+    except Exception as e:
+        logger.debug(f"Failed to get current user for non-exempt rate limiting: {e}")
+    return f"ip:{get_remote_address()}"
+
+
+def _is_current_user_admin() -> bool:
+    """
+    Return True if the current JWT user is an admin/superadmin.
+    Safe to call inside a Flask-Limiter lambda (returns False on any error).
+    """
+    try:
+        verify_jwt_in_request(optional=True)
+        user = get_current_user()
+        return bool(user and is_admin_or_higher(user))
+    except Exception:
+        return False
+
+
 def create_rate_limit_response(retry_after=None, limit_details=None):
     """
     Create a standardized rate limit exceeded response and send security event
@@ -503,6 +535,52 @@ class RateLimitConfig:
         )
         # Filter out any empty strings to prevent Flask-Limiter errors
         return [limit for limit in limits if limit and limit.strip()]
+
+    @classmethod
+    def get_auth_limits_admin(cls):
+        """Get auth rate limits for admin/superadmin users.
+
+        Higher than the normal user limit but still non-zero so that even a
+        compromised admin JWT cannot enumerate passwords or tokens indefinitely.
+        Configurable via RATE_LIMITING.AUTH_LIMITS_ADMIN or the
+        AUTH_RATE_LIMIT_ADMIN env var (semicolon-separated).
+        """
+        env_override = cls._get_config().get("AUTH_LIMITS_ADMIN")
+        if env_override:
+            raw = env_override if isinstance(env_override, list) else [env_override]
+        else:
+            raw = ["60 per hour", "300 per day"]
+        return [limit for limit in raw if limit and limit.strip()]
+
+    @classmethod
+    def get_password_reset_limits_admin(cls):
+        """Get password-reset rate limits for admin/superadmin users."""
+        env_override = cls._get_config().get("PASSWORD_RESET_LIMITS_ADMIN")
+        if env_override:
+            raw = env_override if isinstance(env_override, list) else [env_override]
+        else:
+            raw = ["20 per hour", "100 per day"]
+        return [limit for limit in raw if limit and limit.strip()]
+
+    @classmethod
+    def get_bulk_email_send_limits(cls):
+        """Get rate limits for bulk email send and test-send endpoints."""
+        env_override = cls._get_config().get("BULK_EMAIL_SEND_LIMITS")
+        if env_override:
+            raw = env_override if isinstance(env_override, list) else [env_override]
+        else:
+            raw = ["10 per hour", "30 per day"]
+        return [limit for limit in raw if limit and limit.strip()]
+
+    @classmethod
+    def get_bulk_email_verification_limits(cls):
+        """Get rate limits for bulk email OTP verification-request endpoint."""
+        env_override = cls._get_config().get("BULK_EMAIL_VERIFICATION_LIMITS")
+        if env_override:
+            raw = env_override if isinstance(env_override, list) else [env_override]
+        else:
+            raw = ["10 per hour"]
+        return [limit for limit in raw if limit and limit.strip()]
 
 
 def bypass_rate_limiting():
