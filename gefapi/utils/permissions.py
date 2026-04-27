@@ -109,3 +109,21 @@ def can_update_user_profile(user):
 def can_access_admin_features(user):
     """Check if user can access admin-only features (non-user management)"""
     return is_admin_or_higher(user)
+
+
+def is_approved_bulk_email_sender(user):
+    """Check if a superadmin user is on the approved bulk email senders list.
+
+    Returns True when BULK_EMAIL_APPROVED_SENDERS is empty (open to all superadmins)
+    or when the user's email appears in the list.
+    """
+    if user is None:
+        return False
+    if not is_superadmin(user):
+        return False
+    from gefapi.config import SETTINGS  # noqa: PLC0415 (avoid circular at module load)
+
+    approved = SETTINGS.get("BULK_EMAIL_APPROVED_SENDERS", [])
+    if not approved:
+        return True
+    return user.email.lower() in approved

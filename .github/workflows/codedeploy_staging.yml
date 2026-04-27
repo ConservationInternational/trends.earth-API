@@ -209,6 +209,10 @@ jobs:
         EXECUTION_SUBNET: ${{ vars.STAGING_EXECUTION_SUBNET || '10.21.0.0/24' }}
         # Email
         SPARKPOST_API_KEY: ${{ secrets.SPARKPOST_API_KEY }}
+        # Bulk Email Manager
+        BULK_EMAIL_APPROVED_SENDERS: ${{ vars.BULK_EMAIL_APPROVED_SENDERS || '' }}
+        BULK_EMAIL_MAX_RECIPIENTS: ${{ vars.BULK_EMAIL_MAX_RECIPIENTS || '50' }}
+        BULK_EMAIL_FROM_EMAIL: ${{ vars.BULK_EMAIL_FROM_EMAIL || 'noreply@trends.earth' }}
         API_ENVIRONMENT_USER: ${{ secrets.API_ENVIRONMENT_USER }}
         API_ENVIRONMENT_USER_PASSWORD: ${{ secrets.API_ENVIRONMENT_USER_PASSWORD }}
         CORS_ORIGINS: ${{ vars.STAGING_CORS_ORIGINS || 'https://staging.trends.earth,https://api-staging.trends.earth' }}
@@ -314,6 +318,11 @@ jobs:
           echo ""
           echo "# Email Configuration (SparkPost)"
           echo "SPARKPOST_API_KEY=$SPARKPOST_API_KEY"
+          echo ""
+          echo "# Bulk Email Manager"
+          echo "BULK_EMAIL_APPROVED_SENDERS=$BULK_EMAIL_APPROVED_SENDERS"
+          echo "BULK_EMAIL_MAX_RECIPIENTS=$BULK_EMAIL_MAX_RECIPIENTS"
+          echo "BULK_EMAIL_FROM_EMAIL=$BULK_EMAIL_FROM_EMAIL"
           echo ""
           echo "# CORS Configuration"
           echo "CORS_ORIGINS=$CORS_ORIGINS"

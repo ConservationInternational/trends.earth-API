@@ -927,7 +927,9 @@ class ExecutionService:
                 if user.email_notifications_enabled:
                     try:
                         EmailService.send_html_email(
-                            recipients=[user.email],
+                            recipients=[
+                                {"address": {"email": user.email, "name": user.name}}
+                            ],
                             html=EXECUTION_FINISHED_MAIL_CONTENT.format(
                                 status=status,
                                 task_name=execution.params.get("task_name", "N/A"),

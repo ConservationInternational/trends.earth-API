@@ -78,6 +78,42 @@ class AccountLockedError(Error):
         }
 
 
+class VerificationRequiredError(Error):
+    """Raised when a bulk email send requires OTP verification (HTTP 428).
+
+    Returned when recipient count exceeds BULK_EMAIL_MAX_RECIPIENTS and no
+    valid verification code was supplied.
+    """
+
+    def __init__(self, message: str, recipient_count: int):
+        super().__init__(message)
+        self.recipient_count = recipient_count
+
+    @property
+    def serialize(self):
+        return {
+            "message": self.message,
+            "requires_verification": True,
+            "recipient_count": self.recipient_count,
+        }
+
+
+class BulkEmailNotFound(Error):
+    pass
+
+
+class RecipientListNotFound(Error):
+    pass
+
+
+class BulkEmailAlreadySent(Error):
+    pass
+
+
+class NotApprovedSender(Error):
+    pass
+
+
 class GeeTermsRequiredError(Error):
     """Raised when a user tries to run a GEE script without accepting GEE terms."""
 
