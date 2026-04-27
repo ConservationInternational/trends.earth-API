@@ -110,6 +110,8 @@ class UserService:
         "gender_identity",
         "gee_license_acknowledged",
         "purpose_of_use",
+        "gee_credentials_type",
+        "has_openeo_credentials",
     }
     USER_ALLOWED_SORT_FIELDS = USER_ALLOWED_FILTER_FIELDS
 
@@ -445,6 +447,13 @@ class UserService:
             from gefapi.utils.query_filters import parse_sort_param
 
             def _resolve_user_sort_column(field_name, direction):
+                if field_name == "has_openeo_credentials":
+                    from sqlalchemy import case as sa_case
+
+                    return sa_case(
+                        (User.openeo_credentials_enc != None, 1),  # noqa: E711
+                        else_=0,
+                    )
                 return getattr(User, field_name, None)
 
             order_clauses = parse_sort_param(
