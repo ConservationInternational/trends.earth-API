@@ -68,7 +68,10 @@ class TestEmailNotificationPreferences:
             # Verify email was sent
             mock_email.assert_called_once()
             call_args = mock_email.call_args
-            assert user.email in call_args[1]["recipients"]
+            recipient_emails = [
+                r["address"]["email"] for r in call_args[1]["recipients"]
+            ]
+            assert user.email in recipient_emails
             assert "Execution finished" in call_args[1]["subject"]
 
     @patch("gefapi.services.execution_service.EmailService.send_html_email")
@@ -166,7 +169,10 @@ class TestEmailNotificationPreferences:
                 # Verify email was sent for this terminal state
                 mock_email.assert_called_once()
                 call_args = mock_email.call_args
-                assert user.email in call_args[1]["recipients"]
+                recipient_emails = [
+                    r["address"]["email"] for r in call_args[1]["recipients"]
+                ]
+                assert user.email in recipient_emails
                 assert "Execution finished" in call_args[1]["subject"]
 
     def test_user_model_includes_email_notifications_preference(self, app):
