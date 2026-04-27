@@ -1,4 +1,4 @@
-﻿""Add bulk email tables
+﻿"""Add bulk email tables
 
 Adds three tables for the Bulk Email feature:
   - bulk_email_recipient_list: named groups with JSON filter criteria
@@ -8,7 +8,7 @@ Adds three tables for the Bulk Email feature:
 Revision ID: d1e2f3a4b5c6
 Revises: c0d1e2f3a4b5
 Create Date: 2026-05-01
-""
+"""
 
 import sqlalchemy as sa
 from alembic import op
