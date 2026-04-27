@@ -1,4 +1,4 @@
-﻿"""BULK EMAIL MODEL"""
+"""BULK EMAIL MODEL"""
 
 import datetime
 import uuid
@@ -57,6 +57,4 @@ class BulkEmail(db.Model):
     )
 
     def __repr__(self):
-        return (
-            f"<BulkEmail name={self.name!r} status={self.status!r} id={self.id!r}>"
-        )
+        return f"<BulkEmail name={self.name!r} status={self.status!r} id={self.id!r}>"

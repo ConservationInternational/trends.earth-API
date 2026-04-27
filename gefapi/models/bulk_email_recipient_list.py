@@ -1,4 +1,4 @@
-﻿"""BULK EMAIL RECIPIENT LIST MODEL"""
+"""BULK EMAIL RECIPIENT LIST MODEL"""
 
 import datetime
 import uuid

@@ -226,9 +226,7 @@ SETTINGS = {
     # BULK_EMAIL_MAX_RECIPIENTS: threshold above which 2FA (OTP) is required
     "BULK_EMAIL_MAX_RECIPIENTS": int(os.getenv("BULK_EMAIL_MAX_RECIPIENTS", "50")),
     # BULK_EMAIL_FROM_EMAIL: SparkPost from_email address for bulk email sends
-    "BULK_EMAIL_FROM_EMAIL": os.getenv(
-        "BULK_EMAIL_FROM_EMAIL", "noreply@trends.earth"
-    ),
+    "BULK_EMAIL_FROM_EMAIL": os.getenv("BULK_EMAIL_FROM_EMAIL", "noreply@trends.earth"),
 }
 
 
