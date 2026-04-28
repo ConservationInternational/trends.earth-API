@@ -216,7 +216,7 @@ def validate_country(country):
         if not (
             unicodedata.category(char).startswith("L")  # Letters
             or unicodedata.category(char).startswith("M")  # Marks
-            or char in " '-."  # Allowed punctuation
+            or char in " '-.()"  # Allowed punctuation
             or unicodedata.category(char) == "Zs"
         ):  # Spaces
             raise ValueError("Country contains invalid characters")
