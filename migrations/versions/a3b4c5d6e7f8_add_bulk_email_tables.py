@@ -25,7 +25,7 @@ def upgrade():
     """Create bulk email tables."""
     op.create_table(
         "bulk_email_recipient_list",
-        sa.Column("id", sa.String(32), primary_key=True, nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
         sa.Column("name", sa.String(200), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("filter_criteria", sa.JSON(), nullable=False),
@@ -42,14 +42,14 @@ def upgrade():
 
     op.create_table(
         "bulk_email",
-        sa.Column("id", sa.String(32), primary_key=True, nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
         sa.Column("name", sa.String(200), nullable=False),
         sa.Column("subject", sa.String(500), nullable=False),
         sa.Column("html_content", sa.Text(), nullable=False),
         sa.Column("status", sa.String(10), nullable=False, server_default="DRAFT"),
         sa.Column(
             "recipient_list_id",
-            sa.String(32),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("bulk_email_recipient_list.id", ondelete="SET NULL"),
             nullable=True,
         ),
@@ -73,7 +73,7 @@ def upgrade():
 
     op.create_table(
         "bulk_email_verification_token",
-        sa.Column("id", sa.String(32), primary_key=True, nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
         sa.Column("token", sa.String(6), nullable=False),
         sa.Column(
             "user_id",
@@ -83,7 +83,7 @@ def upgrade():
         ),
         sa.Column(
             "bulk_email_id",
-            sa.String(32),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("bulk_email.id", ondelete="CASCADE"),
             nullable=False,
         ),
