@@ -33,6 +33,14 @@ on:
         options:
           - 'true'
           - 'false'
+      drop_database:
+        description: 'Drop and recreate staging DB before syncing with production (destroys all staging data)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 env:
   AWS_REGION: us-east-1
@@ -330,6 +338,8 @@ jobs:
           echo "# Staging Database Setup (for migrate service)"
           echo "# Production database URL for copying scripts/data to staging"
           echo "PRODUCTION_DATABASE_URL=$PRODUCTION_DATABASE_URL"
+          echo "# Drop and recreate staging DB before syncing (destructive)"
+          echo "DROP_STAGING_DB=${{ github.event.inputs.drop_database || 'false' }}"
           echo "# Test user credentials"
           echo "TEST_SUPERADMIN_EMAIL=$TEST_SUPERADMIN_EMAIL"
           echo "TEST_SUPERADMIN_PASSWORD=$TEST_SUPERADMIN_PASSWORD"
