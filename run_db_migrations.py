@@ -120,8 +120,9 @@ def drop_staging_database():
     if os.getenv("DROP_STAGING_DB", "false").lower() != "true":
         return
 
-    import psycopg2
     from urllib.parse import urlparse
+
+    import psycopg2
 
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
@@ -172,6 +173,7 @@ def drop_staging_database():
         logger.error(f"Failed to drop/recreate staging database: {e}")
         print(f"✗ drop_staging_database failed: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
