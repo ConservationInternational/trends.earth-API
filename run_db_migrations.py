@@ -110,10 +110,79 @@ def ensure_postgis_extensions(app):
         )
 
 
+def drop_staging_database():
+    """Drop and recreate the staging database for a clean sync with production.
+
+    Only runs when ENVIRONMENT=staging and DROP_STAGING_DB=true.
+    """
+    if os.getenv("ENVIRONMENT") != "staging":
+        return
+    if os.getenv("DROP_STAGING_DB", "false").lower() != "true":
+        return
+
+    import psycopg2
+    from urllib.parse import urlparse
+
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        logger.error("DATABASE_URL is required for drop_staging_database")
+        sys.exit(1)
+
+    parsed = urlparse(database_url)
+    dbname = parsed.path.lstrip("/")
+    host = parsed.hostname
+    port = parsed.port or 5432
+    user = parsed.username
+    password = parsed.password
+
+    logger.info(f"DROP_STAGING_DB=true — dropping and recreating database: {dbname}")
+    print(f"⚠️  Dropping staging database: {dbname}")
+
+    try:
+        conn = psycopg2.connect(
+            host=host, port=port, database="postgres", user=user, password=password
+        )
+        conn.autocommit = True
+        cursor = conn.cursor()
+
+        # Terminate all connections to the target database
+        cursor.execute(
+            """
+            SELECT pg_terminate_backend(pid)
+            FROM pg_stat_activity
+            WHERE datname = %s AND pid <> pg_backend_pid()
+            """,
+            (dbname,),
+        )
+        logger.info("Terminated active connections to staging database")
+
+        cursor.execute(f'DROP DATABASE IF EXISTS "{dbname}"')
+        logger.info(f"Dropped database: {dbname}")
+
+        cursor.execute(f'CREATE DATABASE "{dbname}"')
+        logger.info(f"Created fresh database: {dbname}")
+
+        cursor.close()
+        conn.close()
+
+        print(f"✅ Staging database recreated: {dbname}")
+        logger.info("drop_staging_database completed successfully")
+
+    except Exception as e:
+        logger.error(f"Failed to drop/recreate staging database: {e}")
+        print(f"✗ drop_staging_database failed: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
 def run_migrations():
     """Run database migrations"""
     print("Running database migrations...")
     logger.info("Migration script started")
+
+    # Drop and recreate staging DB if requested (must happen before waiting for DB)
+    drop_staging_database()
 
     try:
         logger.info("Importing Flask-Migrate...")
