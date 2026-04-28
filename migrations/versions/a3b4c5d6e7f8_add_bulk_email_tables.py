@@ -12,6 +12,7 @@ Create Date: 2026-05-01
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "a3b4c5d6e7f8"
@@ -31,7 +32,7 @@ def upgrade():
         sa.Column("estimated_count", sa.Integer(), nullable=True),
         sa.Column(
             "created_by_id",
-            sa.String(32),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("user.id", ondelete="SET NULL"),
             nullable=False,
         ),
@@ -55,13 +56,13 @@ def upgrade():
         sa.Column("recipient_count", sa.Integer(), nullable=True),
         sa.Column(
             "created_by_id",
-            sa.String(32),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("user.id", ondelete="SET NULL"),
             nullable=False,
         ),
         sa.Column(
             "sent_by_id",
-            sa.String(32),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("user.id", ondelete="SET NULL"),
             nullable=True,
         ),
@@ -76,7 +77,7 @@ def upgrade():
         sa.Column("token", sa.String(6), nullable=False),
         sa.Column(
             "user_id",
-            sa.String(32),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("user.id", ondelete="CASCADE"),
             nullable=False,
         ),
