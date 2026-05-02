@@ -149,8 +149,6 @@ python setup_ec2_instance_role.py --profile your-profile --region us-east-1
 
 Add these secrets to your GitHub repository (Settings → Secrets and variables → Actions):
 
-### Required Secrets
-
 #### Authentication
 
 | Secret Name | Description | Example |
@@ -171,9 +169,16 @@ Add these secrets to your GitHub repository (Settings → Secrets and variables 
 | Secret Name | Description | Notes |
 |-------------|-------------|-------|
 | `EE_SERVICE_ACCOUNT_JSON` | GEE service account credentials (base64 encoded) | Full service account JSON, base64 encoded |
+| `GEE_ENCRYPTION_KEY` | Encryption key for stored GEE tokens | Used to encrypt user OAuth tokens at rest |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | OAuth client secret for user GEE authentication | From Google Cloud Console |
 
-#### Other external Services
+#### CodeDeploy
+
+| Secret Name | Description | Notes |
+|-------------|-------------|-------|
+| `CODEDEPLOY_S3_BUCKET` | S3 bucket name for deployment packages | Created by `setup_s3_bucket.py`; format: `trendsearth-api-deployments-{account-id}` |
+
+#### Other External Services
 
 | Secret Name | Description | Notes |
 |-------------|-------------|-------|
@@ -198,6 +203,8 @@ These secrets are used by the staging migration service to create test users. Th
 | `TEST_SUPERADMIN_PASSWORD` | Test superadmin user password | For staging test users |
 | `TEST_ADMIN_EMAIL` | Test admin user email | For staging test users |
 | `TEST_ADMIN_PASSWORD` | Test admin user password | For staging test users |
+| `TEST_USER_EMAIL` | Test regular user email | For staging test users |
+| `TEST_USER_PASSWORD` | Test regular user password | For staging test users |
 | `TEST_USER_EMAIL` | Test regular user email | For staging test users |
 | `TEST_USER_PASSWORD` | Test regular user password | For staging test users |
 

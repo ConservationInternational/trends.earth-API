@@ -1,11 +1,6 @@
 # Deployment Documentation
 
-> ⚠️ **DEPRECATED**: This directory contains legacy SSH-based deployment documentation. 
-> The current deployment system uses **AWS CodeDeploy** for more secure and reliable deployments.
-
-## Current Deployment Guide
-
-See the main deployment documentation at:
+The primary deployment documentation is in the main docs directory:
 
 **[📖 CodeDeploy Setup Guide](../CODEDEPLOY_SETUP.md)**
 
@@ -34,13 +29,10 @@ This guide covers:
 | Build Caching | None | Docker buildx with GitHub Actions cache |
 | Rollback | Manual via SSH | Automatic on failure |
 
-## Legacy Documentation (Archived)
+## Additional Documentation
 
-The following files are kept for historical reference but are no longer maintained:
-
-- [ROLLBACK-GUIDE.md](ROLLBACK-GUIDE.md) - Legacy rollback procedures (SSH-based)
-- [github-secrets.md](github-secrets.md) - Legacy secrets configuration (SSH-based)
-- [staging-database.md](staging-database.md) - Staging database setup (still relevant)
+- [ROLLBACK-GUIDE.md](ROLLBACK-GUIDE.md) - Rollback procedures (production and staging)
+- [staging-database.md](staging-database.md) - Staging database setup and test users
 
 ## Scripts
 
