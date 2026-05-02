@@ -106,6 +106,15 @@ def _check_approved_sender(user):
 # Recipient list helpers
 # ---------------------------------------------------------------------------
 
+_PREVIEW_ALLOWED_SORT_FIELDS = {
+    "email",
+    "name",
+    "role",
+    "email_verified",
+    "created_at",
+    "last_activity_at",
+}
+
 
 def _build_recipient_query(filter_criteria):
     """Build a SQLAlchemy query for User based on filter_criteria dict.
@@ -197,15 +206,37 @@ class BulkEmailService:
         db.session.commit()
 
     @staticmethod
-    def preview_recipients(filter_criteria, limit=20):
-        """Return total count and a sample of recipients matching filter_criteria."""
+    def preview_recipients(filter_criteria, page=1, per_page=100, sort=None):
+        """Return total count and a page of recipients matching filter_criteria."""
         q = _build_recipient_query(filter_criteria)
         total = q.count()
-        sample = q.limit(limit).all()
+        if sort:
+            from gefapi.utils.query_filters import parse_sort_param
+
+            order_clauses = parse_sort_param(
+                sort,
+                allowed_fields=_PREVIEW_ALLOWED_SORT_FIELDS,
+                resolve_column=lambda field, _dir: getattr(User, field, None),
+            )
+            q = q.order_by(*order_clauses) if order_clauses else q.order_by(User.email)
+        else:
+            q = q.order_by(User.email)
+        offset = (max(page, 1) - 1) * per_page
+        sample = q.offset(offset).limit(per_page).all()
         return {
             "total": total,
             "sample": [
-                {"id": str(u.id), "email": u.email, "name": u.name, "role": u.role}
+                {
+                    "id": str(u.id),
+                    "email": u.email,
+                    "name": u.name,
+                    "role": u.role,
+                    "email_verified": u.email_verified,
+                    "created_at": u.created_at.isoformat() if u.created_at else None,
+                    "last_activity_at": u.last_activity_at.isoformat()
+                    if u.last_activity_at
+                    else None,
+                }
                 for u in sample
             ],
         }

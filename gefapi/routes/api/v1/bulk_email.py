@@ -129,8 +129,12 @@ def preview_recipients():
         return guard
     body = request.get_json(force=True) or {}
     filter_criteria = body.get("filter_criteria", {})
-    limit = min(int(body.get("limit", 20)), 100)
-    result = BulkEmailService.preview_recipients(filter_criteria, limit=limit)
+    page = max(int(body.get("page", 1)), 1)
+    per_page = min(int(body.get("per_page", 100)), 200)
+    sort = body.get("sort") or None
+    result = BulkEmailService.preview_recipients(
+        filter_criteria, page=page, per_page=per_page, sort=sort
+    )
     return jsonify({"data": result}), 200
 
 
