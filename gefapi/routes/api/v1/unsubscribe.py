@@ -26,6 +26,7 @@ from gefapi.utils.rate_limiting import (
 logger = logging.getLogger(__name__)
 
 _VALID_SUBSCRIPTION_FIELDS = {
+    "automated": "email_notifications_enabled",
     "news": "email_subscription_news",
     "engagement": "email_subscription_engagement",
     "system_updates": "email_subscription_system_updates",
@@ -97,6 +98,7 @@ def get_unsubscribe_prefs():
         jsonify(
             {
                 "data": {
+                    "automated": getattr(user, "email_notifications_enabled", True),
                     "news": getattr(user, "email_subscription_news", True),
                     "engagement": getattr(user, "email_subscription_engagement", True),
                     "system_updates": getattr(
@@ -159,6 +161,7 @@ def update_unsubscribe_prefs():
         jsonify(
             {
                 "data": {
+                    "automated": user.email_notifications_enabled,
                     "news": user.email_subscription_news,
                     "engagement": user.email_subscription_engagement,
                     "system_updates": user.email_subscription_system_updates,
