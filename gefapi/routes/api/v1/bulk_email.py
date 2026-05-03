@@ -152,6 +152,46 @@ def delete_recipient_list(list_id):
     return jsonify({"message": "Recipient list deleted."}), 200
 
 
+@endpoints.route("/bulk-email/recipient-list/<list_id>", methods=["PATCH"])
+@jwt_required()
+def update_recipient_list(list_id):
+    """Update an existing saved recipient list."""
+    guard = _require_superadmin(current_user)
+    if guard:
+        return guard
+    body = request.get_json(force=True) or {}
+    name = body.get("name")
+    if name is not None:
+        name = name.strip()
+        if not name:
+            return error(400, "name cannot be empty.")
+    description = body.get("description")
+    filter_criteria = body.get("filter_criteria")
+    try:
+        rl = BulkEmailService.update_recipient_list(
+            list_id,
+            name=name,
+            description=description,
+            filter_criteria=filter_criteria,
+        )
+    except RecipientListNotFound as exc:
+        return error(404, exc.message)
+    except Exception as exc:
+        logger.exception("Error updating recipient list")
+        return error(500, str(exc))
+    return jsonify(
+        {
+            "data": {
+                "id": str(rl.id),
+                "name": rl.name,
+                "description": rl.description,
+                "filter_criteria": rl.filter_criteria,
+                "estimated_count": rl.estimated_count,
+            }
+        }
+    ), 200
+
+
 # ---------------------------------------------------------------------------
 # Bulk Emails
 # ---------------------------------------------------------------------------

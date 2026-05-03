@@ -198,6 +198,23 @@ class BulkEmailService:
         return rl
 
     @staticmethod
+    def update_recipient_list(
+        list_id, name=None, description=None, filter_criteria=None
+    ):
+        rl = db.session.get(BulkEmailRecipientList, str(list_id))
+        if not rl:
+            raise RecipientListNotFound(f"Recipient list {list_id!r} not found.")
+        if name is not None:
+            rl.name = name
+        if description is not None:
+            rl.description = description
+        if filter_criteria is not None:
+            rl.filter_criteria = filter_criteria
+            rl.estimated_count = _build_recipient_query(filter_criteria).count()
+        db.session.commit()
+        return rl
+
+    @staticmethod
     def delete_recipient_list(list_id):
         rl = db.session.get(BulkEmailRecipientList, str(list_id))
         if not rl:
