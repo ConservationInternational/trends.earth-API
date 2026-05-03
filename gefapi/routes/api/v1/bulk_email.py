@@ -382,9 +382,13 @@ def send_bulk_email(bulk_email_id):
         return guard
     body = request.get_json(force=True, silent=True) or {}
     code = body.get("code")
+    recipient_list_id = body.get("recipient_list_id")
     try:
         c = BulkEmailService.send_bulk_email(
-            bulk_email_id=bulk_email_id, user=current_user, code=code
+            bulk_email_id=bulk_email_id,
+            user=current_user,
+            code=code,
+            recipient_list_id=recipient_list_id,
         )
     except VerificationRequiredError as exc:
         return jsonify(exc.serialize), 428

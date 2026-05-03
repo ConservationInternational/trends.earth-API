@@ -497,7 +497,7 @@ class BulkEmailService:
     # -- Send --
 
     @staticmethod
-    def send_bulk_email(bulk_email_id, user, code=None):
+    def send_bulk_email(bulk_email_id, user, code=None, recipient_list_id=None):
         """Send a bulk email.
 
         If recipient count > BULK_EMAIL_MAX_RECIPIENTS and code is None,
@@ -519,6 +519,13 @@ class BulkEmailService:
             raise BulkEmailNotFound(f"Bulk email {bulk_email_id!r} not found.")
         if c.status == "SENT":
             raise BulkEmailAlreadySent("Bulk email has already been sent.")
+
+        # If the caller supplies a recipient list at send time, persist it on
+        # the record so that resolve_recipient_count (and the send logic below)
+        # both see the same value.
+        if recipient_list_id:
+            c.recipient_list_id = str(recipient_list_id)
+            db.session.flush()
 
         recipient_count = BulkEmailService.resolve_recipient_count(bulk_email_id)
         max_r = _max_recipients()
