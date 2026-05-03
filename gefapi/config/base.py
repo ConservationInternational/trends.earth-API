@@ -229,9 +229,15 @@ SETTINGS = {
     "BULK_EMAIL_FROM_EMAIL": os.getenv("BULK_EMAIL_FROM_EMAIL", "noreply@trends.earth"),
     # API_UI_URL: Base URL of the API UI (used for generating unsubscribe links)
     "API_UI_URL": os.getenv("API_UI_URL", "https://api.trends.earth"),
-    # UNSUBSCRIBE_TOKEN_EXPIRY_DAYS: How long unsubscribe JWT tokens remain valid
+    # UNSUBSCRIBE_JWT_SECRET: separate JWT secret for unsubscribe tokens.
+    # When set, rotating the main JWT_SECRET_KEY does not invalidate outstanding
+    # unsubscribe links.  Falls back to JWT_SECRET_KEY when not configured.
+    "UNSUBSCRIBE_JWT_SECRET": os.getenv("UNSUBSCRIBE_JWT_SECRET"),
+    # UNSUBSCRIBE_TOKEN_EXPIRY_DAYS: How long unsubscribe JWT tokens remain valid.
+    # 30 days balances usability against the risk of a leaked link being used to
+    # silently unsubscribe someone.
     "UNSUBSCRIBE_TOKEN_EXPIRY_DAYS": int(
-        os.getenv("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", "90")
+        os.getenv("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", "30")
     ),
 }
 

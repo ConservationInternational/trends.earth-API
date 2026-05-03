@@ -29,6 +29,8 @@ from gefapi.utils.rate_limiting import (
 
 logger = logging.getLogger(__name__)
 
+_VALID_SUBSCRIPTION_TYPES = {"news", "engagement", "system_updates"}
+
 
 def _require_superadmin(user):
     """Return a 403 response dict if user is not a superadmin, else None."""
@@ -104,6 +106,8 @@ def create_recipient_list():
             filter_criteria=filter_criteria,
             created_by_id=str(current_user.id),
         )
+    except ValueError as exc:
+        return error(400, str(exc))
     except Exception as exc:
         logger.exception("Error creating recipient list")
         return error(500, str(exc))
@@ -129,12 +133,21 @@ def preview_recipients():
         return guard
     body = request.get_json(force=True) or {}
     filter_criteria = body.get("filter_criteria", {})
-    page = max(int(body.get("page", 1)), 1)
-    per_page = min(int(body.get("per_page", 100)), 200)
+    try:
+        page = max(int(body.get("page", 1)), 1)
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        per_page = min(int(body.get("per_page", 100)), 200)
+    except (ValueError, TypeError):
+        per_page = 100
     sort = body.get("sort") or None
-    result = BulkEmailService.preview_recipients(
-        filter_criteria, page=page, per_page=per_page, sort=sort
-    )
+    try:
+        result = BulkEmailService.preview_recipients(
+            filter_criteria, page=page, per_page=per_page, sort=sort
+        )
+    except ValueError as exc:
+        return error(400, str(exc))
     return jsonify({"data": result}), 200
 
 
@@ -176,6 +189,8 @@ def update_recipient_list(list_id):
         )
     except RecipientListNotFound as exc:
         return error(404, exc.message)
+    except ValueError as exc:
+        return error(400, str(exc))
     except Exception as exc:
         logger.exception("Error updating recipient list")
         return error(500, str(exc))
@@ -224,6 +239,14 @@ def create_bulk_email():
         return error(400, "name, subject, and html_content are required.")
     recipient_list_id = body.get("recipient_list_id")
     subscription_type = body.get("subscription_type")
+    if subscription_type is not None and subscription_type not in (
+        _VALID_SUBSCRIPTION_TYPES
+    ):
+        return error(
+            400,
+            f"Invalid subscription_type {subscription_type!r}. "
+            f"Valid values: {sorted(_VALID_SUBSCRIPTION_TYPES)}.",
+        )
     try:
         c = BulkEmailService.create_bulk_email(
             name=name,
@@ -261,6 +284,14 @@ def update_bulk_email(bulk_email_id):
     if guard:
         return guard
     body = request.get_json(force=True) or {}
+    if "subscription_type" in body:
+        st = body["subscription_type"]
+        if st is not None and st not in _VALID_SUBSCRIPTION_TYPES:
+            return error(
+                400,
+                f"Invalid subscription_type {st!r}. "
+                f"Valid values: {sorted(_VALID_SUBSCRIPTION_TYPES)}.",
+            )
     try:
         c = BulkEmailService.update_bulk_email(
             bulk_email_id=bulk_email_id,

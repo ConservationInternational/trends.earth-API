@@ -37,8 +37,10 @@ def _decode_unsubscribe_token(token):
     """Decode and validate an unsubscribe JWT.
 
     Returns (user_id_str, error_response) — exactly one will be non-None.
+    Uses UNSUBSCRIBE_JWT_SECRET when set (falling back to JWT_SECRET_KEY) so
+    that the two token lifecycles remain independent.
     """
-    secret = SETTINGS.get("JWT_SECRET_KEY")
+    secret = SETTINGS.get("UNSUBSCRIBE_JWT_SECRET") or SETTINGS.get("JWT_SECRET_KEY")
     if not secret:
         return None, error(500, "Server misconfiguration: JWT secret not set.")
     try:

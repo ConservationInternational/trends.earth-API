@@ -4,6 +4,7 @@ import datetime
 import logging
 
 import jwt as pyjwt
+from markupsafe import escape as html_escape
 import nh3
 import rollbar
 
@@ -95,16 +96,30 @@ def _from_email():
 
 
 def _api_ui_url():
-    return SETTINGS.get("API_UI_URL", "https://api.trends.earth")
+    # Strip trailing slash to prevent double-slash in constructed URLs.
+    return SETTINGS.get("API_UI_URL", "https://api.trends.earth").rstrip("/")
+
+
+def _unsubscribe_secret():
+    """Return the JWT secret for unsubscribe tokens.
+
+    Uses the dedicated UNSUBSCRIBE_JWT_SECRET when set, falling back to
+    JWT_SECRET_KEY.  Keeping these separate means rotating the auth secret
+    does not invalidate outstanding unsubscribe links.
+    """
+    return SETTINGS.get("UNSUBSCRIBE_JWT_SECRET") or SETTINGS.get("JWT_SECRET_KEY")
 
 
 def _generate_unsubscribe_token(user_id):
     """Generate a signed JWT unsubscribe token for a user."""
-    secret = SETTINGS.get("JWT_SECRET_KEY")
-    expiry_days = SETTINGS.get("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", 90)
-    exp = _utcnow() + datetime.timedelta(days=expiry_days)
+    secret = _unsubscribe_secret()
+    expiry_days = SETTINGS.get("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", 30)
+    # Use timezone-aware datetime so the exp claim is an unambiguous Unix
+    # timestamp — avoids a PyJWT implementation-detail dependency on naive
+    # datetimes being treated as UTC.
+    exp = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=expiry_days)
     return pyjwt.encode(
-        {"sub": str(user_id), "purpose": "unsubscribe", "exp": exp},
+        {"sub": str(user_id), "purpose": "unsubscribe", "exp": int(exp.timestamp())},
         secret,
         algorithm="HS256",
     )
@@ -124,9 +139,14 @@ def _unsubscribe_footer_html(user):
 
 
 def _check_approved_sender(user):
-    """Raise NotApprovedSender if user is not on the approved senders list."""
+    """Raise NotApprovedSender if user is not on the approved senders list.
+
+    Deliberately fails-safe: if the approved senders list is empty (e.g. the
+    environment variable was not set), the check raises rather than allowing
+    every superadmin to send bulk email.
+    """
     approved = _approved_senders()
-    if approved and user.email.lower() not in approved:
+    if not approved or user.email.lower() not in approved:
         raise NotApprovedSender(
             f"User {user.email!r} is not an approved bulk email sender."
         )
@@ -145,42 +165,69 @@ _PREVIEW_ALLOWED_SORT_FIELDS = {
     "last_activity_at",
 }
 
+_KNOWN_ROLES = {"USER", "ADMIN", "SUPERADMIN"}
+
+
+def _parse_filter_datetime(value, field_name):
+    """Parse an ISO 8601 datetime string, raising ValueError with a friendly message."""
+    try:
+        return datetime.datetime.fromisoformat(value)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(
+            f"Invalid datetime for '{field_name}': {value!r}. "
+            "Expected ISO 8601 format, e.g. '2024-01-01T00:00:00'."
+        ) from exc
+
 
 def _build_recipient_query(filter_criteria):
     """Build a SQLAlchemy query for User based on filter_criteria dict.
 
     Supported keys:
-      roles: list[str] â€” e.g. ["USER", "ADMIN"]
+      roles: list[str] — e.g. ["USER", "ADMIN"]
       min_created_at: ISO datetime string
       max_created_at: ISO datetime string
       min_last_activity_at: ISO datetime string
       max_last_activity_at: ISO datetime string
       email_verified: bool | None
+
+    Raises ValueError for unrecognised role names or malformed datetime strings
+    so that callers can return HTTP 400 rather than a leaky 500.
     """
     q = db.session.query(User)
 
     roles = filter_criteria.get("roles")
     if roles:
+        unknown = [r for r in roles if r not in _KNOWN_ROLES]
+        if unknown:
+            raise ValueError(
+                f"Unknown role(s): {unknown!r}. Valid values: {sorted(_KNOWN_ROLES)}."
+            )
         q = q.filter(User.role.in_(roles))
 
     min_created = filter_criteria.get("min_created_at")
     if min_created:
-        q = q.filter(User.created_at >= datetime.datetime.fromisoformat(min_created))
+        q = q.filter(
+            User.created_at >= _parse_filter_datetime(min_created, "min_created_at")
+        )
 
     max_created = filter_criteria.get("max_created_at")
     if max_created:
-        q = q.filter(User.created_at <= datetime.datetime.fromisoformat(max_created))
+        q = q.filter(
+            User.created_at <= _parse_filter_datetime(max_created, "max_created_at")
+        )
 
     min_activity = filter_criteria.get("min_last_activity_at")
     if min_activity:
         q = q.filter(
-            User.last_activity_at >= datetime.datetime.fromisoformat(min_activity)
+            User.last_activity_at
+            >= _parse_filter_datetime(min_activity, "min_last_activity_at")
         )
 
     max_activity = filter_criteria.get("max_last_activity_at")
     if max_activity:
         q = q.filter(
-            User.last_activity_at <= datetime.datetime.fromisoformat(max_activity)
+            User.last_activity_at
+            <= _parse_filter_datetime(max_activity, "max_last_activity_at")
         )
 
     email_verified = filter_criteria.get("email_verified")
@@ -406,12 +453,17 @@ class BulkEmailService:
         db.session.add(otp)
         db.session.commit()
 
-        # Send OTP via email
+        # Send OTP via email.
+        # html_escape() is applied to c.name because only html_content goes
+        # through _sanitize_html() — the name field is a plain String(200) with
+        # no HTML sanitisation.  Without escaping, a crafted name such as
+        # '<img src=x onerror="...">' would be injected directly into the email.
+        safe_name = html_escape(c.name)
         html_body = (
             f"<p>Your Trends.Earth Bulk Email verification code is:</p>"
             f"<h2 style='letter-spacing:0.2em'>{otp.token}</h2>"
             f"<p>This code expires in 15 minutes and is valid only for bulk email "
-            f"<strong>{c.name}</strong>.</p>"
+            f"<strong>{safe_name}</strong>.</p>"
             f"<p>If you did not request this code, please ignore this email.</p>"
         )
         EmailService.send_html_email(
@@ -454,7 +506,15 @@ class BulkEmailService:
         """
         _check_approved_sender(user)
 
-        c = db.session.get(BulkEmail, str(bulk_email_id))
+        # Use SELECT FOR UPDATE to atomically claim a DRAFT record.  This
+        # prevents two concurrent POST /send requests from both passing the
+        # status check and sending duplicate emails (race condition).
+        c = (
+            db.session.query(BulkEmail)
+            .filter(BulkEmail.id == str(bulk_email_id))
+            .with_for_update()
+            .first()
+        )
         if not c:
             raise BulkEmailNotFound(f"Bulk email {bulk_email_id!r} not found.")
         if c.status == "SENT":
