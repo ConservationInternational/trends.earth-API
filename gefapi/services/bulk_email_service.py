@@ -3,6 +3,7 @@
 import datetime
 import logging
 
+import jwt as pyjwt
 import nh3
 import rollbar
 
@@ -91,6 +92,35 @@ def _max_recipients():
 
 def _from_email():
     return SETTINGS.get("BULK_EMAIL_FROM_EMAIL", "noreply@trends.earth")
+
+
+def _api_ui_url():
+    return SETTINGS.get("API_UI_URL", "https://api.trends.earth")
+
+
+def _generate_unsubscribe_token(user_id):
+    """Generate a signed JWT unsubscribe token for a user."""
+    secret = SETTINGS.get("JWT_SECRET_KEY")
+    expiry_days = SETTINGS.get("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", 90)
+    exp = _utcnow() + datetime.timedelta(days=expiry_days)
+    return pyjwt.encode(
+        {"sub": str(user_id), "purpose": "unsubscribe", "exp": exp},
+        secret,
+        algorithm="HS256",
+    )
+
+
+def _unsubscribe_footer_html(user):
+    """Return an HTML unsubscribe/manage-preferences snippet for a user."""
+    token = _generate_unsubscribe_token(user.id)
+    url = f"{_api_ui_url()}/unsubscribe?token={token}"
+    return (
+        '<p style="font-size:12px;color:#6c757d;text-align:center;margin:0;">'
+        f'<a href="{url}" style="color:#3a7d44;text-decoration:underline;">'
+        "Unsubscribe or manage email preferences"
+        "</a>"
+        "</p>"
+    )
 
 
 def _check_approved_sender(user):
@@ -276,7 +306,12 @@ class BulkEmailService:
 
     @staticmethod
     def create_bulk_email(
-        name, subject, html_content, created_by_id, recipient_list_id=None
+        name,
+        subject,
+        html_content,
+        created_by_id,
+        recipient_list_id=None,
+        subscription_type=None,
     ):
         c = BulkEmail(
             name=name,
@@ -285,6 +320,7 @@ class BulkEmailService:
             status="DRAFT",
             recipient_list_id=str(recipient_list_id) if recipient_list_id else None,
             created_by_id=str(created_by_id),
+            subscription_type=subscription_type or None,
         )
         db.session.add(c)
         db.session.commit()
@@ -310,6 +346,9 @@ class BulkEmailService:
                 if field == "html_content":
                     value = _sanitize_html(value)
                 setattr(c, field, value)
+        # subscription_type is nullable — allow explicit None to clear it
+        if "subscription_type" in kwargs:
+            c.subscription_type = kwargs["subscription_type"] or None
         c.updated_at = _utcnow()
         db.session.commit()
         log_security_event(
@@ -487,13 +526,46 @@ class BulkEmailService:
         recipients = []
         if rl:
             users = _build_recipient_query(rl.filter_criteria).all()
+
+            # Filter by subscription type if set on this bulk email
+            sub_type = c.subscription_type
+            if sub_type == "news":
+                users = [
+                    u for u in users if getattr(u, "email_subscription_news", True)
+                ]
+            elif sub_type == "engagement":
+                users = [
+                    u
+                    for u in users
+                    if getattr(u, "email_subscription_engagement", True)
+                ]
+            elif sub_type == "system_updates":
+                users = [
+                    u
+                    for u in users
+                    if getattr(u, "email_subscription_system_updates", True)
+                ]
+
             recipients = [
                 {
                     "address": {"email": u.email, "name": u.name},
-                    "substitution_data": {"name": u.name, "email": u.email},
+                    "substitution_data": {
+                        "name": u.name,
+                        "email": u.email,
+                        "unsubscribe_footer": _unsubscribe_footer_html(u),
+                    },
                 }
                 for u in users
             ]
+
+        # Append the unsubscribe footer placeholder to the HTML at send time.
+        # This is done *after* _sanitize_html() so the triple-brace SparkPost
+        # substitution syntax is never passed through the sanitizer.
+        send_html = (
+            c.html_content + '\n<div style="text-align:center;padding:16px 0 8px;">'
+            "{{{unsubscribe_footer}}}"
+            "</div>"
+        )
 
         try:
             for i in range(0, max(1, len(recipients)), _BATCH_SIZE):
@@ -502,7 +574,7 @@ class BulkEmailService:
                     break
                 EmailService.send_html_email(
                     recipients=batch,
-                    html=c.html_content,
+                    html=send_html,
                     from_email=_from_email(),
                     subject=c.subject,
                 )
@@ -544,15 +616,24 @@ class BulkEmailService:
         recipients = [
             {
                 "address": {"email": u.email, "name": u.name},
-                "substitution_data": {"name": u.name, "email": u.email},
+                "substitution_data": {
+                    "name": u.name,
+                    "email": u.email,
+                    "unsubscribe_footer": _unsubscribe_footer_html(u),
+                },
             }
             for u in superadmins
         ]
 
         test_subject = f"[TEST] {c.subject}"
+        send_html = (
+            c.html_content + '\n<div style="text-align:center;padding:16px 0 8px;">'
+            "{{{unsubscribe_footer}}}"
+            "</div>"
+        )
         EmailService.send_html_email(
             recipients=recipients,
-            html=c.html_content,
+            html=send_html,
             from_email=_from_email(),
             subject=test_subject,
         )
@@ -579,14 +660,23 @@ class BulkEmailService:
         recipients = [
             {
                 "address": {"email": user.email, "name": user.name},
-                "substitution_data": {"name": user.name, "email": user.email},
+                "substitution_data": {
+                    "name": user.name,
+                    "email": user.email,
+                    "unsubscribe_footer": _unsubscribe_footer_html(user),
+                },
             }
         ]
 
         test_subject = f"[TEST] {c.subject}"
+        send_html = (
+            c.html_content + '\n<div style="text-align:center;padding:16px 0 8px;">'
+            "{{{unsubscribe_footer}}}"
+            "</div>"
+        )
         EmailService.send_html_email(
             recipients=recipients,
-            html=c.html_content,
+            html=send_html,
             from_email=_from_email(),
             subject=test_subject,
         )

@@ -469,6 +469,11 @@ def update_profile():
         institution = body.get("institution", None)
         email_notifications_enabled = body.get("email_notifications_enabled", None)
         gee_license_acknowledged = body.get("gee_license_acknowledged", None)
+        email_subscription_news = body.get("email_subscription_news", None)
+        email_subscription_engagement = body.get("email_subscription_engagement", None)
+        email_subscription_system_updates = body.get(
+            "email_subscription_system_updates", None
+        )
 
         if (
             name is not None
@@ -476,6 +481,9 @@ def update_profile():
             or institution is not None
             or email_notifications_enabled is not None
             or gee_license_acknowledged is not None
+            or email_subscription_news is not None
+            or email_subscription_engagement is not None
+            or email_subscription_system_updates is not None
         ):
             user = UserService.update_user(body, str(identity.id))
         else:

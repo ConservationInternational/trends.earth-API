@@ -21,4 +21,5 @@ import gefapi.routes.api.v1.openeo_credentials  # noqa: E402, F401
 import gefapi.routes.api.v1.script_access  # noqa: E402, F401
 import gefapi.routes.api.v1.scripts  # noqa: E402, F401
 import gefapi.routes.api.v1.stats  # noqa: E402, F401
+import gefapi.routes.api.v1.unsubscribe  # noqa: E402, F401
 import gefapi.routes.api.v1.users  # noqa: E402, F401

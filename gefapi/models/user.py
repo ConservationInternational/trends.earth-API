@@ -141,6 +141,20 @@ class User(db.Model):
     # A positive integer overrides the global default for this user.
     max_concurrent_executions = db.Column(db.Integer(), nullable=True)
 
+    # Bulk email subscription preferences
+    # Each controls whether the user receives that category of bulk email.
+    # All default to True (subscribed); users can unsubscribe via the
+    # /unsubscribe page or their profile settings.
+    email_subscription_news = db.Column(
+        db.Boolean(), nullable=False, server_default=db.true()
+    )
+    email_subscription_engagement = db.Column(
+        db.Boolean(), nullable=False, server_default=db.true()
+    )
+    email_subscription_system_updates = db.Column(
+        db.Boolean(), nullable=False, server_default=db.true()
+    )
+
     def __init__(
         self,
         email,
@@ -184,6 +198,10 @@ class User(db.Model):
         self.locked_until = None
         # Per-user execution queue limit (None = use global default)
         self.max_concurrent_executions = None
+        # Bulk email subscription preferences (all enabled by default)
+        self.email_subscription_news = True
+        self.email_subscription_engagement = True
+        self.email_subscription_system_updates = True
 
     def __repr__(self):
         return f"<User {self.email!r}>"
@@ -234,6 +252,9 @@ class User(db.Model):
             "purpose_of_use": self.purpose_of_use,
             "purpose_of_use_other": self.purpose_of_use_other,
             "max_concurrent_executions": self.max_concurrent_executions,
+            "email_subscription_news": self.email_subscription_news,
+            "email_subscription_engagement": self.email_subscription_engagement,
+            "email_subscription_system_updates": self.email_subscription_system_updates,
         }
 
         # Include Google Groups preferences if requested

@@ -887,6 +887,17 @@ class UserService:
             elif isinstance(value, int) and value >= 1:
                 current_user.max_concurrent_executions = value
 
+        # Update bulk email subscription preferences if provided
+        for sub_field in (
+            "email_subscription_news",
+            "email_subscription_engagement",
+            "email_subscription_system_updates",
+        ):
+            if sub_field in user:
+                val = user.get(sub_field)
+                if isinstance(val, bool):
+                    setattr(current_user, sub_field, val)
+
         current_user.updated_at = datetime.datetime.now(datetime.UTC).replace(
             tzinfo=None
         )

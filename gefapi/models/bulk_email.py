@@ -48,6 +48,9 @@ class BulkEmail(db.Model):
     created_at = db.Column(db.DateTime(), default=_utcnow)
     updated_at = db.Column(db.DateTime(), default=_utcnow, onupdate=_utcnow)
     sent_at = db.Column(db.DateTime(), nullable=True)
+    # Category for subscription filtering: 'news', 'engagement', 'system_updates',
+    # or NULL (send to all regardless of subscription preferences).
+    subscription_type = db.Column(db.String(20), nullable=True)
 
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     sent_by = db.relationship("User", foreign_keys=[sent_by_id])

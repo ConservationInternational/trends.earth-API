@@ -227,6 +227,12 @@ SETTINGS = {
     "BULK_EMAIL_MAX_RECIPIENTS": int(os.getenv("BULK_EMAIL_MAX_RECIPIENTS", "50")),
     # BULK_EMAIL_FROM_EMAIL: SparkPost from_email address for bulk email sends
     "BULK_EMAIL_FROM_EMAIL": os.getenv("BULK_EMAIL_FROM_EMAIL", "noreply@trends.earth"),
+    # API_UI_URL: Base URL of the API UI (used for generating unsubscribe links)
+    "API_UI_URL": os.getenv("API_UI_URL", "https://api.trends.earth"),
+    # UNSUBSCRIBE_TOKEN_EXPIRY_DAYS: How long unsubscribe JWT tokens remain valid
+    "UNSUBSCRIBE_TOKEN_EXPIRY_DAYS": int(
+        os.getenv("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", "90")
+    ),
 }
 
 
