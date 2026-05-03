@@ -343,6 +343,29 @@ def send_test_bulk_email(bulk_email_id):
     return jsonify({"data": result}), 200
 
 
+@endpoints.route("/bulk-email/<bulk_email_id>/send-test-self", methods=["POST"])
+@limiter.limit(
+    lambda: ";".join(RateLimitConfig.get_bulk_email_send_limits()) or "10 per hour",
+    key_func=get_non_exempt_key,
+    exempt_when=is_rate_limiting_disabled,
+)
+@jwt_required()
+def send_test_bulk_email_self(bulk_email_id):
+    """Send bulk email as test to the requesting user only (no 2FA, status unchanged)."""  # noqa: E501
+    guard = _require_superadmin(current_user)
+    if guard:
+        return guard
+    try:
+        result = BulkEmailService.send_test_self_bulk_email(
+            bulk_email_id=bulk_email_id, user=current_user
+        )
+    except NotApprovedSender as exc:
+        return error(403, exc.message)
+    except BulkEmailNotFound as exc:
+        return error(404, exc.message)
+    return jsonify({"data": result}), 200
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

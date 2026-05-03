@@ -551,6 +551,37 @@ class BulkEmailService:
         return {"superadmin_count": len(recipients)}
 
     @staticmethod
+    def send_test_self_bulk_email(bulk_email_id, user):
+        """Send bulk email as test only to the requesting user (no 2FA, no status change)."""  # noqa: E501
+        _check_approved_sender(user)
+
+        c = db.session.get(BulkEmail, str(bulk_email_id))
+        if not c:
+            raise BulkEmailNotFound(f"Bulk email {bulk_email_id!r} not found.")
+
+        recipients = [
+            {
+                "address": {"email": user.email, "name": user.name},
+                "substitution_data": {"name": user.name, "email": user.email},
+            }
+        ]
+
+        test_subject = f"[TEST] {c.subject}"
+        EmailService.send_html_email(
+            recipients=recipients,
+            html=c.html_content,
+            from_email=_from_email(),
+            subject=test_subject,
+        )
+
+        log_security_event(
+            "BULK_EMAIL_TEST_SEND_SELF",
+            user_id=str(user.id),
+            details={"bulk_email_id": str(bulk_email_id)},
+        )
+        return {"sent_to": user.email}
+
+    @staticmethod
     def get_config():
         """Return bulk email configuration for display in the UI."""
         return {
