@@ -70,12 +70,56 @@ _ALLOWED_EMAIL_TAGS = frozenset(
     }
 )
 
+# Per-tag attribute allowlist.  The ``style`` attribute is explicitly
+# permitted so that inline CSS used for email layout (table widths, padding,
+# colours, font sizes) is preserved.  CSS injection risk is low in this
+# context: only approved superadmins can author bulk emails, and email
+# clients already sandbox CSS to the message scope.
+_ALLOWED_EMAIL_ATTRIBUTES = {
+    "a": {"href", "rel", "style", "target"},
+    "b": {"style"},
+    "blockquote": {"cite", "style"},
+    "br": set(),
+    "caption": {"style"},
+    "code": {"style"},
+    "del": {"style"},
+    "em": {"style"},
+    "h1": {"style"},
+    "h2": {"style"},
+    "h3": {"style"},
+    "h4": {"style"},
+    "h5": {"style"},
+    "h6": {"style"},
+    "hr": {"style"},
+    "i": {"style"},
+    "img": {"alt", "height", "src", "style", "width"},
+    "li": {"style"},
+    "ol": {"start", "style", "type"},
+    "p": {"style"},
+    "pre": {"style"},
+    "s": {"style"},
+    "span": {"style"},
+    "strong": {"style"},
+    "table": {"align", "border", "cellpadding", "cellspacing", "style", "width"},
+    "tbody": {"style"},
+    "td": {"align", "colspan", "rowspan", "style", "valign", "width"},
+    "th": {"align", "colspan", "rowspan", "scope", "style", "valign", "width"},
+    "thead": {"style"},
+    "tr": {"style"},
+    "u": {"style"},
+    "ul": {"style"},
+}
+
 
 def _sanitize_html(html_content: str) -> str:
     """Strip dangerous tags/attributes from bulk email HTML before storage."""
     if html_content is None:
         return html_content
-    return nh3.clean(html_content, tags=_ALLOWED_EMAIL_TAGS)
+    return nh3.clean(
+        html_content,
+        tags=_ALLOWED_EMAIL_TAGS,
+        attributes=_ALLOWED_EMAIL_ATTRIBUTES,
+    )
 
 
 def _utcnow():
@@ -131,7 +175,7 @@ def _unsubscribe_footer_html(user):
     url = f"{_api_ui_url()}/unsubscribe?token={token}"
     return (
         '<p style="font-size:12px;color:#6c757d;text-align:center;margin:0;">'
-        f'<a href="{url}" style="color:#3a7d44;text-decoration:underline;">'
+        f'<a href="{url}" style="color:#c8272a;text-decoration:underline;">'
         "Unsubscribe or manage email preferences"
         "</a>"
         "</p>"
