@@ -119,6 +119,7 @@ def _sanitize_html(html_content: str) -> str:
         html_content,
         tags=_ALLOWED_EMAIL_TAGS,
         attributes=_ALLOWED_EMAIL_ATTRIBUTES,
+        link_rel=None,
     )
 
 
