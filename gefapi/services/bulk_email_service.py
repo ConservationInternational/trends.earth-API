@@ -568,32 +568,45 @@ class BulkEmailService:
 
     @staticmethod
     def restore_to_draft(bulk_email_id: str, user_id: str):
-        """Reset a SENT or FAILED bulk email back to DRAFT status.
+        """Create a new DRAFT copy of a SENT or FAILED bulk email.
 
-        Clears ``sent_at``, ``sent_by_id``, and ``recipient_count`` so the
-        record can be edited and re-sent.  Only SENT and FAILED emails may be
-        restored; calling this on a DRAFT or SENDING record raises
-        ``BulkEmailAlreadySent``.
+        The original record (including its ``sent_at``, ``sent_by``, and
+        ``recipient_count``) is left untouched so the send history is
+        preserved.  The new draft is named "Copy of <original name>" and
+        has all sending-specific fields cleared.  Only SENT and FAILED
+        emails may be copied this way; calling this on a DRAFT or SENDING
+        record raises ``BulkEmailAlreadySent``.
         """
         c = db.session.get(BulkEmail, str(bulk_email_id))
         if not c:
             raise BulkEmailNotFound(f"Bulk email {bulk_email_id!r} not found.")
         if c.status not in ("SENT", "FAILED"):
             raise BulkEmailAlreadySent(
-                f"Cannot restore a bulk email with status '{c.status}' to draft."
+                f"Cannot create a draft copy of a bulk email with status '{c.status}'."
             )
-        c.status = "DRAFT"
-        c.sent_at = None
-        c.sent_by_id = None
-        c.recipient_count = None
-        c.updated_at = _utcnow()
+        now = _utcnow()
+        draft = BulkEmail(
+            name=f"Copy of {c.name}",
+            subject=c.subject,
+            html_content=c.html_content,
+            status="DRAFT",
+            subscription_type=c.subscription_type,
+            fields_data=c.fields_data,
+            created_by_id=user_id,
+            created_at=now,
+            updated_at=now,
+        )
+        db.session.add(draft)
         db.session.commit()
         log_security_event(
-            "BULK_EMAIL_RESTORED_TO_DRAFT",
+            "BULK_EMAIL_COPIED_TO_DRAFT",
             user_id=user_id,
-            details={"bulk_email_id": str(bulk_email_id)},
+            details={
+                "source_bulk_email_id": str(bulk_email_id),
+                "new_draft_id": str(draft.id),
+            },
         )
-        return c
+        return draft
 
     # -- Verification OTP --
 
