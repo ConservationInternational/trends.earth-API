@@ -404,6 +404,7 @@ class BulkEmailService:
         created_by_id,
         recipient_list_id=None,
         subscription_type=None,
+        fields_data=None,
     ):
         c = BulkEmail(
             name=name,
@@ -413,6 +414,7 @@ class BulkEmailService:
             recipient_list_id=str(recipient_list_id) if recipient_list_id else None,
             created_by_id=str(created_by_id),
             subscription_type=subscription_type or None,
+            fields_data=fields_data if isinstance(fields_data, dict) else None,
         )
         db.session.add(c)
         db.session.commit()
@@ -441,6 +443,10 @@ class BulkEmailService:
         # subscription_type is nullable — allow explicit None to clear it
         if "subscription_type" in kwargs:
             c.subscription_type = kwargs["subscription_type"] or None
+        # fields_data is nullable — None means "custom HTML draft" (clear the fields)
+        if "fields_data" in kwargs:
+            fd = kwargs["fields_data"]
+            c.fields_data = fd if isinstance(fd, dict) else None
         c.updated_at = _utcnow()
         db.session.commit()
         log_security_event(

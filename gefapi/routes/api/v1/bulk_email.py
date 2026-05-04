@@ -239,6 +239,7 @@ def create_bulk_email():
         return error(400, "name, subject, and html_content are required.")
     recipient_list_id = body.get("recipient_list_id")
     subscription_type = body.get("subscription_type")
+    fields_data = body.get("fields_data")
     if subscription_type is not None and subscription_type not in (
         _VALID_SUBSCRIPTION_TYPES
     ):
@@ -255,6 +256,7 @@ def create_bulk_email():
             created_by_id=str(current_user.id),
             recipient_list_id=recipient_list_id,
             subscription_type=subscription_type,
+            fields_data=fields_data,
         )
     except Exception as exc:
         logger.exception("Error creating bulk email")
@@ -304,6 +306,7 @@ def update_bulk_email(bulk_email_id):
                     "html_content",
                     "recipient_list_id",
                     "subscription_type",
+                    "fields_data",
                 )
                 if k in body
             },
@@ -464,6 +467,7 @@ def _serialize_bulk_email(c):
         "recipient_list_id": str(c.recipient_list_id) if c.recipient_list_id else None,
         "recipient_count": c.recipient_count,
         "subscription_type": c.subscription_type,
+        "fields_data": c.fields_data,
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "updated_at": c.updated_at.isoformat() if c.updated_at else None,
         "sent_at": c.sent_at.isoformat() if c.sent_at else None,

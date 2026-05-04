@@ -51,6 +51,8 @@ class BulkEmail(db.Model):
     # Category for subscription filtering: 'news', 'engagement', 'system_updates',
     # or NULL (send to all regardless of subscription preferences).
     subscription_type = db.Column(db.String(20), nullable=True)
+    # Structured field data for template-based drafts.  NULL for custom HTML drafts.
+    fields_data = db.Column(db.JSON, nullable=True)
 
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     sent_by = db.relationship("User", foreign_keys=[sent_by_id])
