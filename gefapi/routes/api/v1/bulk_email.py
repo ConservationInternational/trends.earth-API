@@ -452,6 +452,25 @@ def send_test_bulk_email_self(bulk_email_id):
     return jsonify({"data": result}), 200
 
 
+@endpoints.route("/bulk-email/<bulk_email_id>/restore-draft", methods=["POST"])
+@jwt_required()
+def restore_bulk_email_to_draft(bulk_email_id):
+    """Restore a SENT or FAILED bulk email back to DRAFT status."""
+    guard = _require_superadmin(current_user)
+    if guard:
+        return guard
+    try:
+        c = BulkEmailService.restore_to_draft(
+            bulk_email_id=bulk_email_id,
+            user_id=str(current_user.id),
+        )
+    except BulkEmailNotFound as exc:
+        return error(404, exc.message)
+    except BulkEmailAlreadySent as exc:
+        return error(409, exc.message)
+    return jsonify({"data": _serialize_bulk_email(c)}), 200
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

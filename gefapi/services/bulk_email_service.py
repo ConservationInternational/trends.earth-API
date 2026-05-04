@@ -566,6 +566,35 @@ class BulkEmailService:
         db.session.delete(c)
         db.session.commit()
 
+    @staticmethod
+    def restore_to_draft(bulk_email_id: str, user_id: str):
+        """Reset a SENT or FAILED bulk email back to DRAFT status.
+
+        Clears ``sent_at``, ``sent_by_id``, and ``recipient_count`` so the
+        record can be edited and re-sent.  Only SENT and FAILED emails may be
+        restored; calling this on a DRAFT or SENDING record raises
+        ``BulkEmailAlreadySent``.
+        """
+        c = db.session.get(BulkEmail, str(bulk_email_id))
+        if not c:
+            raise BulkEmailNotFound(f"Bulk email {bulk_email_id!r} not found.")
+        if c.status not in ("SENT", "FAILED"):
+            raise BulkEmailAlreadySent(
+                f"Cannot restore a bulk email with status '{c.status}' to draft."
+            )
+        c.status = "DRAFT"
+        c.sent_at = None
+        c.sent_by_id = None
+        c.recipient_count = None
+        c.updated_at = _utcnow()
+        db.session.commit()
+        log_security_event(
+            "BULK_EMAIL_RESTORED_TO_DRAFT",
+            user_id=user_id,
+            details={"bulk_email_id": str(bulk_email_id)},
+        )
+        return c
+
     # -- Verification OTP --
 
     @staticmethod
