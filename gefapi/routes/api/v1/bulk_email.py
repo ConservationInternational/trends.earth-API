@@ -315,10 +315,9 @@ def update_bulk_email(bulk_email_id):
         return error(404, exc.message)
     except BulkEmailAlreadySent as exc:
         return error(409, exc.message)
-    return jsonify({"data": _serialize_bulk_email(c)}), 200
+    return jsonify({"data": _serialize_bulk_email(c)}), 202
 
 
-@endpoints.route("/bulk-email/<bulk_email_id>", methods=["DELETE"])
 @jwt_required()
 def delete_bulk_email(bulk_email_id):
     """Delete a draft bulk email."""

@@ -109,6 +109,8 @@ def make_celery(app):
         "gefapi.services.batch_service.batch_run": {"queue": "default"},
         # Execution queue processor – dispatches queued executions (no Docker needed)
         "gefapi.tasks.queue_processor.process_queued_executions": {"queue": "default"},
+        # Bulk email send – calls SparkPost over HTTPS, no Docker access needed
+        "gefapi.tasks.bulk_email_send.send_bulk_email_task": {"queue": "default"},
         # All other tasks use default queue
     }
 

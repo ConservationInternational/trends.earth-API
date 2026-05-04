@@ -224,7 +224,7 @@ def _parse_filter_datetime(value, field_name):
         ) from exc
 
 
-def _build_recipient_query(filter_criteria):
+def _build_recipient_query(filter_criteria, subscription_type=None):
     """Build a SQLAlchemy query for User based on filter_criteria dict.
 
     Supported keys:
@@ -234,6 +234,11 @@ def _build_recipient_query(filter_criteria):
       min_last_activity_at: ISO datetime string
       max_last_activity_at: ISO datetime string
       email_verified: bool | None
+
+    subscription_type: optional str — when "news", "engagement", or
+      "system_updates", adds a SQL filter excluding users who have
+      unsubscribed from that category.  Filtering happens in the database
+      rather than in Python to avoid fetching rows that will be discarded.
 
     Raises ValueError for unrecognised role names or malformed datetime strings
     so that callers can return HTTP 400 rather than a leaky 500.
@@ -279,7 +284,100 @@ def _build_recipient_query(filter_criteria):
     if email_verified is not None:
         q = q.filter(User.email_verified == email_verified)
 
+    if subscription_type == "news":
+        q = q.filter(User.email_subscription_news == True)  # noqa: E712
+    elif subscription_type == "engagement":
+        q = q.filter(User.email_subscription_engagement == True)  # noqa: E712
+    elif subscription_type == "system_updates":
+        q = q.filter(User.email_subscription_system_updates == True)  # noqa: E712
+
     return q
+
+
+# ---------------------------------------------------------------------------
+# Async send helper (called from Celery task)
+# ---------------------------------------------------------------------------
+
+
+def _execute_send(bulk_email_id: str, sent_by_user_id: str) -> None:
+    """Perform the actual bulk email send — called from the Celery task.
+
+    Fetches recipients (with SQL-level subscription filtering), generates
+    per-recipient unsubscribe tokens, sends via SparkPost in batches, and
+    updates the BulkEmail status to SENT on success or FAILED on error.
+    """
+    c = db.session.get(BulkEmail, bulk_email_id)
+    if not c:
+        logger.error("_execute_send: BulkEmail %r not found", bulk_email_id)
+        return
+
+    rl = (
+        db.session.get(BulkEmailRecipientList, str(c.recipient_list_id))
+        if c.recipient_list_id
+        else None
+    )
+    recipients = []
+    if rl:
+        users = _build_recipient_query(
+            rl.filter_criteria, subscription_type=c.subscription_type
+        ).all()
+        recipients = [
+            {
+                "address": {"email": u.email, "name": u.name},
+                "substitution_data": {
+                    "name": u.name,
+                    "email": u.email,
+                    "unsubscribe_footer": _unsubscribe_footer_html(u),
+                },
+            }
+            for u in users
+        ]
+
+    # Append the unsubscribe footer placeholder to the HTML at send time.
+    # This is done *after* _sanitize_html() so the triple-brace SparkPost
+    # substitution syntax is never passed through the sanitizer.
+    send_html = (
+        c.html_content + '\n<div style="text-align:center;padding:16px 0 8px;">'
+        "{{{unsubscribe_footer}}}"
+        "</div>"
+    )
+
+    try:
+        for i in range(0, max(1, len(recipients)), _BATCH_SIZE):
+            batch = recipients[i : i + _BATCH_SIZE]
+            if not batch:
+                break
+            EmailService.send_html_email(
+                recipients=batch,
+                html=send_html,
+                from_email=_from_email(),
+                subject=c.subject,
+            )
+    except Exception:
+        c.status = "FAILED"
+        c.sent_at = _utcnow()
+        db.session.commit()
+        log_security_event(
+            "BULK_EMAIL_SEND_FAILED",
+            user_id=sent_by_user_id,
+            details={"bulk_email_id": bulk_email_id},
+        )
+        rollbar.report_exc_info()
+        raise
+
+    c.status = "SENT"
+    c.sent_at = _utcnow()
+    c.recipient_count = len(recipients)
+    db.session.commit()
+
+    log_security_event(
+        "BULK_EMAIL_SEND_SUCCESS",
+        user_id=sent_by_user_id,
+        details={
+            "bulk_email_id": bulk_email_id,
+            "recipient_count": len(recipients),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -543,7 +641,9 @@ class BulkEmailService:
         rl = db.session.get(BulkEmailRecipientList, str(c.recipient_list_id))
         if not rl:
             return 0
-        return _build_recipient_query(rl.filter_criteria).count()
+        return _build_recipient_query(
+            rl.filter_criteria, subscription_type=c.subscription_type
+        ).count()
 
     # -- Send --
 
@@ -568,7 +668,7 @@ class BulkEmailService:
         )
         if not c:
             raise BulkEmailNotFound(f"Bulk email {bulk_email_id!r} not found.")
-        if c.status == "SENT":
+        if c.status in ("SENT", "SENDING"):
             raise BulkEmailAlreadySent("Bulk email has already been sent.")
 
         # If the caller supplies a recipient list at send time, persist it on
@@ -635,88 +735,23 @@ class BulkEmailService:
             otp.used_at = _utcnow()
             db.session.flush()
 
-        # Resolve full recipient list
-        rl = (
-            db.session.get(BulkEmailRecipientList, str(c.recipient_list_id))
-            if c.recipient_list_id
-            else None
-        )
-        recipients = []
-        if rl:
-            users = _build_recipient_query(rl.filter_criteria).all()
-
-            # Filter by subscription type if set on this bulk email
-            sub_type = c.subscription_type
-            if sub_type == "news":
-                users = [
-                    u for u in users if getattr(u, "email_subscription_news", True)
-                ]
-            elif sub_type == "engagement":
-                users = [
-                    u
-                    for u in users
-                    if getattr(u, "email_subscription_engagement", True)
-                ]
-            elif sub_type == "system_updates":
-                users = [
-                    u
-                    for u in users
-                    if getattr(u, "email_subscription_system_updates", True)
-                ]
-
-            recipients = [
-                {
-                    "address": {"email": u.email, "name": u.name},
-                    "substitution_data": {
-                        "name": u.name,
-                        "email": u.email,
-                        "unsubscribe_footer": _unsubscribe_footer_html(u),
-                    },
-                }
-                for u in users
-            ]
-
-        # Append the unsubscribe footer placeholder to the HTML at send time.
-        # This is done *after* _sanitize_html() so the triple-brace SparkPost
-        # substitution syntax is never passed through the sanitizer.
-        send_html = (
-            c.html_content + '\n<div style="text-align:center;padding:16px 0 8px;">'
-            "{{{unsubscribe_footer}}}"
-            "</div>"
-        )
-
-        try:
-            for i in range(0, max(1, len(recipients)), _BATCH_SIZE):
-                batch = recipients[i : i + _BATCH_SIZE]
-                if not batch:
-                    break
-                EmailService.send_html_email(
-                    recipients=batch,
-                    html=send_html,
-                    from_email=_from_email(),
-                    subject=c.subject,
-                )
-        except Exception:
-            log_security_event(
-                "BULK_EMAIL_SEND_FAILED",
-                user_id=str(user.id),
-                details={"bulk_email_id": str(bulk_email_id)},
-            )
-            rollbar.report_exc_info()
-            raise
-
-        c.status = "SENT"
+        # Mark as SENDING and dispatch to the Celery worker.  The HTTP
+        # request returns immediately (202 Accepted); the worker updates the
+        # status to SENT or FAILED once SparkPost has accepted all batches.
+        c.status = "SENDING"
         c.sent_by_id = str(user.id)
-        c.sent_at = _utcnow()
-        c.recipient_count = len(recipients)
         db.session.commit()
 
+        from gefapi.tasks.bulk_email_send import send_bulk_email_task
+
+        send_bulk_email_task.delay(str(bulk_email_id), str(user.id))
+
         log_security_event(
-            "BULK_EMAIL_SEND_SUCCESS",
+            "BULK_EMAIL_SEND_DISPATCHED",
             user_id=str(user.id),
             details={
                 "bulk_email_id": str(bulk_email_id),
-                "recipient_count": len(recipients),
+                "recipient_count": recipient_count,
             },
         )
         return c
