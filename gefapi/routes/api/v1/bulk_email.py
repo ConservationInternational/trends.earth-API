@@ -318,6 +318,7 @@ def update_bulk_email(bulk_email_id):
     return jsonify({"data": _serialize_bulk_email(c)}), 202
 
 
+@endpoints.route("/bulk-email/<bulk_email_id>", methods=["DELETE"])
 @jwt_required()
 def delete_bulk_email(bulk_email_id):
     """Delete a draft bulk email."""
