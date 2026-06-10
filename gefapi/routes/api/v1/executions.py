@@ -435,7 +435,23 @@ def export_executions_csv():
     from datetime import datetime as dt
 
     timestamp = dt.utcnow().strftime("%Y%m%d_%H%M%S")
-    return rows_to_csv_response(rows, f"executions_export_{timestamp}.csv")
+    filename = f"executions_export_{timestamp}.csv"
+    logger.info(
+        "[AUDIT] CSV export: table=executions rows=%d filename=%s "
+        "by user_id=%s email=%s role=%s "
+        "filter_field=%s filter_from=%s filter_to=%s "
+        "remote_addr=%s",
+        len(rows),
+        filename,
+        getattr(current_user, "id", None),
+        getattr(current_user, "email", None),
+        getattr(current_user, "role", None),
+        date_field,
+        request.args.get("date_from"),
+        request.args.get("date_to"),
+        request.remote_addr,
+    )
+    return rows_to_csv_response(rows, filename)
 
 
 @endpoints.route("/execution", strict_slashes=False, methods=["GET"])
