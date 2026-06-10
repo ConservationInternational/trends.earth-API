@@ -78,8 +78,8 @@ def rows_to_csv_response(rows: list[dict[str, Any]], filename: str):
 
     if not rows:
         return Response(
-            "",
-            mimetype="text/csv",
+            "\xef\xbb\xbf".encode(),  # BOM-only for empty export
+            mimetype="text/csv; charset=utf-8",
             headers={
                 "Content-Disposition": f'attachment; filename="{safe_filename}"',
                 "Cache-Control": "no-store",
@@ -95,9 +95,14 @@ def rows_to_csv_response(rows: list[dict[str, Any]], filename: str):
     writer.writeheader()
     writer.writerows(sanitized)
 
+    # Encode with UTF-8 BOM so that Excel detects the encoding correctly.
+    # Without the BOM, Excel defaults to the system ANSI codepage and
+    # renders non-ASCII characters (e.g. Cyrillic, Arabic) as mojibake.
+    csv_bytes = output.getvalue().encode("utf-8-sig")
+
     return Response(
-        output.getvalue(),
-        mimetype="text/csv",
+        csv_bytes,
+        mimetype="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="{safe_filename}"',
             "Cache-Control": "no-store",
