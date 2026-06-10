@@ -143,6 +143,116 @@ def create_user():
     return jsonify(data=user.serialize()), 200
 
 
+# ---------------------------------------------------------------------------
+# CSV export
+# ---------------------------------------------------------------------------
+
+# Columns included in the users CSV export (all non-sensitive profile fields)
+_USER_EXPORT_COLUMNS = [
+    "id",
+    "email",
+    "name",
+    "role",
+    "country",
+    "institution",
+    "role_title",
+    "sector",
+    "sector_other",
+    "gender_identity",
+    "gender_identity_description",
+    "purpose_of_use",
+    "purpose_of_use_other",
+    "email_verified",
+    "email_verified_at",
+    "created_at",
+    "updated_at",
+    "last_login_at",
+    "last_activity_at",
+    "gee_license_acknowledged",
+    "email_notifications_enabled",
+    "email_subscription_news",
+    "email_subscription_engagement",
+    "email_subscription_system_updates",
+]
+
+# Allowed date fields for filtering the user export
+_USER_EXPORT_DATE_FIELDS = {
+    "created_at",
+    "updated_at",
+    "email_verified_at",
+    "last_login_at",
+    "last_activity_at",
+}
+
+
+@endpoints.route("/user/export", strict_slashes=False, methods=["GET"])
+@jwt_required()
+@require_scope("user:read")
+def export_users_csv():
+    """
+    Export users as a CSV file (admin only).
+
+    **Authentication**: JWT token required
+    **Authorization**: ADMIN or SUPERADMIN required
+
+    **Query Parameters**:
+    - ``date_field``: Column to filter by (``created_at``, ``updated_at``,
+      ``email_verified_at``, ``last_login_at``, ``last_activity_at``)
+    - ``date_from``: ISO 8601 start date (inclusive)
+    - ``date_to``:   ISO 8601 end date   (inclusive)
+
+    **Response**: ``text/csv`` attachment named ``users_export.csv``
+
+    **Error Responses**:
+    - ``400`` – invalid ``date_field``
+    - ``403`` – insufficient privileges
+    """
+    if not is_admin_or_higher(current_user):
+        return error(status=403, detail="Forbidden")
+
+    from gefapi.utils.csv_export import _parse_date_param, rows_to_csv_response
+
+    date_field = request.args.get("date_field") or None
+    date_from = _parse_date_param(request.args.get("date_from"))
+    date_to = _parse_date_param(request.args.get("date_to"))
+
+    if date_field and date_field not in _USER_EXPORT_DATE_FIELDS:
+        return error(status=400, detail=f"Invalid date_field '{date_field}'")
+
+    try:
+        from gefapi import db
+        from gefapi.models import User
+
+        query = db.session.query(User)
+
+        if date_field and (date_from or date_to):
+            col = getattr(User, date_field)
+            if date_from:
+                query = query.filter(col >= date_from)
+            if date_to:
+                query = query.filter(col <= date_to)
+
+        query = query.order_by(User.created_at.desc())
+        users = query.all()
+    except Exception as exc:
+        logger.error("[ROUTER]: export_users_csv error: %s", exc)
+        return error(status=500, detail="Generic Error")
+
+    rows = [{col: getattr(u, col, None) for col in _USER_EXPORT_COLUMNS} for u in users]
+    # Normalise datetime objects → ISO strings for CSV serialisation
+    for row in rows:
+        for key, val in row.items():
+            if hasattr(val, "isoformat"):
+                row[key] = val.isoformat()
+            elif val is None:
+                row[key] = ""
+
+    from datetime import datetime as dt
+
+    timestamp = dt.utcnow().strftime("%Y%m%d_%H%M%S")
+    return rows_to_csv_response(rows, f"users_export_{timestamp}.csv")
+
+
 @endpoints.route("/user", strict_slashes=False, methods=["GET"])
 @jwt_required()
 @require_scope("user:read")

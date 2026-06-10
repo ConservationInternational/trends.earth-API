@@ -322,6 +322,110 @@ def get_user_executions():
     return jsonify(response_data), 200
 
 
+# ---------------------------------------------------------------------------
+# CSV export
+# ---------------------------------------------------------------------------
+
+_EXECUTION_EXPORT_COLUMNS = [
+    "id",
+    "script_id",
+    "script_name",
+    "user_id",
+    "user_name",
+    "user_email",
+    "status",
+    "progress",
+    "start_date",
+    "end_date",
+    "queued_at",
+    "dispatched_at",
+]
+
+_EXECUTION_EXPORT_DATE_FIELDS = {"start_date", "end_date"}
+
+
+@endpoints.route("/execution/export", strict_slashes=False, methods=["GET"])
+@jwt_required()
+@require_scope("execution:read")
+def export_executions_csv():
+    """
+    Export executions as a CSV file (admin only).
+
+    **Authentication**: JWT token required
+    **Authorization**: ADMIN or SUPERADMIN required
+
+    **Query Parameters**:
+    - ``date_field``: Column to filter by (``start_date`` or ``end_date``)
+    - ``date_from``: ISO 8601 start date (inclusive)
+    - ``date_to``:   ISO 8601 end date   (inclusive)
+
+    **Response**: ``text/csv`` attachment named ``executions_export_<timestamp>.csv``
+
+    **Error Responses**:
+    - ``400`` – invalid ``date_field``
+    - ``403`` – insufficient privileges
+    """
+    from gefapi.utils.permissions import is_admin_or_higher as _is_admin
+
+    if not _is_admin(current_user):
+        return error(status=403, detail="Forbidden")
+
+    from gefapi.utils.csv_export import _parse_date_param, rows_to_csv_response
+
+    date_field = request.args.get("date_field") or None
+    date_from = _parse_date_param(request.args.get("date_from"))
+    date_to = _parse_date_param(request.args.get("date_to"))
+
+    if date_field and date_field not in _EXECUTION_EXPORT_DATE_FIELDS:
+        return error(status=400, detail=f"Invalid date_field '{date_field}'")
+
+    try:
+        from gefapi import db
+        from gefapi.models import Execution, Script, User
+
+        query = (
+            db.session.query(
+                Execution,
+                Script.name.label("script_name"),
+                User.name.label("user_name"),
+                User.email.label("user_email"),
+            )
+            .outerjoin(Script, Execution.script_id == Script.id)
+            .outerjoin(User, Execution.user_id == User.id)
+        )
+
+        if date_field and (date_from or date_to):
+            col = getattr(Execution, date_field)
+            if date_from:
+                query = query.filter(col >= date_from)
+            if date_to:
+                query = query.filter(col <= date_to)
+
+        query = query.order_by(Execution.start_date.desc())
+        results = query.all()
+    except Exception as exc:
+        logger.error("[ROUTER]: export_executions_csv error: %s", exc)
+        return error(status=500, detail="Generic Error")
+
+    rows = []
+    for exec_row, script_name, user_name, user_email in results:
+        row = {col: getattr(exec_row, col, None) for col in _EXECUTION_EXPORT_COLUMNS}
+        row["script_name"] = script_name or ""
+        row["user_name"] = user_name or ""
+        row["user_email"] = user_email or ""
+        for key, val in row.items():
+            if hasattr(val, "isoformat"):
+                row[key] = val.isoformat()
+            elif val is None:
+                row[key] = ""
+        rows.append(row)
+
+    from datetime import datetime as dt
+
+    timestamp = dt.utcnow().strftime("%Y%m%d_%H%M%S")
+    return rows_to_csv_response(rows, f"executions_export_{timestamp}.csv")
+
+
 @endpoints.route("/execution", strict_slashes=False, methods=["GET"])
 @jwt_required()
 @require_scope("execution:read")
