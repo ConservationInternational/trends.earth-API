@@ -165,6 +165,7 @@ def export_scripts_csv():
     try:
         from gefapi import db
         from gefapi.models import Script, User
+        from gefapi.utils.csv_export import MAX_EXPORT_ROWS
 
         query = db.session.query(
             Script,
@@ -178,6 +179,17 @@ def export_scripts_csv():
                 query = query.filter(col >= date_from)
             if date_to:
                 query = query.filter(col <= date_to)
+
+        total = query.count()
+        if total > MAX_EXPORT_ROWS:
+            return error(
+                status=400,
+                detail=(
+                    f"Export would return {total:,} rows which exceeds the "
+                    f"maximum of {MAX_EXPORT_ROWS:,}. Narrow the date range "
+                    "and try again."
+                ),
+            )
 
         query = query.order_by(Script.created_at.desc())
         results = query.all()
