@@ -69,7 +69,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
 
     - name: Get deployment info
       id: deployment-info
@@ -145,7 +145,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
 
     - name: Configure AWS credentials via OIDC
       uses: aws-actions/configure-aws-credentials@v6
