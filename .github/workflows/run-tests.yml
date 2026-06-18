@@ -61,10 +61,10 @@ jobs:
       with:
         path: |
           ~/.cache/pypoetry
-          ~/.cache/pip
-        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+          ~/.local/share/pypoetry
+        key: ${{ runner.os }}-poetry-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
         restore-keys: |
-          ${{ runner.os }}-poetry-
+          ${{ runner.os }}-poetry-${{ matrix.python-version }}-
 
     - name: Install Poetry
       run: |
@@ -73,7 +73,6 @@ jobs:
 
     - name: Install dependencies with Poetry
       run: |
-        poetry config virtualenvs.create false
         poetry install --no-interaction --no-ansi --with dev
 
     - name: Set environment variables for testing
@@ -267,10 +266,10 @@ jobs:
       with:
         path: |
           ~/.cache/pypoetry
-          ~/.cache/pip
-        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+          ~/.local/share/pypoetry
+        key: ${{ runner.os }}-poetry-3.11-${{ hashFiles('**/poetry.lock') }}
         restore-keys: |
-          ${{ runner.os }}-poetry-
+          ${{ runner.os }}-poetry-3.11-
 
     - name: Install Poetry
       run: |
@@ -279,7 +278,6 @@ jobs:
 
     - name: Install dependencies with Poetry
       run: |
-        poetry config virtualenvs.create false
         poetry install --no-interaction --no-ansi --with dev
 
     - name: Set environment variables
