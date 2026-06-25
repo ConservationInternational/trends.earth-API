@@ -4,7 +4,7 @@
 
 [![Tests](https://github.com/ConservationInternational/trends.earth-API/actions/workflows/run-tests.yml/badge.svg)](https://github.com/ConservationInternational/trends.earth-API/actions/workflows/run-tests.yml)
 [![Code Quality](https://github.com/ConservationInternational/trends.earth-API/actions/workflows/ruff.yaml/badge.svg)](https://github.com/ConservationInternational/trends.earth-API/actions/workflows/ruff.yaml)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 
 The Trends.Earth API manages Scripts, Users, and Executions for the
 [Trends.Earth](https://trends.earth/) platform. It serves as the backend for the
@@ -12,7 +12,7 @@ Trends.Earth QGIS plugin and web interface.
 
 ## Technology Stack
 
-- **Python 3.11** — Flask application, Alpine-based Docker image
+- **Python 3.13** — Flask application, Alpine-based Docker image
 - **PostgreSQL** — Primary database (SQLAlchemy + Flask-Migrate)
 - **Redis + Celery** — Background task processing and scheduling
 - **Docker / Docker Swarm** — Containerisation and production deployment

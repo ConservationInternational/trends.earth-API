@@ -10,14 +10,14 @@ authors = [
     { name = "Alex Zvoleff", email = "azvoleff@conservation.org" }
 ]
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.13,<3.15"
 dynamic = ["dependencies"]
 
 [tool.poetry]
 packages = [{ include = "gefapi" }]
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.14"
+python = ">=3.13,<3.15"
 flask = ">=3.0.0"
 flask-cors = "*"
 flask-compress = "*"
@@ -78,8 +78,8 @@ packages = ["gefapi"]
 line-length = 88
 indent-width = 4
 
-# Assume Python 3.11+ (updated for better compatibility)
-target-version = "py311"
+# Assume Python 3.13+
+target-version = "py313"
 
 # Exclude files/directories from linting
 exclude = [
