@@ -799,8 +799,7 @@ def main():
                         success_count += 1
                     except Exception as e:
                         logger.error(
-                            f"Failed to fetch all boundaries for "
-                            f"{release_type}: {e!s}"
+                            f"Failed to fetch all boundaries for {release_type}: {e!s}"
                         )
                         logger.info(f"=== Skipping {release_type} ===")
                         continue

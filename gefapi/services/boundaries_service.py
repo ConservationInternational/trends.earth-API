@@ -379,9 +379,7 @@ class BoundariesService:
             return result
 
         except Exception as e:
-            logger.error(
-                f"Error getting last updated timestamp: {e!s}", exc_info=True
-            )
+            logger.error(f"Error getting last updated timestamp: {e!s}", exc_info=True)
             raise
 
     @staticmethod

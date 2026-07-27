@@ -404,9 +404,7 @@ def cleanup_finished_executions(self):
             return result
 
         except Exception as error:
-            logger.error(
-                f"[TASK]: Error during finished execution cleanup: {error!s}"
-            )
+            logger.error(f"[TASK]: Error during finished execution cleanup: {error!s}")
             logger.exception("Full traceback:")
 
             # Report to rollbar if available
