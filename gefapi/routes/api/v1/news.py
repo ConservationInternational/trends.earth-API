@@ -414,7 +414,7 @@ def update_news_item(news_id):
         if field in data:
             update_data[field] = data[field]
 
-    if "publish_at" in data and data["publish_at"]:
+    if data.get("publish_at"):
         try:
             update_data["publish_at"] = dateutil.parser.parse(data["publish_at"])
         except Exception:

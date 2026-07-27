@@ -985,7 +985,7 @@ class DockerService:
                 # Only process if line is a dict
                 if not isinstance(line, dict):
                     continue
-                if "errorDetail" in line and line["errorDetail"]:
+                if line.get("errorDetail"):
                     return False, line["errorDetail"]
                 DockerService.save_build_log(script_id=script_id, line=line)
 
@@ -1024,7 +1024,7 @@ class DockerService:
                     "Creating service (running in "
                     f"{os.getenv('ENVIRONMENT')} environment, with image "
                     f"{REGISTRY_URL}/{image}, as execution "
-                    f"execution-{str(execution_id)})",
+                    f"execution-{execution_id!s})",
                 )
 
                 # env = [k + "=" + v for str(k), str(v) in environment.items()]
@@ -1172,7 +1172,7 @@ class DockerService:
                     "Creating container (running in "
                     f"{os.getenv('ENVIRONMENT')} environment, with image "
                     f"{REGISTRY_URL}/{image}, as execution "
-                    f"execution-{str(execution_id)})",
+                    f"execution-{execution_id!s})",
                 )
                 client = get_docker_client()
                 if client is None:
@@ -1294,7 +1294,7 @@ def cancel_execution_task(execution_id):
                 cancellation_results["docker_service_stopped"] = True
                 break
         except Exception as docker_error:
-            error_msg = f"Docker service stop failed: {str(docker_error)}"
+            error_msg = f"Docker service stop failed: {docker_error!s}"
             logger.warning(f"[DOCKER_CANCEL]: {error_msg}")
             cancellation_results["errors"].append(error_msg)
 
@@ -1313,7 +1313,7 @@ def cancel_execution_task(execution_id):
                 cancellation_results["docker_container_stopped"] = True
                 break
         except Exception as docker_error:
-            error_msg = f"Docker container stop failed: {str(docker_error)}"
+            error_msg = f"Docker container stop failed: {docker_error!s}"
             logger.warning(f"[DOCKER_CANCEL]: {error_msg}")
             cancellation_results["errors"].append(error_msg)
 
@@ -1323,7 +1323,7 @@ def cancel_execution_task(execution_id):
         return cancellation_results
 
     except Exception as error:
-        error_msg = f"Docker cancellation error: {str(error)}"
+        error_msg = f"Docker cancellation error: {error!s}"
         logger.error(f"[DOCKER_CANCEL]: {error_msg}")
         rollbar.report_exc_info()
         cancellation_results["errors"].append(error_msg)

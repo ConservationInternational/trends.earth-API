@@ -320,7 +320,7 @@ class User(db.Model):
             logger.error(
                 f"Invalid password hash for user {mask_email(self.email)}: {e}"
             )
-            logger.error(f"Stored hash format: {repr(self.password[:50])}...")
+            logger.error(f"Stored hash format: {self.password[:50]!r}...")
             return False
 
     def get_token(self):

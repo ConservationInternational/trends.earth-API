@@ -863,7 +863,7 @@ def update_script_config(script):
     import datetime
 
     updated = False
-    if "name" in data and data["name"]:
+    if data.get("name"):
         target_script.name = data["name"]
         updated = True
     if "description" in data:

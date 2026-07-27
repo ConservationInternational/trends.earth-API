@@ -661,7 +661,7 @@ def validate_file(func):
             if clean_filename != filename:
                 return error(status=400, detail="Invalid characters in filename")
         except ValueError as e:
-            return error(status=400, detail=f"Invalid filename: {str(e)}")
+            return error(status=400, detail=f"Invalid filename: {e!s}")
 
         return func(*args, **kwargs)
 
@@ -711,7 +711,7 @@ def validate_execution_update(func):
                     )
 
             # Sanitize results if provided
-            if "results" in json_data and json_data["results"]:
+            if json_data.get("results"):
                 # Limit results size to prevent abuse
                 import gzip
                 import json as json_lib

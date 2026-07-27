@@ -320,7 +320,7 @@ def get_swarm_status():
                 f"[ROUTER]: Failed to get cached Docker Swarm info: {swarm_error}"
             )
             swarm_info = {
-                "error": f"Cache retrieval failed: {str(swarm_error)}",
+                "error": f"Cache retrieval failed: {swarm_error!s}",
                 "nodes": [],
                 "total_nodes": 0,
                 "total_managers": 0,
@@ -338,7 +338,7 @@ def get_swarm_status():
         return jsonify(data=swarm_info), 200
 
     except Exception as e:
-        logger.error(f"[ROUTER]: Error getting swarm status: {str(e)}")
+        logger.error(f"[ROUTER]: Error getting swarm status: {e!s}")
         return error(status=500, detail="Error retrieving swarm status")
 
 

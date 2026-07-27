@@ -267,7 +267,7 @@ def _get_docker_swarm_info():
         except Exception as e:
             logger.error(f"Error checking swarm status: {e}")
             return {
-                "error": f"Swarm check failed: {str(e)}",
+                "error": f"Swarm check failed: {e!s}",
                 "nodes": [],
                 "total_nodes": 0,
                 "total_managers": 0,
@@ -606,7 +606,7 @@ def warm_swarm_cache_on_startup(self):
         }
 
     except Exception as error:
-        logger.error(f"[STARTUP]: Error warming Docker Swarm cache: {str(error)}")
+        logger.error(f"[STARTUP]: Error warming Docker Swarm cache: {error!s}")
         return {
             "success": False,
             "error": str(error),
@@ -644,7 +644,7 @@ def refresh_swarm_cache_task(self):
     except Exception as error:
         import datetime
 
-        logger.error(f"[TASK]: Error refreshing Docker Swarm cache: {str(error)}")
+        logger.error(f"[TASK]: Error refreshing Docker Swarm cache: {error!s}")
         logger.exception("Full traceback:")
 
         # Report to rollbar if available
@@ -653,7 +653,7 @@ def refresh_swarm_cache_task(self):
 
         # Return error info instead of raising to avoid task failure
         return {
-            "error": f"Cache refresh failed: {str(error)}",
+            "error": f"Cache refresh failed: {error!s}",
             "nodes": [],
             "total_nodes": 0,
             "total_managers": 0,

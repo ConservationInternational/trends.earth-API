@@ -68,8 +68,7 @@ class StatusService:
         logger.info("[SERVICE]: Getting status logs")
         logger.info("[DB]: QUERY")
 
-        if page < 1:
-            page = 1
+        page = max(page, 1)
         if per_page < 1:
             per_page = 100
 
@@ -83,7 +82,7 @@ class StatusService:
 
         # Apply sorting
         if sort:
-            sort_field = sort[1:] if sort.startswith("-") else sort
+            sort_field = sort.removeprefix("-")
             sort_direction = "desc" if sort.startswith("-") else "asc"
             if hasattr(StatusLog, sort_field):
                 query = query.order_by(

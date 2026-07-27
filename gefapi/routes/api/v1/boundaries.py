@@ -226,7 +226,7 @@ def get_boundaries():
         return jsonify(response_data), 200
 
     except Exception as e:
-        logger.error(f"Error in boundaries API: {str(e)}", exc_info=True)
+        logger.error(f"Error in boundaries API: {e!s}", exc_info=True)
         return error(500, "Internal server error while fetching boundaries")
 
 
@@ -300,7 +300,7 @@ def get_boundaries_list():
         ), 200
 
     except Exception as e:
-        logger.error(f"Error getting boundaries list: {str(e)}", exc_info=True)
+        logger.error(f"Error getting boundaries list: {e!s}", exc_info=True)
         return error(500, "Internal server error while fetching boundaries list")
 
 
@@ -368,5 +368,5 @@ def get_boundaries_last_updated():
         )
 
     except Exception as e:
-        logger.error(f"Error getting last updated timestamp: {str(e)}", exc_info=True)
+        logger.error(f"Error getting last updated timestamp: {e!s}", exc_info=True)
         return error(500, "Internal server error while fetching last updated timestamp")

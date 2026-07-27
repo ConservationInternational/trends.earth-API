@@ -48,8 +48,7 @@ class BoundariesService:
         Returns:
             Tuple of (results list, total count)
         """
-        if page < 1:
-            page = 1
+        page = max(page, 1)
         if per_page < 1:
             per_page = 100
 
@@ -342,7 +341,7 @@ class BoundariesService:
             return result
 
         except Exception as e:
-            logger.error(f"Error getting boundaries list: {str(e)}", exc_info=True)
+            logger.error(f"Error getting boundaries list: {e!s}", exc_info=True)
             raise
 
     @staticmethod
@@ -381,7 +380,7 @@ class BoundariesService:
 
         except Exception as e:
             logger.error(
-                f"Error getting last updated timestamp: {str(e)}", exc_info=True
+                f"Error getting last updated timestamp: {e!s}", exc_info=True
             )
             raise
 
@@ -419,7 +418,7 @@ class BoundariesService:
 
         except Exception as e:
             logger.error(
-                f"Error getting last updated from boundaries list: {str(e)}",
+                f"Error getting last updated from boundaries list: {e!s}",
                 exc_info=True,
             )
             return None

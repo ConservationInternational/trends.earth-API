@@ -138,7 +138,7 @@ def cleanup_unverified_users(self):
             }
 
     except Exception as error:
-        logger.error(f"[TASK]: Error cleaning up unverified users: {str(error)}")
+        logger.error(f"[TASK]: Error cleaning up unverified users: {error!s}")
         raise self.retry(exc=error, countdown=60, max_retries=3) from error
 
 
@@ -237,7 +237,7 @@ def cleanup_never_logged_in_users(self):
             }
 
     except Exception as error:
-        logger.error(f"[TASK]: Error cleaning up never-logged-in users: {str(error)}")
+        logger.error(f"[TASK]: Error cleaning up never-logged-in users: {error!s}")
         raise self.retry(exc=error, countdown=60, max_retries=3) from error
 
 
@@ -309,5 +309,5 @@ def get_user_cleanup_stats(self):
             return stats
 
     except Exception as error:
-        logger.error(f"[TASK]: Error gathering user cleanup stats: {str(error)}")
+        logger.error(f"[TASK]: Error gathering user cleanup stats: {error!s}")
         raise self.retry(exc=error, countdown=60, max_retries=3) from error

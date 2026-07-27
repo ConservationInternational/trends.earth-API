@@ -50,8 +50,7 @@ def _generate_secure_password(length: int = 16) -> str:
     chars_digits = string.digits
     chars_special = SPECIAL_CHARACTERS
 
-    if length < 12:
-        length = 12
+    length = max(length, 12)
 
     password_chars = [
         secrets.choice(chars_upper),

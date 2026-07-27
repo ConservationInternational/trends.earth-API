@@ -8,18 +8,18 @@ def error(status=400, detail="Bad Request"):
 
 
 endpoints = Blueprint("endpoints", __name__)
-import gefapi.routes.api.v1.admin  # noqa: E402, F401
-import gefapi.routes.api.v1.boundaries  # noqa: E402, F401
-import gefapi.routes.api.v1.bulk_email  # noqa: E402, F401
-import gefapi.routes.api.v1.executions  # noqa: E402, F401
-import gefapi.routes.api.v1.gee_credentials  # noqa: E402, F401
-import gefapi.routes.api.v1.google_groups  # noqa: E402, F401
-import gefapi.routes.api.v1.monitoring  # noqa: E402, F401
-import gefapi.routes.api.v1.news  # noqa: E402, F401
-import gefapi.routes.api.v1.oauth2  # noqa: E402, F401
-import gefapi.routes.api.v1.openeo_credentials  # noqa: E402, F401
-import gefapi.routes.api.v1.script_access  # noqa: E402, F401
-import gefapi.routes.api.v1.scripts  # noqa: E402, F401
-import gefapi.routes.api.v1.stats  # noqa: E402, F401
-import gefapi.routes.api.v1.unsubscribe  # noqa: E402, F401
+import gefapi.routes.api.v1.admin  # noqa: E402
+import gefapi.routes.api.v1.boundaries  # noqa: E402
+import gefapi.routes.api.v1.bulk_email  # noqa: E402
+import gefapi.routes.api.v1.executions  # noqa: E402
+import gefapi.routes.api.v1.gee_credentials  # noqa: E402
+import gefapi.routes.api.v1.google_groups  # noqa: E402
+import gefapi.routes.api.v1.monitoring  # noqa: E402
+import gefapi.routes.api.v1.news  # noqa: E402
+import gefapi.routes.api.v1.oauth2  # noqa: E402
+import gefapi.routes.api.v1.openeo_credentials  # noqa: E402
+import gefapi.routes.api.v1.script_access  # noqa: E402
+import gefapi.routes.api.v1.scripts  # noqa: E402
+import gefapi.routes.api.v1.stats  # noqa: E402
+import gefapi.routes.api.v1.unsubscribe  # noqa: E402
 import gefapi.routes.api.v1.users  # noqa: E402, F401

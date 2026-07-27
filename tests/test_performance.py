@@ -268,7 +268,7 @@ class TestLoadTesting:
                         errors.append(f"{endpoint}: {response.status_code}")
 
                 except Exception as e:
-                    errors.append(f"{endpoint}: {str(e)}")
+                    errors.append(f"{endpoint}: {e!s}")
 
         total_elapsed = time.time() - start_time
 
@@ -306,7 +306,7 @@ class TestStressTesting:
                     errors.append(f"Request {i}: {response.status_code}")
 
             except Exception as e:
-                errors.append(f"Request {i}: {str(e)}")
+                errors.append(f"Request {i}: {e!s}")
 
         # Analyze results
         if response_times:

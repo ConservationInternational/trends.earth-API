@@ -305,14 +305,14 @@ def run_migrations():
                         "doesn't exist in the deployed code!"
                     )
                     print("❌ CRITICAL: Migration revision mismatch detected!")
-                    print("")
+                    print()
                     print("The database is at a revision that doesn't exist in the")
                     print("current codebase. This usually means:")
                     print("  1. The Docker image is stale and missing new migrations")
                     print(
                         "  2. The database was migrated ahead by a previous deployment"
                     )
-                    print("")
+                    print()
 
                     # Try to get current database revision for debugging
                     try:
@@ -325,7 +325,7 @@ def run_migrations():
                             logger.error(f"Available heads: {heads}")
                             print(f"📋 Database is at revision: {current_rev}")
                             print(f"📋 Available code heads: {heads}")
-                            print("")
+                            print()
                             print("To fix this issue:")
                             print(
                                 "  1. Redeploy with a fresh Docker image (force pull)"

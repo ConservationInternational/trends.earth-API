@@ -11,7 +11,7 @@
     "created_at": "datetime",
     "updated_at": "datetime",
     "user_id": "UUID",
-    "status": "string",           # PENDING, UPLOADED, SUCCESS, FAILED
+    "status": "string",  # PENDING, UPLOADED, SUCCESS, FAILED
     "public": "boolean",
     "restricted": "boolean",
     "allowed_roles": ["string"],
@@ -22,15 +22,15 @@
     "memory_limit": "integer",
     "environment": "string",
     "environment_version": "string",
-    "compute_type": "string",     # gee, openeo, batch
+    "compute_type": "string",  # gee, openeo, batch
     "uses_gee": "boolean",
-    "build_error": "string",      # populated on build failure
+    "build_error": "string",  # populated on build failure
     # Batch-specific (compute_type == "batch" only)
     "batch_job_definition": "string",
     "batch_job_queue": "string",
     "batch_image": "string",
     # openEO-specific
-    "openeo_backend_url": "string"
+    "openeo_backend_url": "string",
 }
 ```
 
@@ -41,15 +41,15 @@
     "id": "UUID",
     "start_date": "datetime",
     "end_date": "datetime",
-    "status": "string",           # PENDING, READY, RUNNING, FINISHED, FAILED, CANCELLED, CANCELLING
-    "progress": "integer",        # 0-100
+    "status": "string",  # PENDING, READY, RUNNING, FINISHED, FAILED, CANCELLED, CANCELLING
+    "progress": "integer",  # 0-100
     "params": "object",
     "results": "object",
     "script_id": "UUID",
     "user_id": "UUID",
-    "queued_at": "datetime",      # set when queued due to concurrency limit
+    "queued_at": "datetime",  # set when queued due to concurrency limit
     "dispatched_at": "datetime",  # set when docker_run Celery task starts processing
-    "duration": "float"           # seconds, only when included via ?include=duration
+    "duration": "float",  # seconds, only when included via ?include=duration
 }
 ```
 
@@ -77,11 +77,11 @@ Admin users bypass queueing.
     "id": "UUID",
     "created_at": "datetime",
     "email": "string (unique)",
-    "role": "string",             # USER, ADMIN, SUPERADMIN
+    "role": "string",  # USER, ADMIN, SUPERADMIN
     "name": "string",
     "country": "string",
     "institution": "string",
-    "max_concurrent_executions": "integer"
+    "max_concurrent_executions": "integer",
 }
 ```
 
@@ -100,7 +100,7 @@ Admin users bypass queueing.
     # Set only for status-change events (null for periodic snapshots):
     "status_from": "string",
     "status_to": "string",
-    "execution_id": "UUID"
+    "execution_id": "UUID",
 }
 ```
 

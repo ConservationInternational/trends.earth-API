@@ -242,7 +242,7 @@ def cleanup_stale_executions(self):
             return result
 
         except Exception as error:
-            logger.error(f"[TASK]: Error during stale execution cleanup: {str(error)}")
+            logger.error(f"[TASK]: Error during stale execution cleanup: {error!s}")
             logger.exception("Full traceback:")
 
             # Try to rollback the session
@@ -405,7 +405,7 @@ def cleanup_finished_executions(self):
 
         except Exception as error:
             logger.error(
-                f"[TASK]: Error during finished execution cleanup: {str(error)}"
+                f"[TASK]: Error during finished execution cleanup: {error!s}"
             )
             logger.exception("Full traceback:")
 
@@ -568,7 +568,7 @@ def cleanup_old_failed_executions(self):
 
         except Exception as error:
             logger.error(
-                f"[TASK]: Error during old failed execution cleanup: {str(error)}"
+                f"[TASK]: Error during old failed execution cleanup: {error!s}"
             )
             logger.exception("Full traceback:")
 

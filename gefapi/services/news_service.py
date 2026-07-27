@@ -49,8 +49,7 @@ class NewsService:
         """
         logger.info("[SERVICE]: Getting news items")
 
-        if page < 1:
-            page = 1
+        page = max(page, 1)
         if per_page < 1:
             per_page = 20
 
@@ -95,7 +94,7 @@ class NewsService:
 
         # Apply sorting
         if sort:
-            sort_field = sort[1:] if sort.startswith("-") else sort
+            sort_field = sort.removeprefix("-")
             sort_direction = "desc" if sort.startswith("-") else "asc"
             if hasattr(NewsItem, sort_field):
                 query = query.order_by(

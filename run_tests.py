@@ -22,7 +22,7 @@ def run_command(cmd, description, ignore_errors=False):
             shell=True,
             check=True,
             capture_output=True,
-            text=True,  # noqa: S602
+            text=True,
         )
         print(f"✅ {description} completed successfully")
         if result.stdout:

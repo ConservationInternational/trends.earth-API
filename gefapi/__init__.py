@@ -527,7 +527,7 @@ def health_check():
         result = db.session.execute(text("SELECT 1 as health_check")).fetchone()
         db_status = "healthy" if result and result[0] == 1 else "unhealthy"
     except Exception as e:
-        logger.warning(f"Database health check failed: {str(e)}")
+        logger.warning(f"Database health check failed: {e!s}")
         db_status = "unhealthy"
         # Don't fail the health check just because database is down
         # health_status = "degraded"
@@ -657,7 +657,7 @@ def swagger_spec():
     except Exception as e:
         logger.error(f"Failed to generate swagger spec dynamically: {e}")
         logger.error(f"Exception type: {type(e).__name__}")
-        logger.error(f"Exception details: {str(e)}")
+        logger.error(f"Exception details: {e!s}")
         import traceback
 
         logger.error(f"Full traceback: {traceback.format_exc()}")
@@ -1130,7 +1130,7 @@ def create_token():
         logger.warning(f"[JWT]: Account locked for {mask_email(email)}")
         return jsonify(e.serialize), 401
     except Exception as e:
-        logger.error(f"[JWT]: Error during authentication: {str(e)}")
+        logger.error(f"[JWT]: Error during authentication: {e!s}")
         return jsonify({"msg": "Authentication failed"}), 500
 
     if user is None:

@@ -251,7 +251,7 @@ def update_user_google_groups_preferences():
                 logger.error(f"Failed to sync Google Groups for user {masked}: {e}")
                 # Don't fail the request if sync fails - preferences are still saved
                 sync_results = {
-                    "error": f"Sync failed: {str(e)}",
+                    "error": f"Sync failed: {e!s}",
                     "user_email": user.email,
                 }
         else:
