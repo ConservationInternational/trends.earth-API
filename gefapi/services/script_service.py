@@ -17,7 +17,7 @@ from gefapi.config import SETTINGS
 from gefapi.errors import InvalidFile, NotAllowed, ScriptDuplicated, ScriptNotFound
 from gefapi.models import Script, ScriptLog, User
 from gefapi.s3 import push_script_to_s3
-from gefapi.services import docker_build
+from gefapi.services.docker_service import docker_build
 from gefapi.utils.permissions import is_admin_or_higher
 
 # Security: Explicitly allowed fields for filter and sort operations

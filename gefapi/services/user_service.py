@@ -21,7 +21,7 @@ from gefapi.errors import (
     UserNotFound,
 )
 from gefapi.models import User
-from gefapi.services import EmailService
+from gefapi.services.email_service import EmailService
 from gefapi.utils import mask_email
 from gefapi.utils.security_events import (
     log_authentication_event,

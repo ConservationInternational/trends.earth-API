@@ -17,13 +17,11 @@ from gefapi.errors import (
     ScriptStateNotValid,
 )
 from gefapi.models import Execution, ExecutionLog, Script, StatusLog, User
-from gefapi.services import (
-    EmailService,
-    ScriptService,
-    UserService,
-    batch_run,
-    docker_run,
-)
+from gefapi.services.batch_service import batch_run
+from gefapi.services.docker_service import docker_run
+from gefapi.services.email_service import EmailService
+from gefapi.services.script_service import ScriptService
+from gefapi.services.user_service import UserService
 from gefapi.utils import mask_email
 from gefapi.utils.permissions import is_admin_or_higher
 
