@@ -210,10 +210,7 @@ class RefreshTokenService:
 
         active_tokens = (
             RefreshToken.query.filter_by(user_id=user_id, is_revoked=False)
-            .filter(
-                RefreshToken.expires_at
-                > utcnow()
-            )
+            .filter(RefreshToken.expires_at > utcnow())
             .all()
         )
 
@@ -253,8 +250,7 @@ class RefreshTokenService:
         logger.info("[SERVICE]: Cleaning up expired refresh tokens")
 
         expired_tokens = RefreshToken.query.filter(
-            RefreshToken.expires_at
-            <= utcnow()
+            RefreshToken.expires_at <= utcnow()
         ).all()
 
         for token in expired_tokens:

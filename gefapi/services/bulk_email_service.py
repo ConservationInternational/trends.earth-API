@@ -124,8 +124,6 @@ def _sanitize_html(html_content: str) -> str:
     )
 
 
-
-
 def _approved_senders():
     """Return the set of approved sender emails (lowercase)."""
     return set(SETTINGS.get("BULK_EMAIL_APPROVED_SENDERS", []))

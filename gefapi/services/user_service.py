@@ -392,8 +392,7 @@ class UserService:
                         if deletion_record.deleted_at
                         else None,
                         "days_since_deletion": (
-                            utcnow()
-                            - deletion_record.deleted_at
+                            utcnow() - deletion_record.deleted_at
                         ).days
                         if deletion_record.deleted_at
                         else None,
