@@ -1,6 +1,5 @@
 """REFRESH TOKEN SERVICE"""
 
-import datetime
 import logging
 
 from flask import request
@@ -8,7 +7,7 @@ from flask_jwt_extended import create_access_token
 
 from gefapi import db
 from gefapi.models.refresh_token import RefreshToken
-from gefapi.utils import mask_email
+from gefapi.utils import mask_email, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +212,7 @@ class RefreshTokenService:
             RefreshToken.query.filter_by(user_id=user_id, is_revoked=False)
             .filter(
                 RefreshToken.expires_at
-                > datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+                > utcnow()
             )
             .all()
         )
@@ -255,7 +254,7 @@ class RefreshTokenService:
 
         expired_tokens = RefreshToken.query.filter(
             RefreshToken.expires_at
-            <= datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+            <= utcnow()
         ).all()
 
         for token in expired_tokens:

@@ -1,16 +1,12 @@
 """BULK EMAIL MODEL"""
 
-import datetime
 import uuid
 
 from gefapi import db
 from gefapi.models import GUID
+from gefapi.utils import utcnow
 
 db.GUID = GUID
-
-
-def _utcnow():
-    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
 
 class BulkEmail(db.Model):
@@ -45,8 +41,8 @@ class BulkEmail(db.Model):
     recipient_count = db.Column(db.Integer, nullable=True)
     created_by_id = db.Column(db.GUID(), db.ForeignKey("user.id"), nullable=False)
     sent_by_id = db.Column(db.GUID(), db.ForeignKey("user.id"), nullable=True)
-    created_at = db.Column(db.DateTime(), default=_utcnow)
-    updated_at = db.Column(db.DateTime(), default=_utcnow, onupdate=_utcnow)
+    created_at = db.Column(db.DateTime(), default=utcnow)
+    updated_at = db.Column(db.DateTime(), default=utcnow, onupdate=utcnow)
     sent_at = db.Column(db.DateTime(), nullable=True)
     # Category for subscription filtering: 'news', 'engagement', 'system_updates',
     # or NULL (send to all regardless of subscription preferences).

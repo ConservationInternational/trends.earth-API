@@ -1,16 +1,12 @@
 """BULK EMAIL RECIPIENT LIST MODEL"""
 
-import datetime
 import uuid
 
 from gefapi import db
 from gefapi.models import GUID
+from gefapi.utils import utcnow
 
 db.GUID = GUID
-
-
-def _utcnow():
-    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
 
 class BulkEmailRecipientList(db.Model):
@@ -38,8 +34,8 @@ class BulkEmailRecipientList(db.Model):
     # Cached count resolved at save time â€” may be stale
     estimated_count = db.Column(db.Integer, nullable=True)
     created_by_id = db.Column(db.GUID(), db.ForeignKey("user.id"), nullable=False)
-    created_at = db.Column(db.DateTime(), default=_utcnow)
-    updated_at = db.Column(db.DateTime(), default=_utcnow, onupdate=_utcnow)
+    created_at = db.Column(db.DateTime(), default=utcnow)
+    updated_at = db.Column(db.DateTime(), default=utcnow, onupdate=utcnow)
 
     created_by = db.relationship("User", foreign_keys=[created_by_id])
 

@@ -10,6 +10,7 @@ from sqlalchemy import or_
 from gefapi import db
 from gefapi.models import Execution, ExecutionLog, Script
 from gefapi.services.docker_service import get_docker_client
+from gefapi.utils import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +253,7 @@ def monitor_failed_docker_services(self):
             executions_marked_failed = 0
             skipped_grace_period = 0
 
-            grace_cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+            grace_cutoff = utcnow() - datetime.timedelta(
                 seconds=DISPATCH_GRACE_PERIOD_SECONDS
             )
 
@@ -309,7 +310,7 @@ def monitor_failed_docker_services(self):
 
                         # Mark execution as failed
                         execution.status = "FAILED"
-                        execution.end_date = datetime.datetime.now(datetime.UTC)
+                        execution.end_date = utcnow()
                         execution.progress = 100
 
                         # Add log entry
@@ -344,7 +345,7 @@ def monitor_failed_docker_services(self):
 
                             # Mark execution as failed
                             execution.status = "FAILED"
-                            execution.end_date = datetime.datetime.now(datetime.UTC)
+                            execution.end_date = utcnow()
                             execution.progress = 100
 
                             # Add log entry

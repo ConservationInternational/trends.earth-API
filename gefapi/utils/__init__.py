@@ -1,5 +1,17 @@
 """Utils module"""
 
+import datetime
+
+
+def utcnow() -> datetime.datetime:
+    """Return the current UTC time as a timezone-naive datetime.
+
+    Uses ``datetime.now(UTC)`` rather than the deprecated ``utcnow()``, while
+    keeping the result naive for compatibility with the existing DB schema
+    which uses ``TIMESTAMP WITHOUT TIME ZONE`` columns.
+    """
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+
 
 def mask_email(email: str) -> str:
     """Mask an email address for safe inclusion in log messages.

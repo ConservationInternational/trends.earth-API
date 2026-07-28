@@ -1,6 +1,5 @@
 """DOCKER SERVICE"""
 
-import datetime
 import gzip
 import json
 import logging
@@ -22,6 +21,7 @@ from gefapi import db
 from gefapi.config import SETTINGS
 from gefapi.models import Execution, Script, ScriptLog
 from gefapi.s3 import get_script_from_s3, push_params_to_s3
+from gefapi.utils import utcnow
 
 REGISTRY_URL = SETTINGS.get("REGISTRY_URL")
 DOCKER_HOST = SETTINGS.get("DOCKER_HOST")
@@ -462,7 +462,7 @@ def docker_run(execution_id, image, environment, params):
         logger.error(f"Execution with id {execution_id} not found.")
         return
     try:
-        execution.dispatched_at = datetime.datetime.now(datetime.UTC)
+        execution.dispatched_at = utcnow()
         execution.status = "READY"
     except Exception:
         logger.warning(

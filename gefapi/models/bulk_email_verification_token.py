@@ -11,6 +11,7 @@ import uuid
 
 from gefapi import db
 from gefapi.models import GUID
+from gefapi.utils import utcnow
 
 db.GUID = GUID
 
@@ -34,7 +35,7 @@ class BulkEmailVerificationToken(db.Model):
     bulk_email_id = db.Column(db.GUID(), db.ForeignKey("bulk_email.id"), nullable=False)
     created_at = db.Column(
         db.DateTime(),
-        default=lambda: datetime.datetime.now(datetime.UTC).replace(tzinfo=None),
+        default=utcnow,
     )
     expires_at = db.Column(db.DateTime(), nullable=False)
     used_at = db.Column(db.DateTime(), nullable=True)
@@ -46,7 +47,7 @@ class BulkEmailVerificationToken(db.Model):
         self.user_id = user_id
         self.bulk_email_id = bulk_email_id
         self.token = self._generate_otp()
-        now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+        now = utcnow()
         self.created_at = now
         self.expires_at = now + datetime.timedelta(
             minutes=BULK_EMAIL_VERIFICATION_TOKEN_EXPIRY_MINUTES
@@ -59,7 +60,7 @@ class BulkEmailVerificationToken(db.Model):
 
     @property
     def is_expired(self):
-        now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+        now = utcnow()
         return now > self.expires_at
 
     @property

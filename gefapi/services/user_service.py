@@ -22,7 +22,7 @@ from gefapi.errors import (
 )
 from gefapi.models import User
 from gefapi.services.email_service import EmailService
-from gefapi.utils import mask_email
+from gefapi.utils import mask_email, utcnow
 from gefapi.utils.security_events import (
     log_authentication_event,
     log_password_event,
@@ -392,7 +392,7 @@ class UserService:
                         if deletion_record.deleted_at
                         else None,
                         "days_since_deletion": (
-                            datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+                            utcnow()
                             - deletion_record.deleted_at
                         ).days
                         if deletion_record.deleted_at
@@ -1159,7 +1159,7 @@ class UserService:
 
         # Successful authentication - clear failed login count and update timestamps
         try:
-            now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+            now = utcnow()
             user.clear_failed_logins()  # Reset lockout state
             user.last_login_at = now
             user.last_activity_at = now

@@ -24,6 +24,7 @@ from gefapi.models.bulk_email_verification_token import (
     BulkEmailVerificationToken,
 )
 from gefapi.services.email_service import EmailService
+from gefapi.utils import utcnow
 from gefapi.utils.security_events import log_security_event
 
 logger = logging.getLogger(__name__)
@@ -123,8 +124,6 @@ def _sanitize_html(html_content: str) -> str:
     )
 
 
-def _utcnow():
-    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
 
 def _approved_senders():
@@ -355,7 +354,7 @@ def _execute_send(bulk_email_id: str, sent_by_user_id: str) -> None:
             )
     except Exception:
         c.status = "FAILED"
-        c.sent_at = _utcnow()
+        c.sent_at = utcnow()
         db.session.commit()
         log_security_event(
             "BULK_EMAIL_SEND_FAILED",
@@ -366,7 +365,7 @@ def _execute_send(bulk_email_id: str, sent_by_user_id: str) -> None:
         raise
 
     c.status = "SENT"
-    c.sent_at = _utcnow()
+    c.sent_at = utcnow()
     c.recipient_count = len(recipients)
     db.session.commit()
 
@@ -545,7 +544,7 @@ class BulkEmailService:
         if "fields_data" in kwargs:
             fd = kwargs["fields_data"]
             c.fields_data = fd if isinstance(fd, dict) else None
-        c.updated_at = _utcnow()
+        c.updated_at = utcnow()
         db.session.commit()
         log_security_event(
             "BULK_EMAIL_DRAFT_UPDATED",
@@ -584,7 +583,7 @@ class BulkEmailService:
             raise BulkEmailAlreadySent(
                 f"Cannot create a draft copy of a bulk email with status '{c.status}'."
             )
-        now = _utcnow()
+        now = utcnow()
         draft = BulkEmail(
             name=f"Copy of {c.name}",
             subject=c.subject,
@@ -634,7 +633,7 @@ class BulkEmailService:
             )
             .all()
         )
-        now = _utcnow()
+        now = utcnow()
         for t in prior:
             t.used_at = now  # mark superseded
 
@@ -762,7 +761,7 @@ class BulkEmailService:
                 raise AuthError("Invalid or expired verification code.")
             if otp.token != str(code):
                 # Burn the OTP on wrong guess — caller must request a new one
-                otp.used_at = _utcnow()
+                otp.used_at = utcnow()
                 db.session.flush()
                 from gefapi.errors import AuthError
 
@@ -774,7 +773,7 @@ class BulkEmailService:
                 raise AuthError(
                     "Invalid verification code. Request a new code and try again."
                 )
-            otp.used_at = _utcnow()
+            otp.used_at = utcnow()
             db.session.flush()
 
         # Mark as SENDING and dispatch to the Celery worker.  The HTTP
