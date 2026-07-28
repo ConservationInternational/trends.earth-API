@@ -43,7 +43,9 @@ def cleanup_stale_executions(self):
     with app.app_context():
         try:
             # Calculate cutoff date (3 days ago)
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(days=3)
+            cutoff_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+                days=3
+            )
 
             logger.info(f"[TASK]: Looking for executions started before {cutoff_date}")
 
@@ -117,7 +119,7 @@ def cleanup_stale_executions(self):
                     else:
                         # Set execution status to FAILED for stale non-terminal states
                         execution.status = "FAILED"
-                        execution.end_date = datetime.datetime.utcnow()
+                        execution.end_date = datetime.datetime.now(datetime.UTC)
                         execution.progress = 100
                         status_changed = True
                         marked_failed_count += 1
@@ -222,7 +224,7 @@ def cleanup_stale_executions(self):
                     f"[TASK]: Failed to commit execution updates: {commit_error}"
                 )
                 db.session.rollback()
-                raise commit_error
+                raise
 
             result = {
                 "cleaned_up": cleaned_up_count,
@@ -254,7 +256,7 @@ def cleanup_stale_executions(self):
                 rollbar.report_exc_info()
 
             # Re-raise the error so Celery can handle it
-            raise error
+            raise
 
 
 @celery.task(base=ExecutionCleanupTask, bind=True)
@@ -268,7 +270,9 @@ def cleanup_finished_executions(self):
     with app.app_context():
         try:
             # Calculate cutoff date (1 day ago)
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(days=1)
+            cutoff_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+                days=1
+            )
 
             logger.info(f"[TASK]: Looking for executions finished after {cutoff_date}")
 
@@ -412,7 +416,7 @@ def cleanup_finished_executions(self):
                 rollbar.report_exc_info()
 
             # Re-raise the error so Celery can handle it
-            raise error
+            raise
 
 
 @celery.task(base=ExecutionCleanupTask, bind=True)
@@ -426,7 +430,9 @@ def cleanup_old_failed_executions(self):
     with app.app_context():
         try:
             # Calculate cutoff date (14 days ago)
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(days=14)
+            cutoff_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+                days=14
+            )
 
             logger.info(
                 f"[TASK]: Looking for failed executions older than {cutoff_date}"
@@ -575,4 +581,4 @@ def cleanup_old_failed_executions(self):
                 rollbar.report_exc_info()
 
             # Re-raise the error so Celery can handle it
-            raise error
+            raise

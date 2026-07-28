@@ -823,7 +823,7 @@ def extract_route_info_from_app(rule, endpoint_func) -> dict[str, dict]:
                 try:
                     # Handle different Flask versions
                     if isinstance(converter_info, tuple) and len(converter_info) >= 3:
-                        converter, arguments, variable = converter_info[:3]
+                        converter, _arguments, variable = converter_info[:3]
                     else:
                         variable = key
                         converter = converter_info
@@ -997,7 +997,7 @@ def get_revoked_tokens_storage():
     convenience fallback.  In production Redis is required — callers must
     handle the ``None`` return (fail closed).
     """
-    global _revoked_tokens_redis_client, _revoked_tokens_last_retry
+    global _revoked_tokens_last_retry  # only _last_retry is assigned here
 
     # Fast path — we already have a live client
     if _revoked_tokens_redis_client is not None:

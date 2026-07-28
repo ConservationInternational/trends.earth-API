@@ -462,7 +462,7 @@ def docker_run(execution_id, image, environment, params):
         logger.error(f"Execution with id {execution_id} not found.")
         return
     try:
-        execution.dispatched_at = datetime.datetime.utcnow()
+        execution.dispatched_at = datetime.datetime.now(datetime.UTC)
         execution.status = "READY"
     except Exception:
         logger.warning(
@@ -482,7 +482,7 @@ def docker_run(execution_id, image, environment, params):
         push_params_to_s3(params_gz_file, params_gz_file.name)
 
     logger.debug("Running...")
-    correct, error = DockerService.run(
+    correct, _error = DockerService.run(
         execution_id=execution_id, image=image, environment=environment
     )
     logger.debug("Execution run - changing status")
@@ -584,7 +584,7 @@ class DockerService:
         # Capture pre-push manifest state to detect tag updates even if the
         # streaming push logs are ambiguous or truncated.
         repo_name, reference = _split_repo_ref(tag_image)
-        pre_exists, pre_digest, pre_last_mod, pre_msg = _registry_get_manifest_digest(
+        pre_exists, pre_digest, _pre_last_mod, pre_msg = _registry_get_manifest_digest(
             REGISTRY_URL, repo_name, reference
         )
         if pre_exists:
@@ -968,7 +968,7 @@ class DockerService:
             if client is None:
                 logger.error("Docker client is not available.")
                 return False, Exception("Docker client is not available.")
-            image, logs = client.images.build(
+            _image, logs = client.images.build(
                 path=path,
                 rm=True,
                 tag=tag_full,
@@ -1188,7 +1188,7 @@ class DockerService:
                     extra_hosts={"169.254.169.254": "169.254.169.254"},
                 )
         except docker_errors.ImageNotFound as error:
-            logger.error("Image not found", error)
+            logger.error("Image not found: %s", error)
 
             return False, error
         except Exception as error:
@@ -1217,7 +1217,7 @@ class DockerService:
                 f"for execution {execution_id}: {e}"
             )
             rollbar.report_exc_info()
-            raise e
+            raise
 
 
 @celery_app.task(name="docker.get_service_logs")
@@ -1258,7 +1258,7 @@ def get_docker_logs_task(execution_id):
         )
         rollbar.report_exc_info()
         # Re-raise the exception to mark the task as failed
-        raise e
+        raise
 
 
 @celery_app.task(name="docker.cancel_execution")

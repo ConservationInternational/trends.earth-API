@@ -117,9 +117,7 @@ def get_boundaries():
             try:
                 from datetime import datetime
 
-                created_at_since = datetime.fromisoformat(
-                    created_at_since.replace("Z", "+00:00")
-                )
+                created_at_since = datetime.fromisoformat(created_at_since)
             except ValueError:
                 return error(
                     400,
@@ -131,9 +129,7 @@ def get_boundaries():
             try:
                 from datetime import datetime
 
-                updated_at_since = datetime.fromisoformat(
-                    updated_at_since.replace("Z", "+00:00")
-                )
+                updated_at_since = datetime.fromisoformat(updated_at_since)
             except ValueError:
                 return error(
                     400,
@@ -225,8 +221,8 @@ def get_boundaries():
 
         return jsonify(response_data), 200
 
-    except Exception as e:
-        logger.error(f"Error in boundaries API: {e!s}", exc_info=True)
+    except Exception:
+        logger.exception("Error in boundaries API")
         return error(500, "Internal server error while fetching boundaries")
 
 
@@ -299,8 +295,8 @@ def get_boundaries_list():
             }
         ), 200
 
-    except Exception as e:
-        logger.error(f"Error getting boundaries list: {e!s}", exc_info=True)
+    except Exception:
+        logger.exception("Error getting boundaries list")
         return error(500, "Internal server error while fetching boundaries list")
 
 
@@ -367,6 +363,6 @@ def get_boundaries_last_updated():
             200,
         )
 
-    except Exception as e:
-        logger.error(f"Error getting last updated timestamp: {e!s}", exc_info=True)
+    except Exception:
+        logger.exception("Error getting last updated timestamp")
         return error(500, "Internal server error while fetching last updated timestamp")

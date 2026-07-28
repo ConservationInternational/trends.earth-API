@@ -18,12 +18,12 @@ class TestDockerCompletedMonitoring:
         """Test basic monitoring task functionality"""
         # Set execution to FINISHED status (already completed in database)
         sample_execution.status = "FINISHED"
-        sample_execution.end_date = datetime.datetime.utcnow() - datetime.timedelta(
-            minutes=30
-        )
-        sample_execution.start_date = datetime.datetime.utcnow() - datetime.timedelta(
-            hours=1
-        )
+        sample_execution.end_date = datetime.datetime.now(
+            tz=datetime.UTC
+        ) - datetime.timedelta(minutes=30)
+        sample_execution.start_date = datetime.datetime.now(
+            tz=datetime.UTC
+        ) - datetime.timedelta(hours=1)
         db_session.add(sample_execution)
         db_session.commit()
 
@@ -65,12 +65,12 @@ class TestDockerCompletedMonitoring:
         """Test monitoring when no lingering services exist"""
         # Set execution to FINISHED status
         sample_execution.status = "FINISHED"
-        sample_execution.end_date = datetime.datetime.utcnow() - datetime.timedelta(
-            minutes=30
-        )
-        sample_execution.start_date = datetime.datetime.utcnow() - datetime.timedelta(
-            hours=1
-        )
+        sample_execution.end_date = datetime.datetime.now(
+            tz=datetime.UTC
+        ) - datetime.timedelta(minutes=30)
+        sample_execution.start_date = datetime.datetime.now(
+            tz=datetime.UTC
+        ) - datetime.timedelta(hours=1)
         db_session.add(sample_execution)
         db_session.commit()
 
@@ -110,12 +110,12 @@ class TestDockerCompletedMonitoring:
         """Test monitoring when service removal fails"""
         # Set execution to FINISHED status
         sample_execution.status = "FINISHED"
-        sample_execution.end_date = datetime.datetime.utcnow() - datetime.timedelta(
-            minutes=30
-        )
-        sample_execution.start_date = datetime.datetime.utcnow() - datetime.timedelta(
-            hours=1
-        )
+        sample_execution.end_date = datetime.datetime.now(
+            tz=datetime.UTC
+        ) - datetime.timedelta(minutes=30)
+        sample_execution.start_date = datetime.datetime.now(
+            tz=datetime.UTC
+        ) - datetime.timedelta(hours=1)
         db_session.add(sample_execution)
         db_session.commit()
 
@@ -155,9 +155,9 @@ class TestDockerCompletedMonitoring:
         """Test that monitoring ignores running executions"""
         # Set execution to RUNNING status (should be ignored)
         sample_execution.status = "RUNNING"
-        sample_execution.start_date = datetime.datetime.utcnow() - datetime.timedelta(
-            hours=1
-        )
+        sample_execution.start_date = datetime.datetime.now(
+            tz=datetime.UTC
+        ) - datetime.timedelta(hours=1)
         db_session.add(sample_execution)
         db_session.commit()
 

@@ -97,7 +97,7 @@ class TestUserServiceSuperAdmin:
             created_user = UserService.create_user(superadmin_data)
 
             # Filter by SUPERADMIN role
-            users, total = UserService.get_users(filter_param="role=SUPERADMIN")
+            users, _total = UserService.get_users(filter_param="role=SUPERADMIN")
 
             superadmin_users = [u for u in users if u.role == "SUPERADMIN"]
             assert len(superadmin_users) > 0
@@ -141,7 +141,7 @@ class TestScriptServiceWithSuperAdmin:
             user = db.session.merge(regular_user)
             script = db.session.merge(sample_script)
 
-            scripts, total = ScriptService.get_scripts(user=user)
+            scripts, _total = ScriptService.get_scripts(user=user)
 
             # Regular user should only see own scripts + public scripts
             for script in scripts:
@@ -229,7 +229,7 @@ class TestExecutionServiceWithSuperAdmin:
             Execution.query.filter(Execution.user_id != user.id).delete()
             db.session.commit()
 
-            executions, total = ExecutionService.get_executions(user=user)
+            executions, _total = ExecutionService.get_executions(user=user)
 
             # Regular user should only see own executions
             for execution in executions:
@@ -254,7 +254,7 @@ class TestExecutionServiceWithSuperAdmin:
             superadmin = self.create_mock_user("SUPERADMIN")
 
             # SUPERADMIN should be able to filter by target_user_id
-            executions, total = ExecutionService.get_executions(
+            executions, _total = ExecutionService.get_executions(
                 user=superadmin, target_user_id=execution.user_id
             )
 

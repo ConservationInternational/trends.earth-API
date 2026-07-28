@@ -71,7 +71,7 @@ def cleanup_inactive_refresh_tokens(self):
         from gefapi.models.refresh_token import RefreshToken
 
         with app.app_context():
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(
+            cutoff_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
                 days=inactive_days
             )
 

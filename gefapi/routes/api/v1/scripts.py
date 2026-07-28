@@ -4,6 +4,7 @@ This module contains all endpoints related to script creation, management,
 publishing, and retrieval operations.
 """
 
+from datetime import UTC
 import logging
 import os
 import tempfile
@@ -209,9 +210,9 @@ def export_scripts_csv():
                 row[key] = ""
         rows.append(row)
 
-    from datetime import datetime as dt
+    from datetime import datetime
 
-    timestamp = dt.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     filename = f"scripts_export_{timestamp}.csv"
     logger.info(
         "[AUDIT] CSV export: table=scripts rows=%d filename=%s "

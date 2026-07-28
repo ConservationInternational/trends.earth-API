@@ -87,7 +87,7 @@ def monitor_openeo_jobs(self):
 
     with app.app_context():
         try:
-            cutoff = datetime.datetime.utcnow() - datetime.timedelta(
+            cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
                 days=_LOOKBACK_DAYS
             )
 
@@ -304,7 +304,7 @@ def _poll_execution(execution):
 
     execution.status = new_status
     execution.results = updated_results
-    execution.end_date = datetime.datetime.utcnow()
+    execution.end_date = datetime.datetime.now(datetime.UTC)
 
     # Write a log entry
     log_entry = ExecutionLog(

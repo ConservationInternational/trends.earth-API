@@ -37,7 +37,7 @@ class RefreshTokenService:
         except Exception as error:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error creating refresh token: {error}")
-            raise error
+            raise
 
     @staticmethod
     def validate_refresh_token(token_string):
@@ -178,7 +178,7 @@ class RefreshTokenService:
         except Exception as error:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error revoking refresh token: {error}")
-            raise error
+            raise
 
     @staticmethod
     def revoke_all_user_tokens(user_id):
@@ -202,7 +202,7 @@ class RefreshTokenService:
         except Exception as error:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error revoking user tokens: {error}")
-            raise error
+            raise
 
     @staticmethod
     def get_user_active_sessions(user_id):
@@ -246,7 +246,7 @@ class RefreshTokenService:
         except Exception as error:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error invalidating user sessions: {error}")
-            raise error
+            raise
 
     @staticmethod
     def cleanup_expired_tokens():
@@ -270,7 +270,7 @@ class RefreshTokenService:
         except Exception as error:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error cleaning up expired tokens: {error}")
-            raise error
+            raise
 
     @staticmethod
     def _get_device_info():

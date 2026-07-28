@@ -6,7 +6,7 @@ from functools import lru_cache
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, ClassVar
 import uuid
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -331,7 +331,7 @@ class User(db.Model):
     # Account Lockout Methods
     # -------------------------------------------------------------------------
     # Lockout thresholds and durations
-    LOCKOUT_THRESHOLDS = [
+    LOCKOUT_THRESHOLDS: ClassVar[list[tuple[int, int | None]]] = [
         (5, 15),  # After 5 failures: lock for 15 minutes
         (10, 60),  # After 10 failures: lock for 60 minutes
         (20, None),  # After 20 failures: lock until password reset
@@ -510,7 +510,7 @@ class User(db.Model):
             return None
         try:
             decoded = base64.b64decode(encrypted_data.encode("utf-8"))
-        except Exception as e:
+        except (ValueError, UnicodeEncodeError) as e:
             masked = mask_email(self.email)
             logger.error(f"Failed to base64-decode GEE data for user {masked}: {e}")
             return None
@@ -521,7 +521,7 @@ class User(db.Model):
             return fernet.decrypt(decoded).decode("utf-8")
         except InvalidToken:
             pass
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # Fernet may raise beyond InvalidToken
             masked = mask_email(self.email)
             logger.error(
                 f"Unexpected error decrypting GEE data for user {masked} "
@@ -546,7 +546,7 @@ class User(db.Model):
                 f"neither current nor legacy key could decrypt the data."
             )
             return None
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # Fernet legacy-key decrypt may raise beyond InvalidToken
             logger.error(
                 f"Failed to decrypt GEE data for user {mask_email(self.email)}: {e}"
             )

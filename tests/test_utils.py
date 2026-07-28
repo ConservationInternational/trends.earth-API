@@ -2,7 +2,7 @@
 Testing utilities and helpers for Trends.Earth API tests
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import io
 import tempfile
 from typing import Any
@@ -73,13 +73,13 @@ class DateTestUtils:
     @staticmethod
     def get_iso_string(days_offset: int = 0) -> str:
         """Get ISO format date string with optional offset"""
-        date = datetime.utcnow() + timedelta(days=days_offset)
+        date = datetime.now(UTC) + timedelta(days=days_offset)
         return date.isoformat()
 
     @staticmethod
     def get_date_range(days_back: int = 7) -> tuple:
         """Get start and end dates for testing date ranges"""
-        end_date = datetime.utcnow()
+        end_date = datetime.now(UTC)
         start_date = end_date - timedelta(days=days_back)
         return start_date.isoformat(), end_date.isoformat()
 
@@ -91,7 +91,7 @@ class StatusTestUtils:
     def create_sample_status_data() -> dict[str, Any]:
         """Create sample status data for testing"""
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "executions_pending": 2,
             "executions_completed_today": 10,
             "memory_usage_percent": 45.2,

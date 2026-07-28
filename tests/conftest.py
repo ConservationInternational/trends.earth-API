@@ -102,7 +102,7 @@ def app_no_rate_limiting():
     with app.app_context():
         # Temporarily store original config
         original_config = {}
-        for key, value in test_config.items():
+        for key in test_config:
             if key in app.config:
                 original_config[key] = app.config[key]
 
@@ -205,7 +205,7 @@ def app():
     with app.app_context():
         # Temporarily store original config
         original_config = {}
-        for key, value in test_config.items():
+        for key in test_config:
             if key in app.config:
                 original_config[key] = app.config[key]
 

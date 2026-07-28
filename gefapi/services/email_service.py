@@ -49,7 +49,7 @@ class EmailService:
                 "This may be due to missing or invalid SPARKPOST_API_KEY."
             )
             rollbar.report_exc_info()
-            logger.exception(error)
+            logger.exception("Failed to send email")
             # Re-raise as EmailError to maintain compatibility with existing
             # error handling
             raise EmailError(f"Failed to send email: {error}") from error

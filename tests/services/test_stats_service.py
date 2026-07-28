@@ -3,7 +3,7 @@ Tests for the StatsService class.
 Tests caching, data aggregation, and error handling.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -334,7 +334,7 @@ class TestStatsService:
         query_mock.group_by.return_value = query_mock
         query_mock.all.return_value = [
             SimpleNamespace(
-                timestamp=datetime(2025, 1, 1, 10, 15, 0),
+                timestamp=datetime(2025, 1, 1, 10, 15, 0, tzinfo=UTC),
                 total=3,
                 status="FINISHED",
                 slug="productivity-v2.0.0",
@@ -365,19 +365,19 @@ class TestStatsService:
         query_mock.group_by.return_value = query_mock
         query_mock.all.return_value = [
             SimpleNamespace(
-                timestamp=datetime(2025, 1, 1, 10, 0, 0),
+                timestamp=datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC),
                 total=5,
                 status="FINISHED",
                 slug="productivity-v2.0.0",
             ),
             SimpleNamespace(
-                timestamp=datetime(2025, 1, 1, 10, 0, 0),
+                timestamp=datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC),
                 total=2,
                 status="FAILED",
                 slug="productivity-v2.0.0",
             ),
             SimpleNamespace(
-                timestamp=datetime(2025, 1, 2, 12, 0, 0),
+                timestamp=datetime(2025, 1, 2, 12, 0, 0, tzinfo=UTC),
                 total=4,
                 status="CANCELLED",
                 slug="land-cover-v1.5",
@@ -403,7 +403,7 @@ class TestStatsService:
 
     def test_time_filter_generation(self):
         """Test _get_time_filter method."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # Test different periods
         assert StatsService._get_time_filter("last_day") is not None
@@ -498,8 +498,12 @@ class TestStatsService:
         query_mock.group_by.return_value = query_mock
         query_mock.order_by.return_value = query_mock
         query_mock.all.return_value = [
-            SimpleNamespace(date=datetime(2025, 1, 1, 10, 0, 0), new_users=2),
-            SimpleNamespace(date=datetime(2025, 1, 1, 11, 0, 0), new_users=3),
+            SimpleNamespace(
+                date=datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC), new_users=2
+            ),
+            SimpleNamespace(
+                date=datetime(2025, 1, 1, 11, 0, 0, tzinfo=UTC), new_users=3
+            ),
         ]
 
         result = StatsService._get_registration_trends("all", "hour", None)
@@ -519,8 +523,12 @@ class TestStatsService:
         query_mock.group_by.return_value = query_mock
         query_mock.order_by.return_value = query_mock
         query_mock.all.return_value = [
-            SimpleNamespace(date=datetime(2025, 1, 1, 10, 0, 0), new_users=1),
-            SimpleNamespace(date=datetime(2025, 1, 1, 10, 15, 0), new_users=4),
+            SimpleNamespace(
+                date=datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC), new_users=1
+            ),
+            SimpleNamespace(
+                date=datetime(2025, 1, 1, 10, 15, 0, tzinfo=UTC), new_users=4
+            ),
         ]
 
         result = StatsService._get_registration_trends("last_day", "quarter_hour", None)
@@ -629,7 +637,7 @@ class TestStatsServiceIntegration:
             assert "total_executions_cancelled" in result
 
             # Values should be integers (even if 0)
-            for key, value in result.items():
+            for value in result.values():
                 assert isinstance(value, int)
                 assert value >= 0
 

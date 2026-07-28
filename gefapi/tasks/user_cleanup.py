@@ -69,7 +69,7 @@ def cleanup_unverified_users(self):
         from gefapi.services.user_service import UserService
 
         with app.app_context():
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(
+            cutoff_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
                 days=cleanup_days
             )
 
@@ -168,7 +168,7 @@ def cleanup_never_logged_in_users(self):
         from gefapi.services.user_service import UserService
 
         with app.app_context():
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(
+            cutoff_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
                 days=cleanup_days
             )
 
@@ -262,10 +262,10 @@ def get_user_cleanup_stats(self):
         from gefapi.models import User
 
         with app.app_context():
-            unverified_cutoff = datetime.datetime.utcnow() - datetime.timedelta(
-                days=unverified_days
-            )
-            inactive_cutoff = datetime.datetime.utcnow() - datetime.timedelta(
+            unverified_cutoff = datetime.datetime.now(
+                datetime.UTC
+            ) - datetime.timedelta(days=unverified_days)
+            inactive_cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
                 days=inactive_days
             )
 

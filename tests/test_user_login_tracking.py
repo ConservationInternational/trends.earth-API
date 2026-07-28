@@ -48,11 +48,11 @@ class TestLastLoginTracking:
             assert user.last_login_at is None
 
             # Authenticate
-            before_login = datetime.datetime.utcnow()
+            before_login = datetime.datetime.now(datetime.UTC)
             authenticated_user = UserService.authenticate_user(
                 "login_test@example.com", STRONG_GENERIC_PASSWORD
             )
-            after_login = datetime.datetime.utcnow()
+            after_login = datetime.datetime.now(datetime.UTC)
 
             assert authenticated_user is not None
 
@@ -206,7 +206,7 @@ class TestEmailVerificationTracking:
             db.session.commit()
 
             # Simulate email verification
-            now = datetime.datetime.utcnow()
+            now = datetime.datetime.now(datetime.UTC)
             user.email_verified = True
             user.email_verified_at = now
             db.session.commit()
@@ -277,7 +277,7 @@ class TestUserCleanupTasks:
         """Test that unverified users with old accounts are deleted"""
         with app.app_context():
             # Create an unverified user with old created_at date
-            old_date = datetime.datetime.utcnow() - datetime.timedelta(days=10)
+            old_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=10)
             user = User(
                 email="unverified_old@example.com",
                 password=STRONG_GENERIC_PASSWORD,
@@ -313,7 +313,7 @@ class TestUserCleanupTasks:
         """Test that users who never logged in are deleted after threshold"""
         with app.app_context():
             # Create a user who never logged in
-            old_date = datetime.datetime.utcnow() - datetime.timedelta(days=10)
+            old_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=10)
             user = User(
                 email="never_logged_in@example.com",
                 password=STRONG_GENERIC_PASSWORD,
@@ -342,7 +342,7 @@ class TestUserCleanupTasks:
         """Test that users with last_login_at are NOT deleted"""
         with app.app_context():
             # Create a user who has logged in
-            old_date = datetime.datetime.utcnow() - datetime.timedelta(days=10)
+            old_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=10)
             user = User(
                 email="has_logged_in@example.com",
                 password=STRONG_GENERIC_PASSWORD,
@@ -352,7 +352,9 @@ class TestUserCleanupTasks:
                 institution="Test",
             )
             user.created_at = old_date
-            user.last_login_at = datetime.datetime.utcnow() - datetime.timedelta(days=5)
+            user.last_login_at = datetime.datetime.now(
+                datetime.UTC
+            ) - datetime.timedelta(days=5)
             user.email_verified = False  # Even if unverified
             db.session.add(user)
             db.session.commit()
@@ -383,7 +385,7 @@ class TestUserCleanupTasks:
         """Test that verified users are NOT deleted even if never logged in"""
         with app.app_context():
             # Create a verified user who never logged in
-            old_date = datetime.datetime.utcnow() - datetime.timedelta(days=10)
+            old_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=10)
             user = User(
                 email="verified_no_login@example.com",
                 password=STRONG_GENERIC_PASSWORD,
@@ -451,7 +453,9 @@ class TestLegacyUserProtection:
         """Test users with NULL email_verified are NOT deleted by unverified cleanup"""
         with app.app_context():
             # Create a user with NULL email_verified (edge case)
-            old_date = datetime.datetime.utcnow() - datetime.timedelta(days=100)
+            old_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+                days=100
+            )
             user = User(
                 email="null_verified_user@example.com",
                 password=STRONG_GENERIC_PASSWORD,
@@ -502,7 +506,9 @@ class TestLegacyUserProtection:
         """Test verified users are protected regardless of account age"""
         with app.app_context():
             # Create old verified user
-            very_old_date = datetime.datetime.utcnow() - datetime.timedelta(days=1000)
+            very_old_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+                days=1000
+            )
             user = User(
                 email="very_old_verified@example.com",
                 password=STRONG_GENERIC_PASSWORD,
@@ -580,8 +586,8 @@ class TestUserCleanupStats:
                 institution="Test",
             )
             user.email_verified = True
-            user.email_verified_at = datetime.datetime.utcnow()
-            user.last_login_at = datetime.datetime.utcnow()
+            user.email_verified_at = datetime.datetime.now(datetime.UTC)
+            user.last_login_at = datetime.datetime.now(datetime.UTC)
             db.session.add(user)
             db.session.commit()
 
@@ -622,9 +628,9 @@ class TestInactiveTokenCleanup:
 
             # Create a refresh token with old last_used_at
             token = RefreshTokenService.create_refresh_token(user.id)
-            token.last_used_at = datetime.datetime.utcnow() - datetime.timedelta(
-                days=30
-            )
+            token.last_used_at = datetime.datetime.now(
+                datetime.UTC
+            ) - datetime.timedelta(days=30)
             db.session.commit()
             token_id = token.id
 
@@ -678,7 +684,7 @@ class TestInactiveTokenCleanup:
 
             # Create a refresh token with recent last_used_at
             token = RefreshTokenService.create_refresh_token(user.id)
-            token.last_used_at = datetime.datetime.utcnow()
+            token.last_used_at = datetime.datetime.now(datetime.UTC)
             db.session.commit()
             token_id = token.id
 

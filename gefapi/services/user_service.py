@@ -254,12 +254,12 @@ class UserService:
                     + "</p>",
                     subject="[trends.earth] User created",
                 )
-            except EmailError as error:
+            except EmailError:
                 rollbar.report_exc_info()
-                raise error
-        except Exception as error:
+                raise
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         return user
 
     @staticmethod
@@ -344,13 +344,13 @@ class UserService:
                 logger.info(
                     f"[SERVICE]: Secure registration email sent to {user.email}"
                 )
-            except EmailError as error:
+            except EmailError:
                 rollbar.report_exc_info()
-                raise error
+                raise
 
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
 
         return user
 
@@ -418,9 +418,9 @@ class UserService:
 
         if paginate:
             if page < 1:
-                raise Exception("Page must be greater than 0")
+                raise ValueError("Page must be greater than 0")
             if per_page < 1:
-                raise Exception("Per page must be greater than 0")
+                raise ValueError("Per page must be greater than 0")
 
         query = db.session.query(User)
 
@@ -487,9 +487,9 @@ class UserService:
                 user = db.session.get(User, user_id)
         except ValueError:
             user = User.query.filter_by(email=user_id).first()
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         if not user:
             raise UserNotFound(message=f"User with id {user_id} does not exist")
         return user
@@ -661,12 +661,12 @@ class UserService:
                     + "</p>",
                     subject="[trends.earth] Recover password",
                 )
-            except EmailError as error:
+            except EmailError:
                 rollbar.report_exc_info()
-                raise error
-        except Exception as error:
+                raise
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         return user
 
     @staticmethod
@@ -727,13 +727,13 @@ class UserService:
                 logger.info(
                     f"[SERVICE]: Password reset email sent to {mask_email(user.email)}"
                 )
-            except EmailError as error:
+            except EmailError:
                 rollbar.report_exc_info()
-                raise error
+                raise
 
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
 
         return user
 
@@ -807,9 +807,9 @@ class UserService:
 
             return user
 
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
 
     @staticmethod
     def update_user(user, user_id):
@@ -904,17 +904,17 @@ class UserService:
             logger.info("[DB]: ADD")
             db.session.add(current_user)
             db.session.commit()
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         return current_user
 
     @staticmethod
     def delete_user(
         user_id,
-        deletion_reason: str = None,
-        deleted_by_admin_id: str = None,
-        context: str = None,
+        deletion_reason: str | None = None,
+        deleted_by_admin_id: str | None = None,
+        context: str | None = None,
     ):
         """Delete a user account and all associated data.
 
@@ -1033,10 +1033,10 @@ class UserService:
             logger.info("[DB]: DELETE user")
             db.session.delete(user)
             db.session.commit()
-        except Exception as error:
+        except Exception:
             db.session.rollback()
             rollbar.report_exc_info()
-            raise error
+            raise
         return user_data
 
     @staticmethod

@@ -223,7 +223,7 @@ class TestRefreshTokenAPI:
             # Create an expired token
             expired_token = RefreshToken(
                 user_id=regular_user.id,
-                expires_at=datetime.utcnow() - timedelta(days=1),
+                expires_at=datetime.now(tz=datetime.UTC) - timedelta(days=1),
             )
 
             from gefapi import db
@@ -277,7 +277,7 @@ class TestRefreshTokenSecurity:
             # Create expired token
             expired_token = RefreshToken(
                 user_id=regular_user.id,
-                expires_at=datetime.utcnow() - timedelta(days=1),
+                expires_at=datetime.now(tz=datetime.UTC) - timedelta(days=1),
             )
 
             from gefapi import db

@@ -4,7 +4,7 @@ Provides comprehensive statistics for executions, users, and system metrics.
 """
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import logging
 import re
 from typing import Any
@@ -249,7 +249,7 @@ class StatsService:
             Optional[datetime]: Cutoff datetime for the period, or None for
                 'all'/'invalid'
         """
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         filters = {
             "last_day": now - timedelta(days=1),
@@ -341,7 +341,7 @@ class StatsService:
 
             # Hourly data (last 72 hours)
             if period in ["last_day", "all"] or cutoff_date is None:
-                hourly_cutoff = datetime.utcnow() - timedelta(hours=72)
+                hourly_cutoff = datetime.now(UTC) - timedelta(hours=72)
                 hourly_data = (
                     db.session.query(
                         func.date_trunc("hour", Execution.start_date).label("hour"),
@@ -383,7 +383,7 @@ class StatsService:
                 ]
 
             # Monthly data (last year)
-            monthly_cutoff = datetime.utcnow() - timedelta(days=365)
+            monthly_cutoff = datetime.now(UTC) - timedelta(days=365)
             monthly_data = (
                 db.session.query(
                     func.date_trunc("month", Execution.start_date).label("month"),

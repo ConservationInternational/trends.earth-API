@@ -1,5 +1,6 @@
 """User management routes for the Trends.Earth API."""
 
+from datetime import UTC
 import logging
 
 from flask import jsonify, request
@@ -259,9 +260,9 @@ def export_users_csv():
             elif val is None:
                 row[key] = ""
 
-    from datetime import datetime as dt
+    from datetime import datetime
 
-    timestamp = dt.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     filename = f"users_export_{timestamp}.csv"
     logger.info(
         "[AUDIT] CSV export: table=users rows=%d filename=%s "

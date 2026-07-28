@@ -49,7 +49,9 @@ class TestExecutionCleanup:
     ):
         with app.app_context():
             # Make the execution stale (started 4 days ago)
-            four_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=4)
+            four_days_ago = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=4
+            )
             sample_execution.start_date = four_days_ago
             sample_execution.status = "PENDING"
             sample_execution.end_date = None
@@ -95,7 +97,9 @@ class TestExecutionCleanup:
         """Test cleanup of a stale RUNNING execution with Docker service"""
         with app.app_context():
             # Make the execution stale (started 5 days ago)
-            five_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=5)
+            five_days_ago = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=5
+            )
             sample_execution.start_date = five_days_ago
             sample_execution.status = "RUNNING"
             sample_execution.end_date = None
@@ -139,7 +143,9 @@ class TestExecutionCleanup:
     ):
         """Ensure CANCELLED executions keep their status while resources are cleaned"""
         with app.app_context():
-            four_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=4)
+            four_days_ago = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=4
+            )
             script = db_session.merge(sample_script)
             user = db_session.merge(regular_user)
 
@@ -206,10 +212,12 @@ class TestExecutionCleanup:
         """Test that finished executions are not touched"""
         with app.app_context():
             # Make the execution old but FINISHED
-            five_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=5)
+            five_days_ago = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=5
+            )
             sample_execution.start_date = five_days_ago
             sample_execution.status = "FINISHED"
-            sample_execution.end_date = datetime.datetime.utcnow()
+            sample_execution.end_date = datetime.datetime.now(tz=datetime.UTC)
             db_session.add(sample_execution)
             db_session.commit()
 
@@ -243,10 +251,12 @@ class TestExecutionCleanup:
         """Test that failed executions are not touched"""
         with app.app_context():
             # Make the execution old but FAILED
-            five_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=5)
+            five_days_ago = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=5
+            )
             sample_execution.start_date = five_days_ago
             sample_execution.status = "FAILED"
-            sample_execution.end_date = datetime.datetime.utcnow()
+            sample_execution.end_date = datetime.datetime.now(tz=datetime.UTC)
             db_session.add(sample_execution)
             db_session.commit()
 
@@ -279,7 +289,9 @@ class TestExecutionCleanup:
         """Test that recent executions are not touched"""
         with app.app_context():
             # Make the execution recent (started 1 day ago)
-            one_day_ago = datetime.datetime.utcnow() - datetime.timedelta(days=1)
+            one_day_ago = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=1
+            )
             sample_execution.start_date = one_day_ago
             sample_execution.status = "RUNNING"
             sample_execution.end_date = None
@@ -314,7 +326,9 @@ class TestExecutionCleanup:
         """Test cleanup when Docker is not available"""
         with app.app_context():
             # Make the execution stale
-            four_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=4)
+            four_days_ago = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=4
+            )
             sample_execution.start_date = four_days_ago
             sample_execution.status = "PENDING"
             sample_execution.end_date = None
@@ -347,7 +361,9 @@ class TestExecutionCleanup:
         """Test cleanup continues when Docker operations fail"""
         with app.app_context():
             # Make the execution stale
-            four_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=4)
+            four_days_ago = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=4
+            )
             sample_execution.start_date = four_days_ago
             sample_execution.status = "RUNNING"
             sample_execution.end_date = None
@@ -403,7 +419,9 @@ class TestExecutionCleanup:
             db_session.commit()
 
             # Make the execution finished recently (2 hours ago)
-            two_hours_ago = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
+            two_hours_ago = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                hours=2
+            )
             sample_execution.start_date = two_hours_ago - datetime.timedelta(hours=1)
             sample_execution.end_date = two_hours_ago
             sample_execution.status = "FINISHED"
@@ -460,7 +478,9 @@ class TestExecutionCleanup:
             db_session.commit()
 
             # Create a new execution for this test to avoid interference
-            two_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=2)
+            two_days_ago = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=2
+            )
 
             # Merge the objects to ensure they're attached to the current session
             script = db_session.merge(sample_script)
@@ -495,7 +515,9 @@ class TestExecutionCleanup:
         """Test finished cleanup when Docker is not available"""
         with app.app_context():
             # Make the execution finished recently
-            one_hour_ago = datetime.datetime.utcnow() - datetime.timedelta(hours=1)
+            one_hour_ago = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                hours=1
+            )
             sample_execution.start_date = one_hour_ago - datetime.timedelta(hours=1)
             sample_execution.end_date = one_hour_ago
             sample_execution.status = "FINISHED"
@@ -528,7 +550,9 @@ class TestExecutionCleanup:
         """Test cleanup of old failed executions with Docker service"""
         with app.app_context():
             # Make the execution failed 15 days ago
-            fifteen_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=15)
+            fifteen_days_ago = datetime.datetime.now(
+                tz=datetime.UTC
+            ) - datetime.timedelta(days=15)
             sample_execution.start_date = fifteen_days_ago - datetime.timedelta(hours=1)
             sample_execution.end_date = fifteen_days_ago
             sample_execution.status = "FAILED"
@@ -571,7 +595,9 @@ class TestExecutionCleanup:
         with app.app_context():
             # First, clean up any existing old failed executions to ensure test isolation
             # But exclude the current sample_execution to avoid StaleDataError
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(days=14)
+            cutoff_date = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=14
+            )
             old_failed_executions = Execution.query.filter(
                 Execution.status == "FAILED",
                 Execution.end_date.isnot(None),
@@ -584,7 +610,9 @@ class TestExecutionCleanup:
             db_session.commit()
 
             # Make the execution failed 10 days ago (newer than 14 days)
-            ten_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=10)
+            ten_days_ago = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=10
+            )
             sample_execution.start_date = ten_days_ago - datetime.timedelta(hours=1)
             sample_execution.end_date = ten_days_ago
             sample_execution.status = "FAILED"
@@ -608,7 +636,9 @@ class TestExecutionCleanup:
         """Test that successful executions are ignored by failed cleanup"""
         with app.app_context():
             # Make the execution finished 20 days ago
-            twenty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=20)
+            twenty_days_ago = datetime.datetime.now(
+                tz=datetime.UTC
+            ) - datetime.timedelta(days=20)
             sample_execution.start_date = twenty_days_ago - datetime.timedelta(hours=1)
             sample_execution.end_date = twenty_days_ago
             sample_execution.status = "FINISHED"
@@ -633,7 +663,9 @@ class TestExecutionCleanup:
         with app.app_context():
             # First, clean up any existing old failed executions to ensure test isolation
             # But exclude the current sample_execution to avoid StaleDataError
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(days=14)
+            cutoff_date = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=14
+            )
             old_failed_executions = Execution.query.filter(
                 Execution.status == "FAILED",
                 Execution.end_date.isnot(None),
@@ -646,7 +678,9 @@ class TestExecutionCleanup:
             db_session.commit()
 
             # Make the execution failed 20 days ago
-            twenty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=20)
+            twenty_days_ago = datetime.datetime.now(
+                tz=datetime.UTC
+            ) - datetime.timedelta(days=20)
             sample_execution.start_date = twenty_days_ago - datetime.timedelta(hours=1)
             sample_execution.end_date = twenty_days_ago
             sample_execution.status = "FAILED"
@@ -678,7 +712,9 @@ class TestExecutionCleanup:
         with app.app_context():
             # First, clean up any existing old failed executions to ensure test isolation
             # But exclude the current sample_execution to avoid StaleDataError
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(days=14)
+            cutoff_date = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=14
+            )
             old_failed_executions = Execution.query.filter(
                 Execution.status == "FAILED",
                 Execution.end_date.isnot(None),
@@ -691,7 +727,9 @@ class TestExecutionCleanup:
             db_session.commit()
 
             # Make the execution failed 30 days ago
-            thirty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=30)
+            thirty_days_ago = datetime.datetime.now(
+                tz=datetime.UTC
+            ) - datetime.timedelta(days=30)
             sample_execution.start_date = thirty_days_ago - datetime.timedelta(hours=1)
             sample_execution.end_date = thirty_days_ago
             sample_execution.status = "FAILED"
@@ -739,7 +777,9 @@ class TestExecutionCleanup:
         with app.app_context():
             # First, clean up any existing old failed executions to ensure test isolation
             # But exclude the current sample_execution to avoid StaleDataError
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(days=14)
+            cutoff_date = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(
+                days=14
+            )
             old_failed_executions = Execution.query.filter(
                 Execution.status == "FAILED",
                 Execution.end_date.isnot(None),
@@ -752,7 +792,9 @@ class TestExecutionCleanup:
             db_session.commit()
 
             # Make the execution failed 20 days ago
-            twenty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=20)
+            twenty_days_ago = datetime.datetime.now(
+                tz=datetime.UTC
+            ) - datetime.timedelta(days=20)
             sample_execution.start_date = twenty_days_ago - datetime.timedelta(hours=1)
             sample_execution.end_date = twenty_days_ago
             sample_execution.status = "FAILED"

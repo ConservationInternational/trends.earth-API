@@ -176,7 +176,7 @@ def update_execution_status_with_logging(
 
         # Update end_date and progress for terminal states
         if new_status in ["FINISHED", "FAILED", "CANCELLED"]:
-            execution.end_date = datetime.datetime.utcnow()
+            execution.end_date = datetime.datetime.now(datetime.UTC)
             # Only set progress to 100 if no explicit progress was provided
             if explicit_progress is None:
                 execution.progress = 100
@@ -252,7 +252,7 @@ def update_execution_status_with_logging(
         )
         db.session.rollback()
         rollbar.report_exc_info()
-        raise error
+        raise
 
 
 class ExecutionService:
@@ -522,9 +522,9 @@ class ExecutionService:
                         validated_user_id = target_user_id
                     else:
                         validated_user_id = UUID(target_user_id, version=4)
-                except Exception as error:
+                except Exception:
                     rollbar.report_exc_info()
-                    raise error
+                    raise
                 query = query.filter(Execution.user_id == validated_user_id)
         else:
             # For non-admin users, only show their own executions
@@ -537,9 +537,9 @@ class ExecutionService:
                     validated_script_id = script_id
                 else:
                     validated_script_id = UUID(script_id, version=4)
-            except Exception as error:
+            except Exception:
                 rollbar.report_exc_info()
-                raise error
+                raise
             query = query.filter(Execution.script_id == validated_script_id)
         if status:
             query = query.filter(func.lower(Execution.status) == status.lower())
@@ -775,9 +775,9 @@ class ExecutionService:
             logger.info("[DB]: ADD")
             db.session.add(execution)
             db.session.commit()
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
 
         # If queued, don't dispatch yet - the queue processor will handle it
         if should_queue:
@@ -798,9 +798,9 @@ class ExecutionService:
                 params,
                 compute_type=(getattr(script, "compute_type", None) or "gee").lower(),
             )
-        except Exception as e:
+        except Exception:
             rollbar.report_exc_info()
-            raise e
+            raise
         return execution
 
     @staticmethod
@@ -830,9 +830,9 @@ class ExecutionService:
                 else:
                     UUID(execution_id, version=4)
                     execution = Execution.query.filter_by(id=execution_id).first()
-            except Exception as error:
+            except Exception:
                 rollbar.report_exc_info()
-                raise error
+                raise
         else:
             try:
                 # If execution_id is already a UUID object, use it directly
@@ -851,9 +851,9 @@ class ExecutionService:
                         .filter(Execution.user_id == user.id)
                         .first()
                     )
-            except Exception as error:
+            except Exception:
                 rollbar.report_exc_info()
-                raise error
+                raise
         if not execution:
             raise ExecutionNotFound(message="Ticket Not Found")
         return execution
@@ -935,7 +935,8 @@ class ExecutionService:
                                 execution_id=str(execution.id),
                                 start_time=execution.start_date,
                                 end_time=(
-                                    execution.end_date or datetime.datetime.utcnow()
+                                    execution.end_date
+                                    or datetime.datetime.now(datetime.UTC)
                                 ),
                             ),
                             subject="[trends.earth] Execution finished",
@@ -956,9 +957,9 @@ class ExecutionService:
                 logger.info("[DB]: ADD")
                 db.session.add(execution)
                 db.session.commit()
-            except Exception as error:
+            except Exception:
                 rollbar.report_exc_info()
-                raise error
+                raise
 
         return execution
 
@@ -993,9 +994,9 @@ class ExecutionService:
             logger.info("[DB]: ADD")
             db.session.add(execution_log)
             db.session.commit()
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         return execution_log
 
     @staticmethod
@@ -1018,9 +1019,9 @@ class ExecutionService:
         logger.info("[DB]: QUERY")
         try:
             execution = ExecutionService.get_execution(execution_id=execution_id)
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         if not execution:
             raise ExecutionNotFound(
                 message="Execution with id " + execution_id + " does not exist"
@@ -1144,4 +1145,4 @@ class ExecutionService:
                 error,
             )
             rollbar.report_exc_info()
-            raise error
+            raise

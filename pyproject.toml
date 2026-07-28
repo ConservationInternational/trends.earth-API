@@ -170,17 +170,71 @@ section-order = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Allow specific ignores for test files
+# Operational helpers and scripts intentionally use broad exception handling.
+"deployment_utils.py" = [
+    "BLE001",  # Deployment helpers log and continue on many operational failures.
+    "PLW1510", # subprocess.run check is intentionally delegated here.
+]
+"run_db_migrations.py" = ["BLE001"]
+"setup_staging_environment.py" = ["BLE001"]
+"scripts/*.py" = [
+    "BLE001",
+    "TRY002",
+    "G201",
+]
+"scripts/setup/*.py" = ["BLE001"]
+"scripts/verify_production_connection.py" = ["PLW1508"]
+"gefapi/services/docker_service.py" = ["BLE001", "TRY002"]
+"gefapi/services/execution_service.py" = ["BLE001", "TRY002"]
+"gefapi/services/gcs_iam_service.py" = ["BLE001"]
+"gefapi/services/gee_service.py" = ["BLE001", "TRY002"]
+"gefapi/services/google_groups_service.py" = ["BLE001"]
+"gefapi/services/oauth2_service.py" = ["BLE001"]
+"gefapi/services/openeo_credential_service.py" = ["BLE001"]
+"gefapi/services/openeo_service.py" = ["BLE001"]
+"gefapi/services/refresh_token_service.py" = ["BLE001"]
+"gefapi/services/script_service.py" = ["TRY002"]
+"gefapi/services/stats_service.py" = ["BLE001"]
+"gefapi/services/rate_limit_event_service.py" = [
+    "BLE001",
+    "G201",
+    "RUF012",
+]
+"gefapi/services/user_service.py" = [
+    "BLE001",
+    "RUF012",
+]
+"gefapi/tasks/*.py" = ["BLE001"]
+"gefapi/utils/*.py" = ["BLE001"]
+"gefapi/validators.py" = ["BLE001"]
+# Route handlers are last-resort HTTP-boundary catch-alls; BLE001 is intentional.
+"gefapi/routes/api/v1/*.py" = ["BLE001"]
+"gefapi/__init__.py" = ["BLE001"]
+# All AWS Batch/CloudWatch SDK calls; Boto3 exceptions are not well-typed.
+"gefapi/services/batch_service.py" = ["BLE001"]
+"gefapi/services/gee_service_identity_service.py" = ["BLE001"]
+"notebooks/*.py" = ["BLE001"]
 "tests/*.py" = [
     "S101",  # Use of assert (expected in tests)
     "S105",  # Hardcoded password (test fixtures)
-    "S106",  # Hardcoded password (test fixtures) 
+    "S106",  # Hardcoded password (test fixtures)
     "S107",  # Hardcoded password (test fixtures)
     "S110",  # try-except-pass (acceptable in tests)
     "T201",  # print statements (debugging in tests)
     "B017",  # assertRaises(Exception) (acceptable in tests)
     "B007",  # Loop variable not used (acceptable in tests)
+    "BLE001",  # Test helpers sometimes catch broad exceptions for setup/teardown.
+    "PLW0127", # Self-assignment in tests is sometimes used for clarity.
+    "TRY004", # Re-raising generic assertion errors is acceptable in tests.
 ]
+"tests/**/*.py" = [
+    "BLE001",
+    "PLW0127",
+    "TRY004",
+]
+"notebooks/*.ipynb" = ["BLE001"]
+
+# Allow specific ignores for test files
 
 # Models use mixedCase to match external API field names exactly
 "gefapi/models/boundary.py" = [

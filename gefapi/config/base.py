@@ -81,13 +81,13 @@ SETTINGS = {
         "UPLOAD_FOLDER", os.path.join(tempfile.gettempdir(), "scripts")
     ),
     "ALLOWED_EXTENSIONS": {"tar.gz"},
-    "MAX_RESULTS_SIZE": int(os.getenv("MAX_RESULTS_SIZE", 600000)),  # 600KB default
+    "MAX_RESULTS_SIZE": int(os.getenv("MAX_RESULTS_SIZE", "600000")),  # 600KB default
     # Compression settings
     "ENABLE_REQUEST_COMPRESSION": os.getenv(
         "ENABLE_REQUEST_COMPRESSION", "true"
     ).lower()
     == "true",
-    "COMPRESSION_MIN_SIZE": int(os.getenv("COMPRESSION_MIN_SIZE", 1000)),  # 1KB minimum
+    "COMPRESSION_MIN_SIZE": int(os.getenv("COMPRESSION_MIN_SIZE", "1000")),  # 1 KB
     "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 1),
     "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=30),  # 30 days for refresh tokens
     "JWT_ALGORITHM": "HS256",  # Explicit algorithm — never rely on library defaults
@@ -104,7 +104,7 @@ SETTINGS = {
         if net.strip().strip("\"'")  # Only include non-empty networks after cleaning
     ],
     "MAX_DECOMPRESSED_REQUEST_SIZE": int(
-        os.getenv("MAX_DECOMPRESSED_REQUEST_SIZE", 5 * 1024 * 1024)
+        os.getenv("MAX_DECOMPRESSED_REQUEST_SIZE", str(5 * 1024 * 1024))
     ),
     "ENABLE_API_DOCS": os.getenv("ENABLE_API_DOCS", "true").lower() == "true",
     "API_ENVIRONMENT_USER": _environment_user,

@@ -340,8 +340,8 @@ class BoundariesService:
 
             return result
 
-        except Exception as e:
-            logger.error(f"Error getting boundaries list: {e!s}", exc_info=True)
+        except Exception:
+            logger.exception("Error getting boundaries list")
             raise
 
     @staticmethod
@@ -378,8 +378,8 @@ class BoundariesService:
 
             return result
 
-        except Exception as e:
-            logger.error(f"Error getting last updated timestamp: {e!s}", exc_info=True)
+        except Exception:
+            logger.exception("Error getting last updated timestamp")
             raise
 
     @staticmethod
@@ -402,9 +402,7 @@ class BoundariesService:
                         from datetime import datetime
 
                         # Parse ISO format timestamp
-                        timestamp = datetime.fromisoformat(
-                            updated_at.replace("Z", "+00:00")
-                        )
+                        timestamp = datetime.fromisoformat(updated_at)
                         timestamps.append(timestamp)
                     except (ValueError, AttributeError):
                         # Skip invalid timestamps
@@ -414,9 +412,8 @@ class BoundariesService:
                 return max(timestamps)
             return None
 
-        except Exception as e:
-            logger.error(
-                f"Error getting last updated from boundaries list: {e!s}",
-                exc_info=True,
+        except Exception:
+            logger.exception(
+                "Error getting last updated from boundaries list",
             )
             return None

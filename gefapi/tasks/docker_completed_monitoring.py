@@ -86,7 +86,8 @@ def monitor_completed_docker_services(self):
                 .filter(Execution.status.in_(["FAILED", "FINISHED"]))
                 .filter(
                     Execution.start_date
-                    >= datetime.datetime.utcnow() - datetime.timedelta(hours=48)
+                    >= datetime.datetime.now(datetime.UTC)
+                    - datetime.timedelta(hours=48)
                 )
                 .order_by(Execution.start_date.desc())
                 .limit(200)  # Reasonable limit to prevent resource issues

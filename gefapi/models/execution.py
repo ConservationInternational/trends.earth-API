@@ -121,7 +121,7 @@ class Execution(db.Model):
             duration = self.end_date - self.start_date
         else:
             # Task is still running, calculate current duration
-            duration = datetime.datetime.utcnow() - self.start_date
+            duration = datetime.datetime.now(datetime.UTC) - self.start_date
 
         return duration.total_seconds()
 

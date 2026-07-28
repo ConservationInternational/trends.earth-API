@@ -71,7 +71,7 @@ class ScriptService:
             except Exception as e:
                 logger.error(e)
                 rollbar.report_exc_info()
-                raise e
+                raise
             logger.info("[SERVICE]: File saved")
         else:
             raise InvalidFile(message="Invalid File")
@@ -98,9 +98,9 @@ class ScriptService:
                 batch_image = config.get("batch_image", None)
                 uses_gee = config.get("uses_gee", True)
                 openeo_backend_url = config.get("openeo_backend_url", None)
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
 
         if script is None:
             # Creating new entity
@@ -139,7 +139,7 @@ class ScriptService:
             # Updating existing entity
             logger.debug(script_name)
             script.name = script_name
-            script.updated_at = datetime.datetime.utcnow()
+            script.updated_at = datetime.datetime.now(datetime.UTC)
             if cpu_reservation:
                 script.cpu_reservation = cpu_reservation
             if cpu_limit:
@@ -188,12 +188,12 @@ class ScriptService:
                 rollbar.report_exc_info()
                 script.status = "FAILED"
                 db.session.commit()
-                raise e
+                raise
 
         except Exception as error:
             logger.error(error)
             rollbar.report_exc_info()
-            raise error
+            raise
 
         return script
 
@@ -363,9 +363,9 @@ class ScriptService:
             except ValueError:
                 logger.info("[SERVICE]: valueerror")
                 script = Script.query.filter_by(slug=script_id).first()
-            except Exception as error:
+            except Exception:
                 rollbar.report_exc_info()
-                raise error
+                raise
         else:
             try:
                 logger.info(f"[SERVICE]: trying to get script {script_id}")
@@ -378,9 +378,9 @@ class ScriptService:
             except ValueError:
                 logger.info("[SERVICE]: valueerror")
                 script = Script.query.filter_by(slug=script_id).first()
-            except Exception as error:
+            except Exception:
                 rollbar.report_exc_info()
-                raise error
+                raise
 
             # Check access permissions after retrieving the script
             if script and not script.can_access(user):
@@ -404,9 +404,9 @@ class ScriptService:
                 script = Script.query.filter_by(id=script_id).first()
         except ValueError:
             script = Script.query.filter_by(slug=script_id).first()
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         if not script:
             raise ScriptNotFound(message=f"Script with id {script_id} does not exist")
 
@@ -447,9 +447,9 @@ class ScriptService:
         logger.info(f"[SERVICE]: Deleting script {script_id}")
         try:
             script = ScriptService.get_script(script_id, user)
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         if not script:
             raise ScriptNotFound(
                 message="Script with id " + script_id + " does not exist"
@@ -459,9 +459,9 @@ class ScriptService:
             logger.info("[DB]: DELETE")
             db.session.delete(script)
             db.session.commit()
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         return script
 
     @staticmethod
@@ -477,9 +477,9 @@ class ScriptService:
                     script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
-            except Exception as error:
+            except Exception:
                 rollbar.report_exc_info()
-                raise error
+                raise
         else:
             try:
                 script = (
@@ -495,9 +495,9 @@ class ScriptService:
                     .filter(Script.user_id == user.id)
                     .first()
                 )
-            except Exception as error:
+            except Exception:
                 rollbar.report_exc_info()
-                raise error
+                raise
         if not script:
             raise ScriptNotFound(
                 message="Script with id " + script_id + " does not exist"
@@ -507,9 +507,9 @@ class ScriptService:
             logger.info("[DB]: SAVE")
             db.session.add(script)
             db.session.commit()
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         return script
 
     @staticmethod
@@ -525,9 +525,9 @@ class ScriptService:
                     script = Script.query.filter_by(id=script_id).first()
             except ValueError:
                 script = Script.query.filter_by(slug=script_id).first()
-            except Exception as error:
+            except Exception:
                 rollbar.report_exc_info()
-                raise error
+                raise
         else:
             try:
                 script = (
@@ -552,7 +552,7 @@ class ScriptService:
             logger.info("[DB]: SAVE")
             db.session.add(script)
             db.session.commit()
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         return script

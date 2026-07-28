@@ -285,7 +285,7 @@ def run_migrations():
                             print("✅ Database schema is already current")
                             print("✓ Database migrations completed successfully")
                             return
-                        raise upgrade_error
+                        raise
 
                 else:
                     logger.info("Single head found, proceeding with normal upgrade")

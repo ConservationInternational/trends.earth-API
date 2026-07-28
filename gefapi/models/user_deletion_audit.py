@@ -76,7 +76,7 @@ class UserDeletionAudit(db.Model):
     # When the deletion occurred
     deleted_at = db.Column(
         db.DateTime(),
-        default=datetime.datetime.utcnow,
+        default=lambda: datetime.datetime.now(datetime.UTC),
         nullable=False,
         index=True,
     )
@@ -142,7 +142,7 @@ class UserDeletionAudit(db.Model):
         context: str | None = None,
     ):
         self.deletion_reason = deletion_reason
-        self.deleted_at = datetime.datetime.utcnow()
+        self.deleted_at = datetime.datetime.now(datetime.UTC)
 
         # Hash email for de-duplication (not storing the actual email)
         if email:
@@ -254,7 +254,7 @@ class UserDeletionAudit(db.Model):
         Returns:
             Number of records updated
         """
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.UTC)
         result = cls.query.filter(
             cls.email_hash.isnot(None),
             cls.email_hash_expires_at.isnot(None),

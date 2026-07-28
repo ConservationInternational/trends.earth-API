@@ -96,10 +96,10 @@ class OAuth2Service:
                 client_id,
                 user.email,
             )
-        except Exception as exc:
+        except Exception:
             db.session.rollback()
             rollbar.report_exc_info()
-            raise exc
+            raise
 
         return raw_secret, client
 
@@ -135,10 +135,10 @@ class OAuth2Service:
                 client.client_id,
                 client.user_id,
             )
-        except Exception as exc:
+        except Exception:
             db.session.rollback()
             rollbar.report_exc_info()
-            raise exc
+            raise
         return client
 
     # ------------------------------------------------------------------

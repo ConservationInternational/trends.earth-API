@@ -1,6 +1,6 @@
 """Tests for Google Groups integration"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 import json
 from unittest.mock import Mock, patch
 
@@ -66,7 +66,7 @@ class TestGoogleGroupsIntegration:
 
             # Update some Google Groups preferences
             user.google_groups_trends_earth_users = True
-            user.google_groups_last_sync = datetime.utcnow()
+            user.google_groups_last_sync = datetime.now(UTC)
             db.session.commit()
 
             # Serialize with Google Groups included

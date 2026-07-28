@@ -60,7 +60,7 @@ class TestPasswordResetTokenEmailVerification:
             assert updated_user.email_verified is True
             assert updated_user.email_verified_at is not None
             # Verify the timestamp is recent (within last minute)
-            now = datetime.datetime.utcnow()
+            now = datetime.datetime.now(tz=datetime.UTC)
             time_diff = now - updated_user.email_verified_at
             assert time_diff.total_seconds() < 60
 
@@ -75,7 +75,9 @@ class TestPasswordResetTokenEmailVerification:
                 country="US",
                 institution="Test Institution",
             )
-            original_verification_time = datetime.datetime(2024, 1, 1, 12, 0, 0)
+            original_verification_time = datetime.datetime(
+                2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC
+            )
             user.email_verified = True
             user.email_verified_at = original_verification_time
             db.session.add(user)
@@ -129,9 +131,9 @@ class TestPasswordResetTokenEmailVerification:
             # Create an expired token
             reset_token = PasswordResetToken(user_id=user.id)
             # Set expiry to the past
-            reset_token.expires_at = datetime.datetime.utcnow() - datetime.timedelta(
-                hours=2
-            )
+            reset_token.expires_at = datetime.datetime.now(
+                tz=datetime.UTC
+            ) - datetime.timedelta(hours=2)
             db.session.add(reset_token)
             db.session.commit()
 
@@ -158,7 +160,7 @@ class TestPasswordResetTokenEmailVerification:
 
             # Create a token and mark it as used
             reset_token = PasswordResetToken(user_id=user.id)
-            reset_token.used_at = datetime.datetime.utcnow()
+            reset_token.used_at = datetime.datetime.now(tz=datetime.UTC)
             db.session.add(reset_token)
             db.session.commit()
 
