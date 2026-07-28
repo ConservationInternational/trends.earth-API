@@ -89,7 +89,9 @@ class TestPasswordResetTokenEmailVerification:
             # Verify user is already verified
             assert user.email_verified is True
             # DB stores as naive UTC; compare with the naive equivalent.
-            assert user.email_verified_at == original_verification_time.replace(tzinfo=None)
+            assert user.email_verified_at == original_verification_time.replace(
+                tzinfo=None
+            )
 
             # Create a password reset token
             reset_token = PasswordResetToken(user_id=user.id)
