@@ -59,9 +59,12 @@ class TestPasswordResetTokenEmailVerification:
             # Verify the user is now marked as verified
             assert updated_user.email_verified is True
             assert updated_user.email_verified_at is not None
-            # Verify the timestamp is recent (within last minute)
+            # Verify the timestamp is recent (within last minute).
+            # DB returns naive UTC; make it aware for comparison.
             now = datetime.datetime.now(tz=datetime.UTC)
-            time_diff = now - updated_user.email_verified_at
+            time_diff = now - updated_user.email_verified_at.replace(
+                tzinfo=datetime.UTC
+            )
             assert time_diff.total_seconds() < 60
 
     def test_reset_password_with_token_preserves_already_verified_user(self, app):
@@ -99,8 +102,11 @@ class TestPasswordResetTokenEmailVerification:
 
             # Verify the original verification status is preserved
             assert updated_user.email_verified is True
-            # Original verification time should be preserved (not updated)
-            assert updated_user.email_verified_at == original_verification_time
+            # Original verification time should be preserved (not updated).
+            # DB stores as naive UTC; compare with the naive equivalent.
+            assert updated_user.email_verified_at == original_verification_time.replace(
+                tzinfo=None
+            )
 
     def test_reset_password_with_invalid_token_fails(self, app):
         """Test that invalid tokens are rejected."""

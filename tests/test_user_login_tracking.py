@@ -59,7 +59,9 @@ class TestLastLoginTracking:
             # Reload user and check last_login_at
             user = User.query.filter_by(email="login_test@example.com").first()
             assert user.last_login_at is not None
-            assert before_login <= user.last_login_at <= after_login
+            # DB returns naive UTC; make it aware for comparison.
+            last_login_aware = user.last_login_at.replace(tzinfo=datetime.UTC)
+            assert before_login <= last_login_aware <= after_login
 
             # Clean up
             db.session.delete(user)

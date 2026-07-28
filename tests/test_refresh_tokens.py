@@ -2,7 +2,7 @@
 Test cases for refresh token functionality
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from conftest import USER_TEST_PASSWORD
 import pytest
@@ -223,7 +223,7 @@ class TestRefreshTokenAPI:
             # Create an expired token
             expired_token = RefreshToken(
                 user_id=regular_user.id,
-                expires_at=datetime.now(tz=datetime.UTC) - timedelta(days=1),
+                expires_at=datetime.now(tz=UTC) - timedelta(days=1),
             )
 
             from gefapi import db
@@ -277,7 +277,7 @@ class TestRefreshTokenSecurity:
             # Create expired token
             expired_token = RefreshToken(
                 user_id=regular_user.id,
-                expires_at=datetime.now(tz=datetime.UTC) - timedelta(days=1),
+                expires_at=datetime.now(tz=UTC) - timedelta(days=1),
             )
 
             from gefapi import db
