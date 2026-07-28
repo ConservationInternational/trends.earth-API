@@ -117,10 +117,9 @@ class PasswordResetToken(db.Model):
         Returns:
             Number of tokens deleted
         """
-        cutoff = (
-            datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
-            - datetime.timedelta(days=days_old)
-        )
+        cutoff = datetime.datetime.now(datetime.UTC).replace(
+            tzinfo=None
+        ) - datetime.timedelta(days=days_old)
         result = cls.query.filter(cls.created_at < cutoff).delete(
             synchronize_session=False
         )

@@ -50,10 +50,9 @@ class RefreshToken(db.Model):
     @staticmethod
     def default_expiry():
         """Default expiry time (30 days from now)"""
-        return (
-            datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
-            + datetime.timedelta(days=30)
-        )
+        return datetime.datetime.now(datetime.UTC).replace(
+            tzinfo=None
+        ) + datetime.timedelta(days=30)
 
     def is_valid(self, verify_client_ip=False, current_ip=None):
         """Check if token is valid (not expired and not revoked).
