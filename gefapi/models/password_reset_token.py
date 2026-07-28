@@ -51,7 +51,7 @@ class PasswordResetToken(db.Model):
     def __init__(self, user_id):
         self.user_id = user_id
         self.token = self._generate_secure_token()
-        self.created_at = datetime.datetime.now(datetime.UTC)
+        self.created_at = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
         self.expires_at = self.created_at + datetime.timedelta(
             hours=PASSWORD_RESET_TOKEN_EXPIRY_HOURS
         )
@@ -66,17 +66,17 @@ class PasswordResetToken(db.Model):
 
     def is_valid(self):
         """Check if the token is valid (not expired and not used)."""
-        # Make expires_at timezone-aware (assume UTC) if it's naive from the database
+        now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
         expires_at = (
-            self.expires_at.replace(tzinfo=datetime.UTC)
-            if self.expires_at.tzinfo is None
+            self.expires_at.replace(tzinfo=None)
+            if self.expires_at and self.expires_at.tzinfo
             else self.expires_at
         )
-        return self.used_at is None and expires_at > datetime.datetime.now(datetime.UTC)
+        return self.used_at is None and expires_at > now
 
     def mark_used(self):
         """Mark the token as used."""
-        self.used_at = datetime.datetime.now(datetime.UTC)
+        self.used_at = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
     @classmethod
     def get_valid_token(cls, token_string):
@@ -100,7 +100,7 @@ class PasswordResetToken(db.Model):
         Called when creating a new reset token to ensure only one
         valid token exists per user at a time.
         """
-        now = datetime.datetime.now(datetime.UTC)
+        now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
         cls.query.filter(
             cls.user_id == user_id,
             cls.used_at.is_(None),
@@ -117,7 +117,10 @@ class PasswordResetToken(db.Model):
         Returns:
             Number of tokens deleted
         """
-        cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=days_old)
+        cutoff = (
+            datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+            - datetime.timedelta(days=days_old)
+        )
         result = cls.query.filter(cls.created_at < cutoff).delete(
             synchronize_session=False
         )

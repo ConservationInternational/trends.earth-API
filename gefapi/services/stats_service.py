@@ -590,7 +590,7 @@ class StatsService:
         # Organize data by timestamp
         time_series = {}
         for row in data:
-            timestamp = row.timestamp.isoformat() if row.timestamp else None
+            timestamp = StatsService._format_timestamp(row.timestamp)
             if timestamp not in time_series:
                 time_series[timestamp] = {
                     "timestamp": timestamp,
@@ -771,6 +771,22 @@ class StatsService:
         return sorted(result, key=lambda x: x["total_executions"], reverse=True)
 
     @staticmethod
+    def _format_timestamp(value: Any) -> str | None:
+        """Format a datetime-like value as a compact UTC timestamp string."""
+        if value is None:
+            return None
+
+        if isinstance(value, datetime):
+            normalized = value
+            if normalized.tzinfo is not None:
+                normalized = normalized.astimezone(UTC).replace(tzinfo=None)
+            else:
+                normalized = normalized.replace(microsecond=0)
+            return normalized.isoformat()
+
+        return str(value)
+
+    @staticmethod
     def normalize_user_group_by(group_by: str | None) -> str:
         """Normalize user stats group_by parameter to supported values."""
 
@@ -849,7 +865,7 @@ class StatsService:
             if row.date is None:
                 formatted_date = None
             elif bucket_type == "datetime":
-                formatted_date = row.date.replace(microsecond=0).isoformat()
+                formatted_date = StatsService._format_timestamp(row.date)
             else:
                 formatted_date = row.date.date().isoformat()
 

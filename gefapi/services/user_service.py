@@ -1,6 +1,5 @@
 """SCRIPT SERVICE"""
 
-import datetime
 from html import escape
 import logging
 import re
@@ -779,9 +778,7 @@ class UserService:
             # Mark user as email verified - they proved email access by using the token
             if not user.email_verified:
                 user.email_verified = True
-                user.email_verified_at = datetime.datetime.now(datetime.UTC).replace(
-                    tzinfo=None
-                )
+                user.email_verified_at = utcnow()
                 masked = mask_email(user.email)
                 logger.info(
                     f"[SERVICE]: Email verified for {masked} via password reset"
@@ -896,9 +893,7 @@ class UserService:
                 if isinstance(val, bool):
                     setattr(current_user, sub_field, val)
 
-        current_user.updated_at = datetime.datetime.now(datetime.UTC).replace(
-            tzinfo=None
-        )
+        current_user.updated_at = utcnow()
         try:
             logger.info("[DB]: ADD")
             db.session.add(current_user)

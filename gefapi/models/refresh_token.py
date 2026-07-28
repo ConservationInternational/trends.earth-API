@@ -50,7 +50,10 @@ class RefreshToken(db.Model):
     @staticmethod
     def default_expiry():
         """Default expiry time (30 days from now)"""
-        return datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=30)
+        return (
+            datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+            + datetime.timedelta(days=30)
+        )
 
     def is_valid(self, verify_client_ip=False, current_ip=None):
         """Check if token is valid (not expired and not revoked).
@@ -62,13 +65,13 @@ class RefreshToken(db.Model):
         Returns:
             bool: True if token is valid, False otherwise
         """
-        # Make expires_at timezone-aware (assume UTC) if it's naive from the database
+        now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
         expires_at = (
-            self.expires_at.replace(tzinfo=datetime.UTC)
-            if self.expires_at.tzinfo is None
+            self.expires_at.replace(tzinfo=None)
+            if self.expires_at and self.expires_at.tzinfo
             else self.expires_at
         )
-        if self.is_revoked or expires_at <= datetime.datetime.now(datetime.UTC):
+        if self.is_revoked or expires_at <= now:
             return False
 
         # Optional client IP verification for additional security
@@ -111,7 +114,7 @@ class RefreshToken(db.Model):
 
     def update_last_used(self):
         """Update last used timestamp"""
-        self.last_used_at = datetime.datetime.now(datetime.UTC)
+        self.last_used_at = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
     def serialize(self):
         """Return object data in easily serializable format"""

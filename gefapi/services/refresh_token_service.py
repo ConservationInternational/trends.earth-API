@@ -61,11 +61,7 @@ class RefreshTokenService:
 
         # Update user's last_activity_at timestamp
         try:
-            import datetime
-
-            user.last_activity_at = datetime.datetime.now(datetime.UTC).replace(
-                tzinfo=None
-            )
+            user.last_activity_at = utcnow()
             db.session.commit()
             logger.debug(
                 f"[SERVICE]: Updated last_activity_at for user {mask_email(user.email)}"

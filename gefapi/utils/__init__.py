@@ -4,7 +4,7 @@ import datetime
 
 
 def utcnow() -> datetime.datetime:
-    """Return the current UTC time as a timezone-naive datetime.
+    """Return the current UTC time as a timezone-naive UTC datetime.
 
     Uses ``datetime.now(UTC)`` rather than the deprecated ``utcnow()``, while
     keeping the result naive for compatibility with the existing DB schema
