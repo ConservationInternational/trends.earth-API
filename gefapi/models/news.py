@@ -8,6 +8,7 @@ import markdown
 
 from gefapi import db
 from gefapi.models import GUID
+from gefapi.utils import utcnow
 
 db.GUID = GUID
 
@@ -237,7 +238,7 @@ class NewsItem(db.Model):
 
     def is_currently_published(self):
         """Check if the news item is currently within its publish window."""
-        now = datetime.datetime.now(datetime.UTC)
+        now = utcnow()
 
         if self.publish_at and now < self.publish_at:
             return False

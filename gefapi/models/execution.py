@@ -120,8 +120,9 @@ class Execution(db.Model):
             # Task is finished, calculate actual duration
             duration = self.end_date - self.start_date
         else:
-            # Task is still running, calculate current duration
-            duration = datetime.datetime.now(datetime.UTC) - self.start_date
+            # start_date is stored as naive UTC; use naive now() to match
+            now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+            duration = now - self.start_date
 
         return duration.total_seconds()
 
