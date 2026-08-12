@@ -197,6 +197,36 @@ def _unsubscribe_footer_html(user):
     )
 
 
+def _build_send_html(html_content: str) -> str:
+    """Wrap sanitized email HTML with top/bottom unsubscribe blocks.
+
+    The ``{{{unsubscribe_footer}}}`` SparkPost variable is substituted at
+    send time with a per-recipient link, so it can safely appear more than
+    once — both occurrences render the same link. Wrapping (rather than
+    inserting into the middle of ``html_content``) keeps this independent of
+    the document structure produced by the composer (full HTML doc vs. a
+    raw-HTML fragment).
+    """
+    top_html = (
+        '<div style="text-align:center;padding:8px 0;font-size:12px;">'
+        "{{{unsubscribe_footer}}}"
+        "</div>\n"
+    )
+    bottom_html = (
+        '\n<div style="text-align:center;padding:16px 0 8px;font-size:12px;'
+        'color:#6c757d;line-height:1.6;">'
+        '<p style="margin:0 0 4px;">Contact the team at '
+        '<a href="mailto:trends.earth@conservation.org" '
+        'style="color:#6c757d;">trends.earth@conservation.org</a></p>'
+        '<p style="margin:0 0 8px;">Our mailing address is: '
+        "Conservation International Foundation, 2011 Crystal Drive, "
+        "Suite 600, Arlington, VA 22202</p>"
+        "{{{unsubscribe_footer}}}"
+        "</div>"
+    )
+    return top_html + html_content + bottom_html
+
+
 def _check_approved_sender(user):
     """Raise NotApprovedSender if user is not on the approved senders list.
 
@@ -347,17 +377,10 @@ def _execute_send(bulk_email_id: str, sent_by_user_id: str) -> None:
             for u in users
         ]
 
-    # Append the unsubscribe footer placeholder to the HTML at send time.
-    # This is done *after* _sanitize_html() so the triple-brace SparkPost
-    # substitution syntax is never passed through the sanitizer.
-    send_html = (
-        c.html_content + '\n<div style="text-align:center;padding:16px 0 8px;">'
-        "{{{unsubscribe_footer}}}"
-        "</div>"
-    )
-
-    try:
-        for i in range(0, max(1, len(recipients)), _BATCH_SIZE):
+    # Wrap with top/bottom unsubscribe blocks at send time. This is done
+    # *after* _sanitize_html() so the triple-brace SparkPost substitution
+    # syntax is never passed through the sanitizer.
+    send_html = _build_send_html(c.html_content)
             batch = recipients[i : i + _BATCH_SIZE]
             if not batch:
                 break
@@ -835,11 +858,7 @@ class BulkEmailService:
         ]
 
         test_subject = f"[TEST] {c.subject}"
-        send_html = (
-            c.html_content + '\n<div style="text-align:center;padding:16px 0 8px;">'
-            "{{{unsubscribe_footer}}}"
-            "</div>"
-        )
+        send_html = _build_send_html(c.html_content)
         EmailService.send_html_email(
             recipients=recipients,
             html=send_html,
@@ -878,11 +897,7 @@ class BulkEmailService:
         ]
 
         test_subject = f"[TEST] {c.subject}"
-        send_html = (
-            c.html_content + '\n<div style="text-align:center;padding:16px 0 8px;">'
-            "{{{unsubscribe_footer}}}"
-            "</div>"
-        )
+        send_html = _build_send_html(c.html_content)
         EmailService.send_html_email(
             recipients=recipients,
             html=send_html,
