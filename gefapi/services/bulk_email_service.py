@@ -132,6 +132,11 @@ def _sanitize_html(html_content: str) -> str:
         html_content,
         tags=_ALLOWED_EMAIL_TAGS,
         attributes=_ALLOWED_EMAIL_ATTRIBUTES,
+        # Explicit empty set: ammonia's built-in default clean_content_tags
+        # includes "style"/"script", which panics in some nh3 versions when
+        # it overlaps with the allowed `tags` set (neither is in ours, but
+        # the conflict check itself has been buggy across releases).
+        clean_content_tags=frozenset(),
         link_rel=None,
     )
 
