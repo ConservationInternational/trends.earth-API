@@ -144,6 +144,12 @@ class User(db.Model):
     email_subscription_system_updates = db.Column(
         db.Boolean(), nullable=False, server_default=db.true()
     )
+    # When/how the user's current subscription preferences were last
+    # explicitly confirmed (profile settings or the /unsubscribe page).
+    # NULL means the preferences are still just the registration default,
+    # i.e. no affirmative consent has been recorded (GDPR Art. 7(1)).
+    consent_given_at = db.Column(db.DateTime(), nullable=True)
+    consent_source = db.Column(db.String(50), nullable=True)
 
     def __init__(
         self,
@@ -161,6 +167,9 @@ class User(db.Model):
         gee_license_acknowledged=None,
         purpose_of_use=None,
         purpose_of_use_other=None,
+        email_subscription_news=None,
+        email_subscription_engagement=None,
+        email_subscription_system_updates=None,
     ):
         self.email = email
         self.password = self.set_password(password)
@@ -188,10 +197,30 @@ class User(db.Model):
         self.locked_until = None
         # Per-user execution queue limit (None = use global default)
         self.max_concurrent_executions = None
-        # Bulk email subscription preferences (all enabled by default)
-        self.email_subscription_news = True
-        self.email_subscription_engagement = True
-        self.email_subscription_system_updates = True
+        # Bulk email subscription preferences (default to subscribed unless
+        # the caller — e.g. the registration form — specifies otherwise)
+        self.email_subscription_news = (
+            email_subscription_news if email_subscription_news is not None else True
+        )
+        self.email_subscription_engagement = (
+            email_subscription_engagement
+            if email_subscription_engagement is not None
+            else True
+        )
+        self.email_subscription_system_updates = (
+            email_subscription_system_updates
+            if email_subscription_system_updates is not None
+            else True
+        )
+        # Record consent when the registration form explicitly submitted a
+        # choice; otherwise these are just unconfirmed registration defaults.
+        explicit_choice = (
+            email_subscription_news is not None
+            or email_subscription_engagement is not None
+            or email_subscription_system_updates is not None
+        )
+        self.consent_given_at = utcnow() if explicit_choice else None
+        self.consent_source = "registration" if explicit_choice else None
 
     def __repr__(self):
         return f"<User {self.email!r}>"
@@ -245,6 +274,10 @@ class User(db.Model):
             "email_subscription_news": self.email_subscription_news,
             "email_subscription_engagement": self.email_subscription_engagement,
             "email_subscription_system_updates": self.email_subscription_system_updates,
+            "consent_given_at": self.consent_given_at.isoformat()
+            if self.consent_given_at
+            else None,
+            "consent_source": self.consent_source,
         }
 
         # Include Google Groups preferences if requested

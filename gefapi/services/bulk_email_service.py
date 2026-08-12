@@ -381,6 +381,9 @@ def _execute_send(bulk_email_id: str, sent_by_user_id: str) -> None:
     # *after* _sanitize_html() so the triple-brace SparkPost substitution
     # syntax is never passed through the sanitizer.
     send_html = _build_send_html(c.html_content)
+
+    try:
+        for i in range(0, max(1, len(recipients)), _BATCH_SIZE):
             batch = recipients[i : i + _BATCH_SIZE]
             if not batch:
                 break

@@ -469,6 +469,18 @@ def validate_user_creation(func):
                     json_data["purpose_of_use_other"]
                 )
 
+            # Validate optional bulk-email subscription preferences (also
+            # settable at registration time, e.g. via the sign-up form)
+            for sub_field in (
+                "email_subscription_news",
+                "email_subscription_engagement",
+                "email_subscription_system_updates",
+            ):
+                if sub_field in json_data and not isinstance(
+                    json_data[sub_field], bool
+                ):
+                    return error(status=400, detail=f"{sub_field} must be a boolean")
+
             # Validate role
             if "role" in json_data:
                 role = json_data.get("role")

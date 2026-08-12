@@ -152,6 +152,11 @@ class UserService:
         gee_license_acknowledged = user.get("gee_license_acknowledged", None)
         purpose_of_use = user.get("purpose_of_use", None)
         purpose_of_use_other = user.get("purpose_of_use_other", None)
+        email_subscription_news = user.get("email_subscription_news", None)
+        email_subscription_engagement = user.get("email_subscription_engagement", None)
+        email_subscription_system_updates = user.get(
+            "email_subscription_system_updates", None
+        )
 
         if role not in ROLES:
             role = "USER"
@@ -175,6 +180,9 @@ class UserService:
             "gee_license_acknowledged": gee_license_acknowledged,
             "purpose_of_use": purpose_of_use,
             "purpose_of_use_other": purpose_of_use_other,
+            "email_subscription_news": email_subscription_news,
+            "email_subscription_engagement": email_subscription_engagement,
+            "email_subscription_system_updates": email_subscription_system_updates,
         }
 
         if legacy:
@@ -883,6 +891,7 @@ class UserService:
                 current_user.max_concurrent_executions = value
 
         # Update bulk email subscription preferences if provided
+        subscription_changed = False
         for sub_field in (
             "email_subscription_news",
             "email_subscription_engagement",
@@ -892,6 +901,13 @@ class UserService:
                 val = user.get(sub_field)
                 if isinstance(val, bool):
                     setattr(current_user, sub_field, val)
+                    subscription_changed = True
+
+        # Record when/how the user last confirmed their subscription choices,
+        # for GDPR consent demonstrability (Art. 7(1)).
+        if subscription_changed:
+            current_user.consent_given_at = utcnow()
+            current_user.consent_source = "profile_settings"
 
         current_user.updated_at = utcnow()
         try:

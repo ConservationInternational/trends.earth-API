@@ -17,6 +17,7 @@ from gefapi import db, limiter
 from gefapi.config import SETTINGS
 from gefapi.models import User
 from gefapi.routes.api.v1 import endpoints, error
+from gefapi.utils import utcnow
 from gefapi.utils.rate_limiting import (
     RateLimitConfig,
     get_non_exempt_key,
@@ -151,6 +152,11 @@ def update_unsubscribe_prefs():
 
     if not updated:
         return error(400, "No valid subscription fields provided.")
+
+    # Record when/how the user last confirmed their subscription choices,
+    # for GDPR consent demonstrability (Art. 7(1)).
+    user.consent_given_at = utcnow()
+    user.consent_source = "unsubscribe_page"
 
     try:
         db.session.commit()
