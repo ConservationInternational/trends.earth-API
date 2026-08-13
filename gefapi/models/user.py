@@ -133,13 +133,15 @@ class User(db.Model):
 
     # Bulk email subscription preferences
     # Each controls whether the user receives that category of bulk email.
-    # All default to True (subscribed); users can unsubscribe via the
-    # /unsubscribe page or their profile settings.
+    # system_updates defaults to True (opt-out) since it covers operational/
+    # service announcements; news and engagement are marketing-style content
+    # and default to False (opt-in) — users can subscribe via registration,
+    # the /unsubscribe page, or their profile settings.
     email_subscription_news = db.Column(
-        db.Boolean(), nullable=False, server_default=db.true()
+        db.Boolean(), nullable=False, server_default=db.false()
     )
     email_subscription_engagement = db.Column(
-        db.Boolean(), nullable=False, server_default=db.true()
+        db.Boolean(), nullable=False, server_default=db.false()
     )
     email_subscription_system_updates = db.Column(
         db.Boolean(), nullable=False, server_default=db.true()
@@ -197,15 +199,16 @@ class User(db.Model):
         self.locked_until = None
         # Per-user execution queue limit (None = use global default)
         self.max_concurrent_executions = None
-        # Bulk email subscription preferences (default to subscribed unless
-        # the caller — e.g. the registration form — specifies otherwise)
+        # Bulk email subscription preferences (news/engagement are opt-in;
+        # system_updates is opt-out) unless the caller — e.g. the
+        # registration form — specifies otherwise
         self.email_subscription_news = (
-            email_subscription_news if email_subscription_news is not None else True
+            email_subscription_news if email_subscription_news is not None else False
         )
         self.email_subscription_engagement = (
             email_subscription_engagement
             if email_subscription_engagement is not None
-            else True
+            else False
         )
         self.email_subscription_system_updates = (
             email_subscription_system_updates
