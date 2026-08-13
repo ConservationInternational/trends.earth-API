@@ -234,10 +234,10 @@ SETTINGS = {
     # unsubscribe links.  Falls back to JWT_SECRET_KEY when not configured.
     "UNSUBSCRIBE_JWT_SECRET": os.getenv("UNSUBSCRIBE_JWT_SECRET"),
     # UNSUBSCRIBE_TOKEN_EXPIRY_DAYS: How long unsubscribe JWT tokens remain valid.
-    # 30 days balances usability against the risk of a leaked link being used to
-    # silently unsubscribe someone.
+    # 180 days balances usability (emails/links can sit unread for a while)
+    # against the risk of a leaked link being used to silently unsubscribe someone.
     "UNSUBSCRIBE_TOKEN_EXPIRY_DAYS": int(
-        os.getenv("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", "30")
+        os.getenv("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", "180")
     ),
 }
 

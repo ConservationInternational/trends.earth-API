@@ -172,7 +172,7 @@ def _unsubscribe_secret():
 def _generate_unsubscribe_token(user_id):
     """Generate a signed JWT unsubscribe token for a user."""
     secret = _unsubscribe_secret()
-    expiry_days = SETTINGS.get("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", 30)
+    expiry_days = SETTINGS.get("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", 180)
     # Use timezone-aware datetime so the exp claim is an unambiguous Unix
     # timestamp — avoids a PyJWT implementation-detail dependency on naive
     # datetimes being treated as UTC.
