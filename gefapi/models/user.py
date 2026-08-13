@@ -169,6 +169,7 @@ class User(db.Model):
         gee_license_acknowledged=None,
         purpose_of_use=None,
         purpose_of_use_other=None,
+        email_notifications_enabled=None,
         email_subscription_news=None,
         email_subscription_engagement=None,
         email_subscription_system_updates=None,
@@ -187,8 +188,12 @@ class User(db.Model):
         self.gee_license_acknowledged = gee_license_acknowledged
         self.purpose_of_use = purpose_of_use
         self.purpose_of_use_other = purpose_of_use_other
-        # Ensure email_notifications_enabled gets the default value
-        self.email_notifications_enabled = True
+        # Job-status notifications are opt-out unless explicitly configured.
+        self.email_notifications_enabled = (
+            email_notifications_enabled
+            if email_notifications_enabled is not None
+            else True
+        )
         # Initialize login/verification tracking fields
         self.last_login_at = None
         self.last_activity_at = None

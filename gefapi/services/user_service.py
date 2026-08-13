@@ -152,6 +152,7 @@ class UserService:
         gee_license_acknowledged = user.get("gee_license_acknowledged", None)
         purpose_of_use = user.get("purpose_of_use", None)
         purpose_of_use_other = user.get("purpose_of_use_other", None)
+        email_notifications_enabled = user.get("email_notifications_enabled", None)
         email_subscription_news = user.get("email_subscription_news", None)
         email_subscription_engagement = user.get("email_subscription_engagement", None)
         email_subscription_system_updates = user.get(
@@ -180,6 +181,7 @@ class UserService:
             "gee_license_acknowledged": gee_license_acknowledged,
             "purpose_of_use": purpose_of_use,
             "purpose_of_use_other": purpose_of_use_other,
+            "email_notifications_enabled": email_notifications_enabled,
             "email_subscription_news": email_subscription_news,
             "email_subscription_engagement": email_subscription_engagement,
             "email_subscription_system_updates": email_subscription_system_updates,

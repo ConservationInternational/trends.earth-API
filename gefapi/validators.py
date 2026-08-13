@@ -459,6 +459,14 @@ def validate_user_creation(func):
                         detail="gee_license_acknowledged must be a boolean",
                     )
 
+                if "email_notifications_enabled" in json_data and not isinstance(
+                    json_data["email_notifications_enabled"], bool
+                ):
+                    return error(
+                        status=400,
+                        detail="email_notifications_enabled must be a boolean",
+                    )
+
             if "purpose_of_use" in json_data:
                 json_data["purpose_of_use"] = validate_purpose_of_use(
                     json_data["purpose_of_use"]
