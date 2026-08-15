@@ -58,7 +58,6 @@ def create_user():
     ```json
     {
       "email": "user@example.com",
-      "password": "securePassword123",
       "name": "John Doe",
       "country": "US",
       "institution": "Example Organization",
@@ -68,7 +67,6 @@ def create_user():
 
     **Request Fields**:
     - `email`: User's email address (required, must be unique)
-    - `password`: User's password (required, minimum security requirements apply)
     - `name`: User's full name (required)
     - `country`: Two-letter country code (optional)
     - `institution`: User's organization/institution (optional)
@@ -96,24 +94,14 @@ def create_user():
     - Attempting to create privileged roles without permission returns 403 Forbidden
 
     **Error Responses**:
-    - `400 Bad Request`: Email already exists, validation failed, or weak password
+    - `400 Bad Request`: Email already exists or validation failed
     - `403 Forbidden`: Insufficient privileges to create the requested role
     - `429 Too Many Requests`: Rate limit exceeded
     - `500 Internal Server Error`: User creation failed
 
-    **Query Parameters**:
-    - `legacy`: If "true" (default), emails the password directly for backwards
-      compatibility with the QGIS plugin. If "false", sends a password reset
-      link instead (more secure).
     """
     logger.info("[ROUTER]: Creating user")
     body = request.get_json()
-
-    # Check for legacy query parameter (defaults to false — secure mode).
-    # Set ?legacy=true explicitly for backwards compatibility with the QGIS
-    # plugin, which expects the password to be emailed directly.
-    legacy_param = request.args.get("legacy", "false")
-    legacy = legacy_param.lower() == "true"
 
     if request.headers.get("Authorization", None) is not None:
 
@@ -131,7 +119,7 @@ def create_user():
     else:
         body["role"] = "USER"
     try:
-        user = UserService.create_user(body, legacy=legacy)
+        user = UserService.create_user(body)
     except UserDuplicated as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=400, detail=e.message)
@@ -839,23 +827,9 @@ def recover_password(user):
     **Path Parameters**:
     - `user`: User identifier (email address or numeric ID)
 
-    **Query Parameters**:
-    - `legacy`: (optional, default=true) Password recovery mode:
-        - `true` (default): Legacy mode - generates new password and emails it
-          directly. Maintained for backwards compatibility with older QGIS
-          plugin versions.
-        - `false`: Secure mode - sends a password reset link that expires after
-          1 hour. Recommended for new integrations.
-
     **Request**: No request body required
 
-    **Recovery Process (legacy=true, default)**:
-    1. Validates user exists
-    2. Generates a new secure password
-    3. Updates user's password in database
-    4. Emails the new password to user
-
-    **Recovery Process (legacy=false)**:
+        **Recovery Process**:
     1. Validates user exists and account is active
     2. Generates secure password reset token with 1-hour expiration
     3. Sends password recovery email with reset link
@@ -874,22 +848,13 @@ def recover_password(user):
     **Security Notes**:
     - Returns the same response regardless of whether the user exists,
       preventing user enumeration attacks (CWE-204).
-    - Legacy mode (default) is DEPRECATED but maintained for backwards
-      compatibility. It sends passwords via email which is less secure.
-    - New integrations should use `legacy=false` for better security.
-    - Rate limiting prevents email flooding attacks in both modes.
+        - Rate limiting prevents email flooding attacks.
 
     **Error Responses**:
     - `429 Too Many Requests`: Rate limit exceeded
     - `500 Internal Server Error`: System error (email failures are masked)
     """
     logger.info("[ROUTER]: Recovering password")
-
-    # Parse legacy parameter - defaults to False (secure token-based flow).
-    # Set ?legacy=true explicitly for backwards compatibility with older QGIS
-    # plugin versions that expect a password to be emailed directly.
-    legacy_param = request.args.get("legacy", "false").lower()
-    use_legacy = legacy_param in ("true", "1", "yes")
 
     # Generic success message returned regardless of whether the user exists.
     # This prevents user enumeration via the password recovery endpoint
@@ -904,7 +869,7 @@ def recover_password(user):
     }
 
     try:
-        UserService.recover_password(user, legacy=use_legacy)
+        UserService.recover_password(user)
     except UserNotFound:
         # Log for debugging but return the same response as success
         logger.info("[ROUTER]: Password recovery requested for unknown user")

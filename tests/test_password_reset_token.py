@@ -193,8 +193,7 @@ class TestSecureUserRegistrationFlow:
                 "institution": "Test Institution",
             }
 
-            # Create user with secure flow (legacy=False)
-            user = UserService.create_user(user_data, legacy=False)
+            user = UserService.create_user(user_data)
 
             # User should be unverified at creation
             assert user.email_verified is False
@@ -202,6 +201,21 @@ class TestSecureUserRegistrationFlow:
 
             # Email should have been sent
             assert mock_email.called
+            assert mock_email.call_args.kwargs["transactional"] is True
+
+    def test_registration_ignores_obsolete_password_field(self, client):
+        response = client.post(
+            "/api/v1/user",
+            json={
+                "email": "obsolete-password@test.com",
+                "password": "",
+                "name": "Password-Free Registration",
+                "country": "US",
+                "institution": "Test Institution",
+            },
+        )
+
+        assert response.status_code == 200
 
     @patch("gefapi.services.user_service.EmailService.send_html_email")
     def test_secure_registration_complete_flow_verifies_user(self, mock_email, app):
@@ -215,7 +229,7 @@ class TestSecureUserRegistrationFlow:
             }
 
             # Create user with secure flow
-            user = UserService.create_user(user_data, legacy=False)
+            user = UserService.create_user(user_data)
 
             # User should be unverified
             assert user.email_verified is False
@@ -232,3 +246,22 @@ class TestSecureUserRegistrationFlow:
             # User should now be verified
             assert updated_user.email_verified is True
             assert updated_user.email_verified_at is not None
+
+    @patch("gefapi.services.user_service.EmailService.send_html_email")
+    def test_password_recovery_email_is_transactional(self, mock_email, app):
+        """Secure password recovery must bypass marketing suppressions."""
+        with app.app_context():
+            user = User(
+                email="recovery-transactional@test.com",
+                password=STRONG_PASSWORD,
+                name="Recovery User",
+                country="US",
+                institution="Test Institution",
+            )
+            db.session.add(user)
+            db.session.commit()
+
+            UserService.recover_password(str(user.id))
+
+            mock_email.assert_called_once()
+            assert mock_email.call_args.kwargs["transactional"] is True

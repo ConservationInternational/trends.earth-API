@@ -114,32 +114,20 @@ class UserService:
     USER_ALLOWED_SORT_FIELDS = USER_ALLOWED_FILTER_FIELDS
 
     @staticmethod
-    def create_user(user, legacy=False):
+    def create_user(user):
         """Create a new user account.
 
         Args:
             user: Dictionary with user data (email, password, name, etc.)
-            legacy: If True, emails the password directly for backwards
-                compatibility with older QGIS plugin versions.
-                Defaults to False (secure mode).
 
         Returns:
             User object
 
-        When legacy=False (default, secure mode):
-            - Creates user with a temporary locked password
-            - Sends a password reset email with a secure token link
-            - User must click the link to set their own password
-            - Token expires after 1 hour
-
-        When legacy=True (deprecated):
-            - Generates password if not provided
-            - Emails the plain-text password to the user
-            - Use only for backwards compatibility with older QGIS plugin
+        Creates the user with a temporary locked password and sends a secure,
+        one-hour token link so the user can set their password.
         """
         logger.info("[SERVICE]: Creating user")
         email_addr = user.get("email", None)
-        password = user.get("password", None)
         role = user.get("role", "USER")
         name = user.get("name", "notset")
         country = user.get("country", None)
@@ -187,93 +175,18 @@ class UserService:
             "email_subscription_system_updates": email_subscription_system_updates,
         }
 
-        if legacy:
-            return UserService._create_user_legacy(
-                email_addr=email_addr,
-                password=password,
-                role=role,
-                name=name,
-                country=country,
-                institution=institution,
-                **extra_fields,
-            )
         return UserService._create_user_secure(
             email_addr=email_addr,
-            password=password,
             role=role,
             name=name,
             country=country,
             institution=institution,
             **extra_fields,
         )
-
-    @staticmethod
-    def _create_user_legacy(
-        email_addr, password, role, name, country, institution, **extra_fields
-    ):
-        """Legacy user creation - emails plain-text password.
-
-        DEPRECATED: This method is maintained for backwards compatibility with
-        older QGIS plugin versions. New integrations must use _create_user_secure
-        (legacy=False).
-
-        Security concerns:
-        - Plain-text password is transmitted via email (CWE-312)
-        - Password is stored in email server logs and recipient's mail archive
-        """
-        import warnings
-
-        warnings.warn(
-            "_create_user_legacy emails a plain-text password (CWE-312) and is "
-            "deprecated. Pass legacy=False to use secure token-based registration.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        rollbar.report_message(
-            "SECURITY: Legacy plain-text password email path invoked for new user "
-            "creation (CWE-312). Migrate callers to legacy=False.",
-            level="warning",
-            extra_data={"user_email": mask_email(email_addr)},
-        )
-        if password is None:
-            password = _generate_secure_password()
-        else:
-            _validate_password_strength(password)
-
-        user = User(
-            email=email_addr,
-            password=password,
-            role=role,
-            name=name,
-            country=country,
-            institution=institution,
-            **extra_fields,
-        )
-        try:
-            logger.info("[DB]: ADD")
-            db.session.add(user)
-            db.session.commit()
-            try:
-                EmailService.send_html_email(
-                    recipients=[user.email],
-                    html="<p>User: "
-                    + user.email
-                    + "</p><p>Password: "
-                    + password
-                    + "</p>",
-                    subject="[trends.earth] User created",
-                )
-            except EmailError:
-                rollbar.report_exc_info()
-                raise
-        except Exception:
-            rollbar.report_exc_info()
-            raise
-        return user
 
     @staticmethod
     def _create_user_secure(
-        email_addr, password, role, name, country, institution, **extra_fields
+        email_addr, role, name, country, institution, **extra_fields
     ):
         """Secure user creation - sends password reset link.
 
@@ -283,19 +196,10 @@ class UserService:
         3. Sends an email with a link to set their password
         4. The token expires after 1 hour
 
-        If a password is provided, it is validated but the user must still
-        use the reset link to set it (the provided password is ignored for
-        security - we don't want passwords transmitted via the API).
+        Registration passwords are not accepted; the user sets one through the
+        emailed token link.
         """
         from gefapi.models import PasswordResetToken
-
-        # Validate password if provided (but don't use it)
-        if password is not None:
-            _validate_password_strength(password)
-            logger.info(
-                "[SERVICE]: Password provided but using secure flow - "
-                "user will set password via email link"
-            )
 
         # Create user with a temporary password (user can't use this directly)
         temp_password = _generate_secure_password(length=32)
@@ -349,6 +253,7 @@ class UserService:
                     recipients=[user.email],
                     html=email_html,
                     subject="[trends.earth] Welcome - Set Your Password",
+                    transactional=True,
                 )
                 logger.info(
                     f"[SERVICE]: Secure registration email sent to {user.email}"
@@ -599,20 +504,11 @@ class UserService:
         return user
 
     @staticmethod
-    def recover_password(user_id, legacy=False):
-        """Initiate password recovery for a user account.
-
-        Supports two modes:
-        - Secure mode (default, legacy=False): Sends a time-limited reset link.
-          Recommended for all new integrations.
-        - Legacy mode (legacy=True, deprecated): Generates a new password and
-          emails it directly. Maintained only for backwards compatibility with
-          older QGIS plugin versions.
+    def recover_password(user_id):
+        """Send a time-limited password reset link for a user account.
 
         Args:
             user_id: User identifier (email or ID)
-            legacy: If True, use the deprecated plain-text password email flow.
-                Defaults to False (secure token-based flow).
 
         Returns:
             User object
@@ -627,55 +523,7 @@ class UserService:
         if not user:
             raise UserNotFound(message="User with id " + user_id + " does not exist")
 
-        if legacy:
-            # Legacy mode: Generate password and email directly
-            # DEPRECATED: This method is less secure as passwords are sent via email
-            logger.warning(
-                f"[SERVICE]: Using LEGACY password recovery for {user_id}. "
-                "Consider migrating to token-based recovery (legacy=false)."
-            )
-            return UserService._recover_password_legacy(user)
-        # Secure mode: Send reset token link
         return UserService._recover_password_secure(user)
-
-    @staticmethod
-    def _recover_password_legacy(user):
-        """Legacy password recovery - generates and emails password directly.
-
-        DEPRECATED: This method is maintained for backwards compatibility with
-        older QGIS plugin versions. New integrations should use token-based
-        recovery (legacy=False).
-
-        Security concerns:
-        - Password is transmitted via email (can be intercepted)
-        - Password is stored in email history
-        - No verification that requester controls the email
-        """
-        password = _generate_secure_password()
-        user.password = user.set_password(password=password)
-        # Clear any account lockout on password recovery
-        user.clear_failed_logins()
-        try:
-            logger.info("[DB]: ADD")
-            db.session.add(user)
-            db.session.commit()
-            try:
-                EmailService.send_html_email(
-                    recipients=[user.email],
-                    html="<p>User: "
-                    + user.email
-                    + "</p><p>Password: "
-                    + password
-                    + "</p>",
-                    subject="[trends.earth] Recover password",
-                )
-            except EmailError:
-                rollbar.report_exc_info()
-                raise
-        except Exception:
-            rollbar.report_exc_info()
-            raise
-        return user
 
     @staticmethod
     def _recover_password_secure(user):
@@ -731,6 +579,7 @@ class UserService:
                     recipients=[user.email],
                     html=email_html,
                     subject="[trends.earth] Password Reset Request",
+                    transactional=True,
                 )
                 logger.info(
                     f"[SERVICE]: Password reset email sent to {mask_email(user.email)}"

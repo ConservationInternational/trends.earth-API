@@ -1,5 +1,6 @@
 """SCRIPT SERVICE"""
 
+from email.utils import formataddr, parseaddr
 import logging
 import os
 
@@ -20,6 +21,7 @@ class EmailService:
         html="",
         from_email="api@trends.earth",
         subject="[trends.earth] Undefined Subject",
+        transactional=False,
     ):
         if recipients is None:
             recipients = []
@@ -38,8 +40,13 @@ class EmailService:
         logger.debug(f"Sending email with subject {subject}")
         try:
             sp = SparkPost()
+            sender_address = parseaddr(from_email)[1] or from_email
             response = sp.transmissions.send(
-                recipients=recipients, html=html, from_email=from_email, subject=subject
+                recipients=recipients,
+                html=html,
+                from_email=formataddr(("Trends.Earth", sender_address)),
+                subject=subject,
+                transactional=transactional,
             )
 
             return response

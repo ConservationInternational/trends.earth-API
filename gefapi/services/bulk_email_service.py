@@ -702,6 +702,7 @@ class BulkEmailService:
             html=html_body,
             from_email=_from_email(),
             subject="[Trends.Earth] Bulk Email Send Verification Code",
+            transactional=True,
         )
 
         log_security_event(

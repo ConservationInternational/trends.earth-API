@@ -940,6 +940,7 @@ class ExecutionService:
                                 ),
                             ),
                             subject="[trends.earth] Execution finished",
+                            transactional=True,
                         )
                     except Exception:
                         rollbar.report_exc_info()

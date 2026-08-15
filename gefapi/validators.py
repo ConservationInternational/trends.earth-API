@@ -413,9 +413,8 @@ def validate_user_creation(func):
             # Validate and sanitize name with international support
             json_data["name"] = validate_name(json_data["name"])
 
-            # Validate password if provided - simple check only
-            if "password" in json_data and not json_data["password"]:
-                return error(status=400, detail="Password is required")
+            # Passwords are set only through the emailed registration token.
+            json_data.pop("password", None)
 
             # Validate optional fields
             if "country" in json_data:

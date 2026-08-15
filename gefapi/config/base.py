@@ -239,6 +239,11 @@ SETTINGS = {
     "UNSUBSCRIBE_TOKEN_EXPIRY_DAYS": int(
         os.getenv("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", "180")
     ),
+    # Overlap each hourly suppression sync so delayed SparkPost records are
+    # picked up safely. Preference updates are idempotent.
+    "SPARKPOST_SUPPRESSION_LOOKBACK_HOURS": int(
+        os.getenv("SPARKPOST_SUPPRESSION_LOOKBACK_HOURS", "24")
+    ),
 }
 
 

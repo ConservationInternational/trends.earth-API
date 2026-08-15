@@ -111,6 +111,9 @@ def make_celery(app):
         "gefapi.tasks.queue_processor.process_queued_executions": {"queue": "default"},
         # Bulk email send – calls SparkPost over HTTPS, no Docker access needed
         "gefapi.tasks.bulk_email_send.send_bulk_email_task": {"queue": "default"},
+        "gefapi.tasks.sparkpost_suppression_sync.sync_sparkpost_suppressions": {
+            "queue": "default"
+        },
         # All other tasks use default queue
     }
 
@@ -190,6 +193,13 @@ def make_celery(app):
         "process-queued-executions": {
             "task": "gefapi.tasks.queue_processor.process_queued_executions",
             "schedule": 30.0,  # Every 30 seconds for responsive queue processing
+            "options": {"queue": "default"},
+        },
+        "sync-sparkpost-suppressions": {
+            "task": (
+                "gefapi.tasks.sparkpost_suppression_sync.sync_sparkpost_suppressions"
+            ),
+            "schedule": 14400.0,
             "options": {"queue": "default"},
         },
         # Stats cache refresh tasks for performance optimization

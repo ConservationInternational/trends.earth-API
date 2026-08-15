@@ -7,30 +7,39 @@ import uuid
 
 import pytest
 
+from gefapi.models import PasswordResetToken
+
 
 @pytest.mark.integration
 class TestAPIIntegration:
     """Test complete API workflows"""
 
     def test_full_user_workflow(
-        self, client, auth_headers_admin, sample_user_data, sample_script
+        self, app, client, auth_headers_admin, sample_user_data, sample_script
     ):
         """Test complete user workflow: create user, login, create script,
         run execution"""
 
-        # Step 1: Admin creates a new user.
-        # Use ?legacy=true so the provided password is stored directly and can
-        # be used to log in immediately (legacy mode emails the plain-text
-        # password; in this test the email is mocked).
         response = client.post(
-            "/api/v1/user?legacy=true",
+            "/api/v1/user",
             json=sample_user_data,
             headers=auth_headers_admin,
         )
         assert response.status_code == 200, (
             f"User creation failed: {response.get_json()}"
         )
-        # user_id = response.json["data"]["id"]
+        user_id = response.json["data"]["id"]
+
+        with app.app_context():
+            reset_token = PasswordResetToken.query.filter_by(user_id=user_id).first()
+            assert reset_token is not None
+            token = reset_token.token
+
+        reset_response = client.post(
+            "/api/v1/user/reset-password",
+            json={"token": token, "password": sample_user_data["password"]},
+        )
+        assert reset_response.status_code == 200
 
         # Step 2: User logs in
         login_response = client.post(
