@@ -160,7 +160,9 @@ def drop_staging_database():
         cursor.execute(f'DROP DATABASE IF EXISTS "{dbname}"')
         logger.info(f"Dropped database: {dbname}")
 
-        cursor.execute(f'CREATE DATABASE "{dbname}"')
+        # Use template0 so staging recreation is not blocked when template1 has
+        # a collation-version mismatch after host/container OS changes.
+        cursor.execute(f'CREATE DATABASE "{dbname}" TEMPLATE template0')
         logger.info(f"Created fresh database: {dbname}")
 
         cursor.close()
