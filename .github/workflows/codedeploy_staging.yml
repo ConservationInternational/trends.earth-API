@@ -186,6 +186,9 @@ jobs:
         API_IMAGE: ${{ steps.images.outputs.api-image }}
         SECRET_KEY: ${{ secrets.SECRET_KEY }}
         JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+        SESSION_SECRET_KEY: ${{ secrets.SESSION_SECRET_KEY }}
+        OIDC_PRIVATE_KEY: ${{ secrets.OIDC_PRIVATE_KEY }}
+        OIDC_ISSUER: ${{ vars.OIDC_ISSUER || 'https://api-staging.trends.earth' }}
         DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         # GEE Configuration
         GEE_ENCRYPTION_KEY: ${{ secrets.GEE_ENCRYPTION_KEY }}
@@ -267,6 +270,9 @@ jobs:
           echo "# Flask/API Configuration"
           echo "SECRET_KEY=$SECRET_KEY"
           echo "JWT_SECRET_KEY=$JWT_SECRET_KEY"
+          echo "SESSION_SECRET_KEY=$SESSION_SECRET_KEY"
+          echo "OIDC_PRIVATE_KEY=$OIDC_PRIVATE_KEY"
+          echo "OIDC_ISSUER=$OIDC_ISSUER"
           echo "API_ENVIRONMENT_USER=$API_ENVIRONMENT_USER"
           echo "API_ENVIRONMENT_USER_PASSWORD=$API_ENVIRONMENT_USER_PASSWORD"
           echo ""
