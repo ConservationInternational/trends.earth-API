@@ -357,6 +357,9 @@ def token():
             )
         expires_in = _access_token_seconds()
         access = issue_token(user, client, "access_token", expires_in, scope)
+        # No id_token on refresh: it asserts an authentication event, not a
+        # session credential, and OIDC Core 12.2 would require replaying the
+        # original nonce. Clients use the access token and /oauth/userinfo.
         return jsonify(
             access_token=access,
             refresh_token=refresh,
