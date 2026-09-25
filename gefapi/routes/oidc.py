@@ -1,6 +1,7 @@
 """OIDC/OAuth endpoints used by first-party applications such as Rio."""
 
 import html
+import logging
 import secrets
 import time
 from urllib.parse import urlencode
@@ -28,10 +29,14 @@ from gefapi.services.oidc_service import (
     valid_pkce_code_challenge,
 )
 from gefapi.services.user_service import UserService
+from gefapi.utils.app_access import app_label, has_app_access, valid_app_key
 from gefapi.utils.permissions import is_admin_or_higher
 from gefapi.utils.scopes import require_scope
+from gefapi.utils.security_events import log_security_event
 
 oidc = Blueprint("oidc", __name__)
+
+logger = logging.getLogger(__name__)
 
 
 def _access_token_seconds():
@@ -40,6 +45,55 @@ def _access_token_seconds():
 
 def _oauth_error(error, description, status=400):
     return jsonify(error=error, error_description=description), status
+
+
+def _app_access_denied_redirect(user, client, redirect_uri, state):
+    """Record an access request and bounce the user back to the application.
+
+    Returns ``None`` when the client is ungated or the user already has access.
+
+    The pending request is created *before* the redirect, so self-service
+    provisioning and an ``access_denied`` response are not in tension: the
+    application reads ``te_app_access`` to decide whether to show "request
+    submitted, awaiting approval" or "access removed".
+    """
+    app_key = client.required_app_key
+    if not app_key or has_app_access(user, app_key):
+        return None
+
+    from gefapi.services.app_access_service import AppAccessError, AppAccessService
+
+    access_state = "pending"
+    try:
+        AppAccessService.request_access(user, app_key)
+    except AppAccessError as exc:
+        access_state = exc.payload.get("status", "denied")
+    except Exception:
+        logger.exception("Failed to record app access request for %s", app_key)
+
+    label = app_label(app_key)
+    if access_state == "pending":
+        description = f"Access to {label} is pending administrator approval."
+    else:
+        description = (
+            f"Access to {label} has been removed. Please contact an administrator."
+        )
+    log_security_event(
+        "APP_ACCESS_DENIED",
+        user_id=str(user.id),
+        user_email=user.email,
+        details={"app_key": app_key, "client_id": client.client_id},
+        level="info",
+    )
+    params = {
+        "error": "access_denied",
+        "error_description": description,
+        "te_app_access": access_state,
+        "te_app_key": app_key,
+    }
+    if state:
+        params["state"] = state
+    return redirect(f"{redirect_uri}?{urlencode(params)}")
 
 
 def _client(data):
@@ -51,7 +105,7 @@ def _client(data):
 def _validated_request(data):
     client = _client(data)
     redirect_uri = data.get("redirect_uri")
-    if not client or redirect_uri not in client.allowed_redirect_uris():
+    if not client or not client.matches_redirect_uri(redirect_uri):
         return None, _oauth_error("invalid_request", "Unknown client or redirect URI")
     requested = (data.get("scope") or "openid").split()
     if "openid" not in requested:
@@ -96,6 +150,14 @@ def register_client():
     scopes = data.get("scopes", ["openid", "email", "profile"])
     if isinstance(scopes, str):
         scopes = scopes.split()
+    required_app_key = data.get("required_app_key") or None
+    if required_app_key and not valid_app_key(required_app_key):
+        return _oauth_error(
+            "invalid_request",
+            f"Unknown required_app_key '{required_app_key}'",
+        )
+    if OAuthClient.query.filter_by(audience=data["audience"]).first():
+        return _oauth_error("invalid_request", "audience is already registered", 409)
     client = create_client(
         name=data["name"],
         client_id=data["client_id"],
@@ -105,11 +167,13 @@ def register_client():
         scopes=scopes,
         is_public=is_public,
         client_secret=client_secret,
+        required_app_key=required_app_key,
     )
     response = {
         "client_id": client.client_id,
         "audience": client.audience,
         "scopes": client.scopes.split(),
+        "required_app_key": client.required_app_key,
     }
     if client_secret:
         response["client_secret"] = client_secret
@@ -137,9 +201,14 @@ def discovery():
             "iss",
             "aud",
             "sub",
+            "azp",
+            "client_id",
             "email",
             "email_verified",
             "name",
+            "role",
+            "app_access",
+            "app_roles",
             "iat",
             "exp",
         ],
@@ -213,6 +282,9 @@ def authorize():
         return "Account disabled", 403
     if not user.email_verified:
         return "Email verification is required", 403
+    denied = _app_access_denied_redirect(user, client, redirect_uri, data.get("state"))
+    if denied is not None:
+        return denied
     code = new_authorization_code(
         user, client, redirect_uri, data["code_challenge"], scope, data.get("nonce")
     )
@@ -246,6 +318,13 @@ def token():
         user = db.session.get(User, code.user_id)
         if not user or not user.is_active:
             return _oauth_error("invalid_grant", "User account is disabled")
+        if client.required_app_key and not has_app_access(
+            user, client.required_app_key
+        ):
+            return _oauth_error(
+                "access_denied",
+                f"Access to {app_label(client.required_app_key)} is not activated",
+            )
         expires_in = _access_token_seconds()
         access = issue_token(user, client, "access_token", expires_in, code.scope)
         identity = issue_token(
@@ -269,6 +348,13 @@ def token():
         refresh, user, scope = result
         if not user.is_active:
             return _oauth_error("invalid_grant", "User account is disabled")
+        if client.required_app_key and not has_app_access(
+            user, client.required_app_key
+        ):
+            return _oauth_error(
+                "access_denied",
+                f"Access to {app_label(client.required_app_key)} is not activated",
+            )
         expires_in = _access_token_seconds()
         access = issue_token(user, client, "access_token", expires_in, scope)
         return jsonify(

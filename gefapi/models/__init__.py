@@ -46,6 +46,7 @@ class GUID(TypeDecorator):
         return value
 
 
+from gefapi.models.app_access import UserAppAccess  # noqa: E402
 from gefapi.models.boundary import (  # noqa: E402
     AdminBoundary0Metadata,
     AdminBoundary1Metadata,
@@ -103,6 +104,7 @@ __all__ = [
     "ServiceClient",
     "StatusLog",
     "User",
+    "UserAppAccess",
     "UserClientMetadata",
     "UserDeletionAudit",
 ]

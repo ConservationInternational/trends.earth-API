@@ -67,6 +67,14 @@ class User(db.Model):
         lazy="dynamic",
         back_populates="user",
     )
+    # Per-application access grants (Avoided Emissions, Rio Coherence, ...)
+    app_access = db.relationship(
+        "UserAppAccess",
+        foreign_keys="UserAppAccess.user_id",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+        back_populates="user",
+    )
     # Google Groups opt-in fields
     google_groups_trends_earth_users = db.Column(
         db.Boolean(), default=False, nullable=False
@@ -324,6 +332,23 @@ class User(db.Model):
 
         if "scripts" in include:
             user["scripts"] = self.serialize_scripts
+
+        # Include per-application access grants if requested
+        if "app_access" in include:
+            user["app_access"] = [
+                {
+                    "app_key": grant.app_key,
+                    "status": grant.status,
+                    "role": grant.role,
+                    "requested_at": grant.requested_at.isoformat()
+                    if grant.requested_at
+                    else None,
+                    "granted_at": grant.granted_at.isoformat()
+                    if grant.granted_at
+                    else None,
+                }
+                for grant in self.app_access.all()
+            ]
 
         # Remove excluded fields
         for field in exclude:

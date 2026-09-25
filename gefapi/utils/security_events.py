@@ -28,6 +28,11 @@ SECURITY_EVENTS = {
     "DATA_EXPORT": "Sensitive data exported",
     "SCRIPT_EXECUTION": "Script execution started",
     "OAUTH2_CLIENT_AUTH": "OAuth2 client credentials authentication used",
+    # Per-application access control events
+    "APP_ACCESS_REQUESTED": "Application access requested by user",
+    "APP_ACCESS_GRANTED": "Application access granted by administrator",
+    "APP_ACCESS_REVOKED": "Application access revoked by administrator",
+    "APP_ACCESS_DENIED": "Application access denied at authorization endpoint",
     # Bulk Email Manager events
     "BULK_EMAIL_RECIPIENT_LIST_CREATED": "Bulk email recipient list created",
     "BULK_EMAIL_DRAFT_CREATED": "Bulk email draft created",

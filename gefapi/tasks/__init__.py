@@ -2,6 +2,7 @@
 
 # Import tasks to ensure they are registered with Celery
 from gefapi.tasks import (
+    app_access_notifications,  # noqa: F401
     batch_monitoring,  # noqa: F401
     bulk_email_send,  # noqa: F401
     deletion_audit_cleanup,  # noqa: F401

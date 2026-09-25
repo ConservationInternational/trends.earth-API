@@ -15,6 +15,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
 sys.excepthook = handle_exception
 
+from gefapi.services.app_access_service import AppAccessService
 from gefapi.services.batch_service import (
     batch_run,
     get_batch_job_status,
@@ -44,6 +45,7 @@ from gefapi.services.status_service import StatusService
 from gefapi.services.user_service import UserService
 
 __all__ = [
+    "AppAccessService",
     "BoundariesService",
     "ClientStatsService",
     "ClientTrackingService",

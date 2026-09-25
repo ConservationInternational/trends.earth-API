@@ -116,6 +116,17 @@ def issue_token(user, client, token_use, expires_in, scope, nonce=None):
         claims["nonce"] = nonce
     if token_use == "id_token":
         claims["azp"] = client.client_id
+    if token_use == "access_token":
+        # Client identity lets a resource server tell which application within
+        # an audience issued the call.  app_access/app_roles are a point-in-time
+        # convenience for client UI only - enforcement re-reads the database.
+        from gefapi.utils.app_access import active_app_keys, active_app_roles
+
+        claims["azp"] = client.client_id
+        claims["client_id"] = client.client_id
+        claims["role"] = user.role
+        claims["app_access"] = active_app_keys(user)
+        claims["app_roles"] = active_app_roles(user)
     token = jwt.encode(
         {"alg": "RS256", "kid": key_id(), "typ": "JWT"},
         claims,
@@ -151,6 +162,7 @@ def create_client(
     is_public=True,
     client_secret=None,
     post_logout_redirect_uris="",
+    required_app_key=None,
 ):
     client = OAuthClient(
         name=name,
@@ -160,6 +172,7 @@ def create_client(
         audience=audience,
         scopes=" ".join(scopes),
         is_public=is_public,
+        required_app_key=required_app_key,
         client_secret_hash=generate_password_hash(client_secret)
         if client_secret
         else None,
@@ -297,6 +310,15 @@ def revoke_all_oidc_refresh_tokens(user_id):
     """Revoke every OIDC refresh token belonging to a user."""
     revoked = OIDCRefreshToken.query.filter_by(
         user_id=user_id, is_revoked=False
+    ).update({"is_revoked": True}, synchronize_session=False)
+    db.session.commit()
+    return revoked
+
+
+def revoke_oidc_refresh_tokens_for_user_and_client(user_id, client_id):
+    """Revoke a user's OIDC refresh tokens issued to a single client."""
+    revoked = OIDCRefreshToken.query.filter_by(
+        user_id=user_id, client_id=client_id, is_revoked=False
     ).update({"is_revoked": True}, synchronize_session=False)
     db.session.commit()
     return revoked
