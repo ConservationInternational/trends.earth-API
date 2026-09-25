@@ -69,7 +69,7 @@ def cleanup_unverified_users(self):
         from gefapi.services.user_service import UserService
 
         with app.app_context():
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(
+            cutoff_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
                 days=cleanup_days
             )
 
@@ -138,7 +138,7 @@ def cleanup_unverified_users(self):
             }
 
     except Exception as error:
-        logger.error(f"[TASK]: Error cleaning up unverified users: {str(error)}")
+        logger.error(f"[TASK]: Error cleaning up unverified users: {error!s}")
         raise self.retry(exc=error, countdown=60, max_retries=3) from error
 
 
@@ -168,7 +168,7 @@ def cleanup_never_logged_in_users(self):
         from gefapi.services.user_service import UserService
 
         with app.app_context():
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(
+            cutoff_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
                 days=cleanup_days
             )
 
@@ -237,7 +237,7 @@ def cleanup_never_logged_in_users(self):
             }
 
     except Exception as error:
-        logger.error(f"[TASK]: Error cleaning up never-logged-in users: {str(error)}")
+        logger.error(f"[TASK]: Error cleaning up never-logged-in users: {error!s}")
         raise self.retry(exc=error, countdown=60, max_retries=3) from error
 
 
@@ -262,10 +262,10 @@ def get_user_cleanup_stats(self):
         from gefapi.models import User
 
         with app.app_context():
-            unverified_cutoff = datetime.datetime.utcnow() - datetime.timedelta(
-                days=unverified_days
-            )
-            inactive_cutoff = datetime.datetime.utcnow() - datetime.timedelta(
+            unverified_cutoff = datetime.datetime.now(
+                datetime.UTC
+            ) - datetime.timedelta(days=unverified_days)
+            inactive_cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
                 days=inactive_days
             )
 
@@ -309,5 +309,5 @@ def get_user_cleanup_stats(self):
             return stats
 
     except Exception as error:
-        logger.error(f"[TASK]: Error gathering user cleanup stats: {str(error)}")
+        logger.error(f"[TASK]: Error gathering user cleanup stats: {error!s}")
         raise self.retry(exc=error, countdown=60, max_retries=3) from error

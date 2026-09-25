@@ -60,6 +60,7 @@ SETTINGS = {
         + (os.getenv("DATABASE_ENV_POSTGRES_DB") or "postgres")
     ),
     "SECRET_KEY": os.getenv("SECRET_KEY"),
+    "SESSION_SECRET_KEY": os.getenv("SESSION_SECRET_KEY"),
     "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY"),
     "DOCKER_HOST": os.getenv("DOCKER_HOST"),
     "REGISTRY_URL": os.getenv("REGISTRY_URL"),
@@ -81,16 +82,25 @@ SETTINGS = {
         "UPLOAD_FOLDER", os.path.join(tempfile.gettempdir(), "scripts")
     ),
     "ALLOWED_EXTENSIONS": {"tar.gz"},
-    "MAX_RESULTS_SIZE": int(os.getenv("MAX_RESULTS_SIZE", 600000)),  # 600KB default
+    "MAX_RESULTS_SIZE": int(os.getenv("MAX_RESULTS_SIZE", "600000")),  # 600KB default
     # Compression settings
     "ENABLE_REQUEST_COMPRESSION": os.getenv(
         "ENABLE_REQUEST_COMPRESSION", "true"
     ).lower()
     == "true",
-    "COMPRESSION_MIN_SIZE": int(os.getenv("COMPRESSION_MIN_SIZE", 1000)),  # 1KB minimum
+    "COMPRESSION_MIN_SIZE": int(os.getenv("COMPRESSION_MIN_SIZE", "1000")),  # 1 KB
     "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 1),
     "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=30),  # 30 days for refresh tokens
     "JWT_ALGORITHM": "HS256",  # Explicit algorithm — never rely on library defaults
+    "OIDC_ISSUER": os.getenv("OIDC_ISSUER") or os.getenv("API_PUBLIC_URL"),
+    "OIDC_KEY_ID": os.getenv("OIDC_KEY_ID", "trends-api-1"),
+    "OIDC_PRIVATE_KEY": os.getenv("OIDC_PRIVATE_KEY"),
+    "OIDC_PRIVATE_KEYS": os.getenv("OIDC_PRIVATE_KEYS"),
+    "OIDC_ACCESS_TOKEN_SECONDS": int(os.getenv("OIDC_ACCESS_TOKEN_SECONDS", "3600")),
+    "OIDC_AUTHORIZATION_CODE_SECONDS": int(
+        os.getenv("OIDC_AUTHORIZATION_CODE_SECONDS", "300")
+    ),
+    "OIDC_REFRESH_TOKEN_DAYS": int(os.getenv("OIDC_REFRESH_TOKEN_DAYS", "30")),
     "JWT_TOKEN_LOCATION": ["headers"],
     "JWT_IDENTITY_CLAIM": "sub",  # Standard JWT subject claim for identity
     "JWT_BLOCKLIST_ENABLED": True,  # Enable token blocklist for revocation
@@ -104,7 +114,7 @@ SETTINGS = {
         if net.strip().strip("\"'")  # Only include non-empty networks after cleaning
     ],
     "MAX_DECOMPRESSED_REQUEST_SIZE": int(
-        os.getenv("MAX_DECOMPRESSED_REQUEST_SIZE", 5 * 1024 * 1024)
+        os.getenv("MAX_DECOMPRESSED_REQUEST_SIZE", str(5 * 1024 * 1024))
     ),
     "ENABLE_API_DOCS": os.getenv("ENABLE_API_DOCS", "true").lower() == "true",
     "API_ENVIRONMENT_USER": _environment_user,
@@ -227,6 +237,23 @@ SETTINGS = {
     "BULK_EMAIL_MAX_RECIPIENTS": int(os.getenv("BULK_EMAIL_MAX_RECIPIENTS", "50")),
     # BULK_EMAIL_FROM_EMAIL: SparkPost from_email address for bulk email sends
     "BULK_EMAIL_FROM_EMAIL": os.getenv("BULK_EMAIL_FROM_EMAIL", "noreply@trends.earth"),
+    # API_UI_URL: Base URL of the API UI (used for generating unsubscribe links)
+    "API_UI_URL": os.getenv("API_UI_URL", "https://api.trends.earth"),
+    # UNSUBSCRIBE_JWT_SECRET: separate JWT secret for unsubscribe tokens.
+    # When set, rotating the main JWT_SECRET_KEY does not invalidate outstanding
+    # unsubscribe links.  Falls back to JWT_SECRET_KEY when not configured.
+    "UNSUBSCRIBE_JWT_SECRET": os.getenv("UNSUBSCRIBE_JWT_SECRET"),
+    # UNSUBSCRIBE_TOKEN_EXPIRY_DAYS: How long unsubscribe JWT tokens remain valid.
+    # 180 days balances usability (emails/links can sit unread for a while)
+    # against the risk of a leaked link being used to silently unsubscribe someone.
+    "UNSUBSCRIBE_TOKEN_EXPIRY_DAYS": int(
+        os.getenv("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", "180")
+    ),
+    # Overlap each hourly suppression sync so delayed SparkPost records are
+    # picked up safely. Preference updates are idempotent.
+    "SPARKPOST_SUPPRESSION_LOOKBACK_HOURS": int(
+        os.getenv("SPARKPOST_SUPPRESSION_LOOKBACK_HOURS", "24")
+    ),
 }
 
 

@@ -68,7 +68,7 @@ def cleanup_expired_email_hashes(self):
             }
 
     except Exception as error:
-        logger.error(f"[TASK]: Error cleaning up expired email hashes: {str(error)}")
+        logger.error(f"[TASK]: Error cleaning up expired email hashes: {error!s}")
         raise self.retry(exc=error, countdown=60, max_retries=3) from error
 
 
@@ -152,5 +152,5 @@ def get_deletion_audit_stats(self):
             return stats
 
     except Exception as error:
-        logger.error(f"[TASK]: Error gathering deletion audit stats: {str(error)}")
+        logger.error(f"[TASK]: Error gathering deletion audit stats: {error!s}")
         raise self.retry(exc=error, countdown=60, max_retries=3) from error

@@ -799,8 +799,7 @@ def main():
                         success_count += 1
                     except Exception as e:
                         logger.error(
-                            f"Failed to fetch all boundaries for "
-                            f"{release_type}: {str(e)}"
+                            f"Failed to fetch all boundaries for {release_type}: {e!s}"
                         )
                         logger.info(f"=== Skipping {release_type} ===")
                         continue
@@ -830,7 +829,7 @@ def main():
                         success_count += 1
                     except Exception as e:
                         logger.error(
-                            f"Failed to fetch {iso_code} for {release_type}: {str(e)}"
+                            f"Failed to fetch {iso_code} for {release_type}: {e!s}"
                         )
                         logger.info(f"=== Skipping {release_type} ===")
                         continue
@@ -862,7 +861,7 @@ def main():
             logger.warning("Operation interrupted by user")
             return 1
         except Exception as e:
-            logger.error(f"Error: {str(e)}", exc_info=True)
+            logger.error(f"Error: {e!s}", exc_info=True)
             return 1
 
         # Show final stats if fetch was performed

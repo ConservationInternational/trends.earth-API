@@ -6,7 +6,7 @@ from functools import lru_cache
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, ClassVar
 import uuid
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -17,21 +17,11 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from gefapi import db
 from gefapi.models import GUID
-from gefapi.utils import mask_email
+from gefapi.utils import mask_email, utcnow
 
 db.GUID = GUID
 
 logger = logging.getLogger(__name__)
-
-
-def _utcnow() -> datetime.datetime:
-    """Return current time in UTC as a naive datetime.
-
-    Uses datetime.now(UTC) rather than the deprecated utcnow() while keeping
-    the result naive for compatibility with the existing DB schema which uses
-    timezone-unaware TIMESTAMP columns.
-    """
-    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
 
 class User(db.Model):
@@ -48,8 +38,8 @@ class User(db.Model):
     country = db.Column(db.String(120))
     institution = db.Column(db.String(120))
     password = db.Column(db.String(200), nullable=False)
-    created_at = db.Column(db.DateTime(), default=_utcnow)
-    updated_at = db.Column(db.DateTime(), default=_utcnow)
+    created_at = db.Column(db.DateTime(), default=utcnow)
+    updated_at = db.Column(db.DateTime(), default=utcnow)
     role = db.Column(db.String(10))
     scripts = db.relationship(
         "Script",
@@ -119,6 +109,9 @@ class User(db.Model):
     last_activity_at = db.Column(db.DateTime(), nullable=True, index=True)
     email_verified = db.Column(db.Boolean(), default=False, nullable=True)
     email_verified_at = db.Column(db.DateTime(), nullable=True)
+    # Identity providers must be able to disable an account without deleting it.
+    is_active = db.Column(db.Boolean(), default=True, nullable=False, index=True)
+    auth_version = db.Column(db.Integer(), default=0, nullable=False)
 
     # Account lockout fields for brute force protection
     # failed_login_count: Number of consecutive failed login attempts
@@ -141,6 +134,28 @@ class User(db.Model):
     # A positive integer overrides the global default for this user.
     max_concurrent_executions = db.Column(db.Integer(), nullable=True)
 
+    # Bulk email subscription preferences
+    # Each controls whether the user receives that category of bulk email.
+    # system_updates defaults to True (opt-out) since it covers operational/
+    # service announcements; news and engagement are marketing-style content
+    # and default to False (opt-in) — users can subscribe via registration,
+    # the /unsubscribe page, or their profile settings.
+    email_subscription_news = db.Column(
+        db.Boolean(), nullable=False, server_default=db.false()
+    )
+    email_subscription_engagement = db.Column(
+        db.Boolean(), nullable=False, server_default=db.false()
+    )
+    email_subscription_system_updates = db.Column(
+        db.Boolean(), nullable=False, server_default=db.true()
+    )
+    # When/how the user's current subscription preferences were last
+    # explicitly confirmed (profile settings or the /unsubscribe page).
+    # NULL means the preferences are still just the registration default,
+    # i.e. no affirmative consent has been recorded (GDPR Art. 7(1)).
+    consent_given_at = db.Column(db.DateTime(), nullable=True)
+    consent_source = db.Column(db.String(50), nullable=True)
+
     def __init__(
         self,
         email,
@@ -157,6 +172,10 @@ class User(db.Model):
         gee_license_acknowledged=None,
         purpose_of_use=None,
         purpose_of_use_other=None,
+        email_notifications_enabled=None,
+        email_subscription_news=None,
+        email_subscription_engagement=None,
+        email_subscription_system_updates=None,
     ):
         self.email = email
         self.password = self.set_password(password)
@@ -172,18 +191,48 @@ class User(db.Model):
         self.gee_license_acknowledged = gee_license_acknowledged
         self.purpose_of_use = purpose_of_use
         self.purpose_of_use_other = purpose_of_use_other
-        # Ensure email_notifications_enabled gets the default value
-        self.email_notifications_enabled = True
+        # Job-status notifications are opt-out unless explicitly configured.
+        self.email_notifications_enabled = (
+            email_notifications_enabled
+            if email_notifications_enabled is not None
+            else True
+        )
         # Initialize login/verification tracking fields
         self.last_login_at = None
         self.last_activity_at = None
         self.email_verified = False
         self.email_verified_at = None
+        self.is_active = True
         # Initialize account lockout fields
         self.failed_login_count = 0
         self.locked_until = None
         # Per-user execution queue limit (None = use global default)
         self.max_concurrent_executions = None
+        # Bulk email subscription preferences (news/engagement are opt-in;
+        # system_updates is opt-out) unless the caller — e.g. the
+        # registration form — specifies otherwise
+        self.email_subscription_news = (
+            email_subscription_news if email_subscription_news is not None else False
+        )
+        self.email_subscription_engagement = (
+            email_subscription_engagement
+            if email_subscription_engagement is not None
+            else False
+        )
+        self.email_subscription_system_updates = (
+            email_subscription_system_updates
+            if email_subscription_system_updates is not None
+            else True
+        )
+        # Record consent when the registration form explicitly submitted a
+        # choice; otherwise these are just unconfirmed registration defaults.
+        explicit_choice = (
+            email_subscription_news is not None
+            or email_subscription_engagement is not None
+            or email_subscription_system_updates is not None
+        )
+        self.consent_given_at = utcnow() if explicit_choice else None
+        self.consent_source = "registration" if explicit_choice else None
 
     def __repr__(self):
         return f"<User {self.email!r}>"
@@ -234,6 +283,13 @@ class User(db.Model):
             "purpose_of_use": self.purpose_of_use,
             "purpose_of_use_other": self.purpose_of_use_other,
             "max_concurrent_executions": self.max_concurrent_executions,
+            "email_subscription_news": self.email_subscription_news,
+            "email_subscription_engagement": self.email_subscription_engagement,
+            "email_subscription_system_updates": self.email_subscription_system_updates,
+            "consent_given_at": self.consent_given_at.isoformat()
+            if self.consent_given_at
+            else None,
+            "consent_source": self.consent_source,
         }
 
         # Include Google Groups preferences if requested
@@ -299,18 +355,21 @@ class User(db.Model):
             logger.error(
                 f"Invalid password hash for user {mask_email(self.email)}: {e}"
             )
-            logger.error(f"Stored hash format: {repr(self.password[:50])}...")
+            logger.error(f"Stored hash format: {self.password[:50]!r}...")
             return False
 
     def get_token(self):
         """Generate JWT token"""
-        return create_access_token(identity=self.id)
+        return create_access_token(
+            identity=self.id,
+            additional_claims={"auth_version": self.auth_version},
+        )
 
     # -------------------------------------------------------------------------
     # Account Lockout Methods
     # -------------------------------------------------------------------------
     # Lockout thresholds and durations
-    LOCKOUT_THRESHOLDS = [
+    LOCKOUT_THRESHOLDS: ClassVar[list[tuple[int, int | None]]] = [
         (5, 15),  # After 5 failures: lock for 15 minutes
         (10, 60),  # After 10 failures: lock for 60 minutes
         (20, None),  # After 20 failures: lock until password reset
@@ -324,7 +383,7 @@ class User(db.Model):
         """
         if self.locked_until is None:
             return False
-        now = _utcnow()
+        now = utcnow()
         # Return True if lock hasn't expired yet
         return self.locked_until > now
 
@@ -338,7 +397,7 @@ class User(db.Model):
             return 0
         if self.locked_until is None:
             return None  # Shouldn't happen, but be safe
-        now = _utcnow()
+        now = utcnow()
         remaining = self.locked_until - now
         return max(1, int(remaining.total_seconds() / 60))
 
@@ -358,13 +417,13 @@ class User(db.Model):
                 lockout_minutes = minutes
 
         if lockout_minutes is not None:
-            self.locked_until = _utcnow() + datetime.timedelta(minutes=lockout_minutes)
+            self.locked_until = utcnow() + datetime.timedelta(minutes=lockout_minutes)
             return True, lockout_minutes
 
         if count >= self.LOCKOUT_THRESHOLDS[-1][0]:
             # Permanent lock (until password reset)
             # Set to far future date
-            self.locked_until = _utcnow() + datetime.timedelta(days=365 * 100)
+            self.locked_until = utcnow() + datetime.timedelta(days=365 * 100)
             return True, None
 
         return False, None
@@ -489,7 +548,7 @@ class User(db.Model):
             return None
         try:
             decoded = base64.b64decode(encrypted_data.encode("utf-8"))
-        except Exception as e:
+        except (ValueError, UnicodeEncodeError) as e:
             masked = mask_email(self.email)
             logger.error(f"Failed to base64-decode GEE data for user {masked}: {e}")
             return None
@@ -500,7 +559,7 @@ class User(db.Model):
             return fernet.decrypt(decoded).decode("utf-8")
         except InvalidToken:
             pass
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # Fernet may raise beyond InvalidToken
             masked = mask_email(self.email)
             logger.error(
                 f"Unexpected error decrypting GEE data for user {masked} "
@@ -525,7 +584,7 @@ class User(db.Model):
                 f"neither current nor legacy key could decrypt the data."
             )
             return None
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # Fernet legacy-key decrypt may raise beyond InvalidToken
             logger.error(
                 f"Failed to decrypt GEE data for user {mask_email(self.email)}: {e}"
             )
@@ -542,7 +601,7 @@ class User(db.Model):
         self.gee_oauth_token = self._encrypt_gee_data(access_token)
         self.gee_refresh_token = self._encrypt_gee_data(refresh_token)
         self.gee_credentials_type = "oauth"
-        self.gee_credentials_created_at = _utcnow()
+        self.gee_credentials_created_at = utcnow()
         if cloud_project is not None:
             self.gee_cloud_project = cloud_project.strip() or None
         if google_email is not None:
@@ -554,7 +613,7 @@ class User(db.Model):
             json.dumps(service_account_key)
         )
         self.gee_credentials_type = "service_account"
-        self.gee_credentials_created_at = _utcnow()
+        self.gee_credentials_created_at = utcnow()
 
     def get_gee_oauth_credentials(
         self,

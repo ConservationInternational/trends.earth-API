@@ -1,5 +1,6 @@
 """User management routes for the Trends.Earth API."""
 
+from datetime import UTC
 import logging
 
 from flask import jsonify, request
@@ -57,7 +58,6 @@ def create_user():
     ```json
     {
       "email": "user@example.com",
-      "password": "securePassword123",
       "name": "John Doe",
       "country": "US",
       "institution": "Example Organization",
@@ -67,7 +67,6 @@ def create_user():
 
     **Request Fields**:
     - `email`: User's email address (required, must be unique)
-    - `password`: User's password (required, minimum security requirements apply)
     - `name`: User's full name (required)
     - `country`: Two-letter country code (optional)
     - `institution`: User's organization/institution (optional)
@@ -95,24 +94,14 @@ def create_user():
     - Attempting to create privileged roles without permission returns 403 Forbidden
 
     **Error Responses**:
-    - `400 Bad Request`: Email already exists, validation failed, or weak password
+    - `400 Bad Request`: Email already exists or validation failed
     - `403 Forbidden`: Insufficient privileges to create the requested role
     - `429 Too Many Requests`: Rate limit exceeded
     - `500 Internal Server Error`: User creation failed
 
-    **Query Parameters**:
-    - `legacy`: If "true" (default), emails the password directly for backwards
-      compatibility with the QGIS plugin. If "false", sends a password reset
-      link instead (more secure).
     """
     logger.info("[ROUTER]: Creating user")
     body = request.get_json()
-
-    # Check for legacy query parameter (defaults to false — secure mode).
-    # Set ?legacy=true explicitly for backwards compatibility with the QGIS
-    # plugin, which expects the password to be emailed directly.
-    legacy_param = request.args.get("legacy", "false")
-    legacy = legacy_param.lower() == "true"
 
     if request.headers.get("Authorization", None) is not None:
 
@@ -130,7 +119,7 @@ def create_user():
     else:
         body["role"] = "USER"
     try:
-        user = UserService.create_user(body, legacy=legacy)
+        user = UserService.create_user(body)
     except UserDuplicated as e:
         logger.error("[ROUTER]: " + e.message)
         return error(status=400, detail=e.message)
@@ -141,6 +130,144 @@ def create_user():
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
     return jsonify(data=user.serialize()), 200
+
+
+# ---------------------------------------------------------------------------
+# CSV export
+# ---------------------------------------------------------------------------
+
+# Columns included in the users CSV export (all non-sensitive profile fields)
+_USER_EXPORT_COLUMNS = [
+    "id",
+    "email",
+    "name",
+    "role",
+    "country",
+    "institution",
+    "role_title",
+    "sector",
+    "sector_other",
+    "gender_identity",
+    "gender_identity_description",
+    "purpose_of_use",
+    "purpose_of_use_other",
+    "email_verified",
+    "email_verified_at",
+    "created_at",
+    "updated_at",
+    "last_login_at",
+    "last_activity_at",
+    "gee_license_acknowledged",
+    "email_notifications_enabled",
+    "email_subscription_news",
+    "email_subscription_engagement",
+    "email_subscription_system_updates",
+]
+
+# Allowed date fields for filtering the user export
+_USER_EXPORT_DATE_FIELDS = {
+    "created_at",
+    "updated_at",
+    "email_verified_at",
+    "last_login_at",
+    "last_activity_at",
+}
+
+
+@endpoints.route("/user/export", strict_slashes=False, methods=["GET"])
+@jwt_required()
+@require_scope("user:read")
+def export_users_csv():
+    """
+    Export users as a CSV file (admin only).
+
+    **Authentication**: JWT token required
+    **Authorization**: ADMIN or SUPERADMIN required
+
+    **Query Parameters**:
+    - ``date_field``: Column to filter by (``created_at``, ``updated_at``,
+      ``email_verified_at``, ``last_login_at``, ``last_activity_at``)
+    - ``date_from``: ISO 8601 start date (inclusive)
+    - ``date_to``:   ISO 8601 end date   (inclusive)
+
+    **Response**: ``text/csv`` attachment named ``users_export.csv``
+
+    **Error Responses**:
+    - ``400`` – invalid ``date_field``
+    - ``403`` – insufficient privileges
+    """
+    if not is_admin_or_higher(current_user):
+        return error(status=403, detail="Forbidden")
+
+    from gefapi.utils.csv_export import _parse_date_param, rows_to_csv_response
+
+    date_field = request.args.get("date_field") or None
+    date_from = _parse_date_param(request.args.get("date_from"))
+    date_to = _parse_date_param(request.args.get("date_to"))
+
+    if date_field and date_field not in _USER_EXPORT_DATE_FIELDS:
+        return error(status=400, detail=f"Invalid date_field '{date_field}'")
+
+    try:
+        from gefapi import db
+        from gefapi.models import User
+        from gefapi.utils.csv_export import MAX_EXPORT_ROWS
+
+        query = db.session.query(User)
+
+        if date_field and (date_from or date_to):
+            col = getattr(User, date_field)
+            if date_from:
+                query = query.filter(col >= date_from)
+            if date_to:
+                query = query.filter(col <= date_to)
+
+        total = query.count()
+        if total > MAX_EXPORT_ROWS:
+            return error(
+                status=400,
+                detail=(
+                    f"Export would return {total:,} rows which exceeds the "
+                    f"maximum of {MAX_EXPORT_ROWS:,}. Narrow the date range "
+                    "and try again."
+                ),
+            )
+
+        query = query.order_by(User.created_at.desc())
+        users = query.all()
+    except Exception as exc:
+        logger.error("[ROUTER]: export_users_csv error: %s", exc)
+        return error(status=500, detail="Generic Error")
+
+    rows = [{col: getattr(u, col, None) for col in _USER_EXPORT_COLUMNS} for u in users]
+    # Normalise datetime objects → ISO strings for CSV serialisation
+    for row in rows:
+        for key, val in row.items():
+            if hasattr(val, "isoformat"):
+                row[key] = val.isoformat()
+            elif val is None:
+                row[key] = ""
+
+    from datetime import datetime
+
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    filename = f"users_export_{timestamp}.csv"
+    logger.info(
+        "[AUDIT] CSV export: table=users rows=%d filename=%s "
+        "by user_id=%s email=%s role=%s "
+        "filter_field=%s filter_from=%s filter_to=%s "
+        "remote_addr=%s",
+        len(rows),
+        filename,
+        getattr(current_user, "id", None),
+        getattr(current_user, "email", None),
+        getattr(current_user, "role", None),
+        date_field,
+        request.args.get("date_from"),
+        request.args.get("date_to"),
+        request.remote_addr,
+    )
+    return rows_to_csv_response(rows, filename)
 
 
 @endpoints.route("/user", strict_slashes=False, methods=["GET"])
@@ -469,6 +596,11 @@ def update_profile():
         institution = body.get("institution", None)
         email_notifications_enabled = body.get("email_notifications_enabled", None)
         gee_license_acknowledged = body.get("gee_license_acknowledged", None)
+        email_subscription_news = body.get("email_subscription_news", None)
+        email_subscription_engagement = body.get("email_subscription_engagement", None)
+        email_subscription_system_updates = body.get(
+            "email_subscription_system_updates", None
+        )
 
         if (
             name is not None
@@ -476,6 +608,9 @@ def update_profile():
             or institution is not None
             or email_notifications_enabled is not None
             or gee_license_acknowledged is not None
+            or email_subscription_news is not None
+            or email_subscription_engagement is not None
+            or email_subscription_system_updates is not None
         ):
             user = UserService.update_user(body, str(identity.id))
         else:
@@ -692,23 +827,9 @@ def recover_password(user):
     **Path Parameters**:
     - `user`: User identifier (email address or numeric ID)
 
-    **Query Parameters**:
-    - `legacy`: (optional, default=true) Password recovery mode:
-        - `true` (default): Legacy mode - generates new password and emails it
-          directly. Maintained for backwards compatibility with older QGIS
-          plugin versions.
-        - `false`: Secure mode - sends a password reset link that expires after
-          1 hour. Recommended for new integrations.
-
     **Request**: No request body required
 
-    **Recovery Process (legacy=true, default)**:
-    1. Validates user exists
-    2. Generates a new secure password
-    3. Updates user's password in database
-    4. Emails the new password to user
-
-    **Recovery Process (legacy=false)**:
+        **Recovery Process**:
     1. Validates user exists and account is active
     2. Generates secure password reset token with 1-hour expiration
     3. Sends password recovery email with reset link
@@ -727,22 +848,13 @@ def recover_password(user):
     **Security Notes**:
     - Returns the same response regardless of whether the user exists,
       preventing user enumeration attacks (CWE-204).
-    - Legacy mode (default) is DEPRECATED but maintained for backwards
-      compatibility. It sends passwords via email which is less secure.
-    - New integrations should use `legacy=false` for better security.
-    - Rate limiting prevents email flooding attacks in both modes.
+        - Rate limiting prevents email flooding attacks.
 
     **Error Responses**:
     - `429 Too Many Requests`: Rate limit exceeded
     - `500 Internal Server Error`: System error (email failures are masked)
     """
     logger.info("[ROUTER]: Recovering password")
-
-    # Parse legacy parameter - defaults to False (secure token-based flow).
-    # Set ?legacy=true explicitly for backwards compatibility with older QGIS
-    # plugin versions that expect a password to be emailed directly.
-    legacy_param = request.args.get("legacy", "false").lower()
-    use_legacy = legacy_param in ("true", "1", "yes")
 
     # Generic success message returned regardless of whether the user exists.
     # This prevents user enumeration via the password recovery endpoint
@@ -757,7 +869,7 @@ def recover_password(user):
     }
 
     try:
-        UserService.recover_password(user, legacy=use_legacy)
+        UserService.recover_password(user)
     except UserNotFound:
         # Log for debugging but return the same response as success
         logger.info("[ROUTER]: Password recovery requested for unknown user")

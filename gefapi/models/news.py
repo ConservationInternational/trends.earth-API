@@ -1,12 +1,14 @@
 """NEWS MODEL"""
 
 import datetime
+from typing import ClassVar
 import uuid
 
 import markdown
 
 from gefapi import db
 from gefapi.models import GUID
+from gefapi.utils import utcnow
 
 db.GUID = GUID
 
@@ -230,13 +232,13 @@ class NewsItem(db.Model):
                     return False
 
             return True
-        except Exception:
-            # If version parsing fails, include the news item
+        except ValueError:
+            # packaging.version.InvalidVersion is a ValueError subclass
             return True
 
     def is_currently_published(self):
         """Check if the news item is currently within its publish window."""
-        now = datetime.datetime.now(datetime.UTC)
+        now = utcnow()
 
         if self.publish_at and now < self.publish_at:
             return False
@@ -269,7 +271,16 @@ class NewsItemTranslation(db.Model):
     __tablename__ = "news_item_translation"
 
     # Supported language codes (excludes 'en' which is the source language)
-    SUPPORTED_LANGUAGES = ["ar", "es", "fa", "fr", "pt", "ru", "sw", "zh"]
+    SUPPORTED_LANGUAGES: ClassVar[list[str]] = [
+        "ar",
+        "es",
+        "fa",
+        "fr",
+        "pt",
+        "ru",
+        "sw",
+        "zh",
+    ]
 
     id = db.Column(
         db.GUID(),

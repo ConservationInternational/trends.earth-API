@@ -10,15 +10,16 @@ authors = [
     { name = "Alex Zvoleff", email = "azvoleff@conservation.org" }
 ]
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.13,<3.15"
 dynamic = ["dependencies"]
 
 [tool.poetry]
 packages = [{ include = "gefapi" }]
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.14"
+python = ">=3.13,<3.15"
 flask = ">=3.0.0"
+authlib = ">=1.3.2"
 flask-cors = "*"
 flask-compress = "*"
 flask-jwt-extended = "*"
@@ -35,7 +36,7 @@ psutil = "*"
 boto3 = "*"
 docker = "*"
 sparkpost = "*"
-nh3 = ">=0.2.0"
+nh3 = ">=0.3.6"
 python-slugify = "*"
 gunicorn = "*"
 gevent = "*"
@@ -50,7 +51,7 @@ earthengine-api = ">=1.0.0"
 # agent objectCreator so OAuth users can export to the ldmt bucket)
 google-cloud-storage = ">=2.0.0"
 # Cryptography for secure credential storage - updated for security patches
-cryptography = ">=46.0.7"
+cryptography = ">=50.0.0"
 # GeoAlchemy2 for PostGIS spatial database support
 geoalchemy2 = ">=0.14.0"
 # Shapely for geometry manipulation
@@ -78,8 +79,8 @@ packages = ["gefapi"]
 line-length = 88
 indent-width = 4
 
-# Assume Python 3.11+ (updated for better compatibility)
-target-version = "py311"
+# Assume Python 3.13+
+target-version = "py313"
 
 # Exclude files/directories from linting
 exclude = [
@@ -170,17 +171,71 @@ section-order = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Allow specific ignores for test files
+# Operational helpers and scripts intentionally use broad exception handling.
+"deployment_utils.py" = [
+    "BLE001",  # Deployment helpers log and continue on many operational failures.
+    "PLW1510", # subprocess.run check is intentionally delegated here.
+]
+"run_db_migrations.py" = ["BLE001"]
+"setup_staging_environment.py" = ["BLE001"]
+"scripts/*.py" = [
+    "BLE001",
+    "TRY002",
+    "G201",
+]
+"scripts/setup/*.py" = ["BLE001"]
+"scripts/verify_production_connection.py" = ["PLW1508"]
+"gefapi/services/docker_service.py" = ["BLE001", "TRY002"]
+"gefapi/services/execution_service.py" = ["BLE001", "TRY002"]
+"gefapi/services/gcs_iam_service.py" = ["BLE001"]
+"gefapi/services/gee_service.py" = ["BLE001", "TRY002"]
+"gefapi/services/google_groups_service.py" = ["BLE001"]
+"gefapi/services/oauth2_service.py" = ["BLE001"]
+"gefapi/services/openeo_credential_service.py" = ["BLE001"]
+"gefapi/services/openeo_service.py" = ["BLE001"]
+"gefapi/services/refresh_token_service.py" = ["BLE001"]
+"gefapi/services/script_service.py" = ["TRY002"]
+"gefapi/services/stats_service.py" = ["BLE001"]
+"gefapi/services/rate_limit_event_service.py" = [
+    "BLE001",
+    "G201",
+    "RUF012",
+]
+"gefapi/services/user_service.py" = [
+    "BLE001",
+    "RUF012",
+]
+"gefapi/tasks/*.py" = ["BLE001"]
+"gefapi/utils/*.py" = ["BLE001"]
+"gefapi/validators.py" = ["BLE001"]
+# Route handlers are last-resort HTTP-boundary catch-alls; BLE001 is intentional.
+"gefapi/routes/api/v1/*.py" = ["BLE001"]
+"gefapi/__init__.py" = ["BLE001"]
+# All AWS Batch/CloudWatch SDK calls; Boto3 exceptions are not well-typed.
+"gefapi/services/batch_service.py" = ["BLE001"]
+"gefapi/services/gee_service_identity_service.py" = ["BLE001"]
+"notebooks/*.py" = ["BLE001"]
 "tests/*.py" = [
     "S101",  # Use of assert (expected in tests)
     "S105",  # Hardcoded password (test fixtures)
-    "S106",  # Hardcoded password (test fixtures) 
+    "S106",  # Hardcoded password (test fixtures)
     "S107",  # Hardcoded password (test fixtures)
     "S110",  # try-except-pass (acceptable in tests)
     "T201",  # print statements (debugging in tests)
     "B017",  # assertRaises(Exception) (acceptable in tests)
     "B007",  # Loop variable not used (acceptable in tests)
+    "BLE001",  # Test helpers sometimes catch broad exceptions for setup/teardown.
+    "PLW0127", # Self-assignment in tests is sometimes used for clarity.
+    "TRY004", # Re-raising generic assertion errors is acceptable in tests.
 ]
+"tests/**/*.py" = [
+    "BLE001",
+    "PLW0127",
+    "TRY004",
+]
+"notebooks/*.ipynb" = ["BLE001"]
+
+# Allow specific ignores for test files
 
 # Models use mixedCase to match external API field names exactly
 "gefapi/models/boundary.py" = [

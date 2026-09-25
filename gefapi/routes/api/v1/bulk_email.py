@@ -29,6 +29,8 @@ from gefapi.utils.rate_limiting import (
 
 logger = logging.getLogger(__name__)
 
+_VALID_SUBSCRIPTION_TYPES = {"news", "engagement", "system_updates"}
+
 
 def _require_superadmin(user):
     """Return a 403 response dict if user is not a superadmin, else None."""
@@ -104,6 +106,8 @@ def create_recipient_list():
             filter_criteria=filter_criteria,
             created_by_id=str(current_user.id),
         )
+    except ValueError as exc:
+        return error(400, str(exc))
     except Exception as exc:
         logger.exception("Error creating recipient list")
         return error(500, str(exc))
@@ -129,8 +133,21 @@ def preview_recipients():
         return guard
     body = request.get_json(force=True) or {}
     filter_criteria = body.get("filter_criteria", {})
-    limit = min(int(body.get("limit", 20)), 100)
-    result = BulkEmailService.preview_recipients(filter_criteria, limit=limit)
+    try:
+        page = max(int(body.get("page", 1)), 1)
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        per_page = min(int(body.get("per_page", 100)), 200)
+    except (ValueError, TypeError):
+        per_page = 100
+    sort = body.get("sort") or None
+    try:
+        result = BulkEmailService.preview_recipients(
+            filter_criteria, page=page, per_page=per_page, sort=sort
+        )
+    except ValueError as exc:
+        return error(400, str(exc))
     return jsonify({"data": result}), 200
 
 
@@ -146,6 +163,48 @@ def delete_recipient_list(list_id):
     except RecipientListNotFound as exc:
         return error(404, exc.message)
     return jsonify({"message": "Recipient list deleted."}), 200
+
+
+@endpoints.route("/bulk-email/recipient-list/<list_id>", methods=["PATCH"])
+@jwt_required()
+def update_recipient_list(list_id):
+    """Update an existing saved recipient list."""
+    guard = _require_superadmin(current_user)
+    if guard:
+        return guard
+    body = request.get_json(force=True) or {}
+    name = body.get("name")
+    if name is not None:
+        name = name.strip()
+        if not name:
+            return error(400, "name cannot be empty.")
+    description = body.get("description")
+    filter_criteria = body.get("filter_criteria")
+    try:
+        rl = BulkEmailService.update_recipient_list(
+            list_id,
+            name=name,
+            description=description,
+            filter_criteria=filter_criteria,
+        )
+    except RecipientListNotFound as exc:
+        return error(404, exc.message)
+    except ValueError as exc:
+        return error(400, str(exc))
+    except Exception as exc:
+        logger.exception("Error updating recipient list")
+        return error(500, str(exc))
+    return jsonify(
+        {
+            "data": {
+                "id": str(rl.id),
+                "name": rl.name,
+                "description": rl.description,
+                "filter_criteria": rl.filter_criteria,
+                "estimated_count": rl.estimated_count,
+            }
+        }
+    ), 200
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +238,16 @@ def create_bulk_email():
     if not name or not subject or not html_content:
         return error(400, "name, subject, and html_content are required.")
     recipient_list_id = body.get("recipient_list_id")
+    subscription_type = body.get("subscription_type")
+    fields_data = body.get("fields_data")
+    if subscription_type is not None and subscription_type not in (
+        _VALID_SUBSCRIPTION_TYPES
+    ):
+        return error(
+            400,
+            f"Invalid subscription_type {subscription_type!r}. "
+            f"Valid values: {sorted(_VALID_SUBSCRIPTION_TYPES)}.",
+        )
     try:
         c = BulkEmailService.create_bulk_email(
             name=name,
@@ -186,6 +255,8 @@ def create_bulk_email():
             html_content=html_content,
             created_by_id=str(current_user.id),
             recipient_list_id=recipient_list_id,
+            subscription_type=subscription_type,
+            fields_data=fields_data,
         )
     except Exception as exc:
         logger.exception("Error creating bulk email")
@@ -215,13 +286,28 @@ def update_bulk_email(bulk_email_id):
     if guard:
         return guard
     body = request.get_json(force=True) or {}
+    if "subscription_type" in body:
+        st = body["subscription_type"]
+        if st is not None and st not in _VALID_SUBSCRIPTION_TYPES:
+            return error(
+                400,
+                f"Invalid subscription_type {st!r}. "
+                f"Valid values: {sorted(_VALID_SUBSCRIPTION_TYPES)}.",
+            )
     try:
         c = BulkEmailService.update_bulk_email(
             bulk_email_id=bulk_email_id,
             user_id=str(current_user.id),
             **{
                 k: body[k]
-                for k in ("name", "subject", "html_content", "recipient_list_id")
+                for k in (
+                    "name",
+                    "subject",
+                    "html_content",
+                    "recipient_list_id",
+                    "subscription_type",
+                    "fields_data",
+                )
                 if k in body
             },
         )
@@ -229,7 +315,7 @@ def update_bulk_email(bulk_email_id):
         return error(404, exc.message)
     except BulkEmailAlreadySent as exc:
         return error(409, exc.message)
-    return jsonify({"data": _serialize_bulk_email(c)}), 200
+    return jsonify({"data": _serialize_bulk_email(c)}), 202
 
 
 @endpoints.route("/bulk-email/<bulk_email_id>", methods=["DELETE"])
@@ -299,9 +385,13 @@ def send_bulk_email(bulk_email_id):
         return guard
     body = request.get_json(force=True, silent=True) or {}
     code = body.get("code")
+    recipient_list_id = body.get("recipient_list_id")
     try:
         c = BulkEmailService.send_bulk_email(
-            bulk_email_id=bulk_email_id, user=current_user, code=code
+            bulk_email_id=bulk_email_id,
+            user=current_user,
+            code=code,
+            recipient_list_id=recipient_list_id,
         )
     except VerificationRequiredError as exc:
         return jsonify(exc.serialize), 428
@@ -339,6 +429,48 @@ def send_test_bulk_email(bulk_email_id):
     return jsonify({"data": result}), 200
 
 
+@endpoints.route("/bulk-email/<bulk_email_id>/send-test-self", methods=["POST"])
+@limiter.limit(
+    lambda: ";".join(RateLimitConfig.get_bulk_email_send_limits()) or "10 per hour",
+    key_func=get_non_exempt_key,
+    exempt_when=is_rate_limiting_disabled,
+)
+@jwt_required()
+def send_test_bulk_email_self(bulk_email_id):
+    """Send bulk email as test to the requesting user only (no 2FA, status unchanged)."""  # noqa: E501
+    guard = _require_superadmin(current_user)
+    if guard:
+        return guard
+    try:
+        result = BulkEmailService.send_test_self_bulk_email(
+            bulk_email_id=bulk_email_id, user=current_user
+        )
+    except NotApprovedSender as exc:
+        return error(403, exc.message)
+    except BulkEmailNotFound as exc:
+        return error(404, exc.message)
+    return jsonify({"data": result}), 200
+
+
+@endpoints.route("/bulk-email/<bulk_email_id>/restore-draft", methods=["POST"])
+@jwt_required()
+def restore_bulk_email_to_draft(bulk_email_id):
+    """Restore a SENT or FAILED bulk email back to DRAFT status."""
+    guard = _require_superadmin(current_user)
+    if guard:
+        return guard
+    try:
+        c = BulkEmailService.restore_to_draft(
+            bulk_email_id=bulk_email_id,
+            user_id=str(current_user.id),
+        )
+    except BulkEmailNotFound as exc:
+        return error(404, exc.message)
+    except BulkEmailAlreadySent as exc:
+        return error(409, exc.message)
+    return jsonify({"data": _serialize_bulk_email(c)}), 200
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -353,6 +485,8 @@ def _serialize_bulk_email(c):
         "status": c.status,
         "recipient_list_id": str(c.recipient_list_id) if c.recipient_list_id else None,
         "recipient_count": c.recipient_count,
+        "subscription_type": c.subscription_type,
+        "fields_data": c.fields_data,
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "updated_at": c.updated_at.isoformat() if c.updated_at else None,
         "sent_at": c.sent_at.isoformat() if c.sent_at else None,

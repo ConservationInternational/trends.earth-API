@@ -48,7 +48,7 @@ def cleanup_expired_refresh_tokens(self):
             "message": f"Cleaned up {cleaned_count} expired refresh tokens",
         }
     except Exception as error:
-        logger.error(f"[TASK]: Error cleaning up expired refresh tokens: {str(error)}")
+        logger.error(f"[TASK]: Error cleaning up expired refresh tokens: {error!s}")
         raise self.retry(exc=error, countdown=60, max_retries=3) from error
 
 
@@ -71,7 +71,7 @@ def cleanup_inactive_refresh_tokens(self):
         from gefapi.models.refresh_token import RefreshToken
 
         with app.app_context():
-            cutoff_date = datetime.datetime.utcnow() - datetime.timedelta(
+            cutoff_date = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
                 days=inactive_days
             )
 
@@ -121,5 +121,5 @@ def cleanup_inactive_refresh_tokens(self):
             }
 
     except Exception as error:
-        logger.error(f"[TASK]: Error revoking inactive refresh tokens: {str(error)}")
+        logger.error(f"[TASK]: Error revoking inactive refresh tokens: {error!s}")
         raise self.retry(exc=error, countdown=60, max_retries=3) from error

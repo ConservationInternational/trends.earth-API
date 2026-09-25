@@ -15,7 +15,8 @@ from gefapi.models.service_client import (
     CLIENT_SECRET_PREFIX,
     ServiceClient,
 )
-from gefapi.utils.scopes import validate_scopes
+from gefapi.utils.permissions import is_admin_or_higher
+from gefapi.utils.scopes import has_privileged_service_client_scope, validate_scopes
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,10 @@ class OAuth2Service:
         scope_error = validate_scopes(scopes)
         if scope_error:
             raise NotAllowed(message=scope_error)
+        if has_privileged_service_client_scope(scopes) and not is_admin_or_higher(user):
+            raise NotAllowed(
+                message="Administrative service-client scopes require an admin user"
+            )
 
         active_count = ServiceClient.query.filter_by(
             user_id=user.id, revoked=False
@@ -96,10 +101,10 @@ class OAuth2Service:
                 client_id,
                 user.email,
             )
-        except Exception as exc:
+        except Exception:
             db.session.rollback()
             rollbar.report_exc_info()
-            raise exc
+            raise
 
         return raw_secret, client
 
@@ -135,10 +140,10 @@ class OAuth2Service:
                 client.client_id,
                 client.user_id,
             )
-        except Exception as exc:
+        except Exception:
             db.session.rollback()
             rollbar.report_exc_info()
-            raise exc
+            raise
         return client
 
     # ------------------------------------------------------------------

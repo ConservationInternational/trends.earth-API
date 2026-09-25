@@ -3,6 +3,8 @@
 import datetime
 import logging
 
+import jwt as pyjwt
+from markupsafe import escape as html_escape
 import nh3
 import rollbar
 
@@ -22,6 +24,7 @@ from gefapi.models.bulk_email_verification_token import (
     BulkEmailVerificationToken,
 )
 from gefapi.services.email_service import EmailService
+from gefapi.utils import utcnow
 from gefapi.utils.security_events import log_security_event
 
 logger = logging.getLogger(__name__)
@@ -36,6 +39,7 @@ _ALLOWED_EMAIL_TAGS = frozenset(
         "a",
         "b",
         "blockquote",
+        "body",
         "br",
         "caption",
         "code",
@@ -47,37 +51,94 @@ _ALLOWED_EMAIL_TAGS = frozenset(
         "h4",
         "h5",
         "h6",
+        "head",
         "hr",
+        "html",
         "i",
         "img",
         "li",
+        "meta",
         "ol",
         "p",
         "pre",
         "s",
         "span",
         "strong",
+        "style",
         "table",
         "tbody",
         "td",
         "th",
         "thead",
+        "title",
         "tr",
         "u",
         "ul",
     }
 )
 
+# Per-tag attribute allowlist.  The ``style`` attribute is explicitly
+# permitted so that inline CSS used for email layout (table widths, padding,
+# colours, font sizes) is preserved.  CSS injection risk is low in this
+# context: only approved superadmins can author bulk emails, and email
+# clients already sandbox CSS to the message scope.
+_ALLOWED_EMAIL_ATTRIBUTES = {
+    "a": {"href", "rel", "style", "target"},
+    "b": {"style"},
+    "blockquote": {"cite", "style"},
+    "body": {"style"},
+    "br": set(),
+    "caption": {"style"},
+    "code": {"style"},
+    "del": {"style"},
+    "em": {"style"},
+    "h1": {"style"},
+    "h2": {"style"},
+    "h3": {"style"},
+    "h4": {"style"},
+    "h5": {"style"},
+    "h6": {"style"},
+    "head": set(),
+    "hr": {"style"},
+    "html": {"lang"},
+    "i": {"style"},
+    "img": {"alt", "height", "src", "style", "width"},
+    "li": {"style"},
+    "meta": {"charset", "content", "name"},
+    "ol": {"start", "style", "type"},
+    "p": {"style"},
+    "pre": {"style"},
+    "s": {"style"},
+    "span": {"style"},
+    "strong": {"style"},
+    "style": set(),
+    "table": {"align", "border", "cellpadding", "cellspacing", "style", "width"},
+    "tbody": {"style"},
+    "td": {"align", "colspan", "rowspan", "style", "valign", "width"},
+    "th": {"align", "colspan", "rowspan", "scope", "style", "valign", "width"},
+    "thead": {"style"},
+    "title": set(),
+    "tr": {"style"},
+    "u": {"style"},
+    "ul": {"style"},
+}
+
 
 def _sanitize_html(html_content: str) -> str:
     """Strip dangerous tags/attributes from bulk email HTML before storage."""
     if html_content is None:
         return html_content
-    return nh3.clean(html_content, tags=_ALLOWED_EMAIL_TAGS)
-
-
-def _utcnow():
-    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+    return nh3.clean(
+        html_content,
+        tags=_ALLOWED_EMAIL_TAGS,
+        attributes=_ALLOWED_EMAIL_ATTRIBUTES,
+        # Explicit empty set: ammonia's built-in default clean_content_tags
+        # includes "style"/"script", which panics in some nh3 versions when
+        # it overlaps with the allowed `tags` set (neither is in ours, but
+        # the conflict check itself has been buggy across releases).
+        clean_content_tags=frozenset(),
+        link_rel=None,
+    )
 
 
 def _approved_senders():
@@ -93,10 +154,88 @@ def _from_email():
     return SETTINGS.get("BULK_EMAIL_FROM_EMAIL", "noreply@trends.earth")
 
 
+def _api_ui_url():
+    # Strip trailing slash to prevent double-slash in constructed URLs.
+    return SETTINGS.get("API_UI_URL", "https://api.trends.earth").rstrip("/")
+
+
+def _unsubscribe_secret():
+    """Return the JWT secret for unsubscribe tokens.
+
+    Uses the dedicated UNSUBSCRIBE_JWT_SECRET when set, falling back to
+    JWT_SECRET_KEY.  Keeping these separate means rotating the auth secret
+    does not invalidate outstanding unsubscribe links.
+    """
+    return SETTINGS.get("UNSUBSCRIBE_JWT_SECRET") or SETTINGS.get("JWT_SECRET_KEY")
+
+
+def _generate_unsubscribe_token(user_id):
+    """Generate a signed JWT unsubscribe token for a user."""
+    secret = _unsubscribe_secret()
+    expiry_days = SETTINGS.get("UNSUBSCRIBE_TOKEN_EXPIRY_DAYS", 180)
+    # Use timezone-aware datetime so the exp claim is an unambiguous Unix
+    # timestamp — avoids a PyJWT implementation-detail dependency on naive
+    # datetimes being treated as UTC.
+    exp = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=expiry_days)
+    return pyjwt.encode(
+        {"sub": str(user_id), "purpose": "unsubscribe", "exp": int(exp.timestamp())},
+        secret,
+        algorithm="HS256",
+    )
+
+
+def _unsubscribe_footer_html(user):
+    """Return an HTML unsubscribe/manage-preferences snippet for a user."""
+    token = _generate_unsubscribe_token(user.id)
+    url = f"{_api_ui_url()}/unsubscribe?token={token}"
+    return (
+        '<p style="font-size:12px;color:#6c757d;text-align:center;margin:0;">'
+        f'<a href="{url}" style="color:#c8272a;text-decoration:underline;">'
+        "Unsubscribe or manage email preferences"
+        "</a>"
+        "</p>"
+    )
+
+
+def _build_send_html(html_content: str) -> str:
+    """Wrap sanitized email HTML with top/bottom unsubscribe blocks.
+
+    The ``{{{unsubscribe_footer}}}`` SparkPost variable is substituted at
+    send time with a per-recipient link, so it can safely appear more than
+    once — both occurrences render the same link. Wrapping (rather than
+    inserting into the middle of ``html_content``) keeps this independent of
+    the document structure produced by the composer (full HTML doc vs. a
+    raw-HTML fragment).
+    """
+    top_html = (
+        '<div style="text-align:center;padding:8px 0;font-size:12px;">'
+        "{{{unsubscribe_footer}}}"
+        "</div>\n"
+    )
+    bottom_html = (
+        '\n<div style="text-align:center;padding:16px 0 8px;font-size:12px;'
+        'color:#6c757d;line-height:1.6;">'
+        '<p style="margin:0 0 4px;">Contact the team at '
+        '<a href="mailto:trends.earth@conservation.org" '
+        'style="color:#6c757d;">trends.earth@conservation.org</a></p>'
+        '<p style="margin:0 0 8px;">Our mailing address is: '
+        "Conservation International Foundation, 2011 Crystal Drive, "
+        "Suite 600, Arlington, VA 22202</p>"
+        "{{{unsubscribe_footer}}}"
+        "</div>"
+    )
+    return top_html + html_content + bottom_html
+
+
 def _check_approved_sender(user):
-    """Raise NotApprovedSender if user is not on the approved senders list."""
+    """Raise NotApprovedSender if user is not on the approved senders list.
+
+    Deliberately fails-safe: if the approved senders list is empty (e.g. the
+    environment variable was not set), the check raises rather than allowing
+    every superadmin to send bulk email.
+    """
     approved = _approved_senders()
-    if approved and user.email.lower() not in approved:
+    if not approved or user.email.lower() not in approved:
         raise NotApprovedSender(
             f"User {user.email!r} is not an approved bulk email sender."
         )
@@ -106,49 +245,179 @@ def _check_approved_sender(user):
 # Recipient list helpers
 # ---------------------------------------------------------------------------
 
+_PREVIEW_ALLOWED_SORT_FIELDS = {
+    "email",
+    "name",
+    "role",
+    "email_verified",
+    "created_at",
+    "last_activity_at",
+}
 
-def _build_recipient_query(filter_criteria):
+_KNOWN_ROLES = {"USER", "ADMIN", "SUPERADMIN"}
+
+
+def _parse_filter_datetime(value, field_name):
+    """Parse an ISO 8601 datetime string, raising ValueError with a friendly message."""
+    try:
+        return datetime.datetime.fromisoformat(value)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(
+            f"Invalid datetime for '{field_name}': {value!r}. "
+            "Expected ISO 8601 format, e.g. '2024-01-01T00:00:00'."
+        ) from exc
+
+
+def _build_recipient_query(filter_criteria, subscription_type=None):
     """Build a SQLAlchemy query for User based on filter_criteria dict.
 
     Supported keys:
-      roles: list[str] â€” e.g. ["USER", "ADMIN"]
+      roles: list[str] — e.g. ["USER", "ADMIN"]
       min_created_at: ISO datetime string
       max_created_at: ISO datetime string
       min_last_activity_at: ISO datetime string
       max_last_activity_at: ISO datetime string
       email_verified: bool | None
+
+    subscription_type: optional str — when "news", "engagement", or
+      "system_updates", adds a SQL filter excluding users who have
+      unsubscribed from that category.  Filtering happens in the database
+      rather than in Python to avoid fetching rows that will be discarded.
+
+    Raises ValueError for unrecognised role names or malformed datetime strings
+    so that callers can return HTTP 400 rather than a leaky 500.
     """
     q = db.session.query(User)
 
     roles = filter_criteria.get("roles")
     if roles:
+        unknown = [r for r in roles if r not in _KNOWN_ROLES]
+        if unknown:
+            raise ValueError(
+                f"Unknown role(s): {unknown!r}. Valid values: {sorted(_KNOWN_ROLES)}."
+            )
         q = q.filter(User.role.in_(roles))
 
     min_created = filter_criteria.get("min_created_at")
     if min_created:
-        q = q.filter(User.created_at >= datetime.datetime.fromisoformat(min_created))
+        q = q.filter(
+            User.created_at >= _parse_filter_datetime(min_created, "min_created_at")
+        )
 
     max_created = filter_criteria.get("max_created_at")
     if max_created:
-        q = q.filter(User.created_at <= datetime.datetime.fromisoformat(max_created))
+        q = q.filter(
+            User.created_at <= _parse_filter_datetime(max_created, "max_created_at")
+        )
 
     min_activity = filter_criteria.get("min_last_activity_at")
     if min_activity:
         q = q.filter(
-            User.last_activity_at >= datetime.datetime.fromisoformat(min_activity)
+            User.last_activity_at
+            >= _parse_filter_datetime(min_activity, "min_last_activity_at")
         )
 
     max_activity = filter_criteria.get("max_last_activity_at")
     if max_activity:
         q = q.filter(
-            User.last_activity_at <= datetime.datetime.fromisoformat(max_activity)
+            User.last_activity_at
+            <= _parse_filter_datetime(max_activity, "max_last_activity_at")
         )
 
     email_verified = filter_criteria.get("email_verified")
     if email_verified is not None:
         q = q.filter(User.email_verified == email_verified)
 
+    if subscription_type == "news":
+        q = q.filter(User.email_subscription_news == True)  # noqa: E712
+    elif subscription_type == "engagement":
+        q = q.filter(User.email_subscription_engagement == True)  # noqa: E712
+    elif subscription_type == "system_updates":
+        q = q.filter(User.email_subscription_system_updates == True)  # noqa: E712
+
     return q
+
+
+# ---------------------------------------------------------------------------
+# Async send helper (called from Celery task)
+# ---------------------------------------------------------------------------
+
+
+def _execute_send(bulk_email_id: str, sent_by_user_id: str) -> None:
+    """Perform the actual bulk email send — called from the Celery task.
+
+    Fetches recipients (with SQL-level subscription filtering), generates
+    per-recipient unsubscribe tokens, sends via SparkPost in batches, and
+    updates the BulkEmail status to SENT on success or FAILED on error.
+    """
+    c = db.session.get(BulkEmail, bulk_email_id)
+    if not c:
+        logger.error("_execute_send: BulkEmail %r not found", bulk_email_id)
+        return
+
+    rl = (
+        db.session.get(BulkEmailRecipientList, str(c.recipient_list_id))
+        if c.recipient_list_id
+        else None
+    )
+    recipients = []
+    if rl:
+        users = _build_recipient_query(
+            rl.filter_criteria, subscription_type=c.subscription_type
+        ).all()
+        recipients = [
+            {
+                "address": {"email": u.email, "name": u.name},
+                "substitution_data": {
+                    "name": u.name,
+                    "email": u.email,
+                    "unsubscribe_footer": _unsubscribe_footer_html(u),
+                },
+            }
+            for u in users
+        ]
+
+    # Wrap with top/bottom unsubscribe blocks at send time. This is done
+    # *after* _sanitize_html() so the triple-brace SparkPost substitution
+    # syntax is never passed through the sanitizer.
+    send_html = _build_send_html(c.html_content)
+
+    try:
+        for i in range(0, max(1, len(recipients)), _BATCH_SIZE):
+            batch = recipients[i : i + _BATCH_SIZE]
+            if not batch:
+                break
+            EmailService.send_html_email(
+                recipients=batch,
+                html=send_html,
+                from_email=_from_email(),
+                subject=c.subject,
+            )
+    except Exception:
+        c.status = "FAILED"
+        c.sent_at = utcnow()
+        db.session.commit()
+        log_security_event(
+            "BULK_EMAIL_SEND_FAILED",
+            user_id=sent_by_user_id,
+            details={"bulk_email_id": bulk_email_id},
+        )
+        rollbar.report_exc_info()
+        raise
+
+    c.status = "SENT"
+    c.sent_at = utcnow()
+    c.recipient_count = len(recipients)
+    db.session.commit()
+
+    log_security_event(
+        "BULK_EMAIL_SEND_SUCCESS",
+        user_id=sent_by_user_id,
+        details={
+            "bulk_email_id": bulk_email_id,
+            "recipient_count": len(recipients),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +458,23 @@ class BulkEmailService:
         return rl
 
     @staticmethod
+    def update_recipient_list(
+        list_id, name=None, description=None, filter_criteria=None
+    ):
+        rl = db.session.get(BulkEmailRecipientList, str(list_id))
+        if not rl:
+            raise RecipientListNotFound(f"Recipient list {list_id!r} not found.")
+        if name is not None:
+            rl.name = name
+        if description is not None:
+            rl.description = description
+        if filter_criteria is not None:
+            rl.filter_criteria = filter_criteria
+            rl.estimated_count = _build_recipient_query(filter_criteria).count()
+        db.session.commit()
+        return rl
+
+    @staticmethod
     def delete_recipient_list(list_id):
         rl = db.session.get(BulkEmailRecipientList, str(list_id))
         if not rl:
@@ -197,15 +483,37 @@ class BulkEmailService:
         db.session.commit()
 
     @staticmethod
-    def preview_recipients(filter_criteria, limit=20):
-        """Return total count and a sample of recipients matching filter_criteria."""
+    def preview_recipients(filter_criteria, page=1, per_page=100, sort=None):
+        """Return total count and a page of recipients matching filter_criteria."""
         q = _build_recipient_query(filter_criteria)
         total = q.count()
-        sample = q.limit(limit).all()
+        if sort:
+            from gefapi.utils.query_filters import parse_sort_param
+
+            order_clauses = parse_sort_param(
+                sort,
+                allowed_fields=_PREVIEW_ALLOWED_SORT_FIELDS,
+                resolve_column=lambda field, _dir: getattr(User, field, None),
+            )
+            q = q.order_by(*order_clauses) if order_clauses else q.order_by(User.email)
+        else:
+            q = q.order_by(User.email)
+        offset = (max(page, 1) - 1) * per_page
+        sample = q.offset(offset).limit(per_page).all()
         return {
             "total": total,
             "sample": [
-                {"id": str(u.id), "email": u.email, "name": u.name, "role": u.role}
+                {
+                    "id": str(u.id),
+                    "email": u.email,
+                    "name": u.name,
+                    "role": u.role,
+                    "email_verified": u.email_verified,
+                    "created_at": u.created_at.isoformat() if u.created_at else None,
+                    "last_activity_at": u.last_activity_at.isoformat()
+                    if u.last_activity_at
+                    else None,
+                }
                 for u in sample
             ],
         }
@@ -228,7 +536,13 @@ class BulkEmailService:
 
     @staticmethod
     def create_bulk_email(
-        name, subject, html_content, created_by_id, recipient_list_id=None
+        name,
+        subject,
+        html_content,
+        created_by_id,
+        recipient_list_id=None,
+        subscription_type=None,
+        fields_data=None,
     ):
         c = BulkEmail(
             name=name,
@@ -237,6 +551,8 @@ class BulkEmailService:
             status="DRAFT",
             recipient_list_id=str(recipient_list_id) if recipient_list_id else None,
             created_by_id=str(created_by_id),
+            subscription_type=subscription_type or None,
+            fields_data=fields_data if isinstance(fields_data, dict) else None,
         )
         db.session.add(c)
         db.session.commit()
@@ -262,7 +578,14 @@ class BulkEmailService:
                 if field == "html_content":
                     value = _sanitize_html(value)
                 setattr(c, field, value)
-        c.updated_at = _utcnow()
+        # subscription_type is nullable — allow explicit None to clear it
+        if "subscription_type" in kwargs:
+            c.subscription_type = kwargs["subscription_type"] or None
+        # fields_data is nullable — None means "custom HTML draft" (clear the fields)
+        if "fields_data" in kwargs:
+            fd = kwargs["fields_data"]
+            c.fields_data = fd if isinstance(fd, dict) else None
+        c.updated_at = utcnow()
         db.session.commit()
         log_security_event(
             "BULK_EMAIL_DRAFT_UPDATED",
@@ -282,6 +605,48 @@ class BulkEmailService:
             )
         db.session.delete(c)
         db.session.commit()
+
+    @staticmethod
+    def restore_to_draft(bulk_email_id: str, user_id: str):
+        """Create a new DRAFT copy of a SENT or FAILED bulk email.
+
+        The original record (including its ``sent_at``, ``sent_by``, and
+        ``recipient_count``) is left untouched so the send history is
+        preserved.  The new draft is named "Copy of <original name>" and
+        has all sending-specific fields cleared.  Only SENT and FAILED
+        emails may be copied this way; calling this on a DRAFT or SENDING
+        record raises ``BulkEmailAlreadySent``.
+        """
+        c = db.session.get(BulkEmail, str(bulk_email_id))
+        if not c:
+            raise BulkEmailNotFound(f"Bulk email {bulk_email_id!r} not found.")
+        if c.status not in ("SENT", "FAILED"):
+            raise BulkEmailAlreadySent(
+                f"Cannot create a draft copy of a bulk email with status '{c.status}'."
+            )
+        now = utcnow()
+        draft = BulkEmail(
+            name=f"Copy of {c.name}",
+            subject=c.subject,
+            html_content=c.html_content,
+            status="DRAFT",
+            subscription_type=c.subscription_type,
+            fields_data=c.fields_data,
+            created_by_id=user_id,
+            created_at=now,
+            updated_at=now,
+        )
+        db.session.add(draft)
+        db.session.commit()
+        log_security_event(
+            "BULK_EMAIL_COPIED_TO_DRAFT",
+            user_id=user_id,
+            details={
+                "source_bulk_email_id": str(bulk_email_id),
+                "new_draft_id": str(draft.id),
+            },
+        )
+        return draft
 
     # -- Verification OTP --
 
@@ -309,7 +674,7 @@ class BulkEmailService:
             )
             .all()
         )
-        now = _utcnow()
+        now = utcnow()
         for t in prior:
             t.used_at = now  # mark superseded
 
@@ -319,12 +684,17 @@ class BulkEmailService:
         db.session.add(otp)
         db.session.commit()
 
-        # Send OTP via email
+        # Send OTP via email.
+        # html_escape() is applied to c.name because only html_content goes
+        # through _sanitize_html() — the name field is a plain String(200) with
+        # no HTML sanitisation.  Without escaping, a crafted name such as
+        # '<img src=x onerror="...">' would be injected directly into the email.
+        safe_name = html_escape(c.name)
         html_body = (
             f"<p>Your Trends.Earth Bulk Email verification code is:</p>"
             f"<h2 style='letter-spacing:0.2em'>{otp.token}</h2>"
             f"<p>This code expires in 15 minutes and is valid only for bulk email "
-            f"<strong>{c.name}</strong>.</p>"
+            f"<strong>{safe_name}</strong>.</p>"
             f"<p>If you did not request this code, please ignore this email.</p>"
         )
         EmailService.send_html_email(
@@ -332,6 +702,7 @@ class BulkEmailService:
             html=html_body,
             from_email=_from_email(),
             subject="[Trends.Earth] Bulk Email Send Verification Code",
+            transactional=True,
         )
 
         log_security_event(
@@ -353,12 +724,14 @@ class BulkEmailService:
         rl = db.session.get(BulkEmailRecipientList, str(c.recipient_list_id))
         if not rl:
             return 0
-        return _build_recipient_query(rl.filter_criteria).count()
+        return _build_recipient_query(
+            rl.filter_criteria, subscription_type=c.subscription_type
+        ).count()
 
     # -- Send --
 
     @staticmethod
-    def send_bulk_email(bulk_email_id, user, code=None):
+    def send_bulk_email(bulk_email_id, user, code=None, recipient_list_id=None):
         """Send a bulk email.
 
         If recipient count > BULK_EMAIL_MAX_RECIPIENTS and code is None,
@@ -367,11 +740,26 @@ class BulkEmailService:
         """
         _check_approved_sender(user)
 
-        c = db.session.get(BulkEmail, str(bulk_email_id))
+        # Use SELECT FOR UPDATE to atomically claim a DRAFT record.  This
+        # prevents two concurrent POST /send requests from both passing the
+        # status check and sending duplicate emails (race condition).
+        c = (
+            db.session.query(BulkEmail)
+            .filter(BulkEmail.id == str(bulk_email_id))
+            .with_for_update()
+            .first()
+        )
         if not c:
             raise BulkEmailNotFound(f"Bulk email {bulk_email_id!r} not found.")
-        if c.status == "SENT":
+        if c.status in ("SENT", "SENDING"):
             raise BulkEmailAlreadySent("Bulk email has already been sent.")
+
+        # If the caller supplies a recipient list at send time, persist it on
+        # the record so that resolve_recipient_count (and the send logic below)
+        # both see the same value.
+        if recipient_list_id:
+            c.recipient_list_id = str(recipient_list_id)
+            db.session.flush()
 
         recipient_count = BulkEmailService.resolve_recipient_count(bulk_email_id)
         max_r = _max_recipients()
@@ -415,7 +803,7 @@ class BulkEmailService:
                 raise AuthError("Invalid or expired verification code.")
             if otp.token != str(code):
                 # Burn the OTP on wrong guess — caller must request a new one
-                otp.used_at = _utcnow()
+                otp.used_at = utcnow()
                 db.session.flush()
                 from gefapi.errors import AuthError
 
@@ -427,58 +815,26 @@ class BulkEmailService:
                 raise AuthError(
                     "Invalid verification code. Request a new code and try again."
                 )
-            otp.used_at = _utcnow()
+            otp.used_at = utcnow()
             db.session.flush()
 
-        # Resolve full recipient list
-        rl = (
-            db.session.get(BulkEmailRecipientList, str(c.recipient_list_id))
-            if c.recipient_list_id
-            else None
-        )
-        recipients = []
-        if rl:
-            users = _build_recipient_query(rl.filter_criteria).all()
-            recipients = [
-                {
-                    "address": {"email": u.email, "name": u.name},
-                    "substitution_data": {"name": u.name, "email": u.email},
-                }
-                for u in users
-            ]
-
-        try:
-            for i in range(0, max(1, len(recipients)), _BATCH_SIZE):
-                batch = recipients[i : i + _BATCH_SIZE]
-                if not batch:
-                    break
-                EmailService.send_html_email(
-                    recipients=batch,
-                    html=c.html_content,
-                    from_email=_from_email(),
-                    subject=c.subject,
-                )
-        except Exception:
-            log_security_event(
-                "BULK_EMAIL_SEND_FAILED",
-                user_id=str(user.id),
-                details={"bulk_email_id": str(bulk_email_id)},
-            )
-            rollbar.report_exc_info()
-            raise
-
-        c.status = "SENT"
+        # Mark as SENDING and dispatch to the Celery worker.  The HTTP
+        # request returns immediately (202 Accepted); the worker updates the
+        # status to SENT or FAILED once SparkPost has accepted all batches.
+        c.status = "SENDING"
         c.sent_by_id = str(user.id)
-        c.sent_at = _utcnow()
-        c.recipient_count = len(recipients)
         db.session.commit()
 
+        from gefapi.tasks.bulk_email_send import send_bulk_email_task
+
+        send_bulk_email_task.delay(str(bulk_email_id), str(user.id))
+
         log_security_event(
-            "BULK_EMAIL_SEND_SUCCESS",
+            "BULK_EMAIL_SEND_DISPATCHED",
             user_id=str(user.id),
             details={
                 "bulk_email_id": str(bulk_email_id),
-                "recipient_count": len(recipients),
+                "recipient_count": recipient_count,
             },
         )
         return c
@@ -496,15 +852,20 @@ class BulkEmailService:
         recipients = [
             {
                 "address": {"email": u.email, "name": u.name},
-                "substitution_data": {"name": u.name, "email": u.email},
+                "substitution_data": {
+                    "name": u.name,
+                    "email": u.email,
+                    "unsubscribe_footer": _unsubscribe_footer_html(u),
+                },
             }
             for u in superadmins
         ]
 
         test_subject = f"[TEST] {c.subject}"
+        send_html = _build_send_html(c.html_content)
         EmailService.send_html_email(
             recipients=recipients,
-            html=c.html_content,
+            html=send_html,
             from_email=_from_email(),
             subject=test_subject,
         )
@@ -518,6 +879,42 @@ class BulkEmailService:
             },
         )
         return {"superadmin_count": len(recipients)}
+
+    @staticmethod
+    def send_test_self_bulk_email(bulk_email_id, user):
+        """Send bulk email as test only to the requesting user (no 2FA, no status change)."""  # noqa: E501
+        _check_approved_sender(user)
+
+        c = db.session.get(BulkEmail, str(bulk_email_id))
+        if not c:
+            raise BulkEmailNotFound(f"Bulk email {bulk_email_id!r} not found.")
+
+        recipients = [
+            {
+                "address": {"email": user.email, "name": user.name},
+                "substitution_data": {
+                    "name": user.name,
+                    "email": user.email,
+                    "unsubscribe_footer": _unsubscribe_footer_html(user),
+                },
+            }
+        ]
+
+        test_subject = f"[TEST] {c.subject}"
+        send_html = _build_send_html(c.html_content)
+        EmailService.send_html_email(
+            recipients=recipients,
+            html=send_html,
+            from_email=_from_email(),
+            subject=test_subject,
+        )
+
+        log_security_event(
+            "BULK_EMAIL_TEST_SEND_SELF",
+            user_id=str(user.id),
+            details={"bulk_email_id": str(bulk_email_id)},
+        )
+        return {"sent_to": user.email}
 
     @staticmethod
     def get_config():

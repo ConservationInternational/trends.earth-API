@@ -1,6 +1,7 @@
 """Tests for GEE credentials functionality"""
 
 import os
+from typing import ClassVar
 from unittest.mock import Mock, patch
 import uuid
 
@@ -352,7 +353,7 @@ class TestGEECredentialsAPI:
 
     def test_get_gee_credentials_no_credentials(self, client, user_with_token):
         """Test getting GEE credentials status when user has none"""
-        user, token = user_with_token
+        _user, token = user_with_token
 
         response = client.get(
             "/api/v1/user/me/gee-credentials",
@@ -386,7 +387,7 @@ class TestGEECredentialsAPI:
 
     def test_upload_service_account_valid(self, client, user_with_token):
         """Test uploading valid service account"""
-        user, token = user_with_token
+        _user, token = user_with_token
 
         service_account_key = {
             "type": "service_account",
@@ -411,7 +412,7 @@ class TestGEECredentialsAPI:
 
     def test_upload_service_account_invalid(self, client, user_with_token):
         """Test uploading invalid service account"""
-        user, token = user_with_token
+        _user, token = user_with_token
 
         invalid_key = {
             "type": "user_account",  # Wrong type
@@ -449,7 +450,7 @@ class TestGEECredentialsAPI:
 
     def test_delete_gee_credentials_none_exist(self, client, user_with_token):
         """Test deleting GEE credentials when none exist"""
-        user, token = user_with_token
+        _user, token = user_with_token
 
         response = client.delete(
             "/api/v1/user/me/gee-credentials",
@@ -470,7 +471,7 @@ class TestGEECredentialsAPI:
     @patch("google_auth_oauthlib.flow.Flow")
     def test_initiate_oauth_flow(self, mock_flow, client, user_with_token):
         """Test initiating OAuth flow"""
-        user, token = user_with_token
+        _user, token = user_with_token
 
         # Mock the Flow
         mock_flow_instance = Mock()
@@ -493,7 +494,7 @@ class TestGEECredentialsAPI:
 
     def test_initiate_oauth_flow_not_configured(self, client, user_with_token):
         """Test initiating OAuth flow when not configured"""
-        user, token = user_with_token
+        _user, token = user_with_token
 
         # Remove OAuth environment variables
         with patch.dict(os.environ, {}, clear=True):
@@ -540,7 +541,7 @@ class TestAdminGEECredentialsAPI:
         self, client, admin_user_with_token, user_with_token
     ):
         """Test admin getting user's GEE credentials status when user has none"""
-        admin_user, admin_token = admin_user_with_token
+        _admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
         target_user_id = target_user.id  # Store the ID before context switches
         target_user_email = target_user.email  # Store the email before context switches
@@ -561,10 +562,9 @@ class TestAdminGEECredentialsAPI:
         self, client, admin_user_with_token, user_with_token, app_with_db
     ):
         """Test admin getting user's GEE credentials status when user has OAuth"""
-        admin_user, admin_token = admin_user_with_token
+        _admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
         target_user_id = target_user.id  # Store the ID before context switches
-        target_user_id = target_user_id  # Store the ID before the context
 
         with app_with_db.app_context():
             # Re-query user to ensure it's in the current session
@@ -587,7 +587,7 @@ class TestAdminGEECredentialsAPI:
         self, client, admin_user_with_token, user_with_token
     ):
         """Test admin uploading service account for another user"""
-        admin_user, admin_token = admin_user_with_token
+        _admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
         target_user_id = target_user.id  # Store the ID before context switches
         target_user_email = target_user.email  # Store the email before context switches
@@ -618,7 +618,7 @@ class TestAdminGEECredentialsAPI:
         self, client, admin_user_with_token, user_with_token
     ):
         """Test admin uploading invalid service account for another user"""
-        admin_user, admin_token = admin_user_with_token
+        _admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
         target_user_id = target_user.id  # Store the ID before context switches
 
@@ -641,7 +641,7 @@ class TestAdminGEECredentialsAPI:
         self, client, admin_user_with_token, user_with_token, app_with_db
     ):
         """Test admin deleting another user's GEE credentials"""
-        admin_user, admin_token = admin_user_with_token
+        _admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
         target_user_id = target_user.id  # Store the ID before context switches
         target_user_email = target_user.email  # Store the email before context switches
@@ -666,7 +666,7 @@ class TestAdminGEECredentialsAPI:
         self, client, admin_user_with_token, user_with_token
     ):
         """Test admin deleting user's GEE credentials when none exist"""
-        admin_user, admin_token = admin_user_with_token
+        _admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
         target_user_id = target_user.id  # Store the ID before context switches
 
@@ -689,7 +689,7 @@ class TestAdminGEECredentialsAPI:
         app_with_db,
     ):
         """Test admin testing another user's valid GEE credentials"""
-        admin_user, admin_token = admin_user_with_token
+        _admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
         target_user_id = target_user.id  # Store the ID before context switches
         target_user_email = target_user.email  # Store the email before context switches
@@ -723,7 +723,7 @@ class TestAdminGEECredentialsAPI:
         app_with_db,
     ):
         """Test admin testing another user's invalid GEE credentials"""
-        admin_user, admin_token = admin_user_with_token
+        _admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
         target_user_id = target_user.id  # Store the ID before context switches
         target_user_email = target_user.email  # Store the email before context switches
@@ -751,7 +751,7 @@ class TestAdminGEECredentialsAPI:
         self, client, admin_user_with_token, user_with_token
     ):
         """Test admin testing user's GEE credentials when none exist"""
-        admin_user, admin_token = admin_user_with_token
+        _admin_user, admin_token = admin_user_with_token
         target_user, _ = user_with_token
 
         with client.application.app_context():
@@ -776,7 +776,7 @@ class TestAdminGEECredentialsAPI:
 
     def test_admin_endpoints_user_not_found(self, client, admin_user_with_token):
         """Test admin endpoints with non-existent user ID"""
-        admin_user, admin_token = admin_user_with_token
+        _admin_user, admin_token = admin_user_with_token
         non_existent_id = "12345678-1234-1234-1234-123456789012"
 
         endpoints = [
@@ -852,7 +852,7 @@ class TestAdminGEECredentialsAPI:
         self, client, superadmin_user_with_token, user_with_token
     ):
         """Test that superadmin users can access admin endpoints"""
-        superadmin_user, superadmin_token = superadmin_user_with_token
+        _superadmin_user, superadmin_token = superadmin_user_with_token
         target_user, _ = user_with_token
         target_user_id = target_user.id  # Store the ID before context switches
 
@@ -897,7 +897,7 @@ class TestAdminGEECredentialsAPI:
 class TestGcsIamService:
     """Unit tests for grant/revoke IAM helpers."""
 
-    _SA_JSON = {
+    _SA_JSON: ClassVar[dict[str, str]] = {
         "type": "service_account",
         "project_id": "ci-project",
         "private_key_id": "key1",

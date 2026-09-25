@@ -1,6 +1,5 @@
 """SCRIPT SERVICE"""
 
-import datetime
 from html import escape
 import logging
 import re
@@ -21,8 +20,8 @@ from gefapi.errors import (
     UserNotFound,
 )
 from gefapi.models import User
-from gefapi.services import EmailService
-from gefapi.utils import mask_email
+from gefapi.services.email_service import EmailService
+from gefapi.utils import mask_email, utcnow
 from gefapi.utils.security_events import (
     log_authentication_event,
     log_password_event,
@@ -50,8 +49,7 @@ def _generate_secure_password(length: int = 16) -> str:
     chars_digits = string.digits
     chars_special = SPECIAL_CHARACTERS
 
-    if length < 12:
-        length = 12
+    length = max(length, 12)
 
     password_chars = [
         secrets.choice(chars_upper),
@@ -116,32 +114,20 @@ class UserService:
     USER_ALLOWED_SORT_FIELDS = USER_ALLOWED_FILTER_FIELDS
 
     @staticmethod
-    def create_user(user, legacy=False):
+    def create_user(user):
         """Create a new user account.
 
         Args:
             user: Dictionary with user data (email, password, name, etc.)
-            legacy: If True, emails the password directly for backwards
-                compatibility with older QGIS plugin versions.
-                Defaults to False (secure mode).
 
         Returns:
             User object
 
-        When legacy=False (default, secure mode):
-            - Creates user with a temporary locked password
-            - Sends a password reset email with a secure token link
-            - User must click the link to set their own password
-            - Token expires after 1 hour
-
-        When legacy=True (deprecated):
-            - Generates password if not provided
-            - Emails the plain-text password to the user
-            - Use only for backwards compatibility with older QGIS plugin
+        Creates the user with a temporary locked password and sends a secure,
+        one-hour token link so the user can set their password.
         """
         logger.info("[SERVICE]: Creating user")
         email_addr = user.get("email", None)
-        password = user.get("password", None)
         role = user.get("role", "USER")
         name = user.get("name", "notset")
         country = user.get("country", None)
@@ -154,6 +140,12 @@ class UserService:
         gee_license_acknowledged = user.get("gee_license_acknowledged", None)
         purpose_of_use = user.get("purpose_of_use", None)
         purpose_of_use_other = user.get("purpose_of_use_other", None)
+        email_notifications_enabled = user.get("email_notifications_enabled", None)
+        email_subscription_news = user.get("email_subscription_news", None)
+        email_subscription_engagement = user.get("email_subscription_engagement", None)
+        email_subscription_system_updates = user.get(
+            "email_subscription_system_updates", None
+        )
 
         if role not in ROLES:
             role = "USER"
@@ -177,95 +169,24 @@ class UserService:
             "gee_license_acknowledged": gee_license_acknowledged,
             "purpose_of_use": purpose_of_use,
             "purpose_of_use_other": purpose_of_use_other,
+            "email_notifications_enabled": email_notifications_enabled,
+            "email_subscription_news": email_subscription_news,
+            "email_subscription_engagement": email_subscription_engagement,
+            "email_subscription_system_updates": email_subscription_system_updates,
         }
 
-        if legacy:
-            return UserService._create_user_legacy(
-                email_addr=email_addr,
-                password=password,
-                role=role,
-                name=name,
-                country=country,
-                institution=institution,
-                **extra_fields,
-            )
         return UserService._create_user_secure(
             email_addr=email_addr,
-            password=password,
             role=role,
             name=name,
             country=country,
             institution=institution,
             **extra_fields,
         )
-
-    @staticmethod
-    def _create_user_legacy(
-        email_addr, password, role, name, country, institution, **extra_fields
-    ):
-        """Legacy user creation - emails plain-text password.
-
-        DEPRECATED: This method is maintained for backwards compatibility with
-        older QGIS plugin versions. New integrations must use _create_user_secure
-        (legacy=False).
-
-        Security concerns:
-        - Plain-text password is transmitted via email (CWE-312)
-        - Password is stored in email server logs and recipient's mail archive
-        """
-        import warnings
-
-        warnings.warn(
-            "_create_user_legacy emails a plain-text password (CWE-312) and is "
-            "deprecated. Pass legacy=False to use secure token-based registration.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        rollbar.report_message(
-            "SECURITY: Legacy plain-text password email path invoked for new user "
-            "creation (CWE-312). Migrate callers to legacy=False.",
-            level="warning",
-            extra_data={"user_email": mask_email(email_addr)},
-        )
-        if password is None:
-            password = _generate_secure_password()
-        else:
-            _validate_password_strength(password)
-
-        user = User(
-            email=email_addr,
-            password=password,
-            role=role,
-            name=name,
-            country=country,
-            institution=institution,
-            **extra_fields,
-        )
-        try:
-            logger.info("[DB]: ADD")
-            db.session.add(user)
-            db.session.commit()
-            try:
-                EmailService.send_html_email(
-                    recipients=[user.email],
-                    html="<p>User: "
-                    + user.email
-                    + "</p><p>Password: "
-                    + password
-                    + "</p>",
-                    subject="[trends.earth] User created",
-                )
-            except EmailError as error:
-                rollbar.report_exc_info()
-                raise error
-        except Exception as error:
-            rollbar.report_exc_info()
-            raise error
-        return user
 
     @staticmethod
     def _create_user_secure(
-        email_addr, password, role, name, country, institution, **extra_fields
+        email_addr, role, name, country, institution, **extra_fields
     ):
         """Secure user creation - sends password reset link.
 
@@ -275,19 +196,10 @@ class UserService:
         3. Sends an email with a link to set their password
         4. The token expires after 1 hour
 
-        If a password is provided, it is validated but the user must still
-        use the reset link to set it (the provided password is ignored for
-        security - we don't want passwords transmitted via the API).
+        Registration passwords are not accepted; the user sets one through the
+        emailed token link.
         """
         from gefapi.models import PasswordResetToken
-
-        # Validate password if provided (but don't use it)
-        if password is not None:
-            _validate_password_strength(password)
-            logger.info(
-                "[SERVICE]: Password provided but using secure flow - "
-                "user will set password via email link"
-            )
 
         # Create user with a temporary password (user can't use this directly)
         temp_password = _generate_secure_password(length=32)
@@ -341,17 +253,18 @@ class UserService:
                     recipients=[user.email],
                     html=email_html,
                     subject="[trends.earth] Welcome - Set Your Password",
+                    transactional=True,
                 )
                 logger.info(
                     f"[SERVICE]: Secure registration email sent to {user.email}"
                 )
-            except EmailError as error:
+            except EmailError:
                 rollbar.report_exc_info()
-                raise error
+                raise
 
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
 
         return user
 
@@ -393,8 +306,7 @@ class UserService:
                         if deletion_record.deleted_at
                         else None,
                         "days_since_deletion": (
-                            datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
-                            - deletion_record.deleted_at
+                            utcnow() - deletion_record.deleted_at
                         ).days
                         if deletion_record.deleted_at
                         else None,
@@ -419,9 +331,9 @@ class UserService:
 
         if paginate:
             if page < 1:
-                raise Exception("Page must be greater than 0")
+                raise ValueError("Page must be greater than 0")
             if per_page < 1:
-                raise Exception("Per page must be greater than 0")
+                raise ValueError("Per page must be greater than 0")
 
         query = db.session.query(User)
 
@@ -488,9 +400,9 @@ class UserService:
                 user = db.session.get(User, user_id)
         except ValueError:
             user = User.query.filter_by(email=user_id).first()
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         if not user:
             raise UserNotFound(message=f"User with id {user_id} does not exist")
         return user
@@ -507,6 +419,7 @@ class UserService:
             )
         _validate_password_strength(new_password)
         user.password = user.set_password(new_password)
+        user.auth_version += 1
         # Clear any account lockout on password change
         user.clear_failed_logins()
         try:
@@ -520,6 +433,7 @@ class UserService:
             )
 
             # Invalidate all other sessions for security after password change
+            from gefapi.services.oidc_service import revoke_all_oidc_refresh_tokens
             from gefapi.services.refresh_token_service import RefreshTokenService
 
             try:
@@ -531,6 +445,13 @@ class UserService:
             except Exception as e:
                 logger.warning(
                     f"[SERVICE]: Failed to invalidate sessions after "
+                    f"password change: {e}"
+                )
+            try:
+                revoke_all_oidc_refresh_tokens(user.id)
+            except Exception as e:
+                logger.warning(
+                    f"[SERVICE]: Failed to invalidate OIDC sessions after "
                     f"password change: {e}"
                 )
 
@@ -551,6 +472,7 @@ class UserService:
         )
         _validate_password_strength(new_password)
         user.password = user.set_password(new_password)
+        user.auth_version += 1
         # Clear any account lockout on admin password change
         user.clear_failed_logins()
         try:
@@ -566,6 +488,7 @@ class UserService:
             )
 
             # Invalidate all user sessions for security
+            from gefapi.services.oidc_service import revoke_all_oidc_refresh_tokens
             from gefapi.services.refresh_token_service import RefreshTokenService
 
             try:
@@ -581,6 +504,13 @@ class UserService:
                     f"{mask_email(user.email)}: {session_error}"
                 )
                 # Don't fail the password change if session invalidation fails
+            try:
+                revoke_all_oidc_refresh_tokens(user.id)
+            except Exception as session_error:
+                logger.warning(
+                    f"[SERVICE]: Failed to invalidate OIDC sessions for "
+                    f"{mask_email(user.email)}: {session_error}"
+                )
 
         except Exception as e:
             db.session.rollback()
@@ -592,20 +522,11 @@ class UserService:
         return user
 
     @staticmethod
-    def recover_password(user_id, legacy=False):
-        """Initiate password recovery for a user account.
-
-        Supports two modes:
-        - Secure mode (default, legacy=False): Sends a time-limited reset link.
-          Recommended for all new integrations.
-        - Legacy mode (legacy=True, deprecated): Generates a new password and
-          emails it directly. Maintained only for backwards compatibility with
-          older QGIS plugin versions.
+    def recover_password(user_id):
+        """Send a time-limited password reset link for a user account.
 
         Args:
             user_id: User identifier (email or ID)
-            legacy: If True, use the deprecated plain-text password email flow.
-                Defaults to False (secure token-based flow).
 
         Returns:
             User object
@@ -620,55 +541,7 @@ class UserService:
         if not user:
             raise UserNotFound(message="User with id " + user_id + " does not exist")
 
-        if legacy:
-            # Legacy mode: Generate password and email directly
-            # DEPRECATED: This method is less secure as passwords are sent via email
-            logger.warning(
-                f"[SERVICE]: Using LEGACY password recovery for {user_id}. "
-                "Consider migrating to token-based recovery (legacy=false)."
-            )
-            return UserService._recover_password_legacy(user)
-        # Secure mode: Send reset token link
         return UserService._recover_password_secure(user)
-
-    @staticmethod
-    def _recover_password_legacy(user):
-        """Legacy password recovery - generates and emails password directly.
-
-        DEPRECATED: This method is maintained for backwards compatibility with
-        older QGIS plugin versions. New integrations should use token-based
-        recovery (legacy=False).
-
-        Security concerns:
-        - Password is transmitted via email (can be intercepted)
-        - Password is stored in email history
-        - No verification that requester controls the email
-        """
-        password = _generate_secure_password()
-        user.password = user.set_password(password=password)
-        # Clear any account lockout on password recovery
-        user.clear_failed_logins()
-        try:
-            logger.info("[DB]: ADD")
-            db.session.add(user)
-            db.session.commit()
-            try:
-                EmailService.send_html_email(
-                    recipients=[user.email],
-                    html="<p>User: "
-                    + user.email
-                    + "</p><p>Password: "
-                    + password
-                    + "</p>",
-                    subject="[trends.earth] Recover password",
-                )
-            except EmailError as error:
-                rollbar.report_exc_info()
-                raise error
-        except Exception as error:
-            rollbar.report_exc_info()
-            raise error
-        return user
 
     @staticmethod
     def _recover_password_secure(user):
@@ -724,17 +597,18 @@ class UserService:
                     recipients=[user.email],
                     html=email_html,
                     subject="[trends.earth] Password Reset Request",
+                    transactional=True,
                 )
                 logger.info(
                     f"[SERVICE]: Password reset email sent to {mask_email(user.email)}"
                 )
-            except EmailError as error:
+            except EmailError:
                 rollbar.report_exc_info()
-                raise error
+                raise
 
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
 
         return user
 
@@ -774,6 +648,7 @@ class UserService:
         try:
             # Set new password
             user.password = user.set_password(password=new_password)
+            user.auth_version += 1
 
             # Clear any account lockout - password reset unlocks the account
             user.clear_failed_logins()
@@ -781,9 +656,7 @@ class UserService:
             # Mark user as email verified - they proved email access by using the token
             if not user.email_verified:
                 user.email_verified = True
-                user.email_verified_at = datetime.datetime.now(datetime.UTC).replace(
-                    tzinfo=None
-                )
+                user.email_verified_at = utcnow()
                 masked = mask_email(user.email)
                 logger.info(
                     f"[SERVICE]: Email verified for {masked} via password reset"
@@ -797,6 +670,25 @@ class UserService:
             db.session.add(reset_token)
             db.session.commit()
 
+            from gefapi.services.refresh_token_service import RefreshTokenService
+
+            try:
+                RefreshTokenService.revoke_all_user_tokens(user.id)
+            except Exception as session_error:
+                logger.warning(
+                    f"[SERVICE]: Failed to invalidate legacy sessions after "
+                    f"password reset: {session_error}"
+                )
+            try:
+                from gefapi.services.oidc_service import revoke_all_oidc_refresh_tokens
+
+                revoke_all_oidc_refresh_tokens(user.id)
+            except Exception as session_error:
+                logger.warning(
+                    f"[SERVICE]: Failed to invalidate OIDC sessions after "
+                    f"password reset: {session_error}"
+                )
+
             logger.info(
                 f"[SERVICE]: Password reset successful for {mask_email(user.email)}"
             )
@@ -808,9 +700,9 @@ class UserService:
 
             return user
 
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
 
     @staticmethod
     def update_user(user, user_id):
@@ -850,6 +742,16 @@ class UserService:
         current_user.name = user.get("name", current_user.name)
         current_user.country = user.get("country", current_user.country)
         current_user.institution = user.get("institution", current_user.institution)
+        if "is_active" in user and isinstance(user.get("is_active"), bool):
+            was_active = current_user.is_active
+            current_user.is_active = user["is_active"]
+            if was_active and not current_user.is_active:
+                current_user.auth_version += 1
+                from gefapi.services.oidc_service import revoke_all_oidc_refresh_tokens
+                from gefapi.services.refresh_token_service import RefreshTokenService
+
+                RefreshTokenService.revoke_all_user_tokens(current_user.id)
+                revoke_all_oidc_refresh_tokens(current_user.id)
 
         # Update extended profile fields if provided
         if "role_title" in user:
@@ -887,24 +789,41 @@ class UserService:
             elif isinstance(value, int) and value >= 1:
                 current_user.max_concurrent_executions = value
 
-        current_user.updated_at = datetime.datetime.now(datetime.UTC).replace(
-            tzinfo=None
-        )
+        # Update bulk email subscription preferences if provided
+        subscription_changed = False
+        for sub_field in (
+            "email_subscription_news",
+            "email_subscription_engagement",
+            "email_subscription_system_updates",
+        ):
+            if sub_field in user:
+                val = user.get(sub_field)
+                if isinstance(val, bool):
+                    setattr(current_user, sub_field, val)
+                    subscription_changed = True
+
+        # Record when/how the user last confirmed their subscription choices,
+        # for GDPR consent demonstrability (Art. 7(1)).
+        if subscription_changed:
+            current_user.consent_given_at = utcnow()
+            current_user.consent_source = "profile_settings"
+
+        current_user.updated_at = utcnow()
         try:
             logger.info("[DB]: ADD")
             db.session.add(current_user)
             db.session.commit()
-        except Exception as error:
+        except Exception:
             rollbar.report_exc_info()
-            raise error
+            raise
         return current_user
 
     @staticmethod
     def delete_user(
         user_id,
-        deletion_reason: str = None,
-        deleted_by_admin_id: str = None,
-        context: str = None,
+        deletion_reason: str | None = None,
+        deleted_by_admin_id: str | None = None,
+        context: str | None = None,
     ):
         """Delete a user account and all associated data.
 
@@ -1023,10 +942,10 @@ class UserService:
             logger.info("[DB]: DELETE user")
             db.session.delete(user)
             db.session.commit()
-        except Exception as error:
+        except Exception:
             db.session.rollback()
             rollbar.report_exc_info()
-            raise error
+            raise
         return user_data
 
     @staticmethod
@@ -1053,6 +972,13 @@ class UserService:
                 f"[AUTH]: Failed login - user not found: {mask_email(email)}"
             )
             log_authentication_event(False, email, "user_not_found")
+            return None
+
+        if not user.is_active:
+            logger.warning(
+                "[AUTH]: Failed login - inactive account: %s", mask_email(email)
+            )
+            log_authentication_event(False, email, "account_disabled")
             return None
 
         # Check if account is locked
@@ -1149,7 +1075,7 @@ class UserService:
 
         # Successful authentication - clear failed login count and update timestamps
         try:
-            now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+            now = utcnow()
             user.clear_failed_logins()  # Reset lockout state
             user.last_login_at = now
             user.last_activity_at = now

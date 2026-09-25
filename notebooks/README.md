@@ -64,16 +64,16 @@ TEST_USERS = {
         "password": "your-password",
         "name": "Your Name",
         "country": "US",
-        "institution": "Your Organization"
+        "institution": "Your Organization",
     },
     "admin": {
-        "email": "admin@example.com", 
+        "email": "admin@example.com",
         "password": "admin-password",
         "name": "Admin User",
         "role": "ADMIN",
         "country": "US",
-        "institution": "Admin Organization"
-    }
+        "institution": "Admin Organization",
+    },
 }
 ```
 
@@ -93,10 +93,10 @@ Import utilities in your own notebooks:
 
 ```python
 from trends_earth_api_utils import (
-    TrendsEarthAPIClient, 
+    TrendsEarthAPIClient,
     SCRIPT_PARAMS,
     TEST_USERS,
-    run_comprehensive_test_suite
+    run_comprehensive_test_suite,
 )
 
 # Initialize client
@@ -105,6 +105,7 @@ client.login("user@example.com", "password")
 
 # Use utility functions
 from trends_earth_api_utils import get_scripts, run_script
+
 scripts = get_scripts(client)
 ```
 

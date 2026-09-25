@@ -56,47 +56,37 @@ The staging environment automatically creates three test users:
 ### Required GitHub Secrets
 
 #### Database Configuration
-```bash
-# Staging database settings
-STAGING_DB_HOST=localhost
-STAGING_DB_PORT=5433
-STAGING_DB_NAME=trendsearth_staging
-STAGING_DB_USER=trendsearth_staging
-STAGING_DB_PASSWORD=your-secure-password
 
-# Production database (for data migration)
-PROD_DB_HOST=your-production-db-host
-PROD_DB_PORT=5432
-PROD_DB_NAME=trendsearth
-PROD_DB_USER=your-prod-db-user
-PROD_DB_PASSWORD=your-prod-db-password
-```
+Database connections are passed as full connection string URLs (configured in CODEDEPLOY_SETUP.md):
+
+| Secret | Description | Example |
+|--------|-------------|--------|
+| `STAGING_DATABASE_URL` | Staging PostgreSQL connection string | `postgresql://user:pass@host:5433/db_staging` |
+| `PRODUCTION_DATABASE_URL` | Production database URL — used to copy scripts to staging | `postgresql://user:pass@host:5432/db_prod` |
 
 #### Test User Configuration (Required)
-```bash
-# Test user emails (required)
-TEST_SUPERADMIN_EMAIL=test-superadmin@example.com
-TEST_ADMIN_EMAIL=test-admin@example.com
-TEST_USER_EMAIL=test-user@example.com
 
-# Test user passwords (required - no defaults provided for security)
-TEST_SUPERADMIN_PASSWORD=your-secure-superadmin-password
-TEST_ADMIN_PASSWORD=your-secure-admin-password
-TEST_USER_PASSWORD=your-secure-user-password
-```
+All six secrets must be set via GitHub secrets. No default values are provided:
 
-**Important**: Test user passwords are now required and must be set via GitHub secrets. No default passwords are provided for security reasons.
+| Secret | Description |
+|--------|-------------|
+| `TEST_SUPERADMIN_EMAIL` | Superadmin test user email |
+| `TEST_SUPERADMIN_PASSWORD` | Superadmin test user password |
+| `TEST_ADMIN_EMAIL` | Admin test user email |
+| `TEST_ADMIN_PASSWORD` | Admin test user password |
+| `TEST_USER_EMAIL` | Regular test user email |
+| `TEST_USER_PASSWORD` | Regular test user password |
 
 ### Environment Files
 
-Create a `staging.env` file with your staging environment configuration:
+The `staging.env` file is generated automatically by the GitHub Actions workflow from repository secrets and variables. Key values include:
 
 ```env
 # Database Configuration
 DATABASE_URL=postgresql://trendsearth_staging:password@postgres:5432/trendsearth_staging
 
 # Application Settings
-FLASK_ENV=staging
+ENVIRONMENT=staging
 DEBUG=False
 SECRET_KEY=your-staging-secret-key
 

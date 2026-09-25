@@ -45,11 +45,11 @@ jobs:
     
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.13", "3.14"]
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v6
@@ -61,10 +61,10 @@ jobs:
       with:
         path: |
           ~/.cache/pypoetry
-          ~/.cache/pip
-        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+          ~/.local/share/pypoetry
+        key: ${{ runner.os }}-poetry-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
         restore-keys: |
-          ${{ runner.os }}-poetry-
+          ${{ runner.os }}-poetry-${{ matrix.python-version }}-
 
     - name: Install Poetry
       run: |
@@ -73,7 +73,6 @@ jobs:
 
     - name: Install dependencies with Poetry
       run: |
-        poetry config virtualenvs.create false
         poetry install --no-interaction --no-ansi --with dev
 
     - name: Set environment variables for testing
@@ -255,7 +254,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
 
     - name: Set up Python
       uses: actions/setup-python@v6
@@ -267,10 +266,10 @@ jobs:
       with:
         path: |
           ~/.cache/pypoetry
-          ~/.cache/pip
-        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+          ~/.local/share/pypoetry
+        key: ${{ runner.os }}-poetry-3.11-${{ hashFiles('**/poetry.lock') }}
         restore-keys: |
-          ${{ runner.os }}-poetry-
+          ${{ runner.os }}-poetry-3.11-
 
     - name: Install Poetry
       run: |
@@ -279,7 +278,6 @@ jobs:
 
     - name: Install dependencies with Poetry
       run: |
-        poetry config virtualenvs.create false
         poetry install --no-interaction --no-ansi --with dev
 
     - name: Set environment variables

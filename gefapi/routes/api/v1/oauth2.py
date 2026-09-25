@@ -29,6 +29,7 @@ from gefapi.utils.rate_limiting import (
     get_non_exempt_key,
     is_rate_limiting_disabled,
 )
+from gefapi.utils.scopes import require_scope
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,7 @@ def oauth2_token():
         additional_claims={
             "grant_type": "client_credentials",
             "scopes": service_client.scopes,
+            "auth_version": user.auth_version,
         },
     )
 
@@ -143,6 +145,7 @@ def oauth2_token():
 
 @endpoints.route("/oauth/clients", strict_slashes=False, methods=["POST"])
 @jwt_required()
+@require_scope("client:manage")
 def create_oauth2_client():
     """Register a new OAuth2 service client.
 
@@ -189,6 +192,7 @@ def create_oauth2_client():
 
 @endpoints.route("/oauth/clients", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("client:manage")
 def list_oauth2_clients():
     """List the caller's active (non-revoked) service clients.
 
@@ -202,6 +206,7 @@ def list_oauth2_clients():
     "/oauth/clients/<client_db_id>", strict_slashes=False, methods=["DELETE"]
 )
 @jwt_required()
+@require_scope("client:manage")
 def revoke_oauth2_client(client_db_id):
     """Revoke a service client by its database UUID.
 

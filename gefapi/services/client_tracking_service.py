@@ -50,7 +50,7 @@ class ClientTrackingService:
                 return None
 
             return result
-        except Exception as e:
+        except (TypeError, ValueError, AttributeError) as e:
             logger.warning(
                 f"[ClientTracking] Failed to parse header '{header_value}': {e}"
             )
@@ -148,7 +148,7 @@ class ClientTrackingService:
             )
             return metadata
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # SQLAlchemy can raise various exceptions; rollback needed
             db.session.rollback()
             logger.error(f"[ClientTracking] Error tracking client access: {e}")
             return None

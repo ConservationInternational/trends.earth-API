@@ -237,7 +237,7 @@ class GEEService:
                     logger.info(
                         f"Refreshing OAuth token for user {mask_email(user.email)}"
                     )
-                    from google.auth.transport.requests import Request  # noqa: PLC0415
+                    from google.auth.transport.requests import Request
 
                     credentials.refresh(Request())
                     # Update stored tokens (cloud_project preserved — not overwritten)
@@ -571,7 +571,7 @@ class GEEService:
                     logger.error(f"Failed to cancel GEE task {task_id}: {error_msg}")
 
         except Exception as e:
-            result["error"] = f"Unexpected error: {str(e)}"
+            result["error"] = f"Unexpected error: {e!s}"
             logger.error(f"Unexpected error cancelling GEE task {task_id}: {e}")
             rollbar.report_exc_info()
 

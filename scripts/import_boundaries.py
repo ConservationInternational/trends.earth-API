@@ -149,7 +149,7 @@ class BoundaryImporter:
                     db.session.commit()
 
             except Exception as e:
-                logger.error(f"Error processing feature {feature.GetFID()}: {str(e)}")
+                logger.error(f"Error processing feature {feature.GetFID()}: {e!s}")
                 self.stats["adm0_errors"] += 1
                 continue
 
@@ -253,7 +253,7 @@ class BoundaryImporter:
                     )
 
             except Exception as e:
-                logger.error(f"Error processing feature {feature.GetFID()}: {str(e)}")
+                logger.error(f"Error processing feature {feature.GetFID()}: {e!s}")
                 self.stats["adm1_errors"] += 1
                 continue
 
@@ -449,7 +449,7 @@ def main():
                 importer.validate_data()
 
         except Exception as e:
-            logger.error(f"Error: {str(e)}")
+            logger.error(f"Error: {e!s}")
             return 1
 
         # Show final stats if import was performed

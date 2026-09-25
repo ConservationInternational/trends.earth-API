@@ -68,8 +68,7 @@ class StatusService:
         logger.info("[SERVICE]: Getting status logs")
         logger.info("[DB]: QUERY")
 
-        if page < 1:
-            page = 1
+        page = max(page, 1)
         if per_page < 1:
             per_page = 100
 
@@ -83,7 +82,7 @@ class StatusService:
 
         # Apply sorting
         if sort:
-            sort_field = sort[1:] if sort.startswith("-") else sort
+            sort_field = sort.removeprefix("-")
             sort_direction = "desc" if sort.startswith("-") else "asc"
             if hasattr(StatusLog, sort_field):
                 query = query.order_by(
@@ -155,12 +154,12 @@ class StatusService:
             if bucket_ts and bucket_ts.tzinfo is None:
                 bucket_ts = bucket_ts.replace(tzinfo=UTC)
 
-            pending = int(round(float(row.avg_pending or 0)))
-            ready = int(round(float(row.avg_ready or 0)))
-            running = int(round(float(row.avg_running or 0)))
-            finished_total = int(round(float(row.total_finished or 0)))
-            failed_total = int(round(float(row.total_failed or 0)))
-            cancelled_total = int(round(float(row.total_cancelled or 0)))
+            pending = round(float(row.avg_pending or 0))
+            ready = round(float(row.avg_ready or 0))
+            running = round(float(row.avg_running or 0))
+            finished_total = round(float(row.total_finished or 0))
+            failed_total = round(float(row.total_failed or 0))
+            cancelled_total = round(float(row.total_cancelled or 0))
 
             entry = {
                 "timestamp": bucket_ts.isoformat() if bucket_ts else None,

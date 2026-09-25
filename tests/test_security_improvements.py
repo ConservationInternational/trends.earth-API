@@ -179,38 +179,10 @@ class TestSQLInjectionPrevention:
 
 
 class TestPasswordRecoveryEndpoint:
-    """Tests for the password recovery flow with backwards compatibility."""
-
-    def test_recover_password_defaults_to_legacy_mode(self, app):
-        """Test that recover_password defaults to legacy=False (secure token flow)."""
-        import inspect
-
-        from gefapi.services.user_service import UserService
-
-        # Check the function signature has legacy=False as default (secure flow is now default)
-        sig = inspect.signature(UserService.recover_password)
-        legacy_param = sig.parameters.get("legacy")
-        assert legacy_param is not None
-        assert legacy_param.default is False
-
-    def test_legacy_mode_emails_password_directly(self, app):
-        """Test that legacy mode maintains old behavior of emailing password."""
-        import inspect
-
-        from gefapi.services.user_service import UserService
-
-        # Get the source code of the legacy method
-        source = inspect.getsource(UserService._recover_password_legacy)
-
-        # Should generate a password
-        assert "_generate_secure_password" in source
-
-        # Should email the password directly (the old insecure behavior)
-        # Note: Check for the string content in the source, handling multi-line concatenation
-        assert "Password: " in source
+    """Tests for the secure password recovery flow."""
 
     def test_secure_mode_sends_token_not_password(self, app):
-        """Test that secure mode (legacy=False) sends a reset link."""
+        """Test that password recovery sends a reset link."""
         import inspect
 
         from gefapi.services.user_service import UserService
@@ -228,24 +200,6 @@ class TestPasswordRecoveryEndpoint:
         # Should NOT email password directly
         # Note: Secure method should not contain the password emailing pattern
         assert "Your Trends.Earth Password Has Been Reset" not in source
-
-    def test_recover_password_routes_to_correct_method(self, app):
-        """Test that recover_password correctly routes based on legacy flag."""
-        import inspect
-
-        from gefapi.services.user_service import UserService
-
-        # Get the source code of recover_password
-        source = inspect.getsource(UserService.recover_password)
-
-        # Should check the legacy flag
-        assert "if legacy:" in source
-
-        # Should call legacy method for backwards compat
-        assert "_recover_password_legacy" in source
-
-        # Should call secure method when legacy=False
-        assert "_recover_password_secure" in source
 
     def test_reset_password_with_token_validates_token(self, app):
         """Test that password reset validates the token."""
@@ -267,54 +221,10 @@ class TestPasswordRecoveryEndpoint:
 
 
 class TestSecureUserCreation:
-    """Tests for secure user creation with backwards compatibility."""
-
-    def test_create_user_defaults_to_secure_mode(self, app):
-        """Test that create_user defaults to legacy=False (secure token flow)."""
-        import inspect
-
-        from gefapi.services.user_service import UserService
-
-        # Check the function signature has legacy=False as default (secure mode)
-        sig = inspect.signature(UserService.create_user)
-        legacy_param = sig.parameters.get("legacy")
-        assert legacy_param is not None
-        assert legacy_param.default is False
-
-    def test_legacy_user_creation_emails_password(self, app):
-        """Test that legacy mode emails the plain-text password."""
-        import inspect
-
-        from gefapi.services.user_service import UserService
-
-        # Get the source code of the legacy method
-        source = inspect.getsource(UserService._create_user_legacy)
-
-        # Should generate password if not provided
-        assert "_generate_secure_password" in source
-
-        # Should email the password directly (old insecure behavior)
-        # Note: Check for the string content in the source, handling multi-line concatenation
-        assert "Password: " in source
-
-    def test_legacy_user_creation_emits_deprecation_warning(self, app):
-        """Test that legacy mode emits a DeprecationWarning (CWE-312 mitigation)."""
-        import inspect
-
-        from gefapi.services.user_service import UserService
-
-        source = inspect.getsource(UserService._create_user_legacy)
-
-        # Should emit a DeprecationWarning so tools and test runners surface it
-        assert "DeprecationWarning" in source
-        assert "warnings.warn" in source
-
-        # Should alert via Rollbar so security team can track remaining callers
-        assert "rollbar.report_message" in source
-        assert "CWE-312" in source
+    """Tests for secure user creation."""
 
     def test_secure_user_creation_sends_reset_link(self, app):
-        """Test that secure mode (legacy=False) sends a password reset link."""
+        """Test that user creation sends a password reset link."""
         import inspect
 
         from gefapi.services.user_service import UserService
@@ -337,24 +247,6 @@ class TestSecureUserCreation:
         assert "Welcome to Trends.Earth" in source
         assert "Set Your Password" in source
 
-    def test_create_user_routes_to_correct_method(self, app):
-        """Test that create_user correctly routes based on legacy flag."""
-        import inspect
-
-        from gefapi.services.user_service import UserService
-
-        # Get the source code of create_user
-        source = inspect.getsource(UserService.create_user)
-
-        # Should check the legacy flag
-        assert "if legacy:" in source
-
-        # Should call legacy method for backwards compat
-        assert "_create_user_legacy" in source
-
-        # Should call secure method when legacy=False
-        assert "_create_user_secure" in source
-
     def test_secure_creation_uses_temporary_password(self, app):
         """Test that secure creation uses a long temporary password."""
         import inspect
@@ -367,17 +259,14 @@ class TestSecureUserCreation:
         # Should create a temporary password with extra length
         assert "temp_password = _generate_secure_password(length=32)" in source
 
-    def test_secure_creation_validates_provided_password(self, app):
-        """Test that provided passwords are validated even in secure mode."""
+    def test_secure_creation_does_not_accept_a_registration_password(self, app):
+        """Test that registration passwords are not part of the secure helper."""
         import inspect
 
         from gefapi.services.user_service import UserService
 
-        # Get the source code
-        source = inspect.getsource(UserService._create_user_secure)
-
-        # Should validate password if provided
-        assert "_validate_password_strength(password)" in source
+        signature = inspect.signature(UserService._create_user_secure)
+        assert "password" not in signature.parameters
 
 
 class TestAdminPasswordChangePermissions:

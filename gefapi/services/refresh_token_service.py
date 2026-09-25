@@ -1,6 +1,5 @@
 """REFRESH TOKEN SERVICE"""
 
-import datetime
 import logging
 
 from flask import request
@@ -8,7 +7,7 @@ from flask_jwt_extended import create_access_token
 
 from gefapi import db
 from gefapi.models.refresh_token import RefreshToken
-from gefapi.utils import mask_email
+from gefapi.utils import mask_email, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +36,16 @@ class RefreshTokenService:
         except Exception as error:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error creating refresh token: {error}")
-            raise error
+            raise
 
     @staticmethod
     def validate_refresh_token(token_string):
         """Validate a refresh token and return the associated user"""
         logger.info("[SERVICE]: Validating refresh token")
 
-        refresh_token = RefreshToken.query.filter_by(token=token_string).first()
+        refresh_token = RefreshToken.query.filter_by(
+            token_hash=RefreshToken.hash_token(token_string)
+        ).first()
 
         if not refresh_token:
             logger.warning("[SERVICE]: Refresh token not found")
@@ -55,6 +56,7 @@ class RefreshTokenService:
             return None, None
 
         # Update last used timestamp
+        refresh_token.remember_raw_token(token_string)
         refresh_token.update_last_used()
         db.session.commit()
 
@@ -62,11 +64,7 @@ class RefreshTokenService:
 
         # Update user's last_activity_at timestamp
         try:
-            import datetime
-
-            user.last_activity_at = datetime.datetime.now(datetime.UTC).replace(
-                tzinfo=None
-            )
+            user.last_activity_at = utcnow()
             db.session.commit()
             logger.debug(
                 f"[SERVICE]: Updated last_activity_at for user {mask_email(user.email)}"
@@ -142,7 +140,10 @@ class RefreshTokenService:
             new_refresh_token = refresh_token
 
         # Generate new access token
-        access_token = create_access_token(identity=user.id)
+        access_token = create_access_token(
+            identity=user.id,
+            additional_claims={"auth_version": user.auth_version},
+        )
 
         # Track client platform/version if X-TE-Client header is present
         try:
@@ -163,7 +164,9 @@ class RefreshTokenService:
         """Revoke a specific refresh token"""
         logger.info("[SERVICE]: Revoking refresh token")
 
-        refresh_token = RefreshToken.query.filter_by(token=token_string).first()
+        refresh_token = RefreshToken.query.filter_by(
+            token_hash=RefreshToken.hash_token(token_string)
+        ).first()
 
         if not refresh_token:
             logger.warning("[SERVICE]: Refresh token not found for revocation")
@@ -178,7 +181,19 @@ class RefreshTokenService:
         except Exception as error:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error revoking refresh token: {error}")
-            raise error
+            raise
+
+    @staticmethod
+    def revoke_refresh_token_by_id(token_id, user_id):
+        """Revoke a user's refresh token without exposing its bearer value."""
+        refresh_token = RefreshToken.query.filter_by(
+            id=token_id, user_id=user_id
+        ).first()
+        if not refresh_token:
+            return False
+        refresh_token.revoke()
+        db.session.commit()
+        return True
 
     @staticmethod
     def revoke_all_user_tokens(user_id):
@@ -202,7 +217,7 @@ class RefreshTokenService:
         except Exception as error:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error revoking user tokens: {error}")
-            raise error
+            raise
 
     @staticmethod
     def get_user_active_sessions(user_id):
@@ -211,10 +226,7 @@ class RefreshTokenService:
 
         active_tokens = (
             RefreshToken.query.filter_by(user_id=user_id, is_revoked=False)
-            .filter(
-                RefreshToken.expires_at
-                > datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
-            )
+            .filter(RefreshToken.expires_at > utcnow())
             .all()
         )
 
@@ -246,7 +258,7 @@ class RefreshTokenService:
         except Exception as error:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error invalidating user sessions: {error}")
-            raise error
+            raise
 
     @staticmethod
     def cleanup_expired_tokens():
@@ -254,8 +266,7 @@ class RefreshTokenService:
         logger.info("[SERVICE]: Cleaning up expired refresh tokens")
 
         expired_tokens = RefreshToken.query.filter(
-            RefreshToken.expires_at
-            <= datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+            RefreshToken.expires_at <= utcnow()
         ).all()
 
         for token in expired_tokens:
@@ -270,7 +281,7 @@ class RefreshTokenService:
         except Exception as error:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error cleaning up expired tokens: {error}")
-            raise error
+            raise
 
     @staticmethod
     def _get_device_info():

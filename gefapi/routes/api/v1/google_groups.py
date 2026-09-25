@@ -9,12 +9,14 @@ from gefapi import db
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.google_groups_service import google_groups_service
 from gefapi.utils import mask_email
+from gefapi.utils.scopes import require_scope
 
 logger = logging.getLogger(__name__)
 
 
 @endpoints.route("/user/me/google-groups", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("user:read")
 def get_user_google_groups_preferences():
     """
     Retrieve current user's Google Groups preferences and synchronization status.
@@ -111,6 +113,7 @@ def get_user_google_groups_preferences():
 
 @endpoints.route("/user/me/google-groups", strict_slashes=False, methods=["PUT"])
 @jwt_required()
+@require_scope("user:write")
 def update_user_google_groups_preferences():
     """
     Update current user's Google Groups preferences and trigger synchronization.
@@ -251,7 +254,7 @@ def update_user_google_groups_preferences():
                 logger.error(f"Failed to sync Google Groups for user {masked}: {e}")
                 # Don't fail the request if sync fails - preferences are still saved
                 sync_results = {
-                    "error": f"Sync failed: {str(e)}",
+                    "error": f"Sync failed: {e!s}",
                     "user_email": user.email,
                 }
         else:
@@ -278,6 +281,7 @@ def update_user_google_groups_preferences():
 
 @endpoints.route("/user/me/google-groups/sync", strict_slashes=False, methods=["POST"])
 @jwt_required()
+@require_scope("user:write")
 def sync_user_google_groups():
     """
     Manually trigger synchronization of user's Google Groups memberships.

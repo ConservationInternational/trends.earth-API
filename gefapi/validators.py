@@ -413,9 +413,8 @@ def validate_user_creation(func):
             # Validate and sanitize name with international support
             json_data["name"] = validate_name(json_data["name"])
 
-            # Validate password if provided - simple check only
-            if "password" in json_data and not json_data["password"]:
-                return error(status=400, detail="Password is required")
+            # Passwords are set only through the emailed registration token.
+            json_data.pop("password", None)
 
             # Validate optional fields
             if "country" in json_data:
@@ -459,6 +458,14 @@ def validate_user_creation(func):
                         detail="gee_license_acknowledged must be a boolean",
                     )
 
+                if "email_notifications_enabled" in json_data and not isinstance(
+                    json_data["email_notifications_enabled"], bool
+                ):
+                    return error(
+                        status=400,
+                        detail="email_notifications_enabled must be a boolean",
+                    )
+
             if "purpose_of_use" in json_data:
                 json_data["purpose_of_use"] = validate_purpose_of_use(
                     json_data["purpose_of_use"]
@@ -469,11 +476,28 @@ def validate_user_creation(func):
                     json_data["purpose_of_use_other"]
                 )
 
+            # Validate optional bulk-email subscription preferences (also
+            # settable at registration time, e.g. via the sign-up form)
+            for sub_field in (
+                "email_subscription_news",
+                "email_subscription_engagement",
+                "email_subscription_system_updates",
+            ):
+                if sub_field in json_data and not isinstance(
+                    json_data[sub_field], bool
+                ):
+                    return error(status=400, detail=f"{sub_field} must be a boolean")
+
             # Validate role
             if "role" in json_data:
                 role = json_data.get("role")
                 if role not in ROLES:
                     return error(status=400, detail="Invalid role")
+
+            if "is_active" in json_data and not isinstance(
+                json_data["is_active"], bool
+            ):
+                return error(status=400, detail="is_active must be a boolean")
 
         except ValueError as e:
             return error(status=400, detail=str(e))
@@ -661,7 +685,7 @@ def validate_file(func):
             if clean_filename != filename:
                 return error(status=400, detail="Invalid characters in filename")
         except ValueError as e:
-            return error(status=400, detail=f"Invalid filename: {str(e)}")
+            return error(status=400, detail=f"Invalid filename: {e!s}")
 
         return func(*args, **kwargs)
 
@@ -711,7 +735,7 @@ def validate_execution_update(func):
                     )
 
             # Sanitize results if provided
-            if "results" in json_data and json_data["results"]:
+            if json_data.get("results"):
                 # Limit results size to prevent abuse
                 import gzip
                 import json as json_lib

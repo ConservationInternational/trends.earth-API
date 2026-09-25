@@ -1,6 +1,6 @@
 """GOOGLE GROUPS SERVICE"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 import json
 import logging
 
@@ -111,7 +111,7 @@ class GoogleGroupsService:
                 "group": group_key,
                 "group_email": group_email,
                 "member_id": result.get("id"),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
 
         except HttpError as e:
@@ -127,7 +127,7 @@ class GoogleGroupsService:
                     "group": group_key,
                     "group_email": group_email,
                     "already_member": True,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 }
 
             masked = mask_email(user_email)
@@ -175,7 +175,7 @@ class GoogleGroupsService:
                 "success": True,
                 "group": group_key,
                 "group_email": group_email,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
 
         except HttpError as e:
@@ -191,7 +191,7 @@ class GoogleGroupsService:
                     "group": group_key,
                     "group_email": group_email,
                     "not_member": True,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 }
 
             masked = mask_email(user_email)
@@ -216,7 +216,7 @@ class GoogleGroupsService:
         """
         results = {
             "user_email": user.email,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "groups": {},
         }
 
@@ -235,7 +235,7 @@ class GoogleGroupsService:
 
         # Update user's sync status
         user.google_groups_registration_status = json.dumps(results)
-        user.google_groups_last_sync = datetime.utcnow()
+        user.google_groups_last_sync = datetime.now(UTC)
 
         try:
             db.session.commit()

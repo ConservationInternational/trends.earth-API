@@ -203,9 +203,7 @@ class TestValidationWithCompression:
                 assert "detail" in response_data.get_json()
             else:
                 # It's a success response - this should not happen with truly large data
-                raise AssertionError(
-                    f"Expected error response but got success: {result}"
-                )
+                raise TypeError(f"Expected error response but got success: {result}")
 
     def test_validation_compression_fallback(self, client):
         """Test that validation falls back to string-based check if compression fails"""

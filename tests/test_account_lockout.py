@@ -137,7 +137,9 @@ class TestAccountLockout:
             # Manually lock the user
             user = User.query.filter_by(email="lockout_test@test.com").first()
             user.failed_login_count = 10
-            user.locked_until = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+            user.locked_until = datetime.datetime.now(
+                datetime.UTC
+            ) + datetime.timedelta(hours=1)
             db.session.commit()
 
         # Try to login with correct password
@@ -158,9 +160,9 @@ class TestAccountLockout:
             # Manually lock the user
             user = User.query.filter_by(email="lockout_test@test.com").first()
             user.failed_login_count = 20
-            user.locked_until = datetime.datetime.utcnow() + datetime.timedelta(
-                days=365
-            )
+            user.locked_until = datetime.datetime.now(
+                datetime.UTC
+            ) + datetime.timedelta(days=365)
             db.session.commit()
 
             assert user.is_locked()

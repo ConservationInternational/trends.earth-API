@@ -1,6 +1,5 @@
 """DOCKER SERVICE"""
 
-import datetime
 import gzip
 import json
 import logging
@@ -22,6 +21,7 @@ from gefapi import db
 from gefapi.config import SETTINGS
 from gefapi.models import Execution, Script, ScriptLog
 from gefapi.s3 import get_script_from_s3, push_params_to_s3
+from gefapi.utils import utcnow
 
 REGISTRY_URL = SETTINGS.get("REGISTRY_URL")
 DOCKER_HOST = SETTINGS.get("DOCKER_HOST")
@@ -462,7 +462,7 @@ def docker_run(execution_id, image, environment, params):
         logger.error(f"Execution with id {execution_id} not found.")
         return
     try:
-        execution.dispatched_at = datetime.datetime.utcnow()
+        execution.dispatched_at = utcnow()
         execution.status = "READY"
     except Exception:
         logger.warning(
@@ -482,7 +482,7 @@ def docker_run(execution_id, image, environment, params):
         push_params_to_s3(params_gz_file, params_gz_file.name)
 
     logger.debug("Running...")
-    correct, error = DockerService.run(
+    correct, _error = DockerService.run(
         execution_id=execution_id, image=image, environment=environment
     )
     logger.debug("Execution run - changing status")
@@ -584,7 +584,7 @@ class DockerService:
         # Capture pre-push manifest state to detect tag updates even if the
         # streaming push logs are ambiguous or truncated.
         repo_name, reference = _split_repo_ref(tag_image)
-        pre_exists, pre_digest, pre_last_mod, pre_msg = _registry_get_manifest_digest(
+        pre_exists, pre_digest, _pre_last_mod, pre_msg = _registry_get_manifest_digest(
             REGISTRY_URL, repo_name, reference
         )
         if pre_exists:
@@ -968,7 +968,7 @@ class DockerService:
             if client is None:
                 logger.error("Docker client is not available.")
                 return False, Exception("Docker client is not available.")
-            image, logs = client.images.build(
+            _image, logs = client.images.build(
                 path=path,
                 rm=True,
                 tag=tag_full,
@@ -985,7 +985,7 @@ class DockerService:
                 # Only process if line is a dict
                 if not isinstance(line, dict):
                     continue
-                if "errorDetail" in line and line["errorDetail"]:
+                if line.get("errorDetail"):
                     return False, line["errorDetail"]
                 DockerService.save_build_log(script_id=script_id, line=line)
 
@@ -1024,7 +1024,7 @@ class DockerService:
                     "Creating service (running in "
                     f"{os.getenv('ENVIRONMENT')} environment, with image "
                     f"{REGISTRY_URL}/{image}, as execution "
-                    f"execution-{str(execution_id)})",
+                    f"execution-{execution_id!s})",
                 )
 
                 # env = [k + "=" + v for str(k), str(v) in environment.items()]
@@ -1172,7 +1172,7 @@ class DockerService:
                     "Creating container (running in "
                     f"{os.getenv('ENVIRONMENT')} environment, with image "
                     f"{REGISTRY_URL}/{image}, as execution "
-                    f"execution-{str(execution_id)})",
+                    f"execution-{execution_id!s})",
                 )
                 client = get_docker_client()
                 if client is None:
@@ -1188,7 +1188,7 @@ class DockerService:
                     extra_hosts={"169.254.169.254": "169.254.169.254"},
                 )
         except docker_errors.ImageNotFound as error:
-            logger.error("Image not found", error)
+            logger.error("Image not found: %s", error)
 
             return False, error
         except Exception as error:
@@ -1217,7 +1217,7 @@ class DockerService:
                 f"for execution {execution_id}: {e}"
             )
             rollbar.report_exc_info()
-            raise e
+            raise
 
 
 @celery_app.task(name="docker.get_service_logs")
@@ -1258,7 +1258,7 @@ def get_docker_logs_task(execution_id):
         )
         rollbar.report_exc_info()
         # Re-raise the exception to mark the task as failed
-        raise e
+        raise
 
 
 @celery_app.task(name="docker.cancel_execution")
@@ -1294,7 +1294,7 @@ def cancel_execution_task(execution_id):
                 cancellation_results["docker_service_stopped"] = True
                 break
         except Exception as docker_error:
-            error_msg = f"Docker service stop failed: {str(docker_error)}"
+            error_msg = f"Docker service stop failed: {docker_error!s}"
             logger.warning(f"[DOCKER_CANCEL]: {error_msg}")
             cancellation_results["errors"].append(error_msg)
 
@@ -1313,7 +1313,7 @@ def cancel_execution_task(execution_id):
                 cancellation_results["docker_container_stopped"] = True
                 break
         except Exception as docker_error:
-            error_msg = f"Docker container stop failed: {str(docker_error)}"
+            error_msg = f"Docker container stop failed: {docker_error!s}"
             logger.warning(f"[DOCKER_CANCEL]: {error_msg}")
             cancellation_results["errors"].append(error_msg)
 
@@ -1323,7 +1323,7 @@ def cancel_execution_task(execution_id):
         return cancellation_results
 
     except Exception as error:
-        error_msg = f"Docker cancellation error: {str(error)}"
+        error_msg = f"Docker cancellation error: {error!s}"
         logger.error(f"[DOCKER_CANCEL]: {error_msg}")
         rollbar.report_exc_info()
         cancellation_results["errors"].append(error_msg)

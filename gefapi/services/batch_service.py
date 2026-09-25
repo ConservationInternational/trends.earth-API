@@ -1125,7 +1125,7 @@ def batch_run(self, execution_id, image, environment, params):
         rollbar.report_exc_info()
         try:
             execution.status = "FAILED"
-            execution.end_date = datetime.datetime.utcnow()
+            execution.end_date = datetime.datetime.now(datetime.UTC)
             execution.results = {
                 "error": f"Batch submission failed: {error_msg}",
                 "error_type": type(exc).__name__,

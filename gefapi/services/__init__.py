@@ -15,7 +15,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
 sys.excepthook = handle_exception
 
-from gefapi.services.batch_service import (  # noqa: E402
+from gefapi.services.batch_service import (
     batch_run,
     get_batch_job_status,
     push_params_to_s3,
@@ -23,46 +23,46 @@ from gefapi.services.batch_service import (  # noqa: E402
     submit_single_job,
     terminate_batch_jobs,
 )
-from gefapi.services.boundaries_service import BoundariesService  # noqa: E402
-from gefapi.services.client_stats_service import ClientStatsService  # noqa: E402
-from gefapi.services.client_tracking_service import ClientTrackingService  # noqa: E402
+from gefapi.services.boundaries_service import BoundariesService
+from gefapi.services.client_stats_service import ClientStatsService
+from gefapi.services.client_tracking_service import ClientTrackingService
 from gefapi.services.docker_service import (
-    DockerService,  # noqa: E402
+    DockerService,
     docker_build,
     docker_run,
 )
-from gefapi.services.email_service import EmailService  # noqa: E402
-from gefapi.services.news_service import NewsService  # noqa: E402
-from gefapi.services.oauth2_service import OAuth2Service  # noqa: E402
-from gefapi.services.openeo_service import openeo_run  # noqa: E402
-from gefapi.services.rate_limit_event_service import RateLimitEventService  # noqa: E402
-from gefapi.services.script_service import ScriptService  # noqa: E402
-from gefapi.services.status_service import StatusService  # noqa: E402
-from gefapi.services.user_service import UserService  # noqa: E402
+from gefapi.services.email_service import EmailService
 
 # Import last to avoid circular dependency
-from gefapi.services.execution_service import ExecutionService  # noqa:E402, isort:skip
+from gefapi.services.execution_service import ExecutionService
+from gefapi.services.news_service import NewsService
+from gefapi.services.oauth2_service import OAuth2Service
+from gefapi.services.openeo_service import openeo_run
+from gefapi.services.rate_limit_event_service import RateLimitEventService
+from gefapi.services.script_service import ScriptService
+from gefapi.services.status_service import StatusService
+from gefapi.services.user_service import UserService
 
 __all__ = [
-    "batch_run",
-    "get_batch_job_status",
-    "push_params_to_s3",
-    "submit_pipeline",
-    "submit_single_job",
-    "terminate_batch_jobs",
     "BoundariesService",
     "ClientStatsService",
     "ClientTrackingService",
     "DockerService",
-    "docker_build",
-    "docker_run",
     "EmailService",
+    "ExecutionService",
+    "NewsService",
     "OAuth2Service",
-    "openeo_run",
     "RateLimitEventService",
     "ScriptService",
     "StatusService",
     "UserService",
-    "ExecutionService",
-    "NewsService",
+    "batch_run",
+    "docker_build",
+    "docker_run",
+    "get_batch_job_status",
+    "openeo_run",
+    "push_params_to_s3",
+    "submit_pipeline",
+    "submit_single_job",
+    "terminate_batch_jobs",
 ]

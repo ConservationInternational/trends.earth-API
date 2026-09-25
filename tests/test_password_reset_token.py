@@ -59,9 +59,12 @@ class TestPasswordResetTokenEmailVerification:
             # Verify the user is now marked as verified
             assert updated_user.email_verified is True
             assert updated_user.email_verified_at is not None
-            # Verify the timestamp is recent (within last minute)
-            now = datetime.datetime.utcnow()
-            time_diff = now - updated_user.email_verified_at
+            # Verify the timestamp is recent (within last minute).
+            # DB returns naive UTC; make it aware for comparison.
+            now = datetime.datetime.now(tz=datetime.UTC)
+            time_diff = now - updated_user.email_verified_at.replace(
+                tzinfo=datetime.UTC
+            )
             assert time_diff.total_seconds() < 60
 
     def test_reset_password_with_token_preserves_already_verified_user(self, app):
@@ -75,7 +78,9 @@ class TestPasswordResetTokenEmailVerification:
                 country="US",
                 institution="Test Institution",
             )
-            original_verification_time = datetime.datetime(2024, 1, 1, 12, 0, 0)
+            original_verification_time = datetime.datetime(
+                2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC
+            )
             user.email_verified = True
             user.email_verified_at = original_verification_time
             db.session.add(user)
@@ -83,7 +88,10 @@ class TestPasswordResetTokenEmailVerification:
 
             # Verify user is already verified
             assert user.email_verified is True
-            assert user.email_verified_at == original_verification_time
+            # DB stores as naive UTC; compare with the naive equivalent.
+            assert user.email_verified_at == original_verification_time.replace(
+                tzinfo=None
+            )
 
             # Create a password reset token
             reset_token = PasswordResetToken(user_id=user.id)
@@ -97,8 +105,11 @@ class TestPasswordResetTokenEmailVerification:
 
             # Verify the original verification status is preserved
             assert updated_user.email_verified is True
-            # Original verification time should be preserved (not updated)
-            assert updated_user.email_verified_at == original_verification_time
+            # Original verification time should be preserved (not updated).
+            # DB stores as naive UTC; compare with the naive equivalent.
+            assert updated_user.email_verified_at == original_verification_time.replace(
+                tzinfo=None
+            )
 
     def test_reset_password_with_invalid_token_fails(self, app):
         """Test that invalid tokens are rejected."""
@@ -129,9 +140,9 @@ class TestPasswordResetTokenEmailVerification:
             # Create an expired token
             reset_token = PasswordResetToken(user_id=user.id)
             # Set expiry to the past
-            reset_token.expires_at = datetime.datetime.utcnow() - datetime.timedelta(
-                hours=2
-            )
+            reset_token.expires_at = datetime.datetime.now(
+                tz=datetime.UTC
+            ) - datetime.timedelta(hours=2)
             db.session.add(reset_token)
             db.session.commit()
 
@@ -158,7 +169,7 @@ class TestPasswordResetTokenEmailVerification:
 
             # Create a token and mark it as used
             reset_token = PasswordResetToken(user_id=user.id)
-            reset_token.used_at = datetime.datetime.utcnow()
+            reset_token.used_at = datetime.datetime.now(tz=datetime.UTC)
             db.session.add(reset_token)
             db.session.commit()
 
@@ -182,8 +193,7 @@ class TestSecureUserRegistrationFlow:
                 "institution": "Test Institution",
             }
 
-            # Create user with secure flow (legacy=False)
-            user = UserService.create_user(user_data, legacy=False)
+            user = UserService.create_user(user_data)
 
             # User should be unverified at creation
             assert user.email_verified is False
@@ -191,6 +201,21 @@ class TestSecureUserRegistrationFlow:
 
             # Email should have been sent
             assert mock_email.called
+            assert mock_email.call_args.kwargs["transactional"] is True
+
+    def test_registration_ignores_obsolete_password_field(self, client):
+        response = client.post(
+            "/api/v1/user",
+            json={
+                "email": "obsolete-password@test.com",
+                "password": "",
+                "name": "Password-Free Registration",
+                "country": "US",
+                "institution": "Test Institution",
+            },
+        )
+
+        assert response.status_code == 200
 
     @patch("gefapi.services.user_service.EmailService.send_html_email")
     def test_secure_registration_complete_flow_verifies_user(self, mock_email, app):
@@ -204,7 +229,7 @@ class TestSecureUserRegistrationFlow:
             }
 
             # Create user with secure flow
-            user = UserService.create_user(user_data, legacy=False)
+            user = UserService.create_user(user_data)
 
             # User should be unverified
             assert user.email_verified is False
@@ -212,12 +237,35 @@ class TestSecureUserRegistrationFlow:
             # Find the password reset token created during registration
             reset_token = PasswordResetToken.query.filter_by(user_id=user.id).first()
             assert reset_token is not None
+            email_html = mock_email.call_args.kwargs["html"]
+            raw_token = email_html.split("/reset-password?token=", 1)[1].split('"', 1)[
+                0
+            ]
 
             # User "clicks link" and sets password
             updated_user = UserService.reset_password_with_token(
-                reset_token.token, "UserChosenPass1!"
+                raw_token, "UserChosenPass1!"
             )
 
             # User should now be verified
             assert updated_user.email_verified is True
             assert updated_user.email_verified_at is not None
+
+    @patch("gefapi.services.user_service.EmailService.send_html_email")
+    def test_password_recovery_email_is_transactional(self, mock_email, app):
+        """Secure password recovery must bypass marketing suppressions."""
+        with app.app_context():
+            user = User(
+                email="recovery-transactional@test.com",
+                password=STRONG_PASSWORD,
+                name="Recovery User",
+                country="US",
+                institution="Test Institution",
+            )
+            db.session.add(user)
+            db.session.commit()
+
+            UserService.recover_password(str(user.id))
+
+            mock_email.assert_called_once()
+            assert mock_email.call_args.kwargs["transactional"] is True

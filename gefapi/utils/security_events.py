@@ -1,6 +1,6 @@
 """Security event logging utilities for the GEF API"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 import logging
 from typing import Any
 
@@ -79,7 +79,7 @@ def log_security_event(
     event_data = {
         "event_type": event_type,
         "event_description": SECURITY_EVENTS.get(event_type, "Unknown security event"),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "user_id": user_id,
         "user_email": user_email,
         "details": details or {},

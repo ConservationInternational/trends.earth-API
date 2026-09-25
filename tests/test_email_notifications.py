@@ -73,6 +73,7 @@ class TestEmailNotificationPreferences:
             ]
             assert user.email in recipient_emails
             assert "Execution finished" in call_args[1]["subject"]
+            assert call_args[1]["transactional"] is True
 
     @patch("gefapi.services.execution_service.EmailService.send_html_email")
     def test_email_not_sent_when_notifications_disabled(self, mock_email, app):

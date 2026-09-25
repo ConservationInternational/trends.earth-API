@@ -7,7 +7,7 @@ in the gefapi/static/swagger-ui/ directory.
 
 import argparse
 import base64
-from datetime import datetime
+from datetime import UTC, datetime
 import hashlib
 from pathlib import Path
 import sys
@@ -140,7 +140,7 @@ def main():
         summary_file = static_dir / "download_info.txt"
         with open(summary_file, "w") as f:
             f.write(f"Swagger UI v{swagger_version} - Downloaded assets\n")
-            f.write(f"Download date: {datetime.now().isoformat()}\n\n")
+            f.write(f"Download date: {datetime.now(UTC).isoformat()}\n\n")
             f.write("SRI Hashes:\n")
             for name, sri_hash in sri_hashes.items():
                 f.write(f"{name}: {sri_hash}\n")

@@ -183,7 +183,7 @@ def get_dashboard_stats():
 
     except Exception as e:
         logger.error(f"Error getting dashboard stats: {e}")
-        return error(status=500, detail=f"Failed to get dashboard stats: {str(e)}")
+        return error(status=500, detail=f"Failed to get dashboard stats: {e!s}")
 
 
 @endpoints.route("/stats/executions", methods=["GET"])
@@ -300,7 +300,7 @@ def get_execution_stats():
 
     except Exception as e:
         logger.error(f"Error getting execution stats: {e}")
-        return error(status=500, detail=f"Failed to get execution stats: {str(e)}")
+        return error(status=500, detail=f"Failed to get execution stats: {e!s}")
 
 
 @endpoints.route("/stats/users", methods=["GET"])
@@ -403,7 +403,7 @@ def get_user_stats():
 
     except Exception as e:
         logger.error(f"Error getting user stats: {e}")
-        return error(status=500, detail=f"Failed to get user stats: {str(e)}")
+        return error(status=500, detail=f"Failed to get user stats: {e!s}")
 
 
 @endpoints.route("/stats/health", methods=["GET"])
@@ -460,7 +460,7 @@ def get_stats_health():
 
     except Exception as e:
         logger.error(f"Error in stats health check: {e}")
-        return error(status=500, detail=f"Stats service unhealthy: {str(e)}")
+        return error(status=500, detail=f"Stats service unhealthy: {e!s}")
 
 
 @endpoints.route("/stats/cache", methods=["GET"])
@@ -522,7 +522,7 @@ def get_cache_info():
 
     except Exception as e:
         logger.error(f"Error getting cache info: {e}")
-        return error(status=500, detail=f"Failed to get cache info: {str(e)}")
+        return error(status=500, detail=f"Failed to get cache info: {e!s}")
 
 
 @endpoints.route("/stats/cache", methods=["DELETE"])
@@ -623,4 +623,4 @@ def clear_cache():
 
     except Exception as e:
         logger.error(f"Error clearing cache: {e}")
-        return error(status=500, detail=f"Failed to clear cache: {str(e)}")
+        return error(status=500, detail=f"Failed to clear cache: {e!s}")

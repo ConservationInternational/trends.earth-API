@@ -121,7 +121,7 @@ def is_approved_bulk_email_sender(user):
         return False
     if not is_superadmin(user):
         return False
-    from gefapi.config import SETTINGS  # noqa: PLC0415 (avoid circular at module load)
+    from gefapi.config import SETTINGS
 
     approved = SETTINGS.get("BULK_EMAIL_APPROVED_SENDERS", [])
     if not approved:

@@ -1,6 +1,7 @@
 """REFRESH TOKEN MODEL"""
 
 import datetime
+import hashlib
 import secrets
 import uuid
 
@@ -17,7 +18,8 @@ class RefreshToken(db.Model):
 
     id = db.Column(GUID(), primary_key=True, default=uuid.uuid4, nullable=False)
     user_id = db.Column(GUID(), db.ForeignKey("user.id"), nullable=False, index=True)
-    token = db.Column(db.String(255), nullable=False, index=True)
+    _token = db.Column("token", db.String(255), nullable=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
     expires_at = db.Column(db.DateTime, nullable=False, index=True)
     created_at = db.Column(
         db.DateTime(timezone=True),
@@ -28,16 +30,24 @@ class RefreshToken(db.Model):
     device_info = db.Column(db.String(500))  # Store user agent, IP, etc.
     last_used_at = db.Column(db.DateTime)
 
-    __table_args__ = (db.UniqueConstraint("token", name="refresh_tokens_token_key"),)
-
     # Relationship - backref handled by User model
     user = db.relationship("User", back_populates="user_refresh_tokens")
 
     def __init__(self, user_id, expires_at=None, device_info=None):
         self.user_id = user_id
-        self.token = self.generate_token()
+        self._raw_token = self.generate_token()
+        self.token_hash = self.hash_token(self._raw_token)
         self.expires_at = expires_at or self.default_expiry()
         self.device_info = device_info
+
+    @property
+    def token(self):
+        """Return the raw token only during the response that created it."""
+        return getattr(self, "_raw_token", None)
+
+    @staticmethod
+    def hash_token(token):
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     def __repr__(self):
         return f"<RefreshToken {self.id}>"
@@ -50,7 +60,9 @@ class RefreshToken(db.Model):
     @staticmethod
     def default_expiry():
         """Default expiry time (30 days from now)"""
-        return datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=30)
+        return datetime.datetime.now(datetime.UTC).replace(
+            tzinfo=None
+        ) + datetime.timedelta(days=30)
 
     def is_valid(self, verify_client_ip=False, current_ip=None):
         """Check if token is valid (not expired and not revoked).
@@ -62,13 +74,13 @@ class RefreshToken(db.Model):
         Returns:
             bool: True if token is valid, False otherwise
         """
-        # Make expires_at timezone-aware (assume UTC) if it's naive from the database
+        now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
         expires_at = (
-            self.expires_at.replace(tzinfo=datetime.UTC)
-            if self.expires_at.tzinfo is None
+            self.expires_at.replace(tzinfo=None)
+            if self.expires_at and self.expires_at.tzinfo
             else self.expires_at
         )
-        if self.is_revoked or expires_at <= datetime.datetime.now(datetime.UTC):
+        if self.is_revoked or expires_at <= now:
             return False
 
         # Optional client IP verification for additional security
@@ -111,7 +123,10 @@ class RefreshToken(db.Model):
 
     def update_last_used(self):
         """Update last used timestamp"""
-        self.last_used_at = datetime.datetime.now(datetime.UTC)
+        self.last_used_at = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+
+    def remember_raw_token(self, token):
+        self._raw_token = token
 
     def serialize(self):
         """Return object data in easily serializable format"""

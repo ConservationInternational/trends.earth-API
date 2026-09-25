@@ -5,7 +5,7 @@
 **Trends.Earth API** is a comprehensive Flask-based Python API that manages Scripts, Users, and Executions for the Trends.Earth project. It serves as the backend for both the Trends.Earth QGIS plugin and web interfaces.
 
 ### High-Level Information
-- **Language**: Python 3.11+ (Alpine-based Docker containers)
+- **Language**: Python 3.13+ (Alpine-based Docker containers)
 - **Framework**: Flask with SQLAlchemy ORM
 - **Database**: PostgreSQL with Flask-Migrate migrations
 - **Background Tasks**: Celery with Redis message broker
@@ -26,7 +26,7 @@
 
 ### Pre-installed System Dependencies
 - **Docker** (latest version with Docker Compose plugin)
-- **Python 3.11+** with pip and venv support
+- **Python 3.13+** with pip and venv support
 - **Poetry** dependency manager (latest version)
 - **Build tools**: git, curl, jq, build-essential, ca-certificates
 
@@ -34,7 +34,7 @@
 - `postgres:16` (database)
 - `redis:latest` (Celery message broker) 
 - `registry:2.8.1` (local Docker registry)
-- `python:3.11-alpine` (API base image)
+- `python:3.13-alpine` (API base image)
 
 ### Pre-configured Environment
 - **Environment files**: `develop.env` and `test.env` are auto-generated from `.env.example`
@@ -321,7 +321,7 @@ gefapi/                 # Main application package
 ### CI/CD Pipeline
 
 #### GitHub Actions Workflows
-- **`.github/workflows/run-tests.yml`** - Comprehensive test suite (Python 3.11, 3.12)
+- **`.github/workflows/run-tests.yml`** - Comprehensive test suite (Python 3.13, 3.14)
 - **`.github/workflows/ruff.yaml`** - Code quality checks
 - **`.github/workflows/deploy-staging.yml`** - Staging deployment
 - **`.github/workflows/deploy-production.yml`** - Production deployment

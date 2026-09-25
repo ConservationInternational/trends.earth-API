@@ -4,6 +4,7 @@ This module contains all endpoints related to script creation, management,
 publishing, and retrieval operations.
 """
 
+from datetime import UTC
 import logging
 import os
 import tempfile
@@ -102,6 +103,133 @@ def create_script():
         logger.error("[ROUTER]: " + str(e))
         return error(status=500, detail="Generic Error")
     return jsonify(data=script.serialize()), 200
+
+
+# ---------------------------------------------------------------------------
+# CSV export
+# ---------------------------------------------------------------------------
+
+_SCRIPT_EXPORT_COLUMNS = [
+    "id",
+    "name",
+    "slug",
+    "status",
+    "public",
+    "restricted",
+    "created_at",
+    "updated_at",
+    "environment",
+    "environment_version",
+    "compute_type",
+    "uses_gee",
+    "user_id",
+    "user_name",
+    "user_email",
+]
+
+_SCRIPT_EXPORT_DATE_FIELDS = {"created_at", "updated_at"}
+
+
+@endpoints.route("/script/export", strict_slashes=False, methods=["GET"])
+@jwt_required()
+@require_scope("script:read")
+def export_scripts_csv():
+    """
+    Export scripts as a CSV file (admin only).
+
+    **Authentication**: JWT token required
+    **Authorization**: ADMIN or SUPERADMIN required
+
+    **Query Parameters**:
+    - ``date_field``: Column to filter by (``created_at`` or ``updated_at``)
+    - ``date_from``: ISO 8601 start date (inclusive)
+    - ``date_to``:   ISO 8601 end date   (inclusive)
+
+    **Response**: ``text/csv`` attachment named ``scripts_export_<timestamp>.csv``
+
+    **Error Responses**:
+    - ``400`` – invalid ``date_field``
+    - ``403`` – insufficient privileges
+    """
+    if not is_admin_or_higher(current_user):
+        return error(status=403, detail="Forbidden")
+
+    from gefapi.utils.csv_export import _parse_date_param, rows_to_csv_response
+
+    date_field = request.args.get("date_field") or None
+    date_from = _parse_date_param(request.args.get("date_from"))
+    date_to = _parse_date_param(request.args.get("date_to"))
+
+    if date_field and date_field not in _SCRIPT_EXPORT_DATE_FIELDS:
+        return error(status=400, detail=f"Invalid date_field '{date_field}'")
+
+    try:
+        from gefapi import db
+        from gefapi.models import Script, User
+        from gefapi.utils.csv_export import MAX_EXPORT_ROWS
+
+        query = db.session.query(
+            Script,
+            User.name.label("user_name"),
+            User.email.label("user_email"),
+        ).outerjoin(User, Script.user_id == User.id)
+
+        if date_field and (date_from or date_to):
+            col = getattr(Script, date_field)
+            if date_from:
+                query = query.filter(col >= date_from)
+            if date_to:
+                query = query.filter(col <= date_to)
+
+        total = query.count()
+        if total > MAX_EXPORT_ROWS:
+            return error(
+                status=400,
+                detail=(
+                    f"Export would return {total:,} rows which exceeds the "
+                    f"maximum of {MAX_EXPORT_ROWS:,}. Narrow the date range "
+                    "and try again."
+                ),
+            )
+
+        query = query.order_by(Script.created_at.desc())
+        results = query.all()
+    except Exception as exc:
+        logger.error("[ROUTER]: export_scripts_csv error: %s", exc)
+        return error(status=500, detail="Generic Error")
+
+    rows = []
+    for script_row, user_name, user_email in results:
+        row = {col: getattr(script_row, col, None) for col in _SCRIPT_EXPORT_COLUMNS}
+        row["user_name"] = user_name or ""
+        row["user_email"] = user_email or ""
+        for key, val in row.items():
+            if hasattr(val, "isoformat"):
+                row[key] = val.isoformat()
+            elif val is None:
+                row[key] = ""
+        rows.append(row)
+
+    from datetime import datetime
+
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    filename = f"scripts_export_{timestamp}.csv"
+    logger.info(
+        "[AUDIT] CSV export: table=scripts rows=%d filename=%s "
+        "by user_id=%s email=%s role=%s "
+        "filter_field=%s filter_from=%s filter_to=%s "
+        "remote_addr=%s",
+        len(rows),
+        filename,
+        getattr(current_user, "id", None),
+        getattr(current_user, "email", None),
+        getattr(current_user, "role", None),
+        date_field,
+        request.args.get("date_from"),
+        request.args.get("date_to"),
+        request.remote_addr,
+    )
+    return rows_to_csv_response(rows, filename)
 
 
 @endpoints.route("/script", strict_slashes=False, methods=["GET"])
@@ -736,7 +864,7 @@ def update_script_config(script):
     import datetime
 
     updated = False
-    if "name" in data and data["name"]:
+    if data.get("name"):
         target_script.name = data["name"]
         updated = True
     if "description" in data:

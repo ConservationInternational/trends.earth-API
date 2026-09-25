@@ -112,7 +112,7 @@ def monitor_batch_executions(self):
 
     with app.app_context():
         try:
-            cutoff = datetime.datetime.utcnow() - datetime.timedelta(
+            cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
                 days=_LOOKBACK_DAYS
             )
 
@@ -260,7 +260,7 @@ def _process_execution(execution, batch_jobs, job_details):
             if info["status"] == "FAILED"
         ]
         execution.status = "FAILED"
-        execution.end_date = datetime.datetime.utcnow()
+        execution.end_date = datetime.datetime.now(datetime.UTC)
         execution.results = {
             "batch_jobs": batch_jobs,
             "batch_statuses": statuses,
@@ -311,7 +311,7 @@ def _process_execution(execution, batch_jobs, job_details):
             )
 
         execution.status = "FINISHED"
-        execution.end_date = datetime.datetime.utcnow()
+        execution.end_date = datetime.datetime.now(datetime.UTC)
 
         log_entry = ExecutionLog(
             text="Batch job completed successfully",

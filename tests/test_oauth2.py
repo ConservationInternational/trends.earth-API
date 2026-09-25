@@ -197,6 +197,24 @@ class TestOAuth2ServiceCreateClient:
                     user=user, name="Bad", scopes="nonexistent:scope"
                 )
 
+    def test_regular_user_cannot_create_privileged_scope_client(
+        self, app, regular_user
+    ):
+        """Regular users cannot mint service clients with admin/user scopes."""
+        with app.app_context():
+            user = db.session.merge(regular_user)
+            with pytest.raises(NotAllowed):
+                OAuth2Service.create_client(user=user, name="Bad", scopes="admin:read")
+
+    def test_admin_can_create_privileged_scope_client(self, app, admin_user):
+        """Admins can mint scoped service clients for admin automation."""
+        with app.app_context():
+            user = db.session.merge(admin_user)
+            _, client = OAuth2Service.create_client(
+                user=user, name="Admin", scopes="admin:read"
+            )
+            assert client.scopes == "admin:read"
+
     def test_create_client_with_expiry(self, app, regular_user):
         """expires_at is set when expires_in_days is provided."""
         with app.app_context():
@@ -485,6 +503,18 @@ class TestOAuth2ClientManagementEndpoints:
         data = resp.get_json()["data"]
         assert data["scopes"] == "execution:read"
         assert data["expires_at"] is not None
+
+    def test_create_client_endpoint_rejects_privileged_regular_user_scope(
+        self, client, auth_headers_user
+    ):
+        """Regular users cannot request admin/user scopes through the API."""
+        resp = client.post(
+            "/api/v1/oauth/clients",
+            json={"name": "Bad", "scopes": "admin:read"},
+            headers=auth_headers_user,
+        )
+        assert resp.status_code == 400
+        assert "admin" in resp.get_json()["detail"].lower()
 
     def test_create_client_missing_name(self, client, auth_headers_user):
         """POST /oauth/clients without name returns 400."""

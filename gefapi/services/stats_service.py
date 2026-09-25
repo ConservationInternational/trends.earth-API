@@ -4,7 +4,7 @@ Provides comprehensive statistics for executions, users, and system metrics.
 """
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import logging
 import re
 from typing import Any
@@ -249,7 +249,7 @@ class StatsService:
             Optional[datetime]: Cutoff datetime for the period, or None for
                 'all'/'invalid'
         """
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         filters = {
             "last_day": now - timedelta(days=1),
@@ -341,7 +341,7 @@ class StatsService:
 
             # Hourly data (last 72 hours)
             if period in ["last_day", "all"] or cutoff_date is None:
-                hourly_cutoff = datetime.utcnow() - timedelta(hours=72)
+                hourly_cutoff = datetime.now(UTC) - timedelta(hours=72)
                 hourly_data = (
                     db.session.query(
                         func.date_trunc("hour", Execution.start_date).label("hour"),
@@ -383,7 +383,7 @@ class StatsService:
                 ]
 
             # Monthly data (last year)
-            monthly_cutoff = datetime.utcnow() - timedelta(days=365)
+            monthly_cutoff = datetime.now(UTC) - timedelta(days=365)
             monthly_data = (
                 db.session.query(
                     func.date_trunc("month", Execution.start_date).label("month"),
@@ -590,7 +590,7 @@ class StatsService:
         # Organize data by timestamp
         time_series = {}
         for row in data:
-            timestamp = row.timestamp.isoformat() if row.timestamp else None
+            timestamp = StatsService._format_timestamp(row.timestamp)
             if timestamp not in time_series:
                 time_series[timestamp] = {
                     "timestamp": timestamp,
@@ -771,6 +771,22 @@ class StatsService:
         return sorted(result, key=lambda x: x["total_executions"], reverse=True)
 
     @staticmethod
+    def _format_timestamp(value: Any) -> str | None:
+        """Format a datetime-like value as a compact UTC timestamp string."""
+        if value is None:
+            return None
+
+        if isinstance(value, datetime):
+            normalized = value
+            if normalized.tzinfo is not None:
+                normalized = normalized.astimezone(UTC).replace(tzinfo=None)
+            else:
+                normalized = normalized.replace(microsecond=0)
+            return normalized.isoformat()
+
+        return str(value)
+
+    @staticmethod
     def normalize_user_group_by(group_by: str | None) -> str:
         """Normalize user stats group_by parameter to supported values."""
 
@@ -849,7 +865,7 @@ class StatsService:
             if row.date is None:
                 formatted_date = None
             elif bucket_type == "datetime":
-                formatted_date = row.date.replace(microsecond=0).isoformat()
+                formatted_date = StatsService._format_timestamp(row.date)
             else:
                 formatted_date = row.date.date().isoformat()
 

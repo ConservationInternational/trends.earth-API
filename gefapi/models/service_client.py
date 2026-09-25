@@ -123,9 +123,13 @@ class ServiceClient(db.Model):
     def is_expired(self) -> bool:
         if self.expires_at is None:
             return False
-        return datetime.datetime.now(datetime.UTC) > self.expires_at.replace(
-            tzinfo=datetime.UTC
+        now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+        expires_at = (
+            self.expires_at.replace(tzinfo=None)
+            if self.expires_at.tzinfo
+            else self.expires_at
         )
+        return now > expires_at
 
     def is_valid(self) -> bool:
         return not self.revoked and not self.is_expired()
@@ -133,9 +137,13 @@ class ServiceClient(db.Model):
     TOUCH_THROTTLE_SECONDS = 300
 
     def touch(self):
-        now = datetime.datetime.now(datetime.UTC)
+        now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
         if self.last_used_at is not None:
-            last = self.last_used_at.replace(tzinfo=datetime.UTC)
+            last = (
+                self.last_used_at.replace(tzinfo=None)
+                if self.last_used_at.tzinfo
+                else self.last_used_at
+            )
             if (now - last).total_seconds() < self.TOUCH_THROTTLE_SECONDS:
                 return
         self.last_used_at = now

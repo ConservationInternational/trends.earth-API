@@ -61,6 +61,11 @@ from gefapi.models.bulk_email_verification_token import (  # noqa: E402
 from gefapi.models.execution import Execution  # noqa: E402
 from gefapi.models.execution_log import ExecutionLog  # noqa: E402
 from gefapi.models.news import NewsItem, NewsItemTranslation  # noqa: E402
+from gefapi.models.oidc import (  # noqa: E402
+    AuthorizationCode,
+    OAuthClient,
+    OIDCRefreshToken,
+)
 from gefapi.models.password_reset_token import PasswordResetToken  # noqa: E402
 from gefapi.models.rate_limit_event import RateLimitEvent  # noqa: E402
 from gefapi.models.refresh_token import RefreshToken  # noqa: E402
@@ -79,12 +84,17 @@ __all__ = [
     "AdminBoundary0Metadata",
     "AdminBoundary1Metadata",
     "AdminBoundary1Unit",
-    "DeletionReason",
+    "AuthorizationCode",
     "BulkEmail",
     "BulkEmailRecipientList",
     "BulkEmailVerificationToken",
+    "DeletionReason",
     "Execution",
     "ExecutionLog",
+    "NewsItem",
+    "NewsItemTranslation",
+    "OAuthClient",
+    "OIDCRefreshToken",
     "PasswordResetToken",
     "RateLimitEvent",
     "RefreshToken",
@@ -95,6 +105,4 @@ __all__ = [
     "User",
     "UserClientMetadata",
     "UserDeletionAudit",
-    "NewsItem",
-    "NewsItemTranslation",
 ]

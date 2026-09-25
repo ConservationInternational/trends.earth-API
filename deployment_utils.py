@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class DeploymentUtils:
     """Utility class for deployment operations."""
 
-    def __init__(self, registry: str, image_name: str, app_path: str = None):
+    def __init__(self, registry: str, image_name: str, app_path: str | None = None):
         """Initialize deployment utilities.
 
         Args:
@@ -40,7 +40,7 @@ class DeploymentUtils:
         self.image_name = image_name
         self.app_path = Path(app_path) if app_path else Path.cwd()
 
-    def clean_git_workspace(self, branch: str = None) -> bool:
+    def clean_git_workspace(self, branch: str | None = None) -> bool:
         """Clean git workspace and optionally checkout a specific branch.
 
         Args:
@@ -222,7 +222,7 @@ class DeploymentUtils:
             return False  # Non-critical failure
 
     def build_and_push_image(
-        self, tags: list[str], commit_sha: str = None, no_cache: bool = True
+        self, tags: list[str], commit_sha: str | None = None, no_cache: bool = True
     ) -> bool:
         """Build and push Docker image with specified tags.
 
