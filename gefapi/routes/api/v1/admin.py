@@ -16,12 +16,14 @@ from gefapi.services import (
     UserService,
 )
 from gefapi.services.refresh_token_service import RefreshTokenService
+from gefapi.utils.scopes import require_scope
 
 logger = logging.getLogger()
 
 
 @endpoints.route("/rate-limit/status", methods=["GET"])
 @jwt_required()
+@require_scope("admin:read")
 def get_rate_limit_status():
     """
     Query current rate limiting status across the system.
@@ -110,6 +112,7 @@ def get_rate_limit_status():
 
 @endpoints.route("/rate-limit/reset/<string:identifier>", methods=["POST"])
 @jwt_required()
+@require_scope("admin:write")
 def reset_rate_limit_by_identifier(identifier):
     """
     Reset a specific rate limit by its identifier.
@@ -165,6 +168,7 @@ def reset_rate_limit_by_identifier(identifier):
 
 @endpoints.route("/rate-limit/reset", methods=["POST"])
 @jwt_required()
+@require_scope("admin:write")
 def reset_rate_limits():
     """
     Reset all rate limits across the system.
@@ -243,6 +247,7 @@ def reset_rate_limits():
 
 @endpoints.route("/rate-limit/events", methods=["GET"])
 @jwt_required()
+@require_scope("admin:read")
 def get_rate_limit_events():
     """Retrieve historical rate limit breach events for auditing."""
 
@@ -322,6 +327,7 @@ def get_rate_limit_events():
 
 @endpoints.route("/user/me/sessions", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("user:read")
 def get_user_sessions():
     """
     Retrieve current user's active authentication sessions.
@@ -394,6 +400,7 @@ def get_user_sessions():
     "/user/me/sessions/<session_id>", strict_slashes=False, methods=["DELETE"]
 )
 @jwt_required()
+@require_scope("user:write")
 def revoke_user_session(session_id):
     """
     Revoke a specific authentication session.
@@ -454,7 +461,7 @@ def revoke_user_session(session_id):
         if not session:
             return error(status=404, detail="Session not found")
 
-        if RefreshTokenService.revoke_refresh_token(session.token):
+        if RefreshTokenService.revoke_refresh_token_by_id(session.id, identity.id):
             return jsonify(message="Session revoked successfully"), 200
         return error(status=500, detail="Failed to revoke session")
 
@@ -465,6 +472,7 @@ def revoke_user_session(session_id):
 
 @endpoints.route("/user/me/sessions", strict_slashes=False, methods=["DELETE"])
 @jwt_required()
+@require_scope("user:write")
 def revoke_all_user_sessions():
     """
     Revoke all authentication sessions for current user (logout everywhere).
@@ -535,6 +543,7 @@ def revoke_all_user_sessions():
 
 @endpoints.route("/user/me/clients", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("user:read")
 def get_user_clients():
     """
     Get current user's client platform metadata.
@@ -581,6 +590,7 @@ def get_user_clients():
 
 @endpoints.route("/admin/client-stats", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("admin:read")
 def get_client_stats():
     """
     Get aggregated client platform usage statistics.

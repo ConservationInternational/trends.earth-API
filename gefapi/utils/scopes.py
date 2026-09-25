@@ -33,6 +33,17 @@ VALID_SCOPES = frozenset(
         "gee:read",
         "gee:write",
         "stats:read",
+        "client:manage",
+        "admin:read",
+        "admin:write",
+    }
+)
+
+PRIVILEGED_SERVICE_CLIENT_SCOPES = frozenset(
+    {
+        "client:manage",
+        "admin:read",
+        "admin:write",
     }
 )
 
@@ -49,6 +60,9 @@ SCOPE_DESCRIPTIONS = {
     "gee:read": "View Google Earth Engine credential status",
     "gee:write": "Manage Google Earth Engine credentials",
     "stats:read": "View dashboard and system statistics",
+    "client:manage": "Create, list, and revoke service clients",
+    "admin:read": "View administrative monitoring data",
+    "admin:write": "Change administrative settings",
 }
 
 
@@ -80,6 +94,16 @@ def validate_scopes(scopes_string: str) -> str | None:
         )
 
     return None
+
+
+def requested_scopes(scopes_string: str) -> set[str]:
+    """Return normalised requested scopes from a space-delimited string."""
+    return set((scopes_string or "").strip().split())
+
+
+def has_privileged_service_client_scope(scopes_string: str) -> bool:
+    """Return True when scopes include administrative/user-management powers."""
+    return bool(requested_scopes(scopes_string) & PRIVILEGED_SERVICE_CLIENT_SCOPES)
 
 
 def _has_scope(required_scope: str, jwt_claims: dict) -> bool:

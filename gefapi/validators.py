@@ -494,6 +494,11 @@ def validate_user_creation(func):
                 if role not in ROLES:
                     return error(status=400, detail="Invalid role")
 
+            if "is_active" in json_data and not isinstance(
+                json_data["is_active"], bool
+            ):
+                return error(status=400, detail="is_active must be a boolean")
+
         except ValueError as e:
             return error(status=400, detail=str(e))
 

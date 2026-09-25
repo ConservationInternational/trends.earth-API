@@ -14,8 +14,15 @@ from gefapi.models import PasswordResetToken
 class TestAPIIntegration:
     """Test complete API workflows"""
 
+    @patch("gefapi.services.user_service.EmailService.send_html_email")
     def test_full_user_workflow(
-        self, app, client, auth_headers_admin, sample_user_data, sample_script
+        self,
+        mock_email,
+        app,
+        client,
+        auth_headers_admin,
+        sample_user_data,
+        sample_script,
     ):
         """Test complete user workflow: create user, login, create script,
         run execution"""
@@ -33,7 +40,8 @@ class TestAPIIntegration:
         with app.app_context():
             reset_token = PasswordResetToken.query.filter_by(user_id=user_id).first()
             assert reset_token is not None
-            token = reset_token.token
+        email_html = mock_email.call_args.kwargs["html"]
+        token = email_html.split("/reset-password?token=", 1)[1].split('"', 1)[0]
 
         reset_response = client.post(
             "/api/v1/user/reset-password",

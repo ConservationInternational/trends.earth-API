@@ -109,6 +109,9 @@ class User(db.Model):
     last_activity_at = db.Column(db.DateTime(), nullable=True, index=True)
     email_verified = db.Column(db.Boolean(), default=False, nullable=True)
     email_verified_at = db.Column(db.DateTime(), nullable=True)
+    # Identity providers must be able to disable an account without deleting it.
+    is_active = db.Column(db.Boolean(), default=True, nullable=False, index=True)
+    auth_version = db.Column(db.Integer(), default=0, nullable=False)
 
     # Account lockout fields for brute force protection
     # failed_login_count: Number of consecutive failed login attempts
@@ -199,6 +202,7 @@ class User(db.Model):
         self.last_activity_at = None
         self.email_verified = False
         self.email_verified_at = None
+        self.is_active = True
         # Initialize account lockout fields
         self.failed_login_count = 0
         self.locked_until = None
@@ -356,7 +360,10 @@ class User(db.Model):
 
     def get_token(self):
         """Generate JWT token"""
-        return create_access_token(identity=self.id)
+        return create_access_token(
+            identity=self.id,
+            additional_claims={"auth_version": self.auth_version},
+        )
 
     # -------------------------------------------------------------------------
     # Account Lockout Methods

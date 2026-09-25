@@ -8,6 +8,7 @@ from gefapi.models import User
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.script_service import ScriptService
 from gefapi.utils.permissions import is_admin_or_higher
+from gefapi.utils.scopes import require_scope
 from gefapi.utils.script_access import (
     add_role_to_script,
     add_user_to_script,
@@ -22,6 +23,7 @@ from gefapi.utils.script_access import (
 
 @endpoints.route("/script/<script_id>/access", methods=["GET"])
 @jwt_required()
+@require_scope("admin:read")
 def get_script_access(script_id):
     """
     Retrieve script access control configuration.
@@ -89,6 +91,7 @@ def get_script_access(script_id):
 
 @endpoints.route("/script/<script_id>/access/roles", methods=["PUT"])
 @jwt_required()
+@require_scope("admin:write")
 def set_script_access_roles(script_id):
     """
     Set role-based access control for a script.
@@ -186,6 +189,7 @@ def set_script_access_roles(script_id):
 
 @endpoints.route("/script/<script_id>/access/users", methods=["PUT"])
 @jwt_required()
+@require_scope("admin:write")
 def set_script_access_users(script_id):
     """
     Set user-specific access control for a script.
@@ -287,6 +291,7 @@ def set_script_access_users(script_id):
 
 @endpoints.route("/script/<script_id>/access/users/<user_id>", methods=["POST"])
 @jwt_required()
+@require_scope("admin:write")
 def add_script_access_user(script_id, user_id):
     """
     Add a specific user to script access control list.
@@ -363,6 +368,7 @@ def add_script_access_user(script_id, user_id):
 
 @endpoints.route("/script/<script_id>/access/users/<user_id>", methods=["DELETE"])
 @jwt_required()
+@require_scope("admin:write")
 def remove_script_access_user(script_id, user_id):
     """
     Remove a specific user from script access control list.
@@ -440,6 +446,7 @@ def remove_script_access_user(script_id, user_id):
 
 @endpoints.route("/script/<script_id>/access/roles/<role>", methods=["POST"])
 @jwt_required()
+@require_scope("admin:write")
 def add_script_access_role(script_id, role):
     """
     Add a specific role to script access control list.
@@ -522,6 +529,7 @@ def add_script_access_role(script_id, role):
 
 @endpoints.route("/script/<script_id>/access/roles/<role>", methods=["DELETE"])
 @jwt_required()
+@require_scope("admin:write")
 def remove_script_access_role(script_id, role):
     """
     Remove a specific role from script access control list.
@@ -599,6 +607,7 @@ def remove_script_access_role(script_id, role):
 
 @endpoints.route("/script/<script_id>/access", methods=["DELETE"])
 @jwt_required()
+@require_scope("admin:write")
 def clear_script_access(script_id):
     """
     Remove all access restrictions from a script.

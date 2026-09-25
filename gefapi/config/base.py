@@ -60,6 +60,7 @@ SETTINGS = {
         + (os.getenv("DATABASE_ENV_POSTGRES_DB") or "postgres")
     ),
     "SECRET_KEY": os.getenv("SECRET_KEY"),
+    "SESSION_SECRET_KEY": os.getenv("SESSION_SECRET_KEY"),
     "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY"),
     "DOCKER_HOST": os.getenv("DOCKER_HOST"),
     "REGISTRY_URL": os.getenv("REGISTRY_URL"),
@@ -91,6 +92,15 @@ SETTINGS = {
     "JWT_ACCESS_TOKEN_EXPIRES": timedelta(seconds=60 * 60 * 1),
     "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=30),  # 30 days for refresh tokens
     "JWT_ALGORITHM": "HS256",  # Explicit algorithm — never rely on library defaults
+    "OIDC_ISSUER": os.getenv("OIDC_ISSUER") or os.getenv("API_PUBLIC_URL"),
+    "OIDC_KEY_ID": os.getenv("OIDC_KEY_ID", "trends-api-1"),
+    "OIDC_PRIVATE_KEY": os.getenv("OIDC_PRIVATE_KEY"),
+    "OIDC_PRIVATE_KEYS": os.getenv("OIDC_PRIVATE_KEYS"),
+    "OIDC_ACCESS_TOKEN_SECONDS": int(os.getenv("OIDC_ACCESS_TOKEN_SECONDS", "3600")),
+    "OIDC_AUTHORIZATION_CODE_SECONDS": int(
+        os.getenv("OIDC_AUTHORIZATION_CODE_SECONDS", "300")
+    ),
+    "OIDC_REFRESH_TOKEN_DAYS": int(os.getenv("OIDC_REFRESH_TOKEN_DAYS", "30")),
     "JWT_TOKEN_LOCATION": ["headers"],
     "JWT_IDENTITY_CLAIM": "sub",  # Standard JWT subject claim for identity
     "JWT_BLOCKLIST_ENABLED": True,  # Enable token blocklist for revocation

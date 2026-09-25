@@ -9,6 +9,7 @@ from flask_jwt_extended import current_user, jwt_required
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.news_service import NewsService
 from gefapi.utils.permissions import can_access_admin_features
+from gefapi.utils.scopes import require_scope
 
 logger = logging.getLogger()
 
@@ -154,6 +155,7 @@ def get_news_item(news_id):
 
 @endpoints.route("/admin/news", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("admin:read")
 def admin_get_news():
     """
     Admin endpoint to retrieve all news items including inactive and expired.
@@ -226,6 +228,7 @@ def admin_get_news():
 
 @endpoints.route("/admin/news/<news_id>", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("admin:read")
 def admin_get_news_item(news_id):
     """
     Admin endpoint to retrieve a single news item by ID.
@@ -258,6 +261,7 @@ def admin_get_news_item(news_id):
 
 @endpoints.route("/admin/news", strict_slashes=False, methods=["POST"])
 @jwt_required()
+@require_scope("admin:write")
 def create_news_item():
     """
     Create a new news item.
@@ -366,6 +370,7 @@ def create_news_item():
     "/admin/news/<news_id>", strict_slashes=False, methods=["PUT", "PATCH"]
 )
 @jwt_required()
+@require_scope("admin:write")
 def update_news_item(news_id):
     """
     Update an existing news item.
@@ -452,6 +457,7 @@ def update_news_item(news_id):
 
 @endpoints.route("/admin/news/<news_id>", strict_slashes=False, methods=["DELETE"])
 @jwt_required()
+@require_scope("admin:write")
 def delete_news_item(news_id):
     """
     Delete a news item.
@@ -492,6 +498,7 @@ def delete_news_item(news_id):
     "/admin/news/<news_id>/translations", strict_slashes=False, methods=["GET"]
 )
 @jwt_required()
+@require_scope("admin:read")
 def get_news_translations(news_id):
     """
     Get all translations for a news item.
@@ -540,6 +547,7 @@ def get_news_translations(news_id):
     "/admin/news/<news_id>/translations", strict_slashes=False, methods=["PUT"]
 )
 @jwt_required()
+@require_scope("admin:write")
 def update_news_translations(news_id):
     """
     Update translations for a news item.
@@ -615,6 +623,7 @@ def update_news_translations(news_id):
     methods=["DELETE"],
 )
 @jwt_required()
+@require_scope("admin:write")
 def delete_news_translation(news_id, lang):
     """
     Delete a specific translation for a news item.

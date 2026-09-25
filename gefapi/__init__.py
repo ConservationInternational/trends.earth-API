@@ -349,6 +349,13 @@ def set_security_headers(response):
 
 app.config["SQLALCHEMY_DATABASE_URI"] = SETTINGS.get("SQLALCHEMY_DATABASE_URI")
 app.config["UPLOAD_FOLDER"] = SETTINGS.get("UPLOAD_FOLDER")
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("ENVIRONMENT") in (
+    "prod",
+    "production",
+    "staging",
+)
 
 # Configure SQLAlchemy engine options for robust database connection handling
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
@@ -424,6 +431,25 @@ if jwt_secret and _gee_key_for_check and jwt_secret == _gee_key_for_check:
 del _gee_key_for_check
 
 app.config["JWT_SECRET_KEY"] = jwt_secret
+session_secret = SETTINGS.get("SESSION_SECRET_KEY") or os.getenv("SESSION_SECRET_KEY")
+if os.getenv("ENVIRONMENT") in ("prod", "production", "staging") and (
+    not session_secret or session_secret == jwt_secret
+):
+    raise RuntimeError(
+        "CRITICAL SECURITY ERROR: SESSION_SECRET_KEY must be configured and "
+        "different from JWT_SECRET_KEY in production."
+    )
+if os.getenv("ENVIRONMENT") in ("prod", "production", "staging") and not (
+    SETTINGS.get("OIDC_PRIVATE_KEY")
+    or os.getenv("OIDC_PRIVATE_KEY")
+    or SETTINGS.get("OIDC_PRIVATE_KEYS")
+    or os.getenv("OIDC_PRIVATE_KEYS")
+):
+    raise RuntimeError(
+        "CRITICAL SECURITY ERROR: OIDC_PRIVATE_KEY or OIDC_PRIVATE_KEYS must be "
+        "configured in production."
+    )
+app.config["SECRET_KEY"] = session_secret or jwt_secret
 app.config["JWT_ALGORITHM"] = SETTINGS.get("JWT_ALGORITHM", "HS256")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = SETTINGS.get("JWT_ACCESS_TOKEN_EXPIRES")
 app.config["JWT_TOKEN_LOCATION"] = SETTINGS.get("JWT_TOKEN_LOCATION")
@@ -500,9 +526,11 @@ def should_skip_rate_limiting():
 # Import tasks to register them with Celery
 from gefapi import tasks  # noqa: E402,F401
 from gefapi.routes.api.v1 import endpoints, error  # noqa: E402
+from gefapi.routes.oidc import oidc  # noqa: E402
 
 # Blueprint Flask Routing
 app.register_blueprint(endpoints, url_prefix="/api/v1")
+app.register_blueprint(oidc)
 
 # Log registered routes for debugging
 total_routes = len(list(app.url_map.iter_rules()))
@@ -1140,7 +1168,10 @@ def create_token():
     from gefapi.services.refresh_token_service import RefreshTokenService
 
     # Create access token
-    access_token = create_access_token(identity=user.id)
+    access_token = create_access_token(
+        identity=user.id,
+        additional_claims={"auth_version": user.auth_version},
+    )
 
     # Create refresh token
     refresh_token = RefreshTokenService.create_refresh_token(user.id)
@@ -1184,11 +1215,15 @@ def refresh_token():
     if not refresh_token_string:
         return jsonify({"msg": "Refresh token is required"}), 400
 
-    # Token rotation (RFC 6749 / OAuth 2.0 Security BCP §2.2.2) is disabled by
-    # default.  Pass ?rotate=true to opt in for clients that update their
-    # stored refresh token on each response.
-    rotate_param = request.args.get("rotate", "false").lower()
-    rotate = rotate_param in ("true", "1", "yes")
+    # Keep the legacy query contract: older QGIS clients send legacy=false.
+    # Both that value and rotate=true select rotating refresh-token behavior.
+    rotate_param = request.args.get("rotate", "").lower()
+    legacy_param = request.args.get("legacy", "").lower()
+    rotate = rotate_param in ("true", "1", "yes") or legacy_param in (
+        "false",
+        "0",
+        "no",
+    )
 
     # Import here to avoid circular imports
     from gefapi.services.refresh_token_service import RefreshTokenService
@@ -1242,6 +1277,10 @@ def logout():
         from gefapi.services.refresh_token_service import RefreshTokenService
 
         RefreshTokenService.revoke_refresh_token(refresh_token_string)
+    else:
+        from flask_jwt_extended import get_current_user
+
+        RefreshTokenService.revoke_all_user_tokens(get_current_user().id)
 
     return jsonify({"msg": "Successfully logged out"}), 200
 
@@ -1265,7 +1304,10 @@ def logout_all():
 @jwt.user_lookup_loader
 def user_lookup_callback(_jwt_header, jwt_data):
     identity = jwt_data["sub"]
-    return User.query.filter_by(id=identity).one_or_none()
+    user = User.query.filter_by(id=identity, is_active=True).one_or_none()
+    if user and jwt_data.get("auth_version", 0) != user.auth_version:
+        return None
+    return user
 
 
 @jwt.expired_token_loader

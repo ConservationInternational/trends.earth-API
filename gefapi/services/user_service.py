@@ -419,6 +419,7 @@ class UserService:
             )
         _validate_password_strength(new_password)
         user.password = user.set_password(new_password)
+        user.auth_version += 1
         # Clear any account lockout on password change
         user.clear_failed_logins()
         try:
@@ -432,6 +433,7 @@ class UserService:
             )
 
             # Invalidate all other sessions for security after password change
+            from gefapi.services.oidc_service import revoke_all_oidc_refresh_tokens
             from gefapi.services.refresh_token_service import RefreshTokenService
 
             try:
@@ -443,6 +445,13 @@ class UserService:
             except Exception as e:
                 logger.warning(
                     f"[SERVICE]: Failed to invalidate sessions after "
+                    f"password change: {e}"
+                )
+            try:
+                revoke_all_oidc_refresh_tokens(user.id)
+            except Exception as e:
+                logger.warning(
+                    f"[SERVICE]: Failed to invalidate OIDC sessions after "
                     f"password change: {e}"
                 )
 
@@ -463,6 +472,7 @@ class UserService:
         )
         _validate_password_strength(new_password)
         user.password = user.set_password(new_password)
+        user.auth_version += 1
         # Clear any account lockout on admin password change
         user.clear_failed_logins()
         try:
@@ -478,6 +488,7 @@ class UserService:
             )
 
             # Invalidate all user sessions for security
+            from gefapi.services.oidc_service import revoke_all_oidc_refresh_tokens
             from gefapi.services.refresh_token_service import RefreshTokenService
 
             try:
@@ -493,6 +504,13 @@ class UserService:
                     f"{mask_email(user.email)}: {session_error}"
                 )
                 # Don't fail the password change if session invalidation fails
+            try:
+                revoke_all_oidc_refresh_tokens(user.id)
+            except Exception as session_error:
+                logger.warning(
+                    f"[SERVICE]: Failed to invalidate OIDC sessions for "
+                    f"{mask_email(user.email)}: {session_error}"
+                )
 
         except Exception as e:
             db.session.rollback()
@@ -630,6 +648,7 @@ class UserService:
         try:
             # Set new password
             user.password = user.set_password(password=new_password)
+            user.auth_version += 1
 
             # Clear any account lockout - password reset unlocks the account
             user.clear_failed_logins()
@@ -650,6 +669,25 @@ class UserService:
             db.session.add(user)
             db.session.add(reset_token)
             db.session.commit()
+
+            from gefapi.services.refresh_token_service import RefreshTokenService
+
+            try:
+                RefreshTokenService.revoke_all_user_tokens(user.id)
+            except Exception as session_error:
+                logger.warning(
+                    f"[SERVICE]: Failed to invalidate legacy sessions after "
+                    f"password reset: {session_error}"
+                )
+            try:
+                from gefapi.services.oidc_service import revoke_all_oidc_refresh_tokens
+
+                revoke_all_oidc_refresh_tokens(user.id)
+            except Exception as session_error:
+                logger.warning(
+                    f"[SERVICE]: Failed to invalidate OIDC sessions after "
+                    f"password reset: {session_error}"
+                )
 
             logger.info(
                 f"[SERVICE]: Password reset successful for {mask_email(user.email)}"
@@ -704,6 +742,16 @@ class UserService:
         current_user.name = user.get("name", current_user.name)
         current_user.country = user.get("country", current_user.country)
         current_user.institution = user.get("institution", current_user.institution)
+        if "is_active" in user and isinstance(user.get("is_active"), bool):
+            was_active = current_user.is_active
+            current_user.is_active = user["is_active"]
+            if was_active and not current_user.is_active:
+                current_user.auth_version += 1
+                from gefapi.services.oidc_service import revoke_all_oidc_refresh_tokens
+                from gefapi.services.refresh_token_service import RefreshTokenService
+
+                RefreshTokenService.revoke_all_user_tokens(current_user.id)
+                revoke_all_oidc_refresh_tokens(current_user.id)
 
         # Update extended profile fields if provided
         if "role_title" in user:
@@ -924,6 +972,13 @@ class UserService:
                 f"[AUTH]: Failed login - user not found: {mask_email(email)}"
             )
             log_authentication_event(False, email, "user_not_found")
+            return None
+
+        if not user.is_active:
+            logger.warning(
+                "[AUTH]: Failed login - inactive account: %s", mask_email(email)
+            )
+            log_authentication_event(False, email, "account_disabled")
             return None
 
         # Check if account is locked

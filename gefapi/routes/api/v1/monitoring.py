@@ -10,12 +10,14 @@ from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services import StatusService, UserService
 from gefapi.utils.permissions import can_access_admin_features
+from gefapi.utils.scopes import require_scope
 
 logger = logging.getLogger()
 
 
 @endpoints.route("/status", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("admin:read")
 def get_status_logs():
     """
     Retrieve system status logs for monitoring and diagnostics.
@@ -216,6 +218,7 @@ def get_status_logs():
 
 @endpoints.route("/status/swarm", strict_slashes=False, methods=["GET"])
 @jwt_required()
+@require_scope("admin:read")
 def get_swarm_status():
     """
     Get cached Docker Swarm cluster status including comprehensive node information.

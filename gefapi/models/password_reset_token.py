@@ -5,6 +5,7 @@ Tokens expire after 1 hour and can only be used once.
 """
 
 import datetime
+import hashlib
 import logging
 import secrets
 import uuid
@@ -37,7 +38,8 @@ class PasswordResetToken(db.Model):
         autoincrement=False,
     )
     # Cryptographically secure token (64 characters, URL-safe)
-    token = db.Column(db.String(128), unique=True, nullable=False, index=True)
+    _token = db.Column("token", db.String(128), nullable=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
     user_id = db.Column(db.GUID(), db.ForeignKey("user.id"), nullable=False)
     created_at = db.Column(
         db.DateTime(), default=lambda: datetime.datetime.now(datetime.UTC)
@@ -50,11 +52,21 @@ class PasswordResetToken(db.Model):
 
     def __init__(self, user_id):
         self.user_id = user_id
-        self.token = self._generate_secure_token()
+        self._raw_token = self._generate_secure_token()
+        self.token_hash = self.hash_token(self._raw_token)
         self.created_at = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
         self.expires_at = self.created_at + datetime.timedelta(
             hours=PASSWORD_RESET_TOKEN_EXPIRY_HOURS
         )
+
+    @property
+    def token(self):
+        """Return the raw token only during email generation."""
+        return getattr(self, "_raw_token", None)
+
+    @staticmethod
+    def hash_token(token):
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     def __repr__(self):
         return f"<PasswordResetToken user_id={self.user_id!r}>"
@@ -88,8 +100,15 @@ class PasswordResetToken(db.Model):
         Returns:
             PasswordResetToken if found and valid, None otherwise
         """
-        token = cls.query.filter_by(token=token_string).first()
+        if not token_string:
+            return None
+        token = (
+            cls.query.filter_by(token_hash=cls.hash_token(token_string))
+            .with_for_update()
+            .first()
+        )
         if token and token.is_valid():
+            token._raw_token = token_string
             return token
         return None
 

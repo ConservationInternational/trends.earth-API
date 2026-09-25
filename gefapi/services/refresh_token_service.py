@@ -43,7 +43,9 @@ class RefreshTokenService:
         """Validate a refresh token and return the associated user"""
         logger.info("[SERVICE]: Validating refresh token")
 
-        refresh_token = RefreshToken.query.filter_by(token=token_string).first()
+        refresh_token = RefreshToken.query.filter_by(
+            token_hash=RefreshToken.hash_token(token_string)
+        ).first()
 
         if not refresh_token:
             logger.warning("[SERVICE]: Refresh token not found")
@@ -54,6 +56,7 @@ class RefreshTokenService:
             return None, None
 
         # Update last used timestamp
+        refresh_token.remember_raw_token(token_string)
         refresh_token.update_last_used()
         db.session.commit()
 
@@ -137,7 +140,10 @@ class RefreshTokenService:
             new_refresh_token = refresh_token
 
         # Generate new access token
-        access_token = create_access_token(identity=user.id)
+        access_token = create_access_token(
+            identity=user.id,
+            additional_claims={"auth_version": user.auth_version},
+        )
 
         # Track client platform/version if X-TE-Client header is present
         try:
@@ -158,7 +164,9 @@ class RefreshTokenService:
         """Revoke a specific refresh token"""
         logger.info("[SERVICE]: Revoking refresh token")
 
-        refresh_token = RefreshToken.query.filter_by(token=token_string).first()
+        refresh_token = RefreshToken.query.filter_by(
+            token_hash=RefreshToken.hash_token(token_string)
+        ).first()
 
         if not refresh_token:
             logger.warning("[SERVICE]: Refresh token not found for revocation")
@@ -174,6 +182,18 @@ class RefreshTokenService:
             db.session.rollback()
             logger.error(f"[SERVICE]: Error revoking refresh token: {error}")
             raise
+
+    @staticmethod
+    def revoke_refresh_token_by_id(token_id, user_id):
+        """Revoke a user's refresh token without exposing its bearer value."""
+        refresh_token = RefreshToken.query.filter_by(
+            id=token_id, user_id=user_id
+        ).first()
+        if not refresh_token:
+            return False
+        refresh_token.revoke()
+        db.session.commit()
+        return True
 
     @staticmethod
     def revoke_all_user_tokens(user_id):

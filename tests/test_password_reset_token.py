@@ -237,10 +237,14 @@ class TestSecureUserRegistrationFlow:
             # Find the password reset token created during registration
             reset_token = PasswordResetToken.query.filter_by(user_id=user.id).first()
             assert reset_token is not None
+            email_html = mock_email.call_args.kwargs["html"]
+            raw_token = email_html.split("/reset-password?token=", 1)[1].split('"', 1)[
+                0
+            ]
 
             # User "clicks link" and sets password
             updated_user = UserService.reset_password_with_token(
-                reset_token.token, "UserChosenPass1!"
+                raw_token, "UserChosenPass1!"
             )
 
             # User should now be verified
