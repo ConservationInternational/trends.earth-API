@@ -11,7 +11,7 @@ import urllib.parse
 import pytest
 
 from gefapi import db
-from gefapi.models import OAuthClient, OIDCRefreshToken, User
+from gefapi.models import AuthorizationCode, OAuthClient, OIDCRefreshToken, User
 from gefapi.models.app_access import (
     STATUS_ACTIVE,
     STATUS_PENDING,
@@ -27,6 +27,7 @@ from gefapi.utils.app_access import (
     active_app_roles,
     app_role,
     has_app_access,
+    require_app_access,
 )
 from tests.conftest import USER_TEST_PASSWORD
 
@@ -88,6 +89,30 @@ def test_active_grant_exposes_role(app, regular_user):
     assert has_app_access(regular_user, AE) is True
     assert app_role(regular_user, AE) == "admin"
     assert active_app_roles(regular_user) == {AE: "admin"}
+
+
+def test_app_access_guard_binds_client_to_registered_app(app, regular_user):
+    from flask import g
+
+    _grant(regular_user, AE)
+    ae_client = _client("ae-client", "ae-audience", required_app_key=AE)
+    rio_client = _client("rio-client", "rio-audience", required_app_key=RIO)
+
+    @require_app_access(AE)
+    def protected_endpoint():
+        return "ok"
+
+    with app.test_request_context("/"):
+        g.oidc_client = rio_client
+        with patch("gefapi.utils.app_access.current_user", regular_user):
+            denied = protected_endpoint()
+        assert denied[1] == 403
+        assert denied[0].get_json()["error"] == "client_app_mismatch"
+
+    with app.test_request_context("/"):
+        g.oidc_client = ae_client
+        with patch("gefapi.utils.app_access.current_user", regular_user):
+            assert protected_endpoint() == "ok"
 
 
 def test_grant_is_unique_per_user_and_app(app, regular_user):
@@ -408,6 +433,44 @@ def test_ungated_authorize_issues_a_code(app, client, regular_user):
     )
     assert "code" in params
     assert "error" not in params
+
+
+def test_authorize_rejects_browser_session_from_before_password_change(
+    app, client, regular_user
+):
+    oauth_client = _client(
+        "reauth-client", "reauth-audience", redirect="https://reauth.test/cb"
+    )
+    _verified(regular_user)
+    user = db.session.get(User, regular_user.id)
+    previous_auth_version = user.auth_version
+    user.auth_version += 1
+    db.session.commit()
+
+    with client.session_transaction() as session:
+        session["oidc_user_id"] = str(regular_user.id)
+        session["oidc_auth_version"] = previous_auth_version
+
+    response = client.get(
+        "/oauth/authorize",
+        query_string={
+            "client_id": oauth_client.client_id,
+            "redirect_uri": "https://reauth.test/cb",
+            "response_type": "code",
+            "scope": "openid",
+            "state": "state-123",
+            "nonce": "nonce-123",
+            "code_challenge": "a" * 43,
+            "code_challenge_method": "S256",
+        },
+    )
+
+    assert response.status_code == 200
+    assert b"Sign in to Trends.Earth" in response.data
+    assert AuthorizationCode.query.count() == 0
+    with client.session_transaction() as session:
+        assert "oidc_user_id" not in session
+        assert "oidc_auth_version" not in session
 
 
 def test_denial_redirect_requires_a_validated_redirect_uri(app, client, regular_user):

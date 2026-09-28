@@ -145,7 +145,8 @@ def require_app_access(app_key, role=None):
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
-            if caller_client_id() is None:
+            client = g.get("oidc_client") if g else None
+            if client is None:
                 logger.warning(
                     "App access check for '%s' denied: caller has no client identity",
                     app_key,
@@ -154,6 +155,20 @@ def require_app_access(app_key, role=None):
                     status=403,
                     detail="This endpoint requires an application access token",
                     error="client_identity_required",
+                ), 403
+            if client.required_app_key != app_key:
+                logger.warning(
+                    "App access check for '%s' denied: client %s is registered "
+                    "for '%s'",
+                    app_key,
+                    client.client_id,
+                    client.required_app_key,
+                )
+                return jsonify(
+                    status=403,
+                    detail="This client is not registered for this application",
+                    error="client_app_mismatch",
+                    app_key=app_key,
                 ), 403
             user = current_user
             if not has_app_access(user, app_key):

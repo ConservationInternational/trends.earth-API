@@ -5,8 +5,10 @@ import hashlib
 from flask_jwt_extended import create_access_token
 
 from gefapi import db, user_lookup_callback
+from gefapi.config import SETTINGS
 from gefapi.models import OAuthClient, OIDCRefreshToken, PasswordResetToken
 from gefapi.models.refresh_token import RefreshToken
+from gefapi.routes.oidc import _access_token_seconds
 from gefapi.services.oidc_service import (
     create_oidc_refresh_token,
     decode_token,
@@ -135,6 +137,12 @@ def test_invalid_pkce_challenge_is_rejected(client):
 
     assert response.status_code == 400
     assert response.get_json()["error"] == "invalid_request"
+
+
+def test_oidc_access_token_lifetime_is_capped(monkeypatch):
+    monkeypatch.setitem(SETTINGS, "OIDC_ACCESS_TOKEN_SECONDS", 3600)
+
+    assert _access_token_seconds() == 300
 
 
 def test_oidc_refresh_token_reuse_revokes_token_family(app, regular_user):

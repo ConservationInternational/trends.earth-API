@@ -38,9 +38,12 @@ oidc = Blueprint("oidc", __name__)
 
 logger = logging.getLogger(__name__)
 
+MAX_ACCESS_TOKEN_SECONDS = 300
+
 
 def _access_token_seconds():
-    return SETTINGS.get("OIDC_ACCESS_TOKEN_SECONDS", 3600)
+    configured = SETTINGS.get("OIDC_ACCESS_TOKEN_SECONDS", MAX_ACCESS_TOKEN_SECONDS)
+    return max(1, min(configured, MAX_ACCESS_TOKEN_SECONDS))
 
 
 def _oauth_error(error, description, status=400):
@@ -230,6 +233,18 @@ def authorize():
     if error:
         return error
     client, redirect_uri, scope = validated
+
+    session_user_id = session.get("oidc_user_id")
+    if session_user_id:
+        session_user = db.session.get(User, session_user_id)
+        if (
+            not session_user
+            or not session_user.is_active
+            or session.get("oidc_auth_version") != session_user.auth_version
+        ):
+            session.pop("oidc_user_id", None)
+            session.pop("oidc_auth_version", None)
+
     if request.method == "GET" and not session.get("oidc_user_id"):
         login_csrf = secrets.token_urlsafe(32)
         session["oidc_login_csrf"] = login_csrf
@@ -276,9 +291,11 @@ def authorize():
             return "Invalid credentials", 401
         session.clear()
         session["oidc_user_id"] = str(user.id)
+        session["oidc_auth_version"] = user.auth_version
     user = db.session.get(User, session.get("oidc_user_id"))
     if not user or not user.is_active:
         session.pop("oidc_user_id", None)
+        session.pop("oidc_auth_version", None)
         return "Account disabled", 403
     if not user.email_verified:
         return "Email verification is required", 403

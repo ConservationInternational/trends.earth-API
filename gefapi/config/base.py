@@ -96,7 +96,7 @@ SETTINGS = {
     "OIDC_KEY_ID": os.getenv("OIDC_KEY_ID", "trends-api-1"),
     "OIDC_PRIVATE_KEY": os.getenv("OIDC_PRIVATE_KEY"),
     "OIDC_PRIVATE_KEYS": os.getenv("OIDC_PRIVATE_KEYS"),
-    "OIDC_ACCESS_TOKEN_SECONDS": int(os.getenv("OIDC_ACCESS_TOKEN_SECONDS", "3600")),
+    "OIDC_ACCESS_TOKEN_SECONDS": int(os.getenv("OIDC_ACCESS_TOKEN_SECONDS", "300")),
     "OIDC_AUTHORIZATION_CODE_SECONDS": int(
         os.getenv("OIDC_AUTHORIZATION_CODE_SECONDS", "300")
     ),
