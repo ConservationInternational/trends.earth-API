@@ -13,8 +13,12 @@ Usage (from the admin container)::
 Redirect URIs come from environment variables so that staging and production
 can be provisioned with the same script:
 
-    API_UI_REDIRECT_URIS,  AVOIDED_EMISSIONS_REDIRECT_URIS,
-    RIO_REDIRECT_URIS,  and the matching ``*_POST_LOGOUT_REDIRECT_URIS``
+    API_UI_REDIRECT_URIS,  API_UI_POST_LOGOUT_REDIRECT_URIS,
+    TE_WEB_REDIRECT_URIS,
+    TE_WEB_POST_LOGOUT_REDIRECT_URIS,
+    AVOIDED_EMISSIONS_REDIRECT_URIS,
+    AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS,
+    RIO_REDIRECT_URIS, RIO_POST_LOGOUT_REDIRECT_URIS
 """
 
 import argparse
@@ -26,10 +30,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from gefapi import app, db
 from gefapi.models import OAuthClient
-from gefapi.utils.app_access import (
-    APP_AVOIDED_EMISSIONS,
-    APP_RIO_COHERENCE,
-)
+from gefapi.services.oidc_service import TRENDS_API_AUDIENCE
+from gefapi.utils.app_access import APP_AVOIDED_EMISSIONS, APP_RIO_COHERENCE
 
 DEFAULT_SCOPES = ["openid", "email", "profile"]
 
@@ -38,7 +40,11 @@ def _uris(env_var, fallback):
     raw = os.getenv(env_var, "")
     values = [item.strip() for item in raw.replace(",", "\n").split("\n")]
     values = [item for item in values if item]
-    return values or list(fallback)
+    if values:
+        return values
+    if os.getenv("ENVIRONMENT", "dev").casefold() in {"staging", "prod"}:
+        return []
+    return list(fallback or [])
 
 
 def client_definitions():
@@ -59,12 +65,21 @@ def client_definitions():
         {
             "client_id": "te-qgis-plugin",
             "name": "Trends.Earth QGIS Plugin",
-            "audience": "trends-earth-qgis",
+            "audience": TRENDS_API_AUDIENCE,
             "is_public": True,
             "required_app_key": None,
             # RFC 8252 loopback: the port is wildcarded at match time.
             "redirect_uris": ["http://127.0.0.1/callback", "http://[::1]/callback"],
             "post_logout_redirect_uris": [],
+        },
+        {
+            "client_id": "te-web",
+            "name": "Trends.Earth Web",
+            "audience": TRENDS_API_AUDIENCE,
+            "is_public": True,
+            "required_app_key": None,
+            "redirect_uris": _uris("TE_WEB_REDIRECT_URIS", []),
+            "post_logout_redirect_uris": _uris("TE_WEB_POST_LOGOUT_REDIRECT_URIS", []),
         },
         {
             "client_id": "avoided-emissions-web",
@@ -100,20 +115,18 @@ def client_definitions():
 def upsert_client(definition, rotate_secret=False):
     from werkzeug.security import generate_password_hash
 
+    if not definition["redirect_uris"]:
+        raise SystemExit(
+            f"No redirect URI configured for {definition['client_id']}; "
+            "set its *_REDIRECT_URIS environment variable before registration."
+        )
+
     existing = OAuthClient.query.filter_by(
         client_id=definition["client_id"]
     ).one_or_none()
     secret = None
 
     if existing is None:
-        conflicting = OAuthClient.query.filter_by(
-            audience=definition["audience"]
-        ).one_or_none()
-        if conflicting is not None:
-            raise SystemExit(
-                f"Audience '{definition['audience']}' is already used by client "
-                f"'{conflicting.client_id}'. Audiences must be unique."
-            )
         if not definition["is_public"]:
             secret = secrets.token_urlsafe(32)
         existing = OAuthClient(

@@ -15,6 +15,7 @@ from gefapi.config import SETTINGS
 from gefapi.errors import AccountLockedError
 from gefapi.models import OAuthClient, User
 from gefapi.services.oidc_service import (
+    access_token_client,
     consume_authorization_code,
     create_client,
     create_oidc_refresh_token,
@@ -159,8 +160,6 @@ def register_client():
             "invalid_request",
             f"Unknown required_app_key '{required_app_key}'",
         )
-    if OAuthClient.query.filter_by(audience=data["audience"]).first():
-        return _oauth_error("invalid_request", "audience is already registered", 409)
     client = create_client(
         name=data["name"],
         client_id=data["client_id"],
@@ -425,11 +424,9 @@ def userinfo():
     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     try:
         claims = decode_token(token, "access_token")
-        client = OAuthClient.query.filter_by(
-            audience=claims.get("aud"), is_active=True
-        ).first()
+        client = access_token_client(claims)
         if not client:
-            raise JoseError("unknown audience")
+            raise JoseError("unknown or ambiguous OAuth client")
         claims = decode_token(token, "access_token", audience=client.audience)
         if "openid" not in claims.get("scope", "").split():
             raise JoseError("openid scope is required")

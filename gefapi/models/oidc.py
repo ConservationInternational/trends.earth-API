@@ -25,7 +25,7 @@ class OAuthClient(db.Model):
     redirect_uris = db.Column(db.Text, nullable=False)
     post_logout_redirect_uris = db.Column(db.Text, nullable=False, default="")
     scopes = db.Column(db.String(255), nullable=False, default="openid email profile")
-    audience = db.Column(db.String(255), unique=True, nullable=False)
+    audience = db.Column(db.String(255), nullable=False)
     is_public = db.Column(db.Boolean, nullable=False, default=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     # NULL means the client is ungated.  Non-null requires an active

@@ -10,6 +10,8 @@ from gefapi.models import OAuthClient, OIDCRefreshToken, PasswordResetToken
 from gefapi.models.refresh_token import RefreshToken
 from gefapi.routes.oidc import _access_token_seconds
 from gefapi.services.oidc_service import (
+    TRENDS_API_AUDIENCE,
+    access_token_client,
     create_oidc_refresh_token,
     decode_token,
     issue_token,
@@ -114,6 +116,67 @@ def test_id_token_audience_is_client_id_not_resource_audience(app, regular_user)
     claims = decode_token(token, "id_token", audience="rio-client")
     assert claims["aud"] == "rio-client"
     assert claims["azp"] == "rio-client"
+
+
+def test_shared_resource_audience_still_resolves_the_access_token_client(
+    app, client, regular_user
+):
+    api_ui = _oidc_client("te-api-ui", "trends-earth-api-ui")
+    qgis_plugin = _oidc_client("te-qgis-plugin", TRENDS_API_AUDIENCE)
+    te_web = _oidc_client("te-web", TRENDS_API_AUDIENCE)
+    db.session.add_all([api_ui, qgis_plugin, te_web])
+    db.session.commit()
+
+    token = issue_token(regular_user, te_web, "access_token", 300, "openid")
+    claims = decode_token(token, "access_token", audience=TRENDS_API_AUDIENCE)
+
+    assert claims["aud"] == TRENDS_API_AUDIENCE
+    assert api_ui.audience != qgis_plugin.audience == te_web.audience
+    assert access_token_client(claims).client_id == "te-web"
+    assert access_token_client({"aud": TRENDS_API_AUDIENCE}) is None
+    assert (
+        access_token_client(
+            {"aud": TRENDS_API_AUDIENCE, "client_id": "te-api-ui", "azp": "te-web"}
+        )
+        is None
+    )
+
+    response = client.get(
+        "/oauth/userinfo", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200
+    assert response.get_json()["sub"] == str(regular_user.id)
+
+
+def test_admin_can_register_client_with_an_existing_resource_audience(
+    app, client, admin_user
+):
+    db.session.add(_oidc_client("te-qgis-plugin", TRENDS_API_AUDIENCE))
+    db.session.commit()
+    token = create_access_token(
+        identity=admin_user.id,
+        additional_claims={
+            "grant_type": "client_credentials",
+            "scopes": "client:manage",
+        },
+    )
+
+    response = client.post(
+        "/api/v1/admin/oidc-clients",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "client_id": "te-web",
+            "name": "Trends.Earth Web",
+            "redirect_uris": ["https://trends.earth/auth/callback"],
+            "post_logout_redirect_uris": ["https://trends.earth/"],
+            "audience": TRENDS_API_AUDIENCE,
+            "scopes": ["openid", "email", "profile"],
+            "is_public": True,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["data"]["audience"] == TRENDS_API_AUDIENCE
 
 
 def test_invalid_pkce_challenge_is_rejected(client):

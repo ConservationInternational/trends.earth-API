@@ -20,6 +20,7 @@ from gefapi.models import AuthorizationCode, OAuthClient, OIDCRefreshToken
 _PRIVATE_KEYS = None
 PKCE_CODE_CHALLENGE_RE = re.compile(r"^[A-Za-z0-9_-]{43,128}$")
 PKCE_CODE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
+TRENDS_API_AUDIENCE = "https://api.trends.earth"
 
 
 def issuer():
@@ -151,6 +152,30 @@ def decode_token(token, token_use=None, audience=None):
     if token_use and claims.get("token_use") != token_use:
         raise ValueError("wrong token type")
     return dict(claims)
+
+
+def access_token_client(claims):
+    """Resolve the active OAuth client named by a signed access token."""
+    client_id = claims.get("client_id")
+    authorized_party = claims.get("azp")
+    if client_id and authorized_party and client_id != authorized_party:
+        return None
+    client_id = client_id or authorized_party
+    if client_id:
+        return OAuthClient.query.filter_by(
+            client_id=client_id, is_active=True
+        ).one_or_none()
+
+    audience = claims.get("aud")
+    if isinstance(audience, str):
+        matches = (
+            OAuthClient.query.filter_by(audience=audience, is_active=True)
+            .limit(2)
+            .all()
+        )
+        if len(matches) == 1:
+            return matches[0]
+    return None
 
 
 def create_client(

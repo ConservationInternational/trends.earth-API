@@ -189,6 +189,14 @@ jobs:
         SESSION_SECRET_KEY: ${{ secrets.SESSION_SECRET_KEY }}
         OIDC_PRIVATE_KEY: ${{ secrets.OIDC_PRIVATE_KEY }}
         OIDC_ISSUER: ${{ vars.OIDC_ISSUER || 'https://api-staging.trends.earth' }}
+        API_UI_REDIRECT_URIS: ${{ vars.API_UI_REDIRECT_URIS }}
+        API_UI_POST_LOGOUT_REDIRECT_URIS: ${{ vars.API_UI_POST_LOGOUT_REDIRECT_URIS }}
+        TE_WEB_REDIRECT_URIS: ${{ vars.TE_WEB_REDIRECT_URIS }}
+        TE_WEB_POST_LOGOUT_REDIRECT_URIS: ${{ vars.TE_WEB_POST_LOGOUT_REDIRECT_URIS }}
+        AVOIDED_EMISSIONS_REDIRECT_URIS: ${{ vars.AVOIDED_EMISSIONS_REDIRECT_URIS }}
+        AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS: ${{ vars.AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS }}
+        RIO_REDIRECT_URIS: ${{ vars.RIO_REDIRECT_URIS }}
+        RIO_POST_LOGOUT_REDIRECT_URIS: ${{ vars.RIO_POST_LOGOUT_REDIRECT_URIS }}
         DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         # GEE Configuration
         GEE_ENCRYPTION_KEY: ${{ secrets.GEE_ENCRYPTION_KEY }}
@@ -250,6 +258,23 @@ jobs:
         TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
         TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
       run: |
+        required_redirect_vars=(
+          API_UI_REDIRECT_URIS API_UI_POST_LOGOUT_REDIRECT_URIS
+          TE_WEB_REDIRECT_URIS TE_WEB_POST_LOGOUT_REDIRECT_URIS
+          AVOIDED_EMISSIONS_REDIRECT_URIS AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS
+          RIO_REDIRECT_URIS RIO_POST_LOGOUT_REDIRECT_URIS
+        )
+        missing_redirect_vars=()
+        for name in "${required_redirect_vars[@]}"; do
+          if [[ -z "${!name}" ]]; then
+            missing_redirect_vars+=("$name")
+          fi
+        done
+        if (( ${#missing_redirect_vars[@]} > 0 )); then
+          printf '::error::Missing staging GitHub variables: %s\n' "${missing_redirect_vars[*]}"
+          exit 1
+        fi
+
         # Generate staging.env with secrets from GitHub
         # This file is included in the deployment package and copied to the server
         # Values are NOT quoted - Docker env_file reads quotes as literal characters
@@ -273,6 +298,14 @@ jobs:
           echo "SESSION_SECRET_KEY=$SESSION_SECRET_KEY"
           echo "OIDC_PRIVATE_KEY=$OIDC_PRIVATE_KEY"
           echo "OIDC_ISSUER=$OIDC_ISSUER"
+          echo "API_UI_REDIRECT_URIS=$API_UI_REDIRECT_URIS"
+          echo "API_UI_POST_LOGOUT_REDIRECT_URIS=$API_UI_POST_LOGOUT_REDIRECT_URIS"
+          echo "TE_WEB_REDIRECT_URIS=$TE_WEB_REDIRECT_URIS"
+          echo "TE_WEB_POST_LOGOUT_REDIRECT_URIS=$TE_WEB_POST_LOGOUT_REDIRECT_URIS"
+          echo "AVOIDED_EMISSIONS_REDIRECT_URIS=$AVOIDED_EMISSIONS_REDIRECT_URIS"
+          echo "AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS=$AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS"
+          echo "RIO_REDIRECT_URIS=$RIO_REDIRECT_URIS"
+          echo "RIO_POST_LOGOUT_REDIRECT_URIS=$RIO_POST_LOGOUT_REDIRECT_URIS"
           echo "API_ENVIRONMENT_USER=$API_ENVIRONMENT_USER"
           echo "API_ENVIRONMENT_USER_PASSWORD=$API_ENVIRONMENT_USER_PASSWORD"
           echo ""

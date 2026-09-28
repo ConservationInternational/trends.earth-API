@@ -50,6 +50,14 @@ jobs:
     env:
       ROLLBAR_ACCESS_TOKEN: ${{ secrets.ROLLBAR_SERVER_TOKEN }}
       CODEDEPLOY_S3_BUCKET: ${{ secrets.CODEDEPLOY_S3_BUCKET }}
+      API_UI_REDIRECT_URIS: ${{ vars.API_UI_REDIRECT_URIS }}
+      API_UI_POST_LOGOUT_REDIRECT_URIS: ${{ vars.API_UI_POST_LOGOUT_REDIRECT_URIS }}
+      TE_WEB_REDIRECT_URIS: ${{ vars.TE_WEB_REDIRECT_URIS }}
+      TE_WEB_POST_LOGOUT_REDIRECT_URIS: ${{ vars.TE_WEB_POST_LOGOUT_REDIRECT_URIS }}
+      AVOIDED_EMISSIONS_REDIRECT_URIS: ${{ vars.AVOIDED_EMISSIONS_REDIRECT_URIS }}
+      AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS: ${{ vars.AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS }}
+      RIO_REDIRECT_URIS: ${{ vars.RIO_REDIRECT_URIS }}
+      RIO_POST_LOGOUT_REDIRECT_URIS: ${{ vars.RIO_POST_LOGOUT_REDIRECT_URIS }}
     
     steps:
     - name: Checkout repository
@@ -302,10 +310,28 @@ jobs:
         }
         EOF
         
-        # Create prod.env template
+        for name in API_UI_REDIRECT_URIS API_UI_POST_LOGOUT_REDIRECT_URIS \
+          TE_WEB_REDIRECT_URIS TE_WEB_POST_LOGOUT_REDIRECT_URIS \
+          AVOIDED_EMISSIONS_REDIRECT_URIS AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS \
+          RIO_REDIRECT_URIS RIO_POST_LOGOUT_REDIRECT_URIS; do
+          if [ -z "${!name}" ]; then
+            echo "::error::Missing production GitHub variable: $name"
+            exit 1
+          fi
+        done
+
+        # Include callback settings so rollback preserves the OIDC client allowlists.
         cat > deploy-bundle/prod.env <<EOF
         # Rollback deployment - environment variables provided by CodeDeploy
         API_IMAGE=${FULL_IMAGE}
+        API_UI_REDIRECT_URIS=${API_UI_REDIRECT_URIS}
+        API_UI_POST_LOGOUT_REDIRECT_URIS=${API_UI_POST_LOGOUT_REDIRECT_URIS}
+        TE_WEB_REDIRECT_URIS=${TE_WEB_REDIRECT_URIS}
+        TE_WEB_POST_LOGOUT_REDIRECT_URIS=${TE_WEB_POST_LOGOUT_REDIRECT_URIS}
+        AVOIDED_EMISSIONS_REDIRECT_URIS=${AVOIDED_EMISSIONS_REDIRECT_URIS}
+        AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS=${AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS}
+        RIO_REDIRECT_URIS=${RIO_REDIRECT_URIS}
+        RIO_POST_LOGOUT_REDIRECT_URIS=${RIO_POST_LOGOUT_REDIRECT_URIS}
         GIT_COMMIT_SHA=${TARGET_COMMIT}
         GIT_BRANCH=rollback
         DEPLOYMENT_ENVIRONMENT=production

@@ -33,8 +33,8 @@ def _verify_oidc_access_token():
     from flask import request
 
     from gefapi import db, is_token_in_blocklist
-    from gefapi.models import OAuthClient, User
-    from gefapi.services.oidc_service import decode_token
+    from gefapi.models import User
+    from gefapi.services.oidc_service import access_token_client, decode_token
 
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
@@ -48,17 +48,7 @@ def _verify_oidc_access_token():
     except (JoseError, ValueError, TypeError, KeyError):
         return None
 
-    client = None
-    client_id = claims.get("azp") or claims.get("client_id")
-    if client_id:
-        client = OAuthClient.query.filter_by(
-            client_id=client_id, is_active=True
-        ).first()
-    if client is None and claims.get("aud"):
-        # Tokens issued before client identity claims were added.
-        client = OAuthClient.query.filter_by(
-            audience=claims["aud"], is_active=True
-        ).first()
+    client = access_token_client(claims)
     if client is None:
         return None
 
