@@ -37,6 +37,7 @@ COPY run_db_migrations.py ./run_db_migrations.py
 COPY deployment_utils.py ./deployment_utils.py
 COPY ./migrations ./migrations
 COPY ./tests ./tests
+COPY ./scripts/register_oidc_clients.py ./scripts/register_oidc_clients.py
 COPY setup_staging_environment.py ./setup_staging_environment.py
 COPY pytest.ini .
 RUN chown -R $USER:$USER /opt/$NAME
