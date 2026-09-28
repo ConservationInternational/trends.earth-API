@@ -3,6 +3,8 @@ LABEL maintainer="Trends.Earth Team <info@trends.earth>"
 
 ENV NAME=gef-api
 ENV USER=gef-api
+ENV POETRY_VIRTUALENVS_IN_PROJECT=true
+ENV PATH="/opt/$NAME/.venv/bin:$PATH"
 
 RUN apk update && apk upgrade && \
    apk add --no-cache --update bash git openssl-dev build-base alpine-sdk \
@@ -27,7 +29,7 @@ COPY ./gefapi ./gefapi
 COPY pyproject.toml poetry.lock* ./
 COPY README.md ./README.md
 
-RUN poetry config virtualenvs.create false && poetry install --no-interaction --no-ansi
+RUN poetry install --no-interaction --no-ansi
 
 # Copy the rest of the application
 COPY entrypoint.sh ./entrypoint.sh
