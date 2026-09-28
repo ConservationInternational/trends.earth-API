@@ -250,6 +250,7 @@ def authorize():
         fields = {
             key: data.get(key, "")
             for key in (
+                "response_type",
                 "client_id",
                 "redirect_uri",
                 "scope",

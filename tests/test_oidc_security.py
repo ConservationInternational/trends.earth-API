@@ -202,6 +202,28 @@ def test_invalid_pkce_challenge_is_rejected(client):
     assert response.get_json()["error"] == "invalid_request"
 
 
+def test_login_form_preserves_response_type(client):
+    db.session.add(_oidc_client("rio-form", "rio-resource"))
+    db.session.commit()
+
+    response = client.get(
+        "/oauth/authorize",
+        query_string={
+            "client_id": "rio-form",
+            "redirect_uri": "https://rio.example.test/callback",
+            "response_type": "code",
+            "scope": "openid",
+            "state": "state-value",
+            "nonce": "nonce-value",
+            "code_challenge_method": "S256",
+            "code_challenge": "A" * 43,
+        },
+    )
+
+    assert response.status_code == 200
+    assert b'name="response_type" value="code"' in response.data
+
+
 def test_oidc_access_token_lifetime_is_capped(monkeypatch):
     monkeypatch.setitem(SETTINGS, "OIDC_ACCESS_TOKEN_SECONDS", 3600)
 
