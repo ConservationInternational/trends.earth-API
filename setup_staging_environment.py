@@ -204,12 +204,20 @@ class StagingEnvironmentSetup:
                 cursor.execute(
                     """
                     INSERT INTO "user" (id, email, name, country, institution,
-                                       password, role, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                       password, role, created_at, updated_at,
+                                       email_verified, email_verified_at,
+                                       gee_license_acknowledged)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            TRUE, CURRENT_TIMESTAMP, TRUE)
                     ON CONFLICT (email) DO UPDATE SET
                         name = EXCLUDED.name,
                         password = EXCLUDED.password,
                         role = EXCLUDED.role,
+                        email_verified = TRUE,
+                        email_verified_at = COALESCE(
+                            "user".email_verified_at, EXCLUDED.email_verified_at
+                        ),
+                        gee_license_acknowledged = TRUE,
                         updated_at = EXCLUDED.updated_at
                     RETURNING id;
                 """,
@@ -265,12 +273,20 @@ class StagingEnvironmentSetup:
                 cursor.execute(
                     """
                     INSERT INTO "user" (id, email, name, country, institution,
-                                       password, role, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                       password, role, created_at, updated_at,
+                                       email_verified, email_verified_at,
+                                       gee_license_acknowledged)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            TRUE, CURRENT_TIMESTAMP, TRUE)
                     ON CONFLICT (email) DO UPDATE SET
                         name = EXCLUDED.name,
                         password = EXCLUDED.password,
                         role = EXCLUDED.role,
+                        email_verified = TRUE,
+                        email_verified_at = COALESCE(
+                            "user".email_verified_at, EXCLUDED.email_verified_at
+                        ),
+                        gee_license_acknowledged = TRUE,
                         updated_at = EXCLUDED.updated_at
                     RETURNING id;
                 """,

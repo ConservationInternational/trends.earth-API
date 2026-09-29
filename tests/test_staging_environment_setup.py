@@ -6,6 +6,50 @@ Tests focus on validating the datetime timezone handling fix for script filterin
 
 import ast
 import re
+from unittest.mock import Mock
+
+from setup_staging_environment import StagingEnvironmentSetup
+
+
+def test_staging_users_are_verified_on_insert_and_update():
+    setup = StagingEnvironmentSetup.__new__(StagingEnvironmentSetup)
+    setup.staging_db_config = {}
+    setup.test_users = [
+        {
+            "email": f"{role.lower()}@example.com",
+            "password": "test-password",
+            "name": role,
+            "role": role,
+        }
+        for role in ("SUPERADMIN", "ADMIN", "USER")
+    ]
+    setup.api_environment_user = {
+        "email": "automation@example.com",
+        "password": "test-password",
+        "name": "Automation",
+        "role": "USER",
+    }
+    connection = Mock()
+    cursor = connection.cursor.return_value
+    cursor.fetchone.side_effect = [(f"user-{index}",) for index in range(4)]
+    setup.connect_to_database = Mock(return_value=connection)
+
+    assert setup.create_test_users() == "user-0"
+
+    assert cursor.execute.call_count == 4
+    for query, _params in (call.args for call in cursor.execute.call_args_list):
+        normalized_query = " ".join(query.split())
+        assert (
+            "email_verified, email_verified_at, gee_license_acknowledged"
+            in normalized_query
+        )
+        assert "TRUE, CURRENT_TIMESTAMP, TRUE" in normalized_query
+        assert "email_verified = TRUE" in normalized_query
+        assert "gee_license_acknowledged = TRUE" in normalized_query
+        assert (
+            'COALESCE( "user".email_verified_at, EXCLUDED.email_verified_at )'
+            in normalized_query
+        )
 
 
 class TestStagingEnvironmentSetupDatetimeHandling:
