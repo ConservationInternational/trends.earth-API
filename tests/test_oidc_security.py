@@ -1,12 +1,14 @@
 """Security and compatibility tests for the Trends.Earth OIDC provider."""
 
+import datetime
 import hashlib
+from unittest.mock import patch
 
 from flask_jwt_extended import create_access_token
 
 from gefapi import db, user_lookup_callback
 from gefapi.config import SETTINGS
-from gefapi.models import OAuthClient, OIDCRefreshToken, PasswordResetToken
+from gefapi.models import OAuthClient, OIDCRefreshToken, PasswordResetToken, User
 from gefapi.models.refresh_token import RefreshToken
 from gefapi.routes.oidc import _access_token_seconds
 from gefapi.services.oidc_service import (
@@ -16,6 +18,7 @@ from gefapi.services.oidc_service import (
     decode_token,
     issue_token,
     rotate_oidc_refresh_token,
+    valid_logo_url,
 )
 from gefapi.services.refresh_token_service import RefreshTokenService
 from gefapi.utils.scopes import _has_scope
@@ -222,6 +225,233 @@ def test_login_form_preserves_response_type(client):
 
     assert response.status_code == 200
     assert b'name="response_type" value="code"' in response.data
+
+
+def _authorize_query(client_id):
+    return {
+        "client_id": client_id,
+        "redirect_uri": "https://rio.example.test/callback",
+        "response_type": "code",
+        "scope": "openid",
+        "state": "state-value",
+        "nonce": "nonce-value",
+        "code_challenge_method": "S256",
+        "code_challenge": "A" * 43,
+    }
+
+
+def test_login_page_uses_client_logo_and_shared_footer(client):
+    branded = _oidc_client("rio-logo", "rio-resource")
+    branded.logo_url = "https://rio.example.test/logo.png"
+    db.session.add_all([branded, _oidc_client("plain-logo", "plain-resource")])
+    db.session.commit()
+
+    page = client.get("/oauth/authorize", query_string=_authorize_query("rio-logo"))
+    default = client.get(
+        "/oauth/authorize", query_string=_authorize_query("plain-logo")
+    )
+
+    assert b'src="https://rio.example.test/logo.png"' in page.data
+    assert b"/static/auth/trends_earth_logo_from_CI.png" in default.data
+    for body in (page.data, default.data):
+        assert b"Powered by" in body
+        assert b"/static/auth/trends_earth_bl_print.png" in body
+        assert b"Privacy Policy" in body
+        assert b"Terms of Use" in body
+        assert b"/oauth/register?" in body
+
+
+def test_invalid_credentials_rerender_login_form(client):
+    db.session.add(_oidc_client("rio-badpw", "rio-resource"))
+    db.session.commit()
+    with client.session_transaction() as session:
+        session["oidc_login_csrf"] = "csrf"
+
+    response = client.post(
+        "/oauth/authorize",
+        data={
+            **_authorize_query("rio-badpw"),
+            "login_csrf": "csrf",
+            "email": "nobody@example.test",
+            "password": "wrong",
+        },
+    )
+
+    assert response.status_code == 401
+    assert b"Invalid email or password." in response.data
+    assert b'value="nobody@example.test"' in response.data
+
+
+def _post_login(client, client_id, email):
+    with client.session_transaction() as session:
+        session["oidc_login_csrf"] = "csrf"
+    return client.post(
+        "/oauth/authorize",
+        data={
+            **_authorize_query(client_id),
+            "login_csrf": "csrf",
+            "email": email,
+            "password": "wrong",
+        },
+    )
+
+
+def test_locked_account_shows_remaining_lockout_time(client, regular_user):
+    db.session.add(_oidc_client("rio-locked", "rio-resource"))
+    User.query.filter_by(id=regular_user.id).update(
+        {
+            "failed_login_count": 5,
+            "locked_until": datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+            + datetime.timedelta(minutes=15),
+        }
+    )
+    db.session.commit()
+
+    response = _post_login(client, "rio-locked", regular_user.email)
+
+    assert response.status_code == 401
+    body = response.get_data(as_text=True)
+    assert "temporarily locked" in body
+    assert "try again in 15 minutes" in body or "try again in 14 minutes" in body
+    assert "Invalid email or password." not in body
+
+
+def test_permanently_locked_account_points_to_password_reset(client, regular_user):
+    db.session.add(_oidc_client("rio-locked-perm", "rio-resource"))
+    User.query.filter_by(id=regular_user.id).update(
+        {
+            "failed_login_count": 20,
+            "locked_until": datetime.datetime(2999, 1, 1, tzinfo=datetime.UTC),
+        }
+    )
+    db.session.commit()
+
+    response = _post_login(client, "rio-locked-perm", regular_user.email)
+
+    assert response.status_code == 401
+    body = response.get_data(as_text=True)
+    assert "Reset your password to unlock it." in body
+    assert "/oauth/forgot-password?" in body
+
+
+def test_register_page_creates_user_and_hides_duplicates(client):
+    db.session.add(_oidc_client("rio-register", "rio-resource"))
+    db.session.commit()
+    query = _authorize_query("rio-register")
+
+    page = client.get("/oauth/register", query_string=query)
+    assert page.status_code == 200
+    assert b"Powered by" in page.data
+
+    def submit():
+        with client.session_transaction() as session:
+            session["oidc_register_csrf"] = "csrf"
+        return client.post(
+            "/oauth/register",
+            data={
+                **query,
+                "register_csrf": "csrf",
+                "name": "New Person",
+                "email": "New.Person@example.test",
+                "institution": "Example Org",
+            },
+        )
+
+    with patch("gefapi.services.email_service.EmailService.send_html_email"):
+        first = submit()
+        second = submit()
+
+    assert first.status_code == 200
+    assert b"Thanks for registering" in first.data
+    assert second.status_code == 200
+    assert b"Thanks for registering" in second.data
+    assert User.query.filter_by(email="new.person@example.test").count() == 1
+
+
+def test_register_rejects_missing_csrf_and_unknown_client(client):
+    db.session.add(_oidc_client("rio-register-csrf", "rio-resource"))
+    db.session.commit()
+
+    no_csrf = client.post(
+        "/oauth/register",
+        data={
+            **_authorize_query("rio-register-csrf"),
+            "name": "X",
+            "email": "x@example.test",
+        },
+    )
+    unknown = client.get("/oauth/register", query_string=_authorize_query("nope"))
+
+    assert no_csrf.status_code == 400
+    assert User.query.filter_by(email="x@example.test").count() == 0
+    assert unknown.status_code == 400
+
+
+def test_forgot_password_sends_reset_and_hides_unknown_accounts(client, regular_user):
+    branded = _oidc_client("rio-forgot", "rio-resource")
+    branded.logo_url = "https://rio.example.test/logo.png"
+    db.session.add(branded)
+    db.session.commit()
+    query = _authorize_query("rio-forgot")
+
+    login = client.get("/oauth/authorize", query_string=query)
+    assert b"/oauth/forgot-password?" in login.data
+
+    page = client.get("/oauth/forgot-password", query_string=query)
+    assert page.status_code == 200
+    assert b'src="https://rio.example.test/logo.png"' in page.data
+    assert b"Powered by" in page.data
+    assert b"Privacy Policy" in page.data
+
+    def submit(email):
+        with client.session_transaction() as session:
+            session["oidc_forgot_csrf"] = "csrf"
+        return client.post(
+            "/oauth/forgot-password",
+            data={**query, "forgot_csrf": "csrf", "email": email},
+        )
+
+    with patch(
+        "gefapi.services.email_service.EmailService.send_html_email"
+    ) as send_email:
+        known = submit(regular_user.email.upper())
+        unknown = submit("nobody@example.test")
+
+    assert known.status_code == unknown.status_code == 200
+    assert b"If an account exists" in known.data
+    assert b"If an account exists" in unknown.data
+    assert send_email.call_count == 1
+    assert send_email.call_args.kwargs["recipients"] == [regular_user.email]
+    assert PasswordResetToken.query.filter_by(user_id=regular_user.id).count() == 1
+
+
+def test_forgot_password_rejects_missing_csrf_and_unknown_client(client):
+    db.session.add(_oidc_client("rio-forgot-csrf", "rio-resource"))
+    db.session.commit()
+
+    with patch(
+        "gefapi.services.email_service.EmailService.send_html_email"
+    ) as send_email:
+        no_csrf = client.post(
+            "/oauth/forgot-password",
+            data={**_authorize_query("rio-forgot-csrf"), "email": "x@example.test"},
+        )
+    unknown = client.get(
+        "/oauth/forgot-password", query_string=_authorize_query("nope")
+    )
+
+    assert no_csrf.status_code == 400
+    assert send_email.call_count == 0
+    assert unknown.status_code == 400
+
+
+def test_logo_url_validation():
+    assert valid_logo_url("https://cdn.example.test/logo.png")
+    assert valid_logo_url("/static/auth/trends_earth_logo_from_CI.png")
+    assert not valid_logo_url("http://cdn.example.test/logo.png")
+    assert not valid_logo_url("javascript:alert(1)")
+    assert not valid_logo_url("/static/../secret")
+    assert not valid_logo_url("//evil.test/logo.png")
 
 
 def test_oidc_access_token_lifetime_is_capped(monkeypatch):

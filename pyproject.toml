@@ -61,6 +61,7 @@ topojson = ">=1.0"
 brotlicffi = "^1.2.0.0"
 # Markdown to HTML conversion for news items
 markdown = ">=3.0"
+flask-babel = ">=4.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"

@@ -1,0 +1,259 @@
+# Russian translations for Trends.Earth API.
+# Copyright (C) 2026 Conservation International
+# This file is distributed under the same license as the Trends.Earth API
+# project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Trends.Earth API VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-09-29 10:14-0400\n"
+"PO-Revision-Date: 2026-09-28 21:59-0400\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: ru\n"
+"Language-Team: ru <LL@li.org>\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: gefapi/validators.py:84
+msgid "Invalid content detected"
+msgstr ""
+
+#: gefapi/validators.py:101
+msgid "Name is required"
+msgstr ""
+
+#: gefapi/validators.py:108
+msgid "Name cannot be empty"
+msgstr ""
+
+#: gefapi/validators.py:123
+msgid "Name contains invalid characters"
+msgstr ""
+
+#: gefapi/validators.py:133
+msgid "Email is required"
+msgstr ""
+
+#: gefapi/validators.py:138
+msgid "Email address too long"
+msgstr ""
+
+#: gefapi/validators.py:141
+msgid "Invalid email format"
+msgstr ""
+
+#: gefapi/validators.py:223
+msgid "Country contains invalid characters"
+msgstr ""
+
+#: gefapi/validators.py:248
+msgid "Institution contains invalid characters"
+msgstr ""
+
+#: gefapi/routes/oidc.py:119
+#, python-format
+msgid "Access to %(app)s is pending administrator approval."
+msgstr ""
+
+#: gefapi/routes/oidc.py:123
+#, python-format
+msgid "Access to %(app)s has been removed. Please contact an administrator."
+msgstr ""
+
+#: gefapi/routes/oidc.py:364
+msgid "Your sign-in form expired. Please try again."
+msgstr ""
+
+#: gefapi/routes/oidc.py:374
+msgid ""
+"This account is locked after too many failed sign-in attempts. Reset your"
+" password to unlock it."
+msgstr ""
+
+#: gefapi/routes/oidc.py:379
+#, python-format
+msgid ""
+"This account is temporarily locked after too many failed sign-in "
+"attempts. Please try again in %(num)d minute."
+msgid_plural ""
+"This account is temporarily locked after too many failed sign-in "
+"attempts. Please try again in %(num)d minutes."
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#: gefapi/routes/oidc.py:388
+msgid "Invalid email or password."
+msgstr ""
+
+#: gefapi/routes/oidc.py:397
+msgid "This account is disabled."
+msgstr ""
+
+#: gefapi/routes/oidc.py:403
+msgid "Please verify your email address before signing in."
+msgstr ""
+
+#: gefapi/routes/oidc.py:445
+msgid "Your registration form expired. Please try again."
+msgstr ""
+
+#: gefapi/routes/oidc.py:494
+msgid "Your reset form expired. Please try again."
+msgstr ""
+
+#: gefapi/services/user_service.py:235
+#, python-format
+msgid "Hello %(name)s,"
+msgstr ""
+
+#: gefapi/services/user_service.py:237
+msgid "Welcome to Trends.Earth! Your account has been created."
+msgstr ""
+
+#: gefapi/services/user_service.py:242
+msgid ""
+"To complete your registration, please set your password by clicking the "
+"link below. This link will expire in 1 hour."
+msgstr ""
+
+#: gefapi/services/user_service.py:248
+msgid "Set Your Password"
+msgstr ""
+
+#: gefapi/services/user_service.py:253
+msgid "If you cannot click the link, copy and paste this URL into your browser:"
+msgstr ""
+
+#: gefapi/services/user_service.py:260
+msgid "If you did not create this account, please ignore this email."
+msgstr ""
+
+#: gefapi/services/user_service.py:262
+msgid "Best regards,"
+msgstr ""
+
+#: gefapi/services/user_service.py:262
+msgid "The Trends.Earth Team"
+msgstr ""
+
+#: gefapi/services/user_service.py:269
+msgid "[trends.earth] Welcome - Set Your Password"
+msgstr ""
+
+#: gefapi/templates/auth/base.html:26
+msgid "Powered by"
+msgstr ""
+
+#: gefapi/templates/auth/base.html:30
+msgid "Privacy Policy"
+msgstr ""
+
+#: gefapi/templates/auth/base.html:32
+msgid "Terms of Use"
+msgstr ""
+
+#: gefapi/templates/auth/base.html:34
+msgid "Language"
+msgstr ""
+
+#: gefapi/templates/auth/forgot_password.html:2
+#: gefapi/templates/auth/forgot_password.html:3
+msgid "Reset password"
+msgstr ""
+
+#: gefapi/templates/auth/forgot_password.html:7
+msgid ""
+"If an account exists for that address, you will receive an email with a "
+"link to reset your password. The link expires in one hour. Once your "
+"password is reset, return here to sign in."
+msgstr ""
+
+#: gefapi/templates/auth/forgot_password.html:9
+#: gefapi/templates/auth/forgot_password.html:23
+#: gefapi/templates/auth/register.html:9 gefapi/templates/auth/register.html:38
+msgid "Back to sign in"
+msgstr ""
+
+#: gefapi/templates/auth/forgot_password.html:11
+msgid ""
+"Enter the email address for your Trends.Earth account and we will send "
+"you a link to reset your password."
+msgstr ""
+
+#: gefapi/templates/auth/forgot_password.html:18
+#: gefapi/templates/auth/login.html:12 gefapi/templates/auth/register.html:23
+msgid "Email"
+msgstr ""
+
+#: gefapi/templates/auth/forgot_password.html:20
+#: gefapi/templates/auth/login.html:14
+msgid "Enter email"
+msgstr ""
+
+#: gefapi/templates/auth/forgot_password.html:22
+msgid "Send reset link"
+msgstr ""
+
+#: gefapi/templates/auth/login.html:2 gefapi/templates/auth/login.html:3
+#: gefapi/templates/auth/login.html:21
+msgid "Sign in"
+msgstr ""
+
+#: gefapi/templates/auth/login.html:5
+#, python-format
+msgid "Use your Trends.Earth account to continue to %(client)s."
+msgstr ""
+
+#: gefapi/templates/auth/login.html:17
+msgid "Password"
+msgstr ""
+
+#: gefapi/templates/auth/login.html:19
+msgid "Enter password"
+msgstr ""
+
+#: gefapi/templates/auth/login.html:22 gefapi/templates/auth/register.html:2
+#: gefapi/templates/auth/register.html:3 gefapi/templates/auth/register.html:37
+msgid "Register"
+msgstr ""
+
+#: gefapi/templates/auth/login.html:23
+msgid "Forgot your password?"
+msgstr ""
+
+#: gefapi/templates/auth/register.html:7
+msgid ""
+"Thanks for registering. If the address is not already in use, you will "
+"receive an email with a link to set your password. Once your password is "
+"set, return here to sign in."
+msgstr ""
+
+#: gefapi/templates/auth/register.html:11
+#, python-format
+msgid "Create a Trends.Earth account to use %(client)s."
+msgstr ""
+
+#: gefapi/templates/auth/register.html:18
+msgid "Name"
+msgstr ""
+
+#: gefapi/templates/auth/register.html:28
+msgid "Country"
+msgstr ""
+
+#: gefapi/templates/auth/register.html:28
+#: gefapi/templates/auth/register.html:33
+msgid "(optional)"
+msgstr ""
+
+#: gefapi/templates/auth/register.html:33
+msgid "Institution"
+msgstr ""
+

@@ -6,6 +6,7 @@ first-party applications.
 
 from datetime import timedelta
 import logging
+import os
 
 from gefapi import db
 from gefapi.models import OAuthClient, User
@@ -276,6 +277,23 @@ class AppAccessService:
                 grant_id,
                 exc,
             )
+
+    @classmethod
+    def request_notification_recipients(cls, app_key):
+        """Recipients for *app_key* access requests.
+
+        ``<APP_KEY>_ACCESS_REQUEST_EMAILS`` (comma-separated, e.g.
+        ``RIO_COHERENCE_ACCESS_REQUEST_EMAILS``) replaces the default of all
+        superadmins when set.
+        """
+        configured = os.getenv(f"{app_key.upper()}_ACCESS_REQUEST_EMAILS", "")
+        seen = {}
+        for email in configured.split(","):
+            if email.strip():
+                seen.setdefault(email.strip().lower(), email.strip())
+        if seen:
+            return sorted(seen.values())
+        return cls.superadmin_recipients()
 
     @staticmethod
     def superadmin_recipients():

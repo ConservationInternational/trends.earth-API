@@ -7,6 +7,7 @@ import secrets
 import string
 from uuid import UUID
 
+from flask_babel import gettext as _
 import rollbar
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -229,30 +230,49 @@ class UserService:
             reset_url = f"{api_url}/reset-password?token={reset_token.token}"
 
             # Send welcome email with reset link
+            safe_url = escape(reset_url)
             email_html = f"""
-            <p>Hello {escape(user.name)},</p>
+            <p>{escape(_("Hello %(name)s,", name=user.name))}</p>
 
-            <p>Welcome to Trends.Earth! Your account has been created.</p>
+            <p>{
+                escape(_("Welcome to Trends.Earth! Your account has been created."))
+            }</p>
 
-            <p>To complete your registration, please set your password by
-            clicking the link below. This link will expire in 1 hour.</p>
+            <p>{
+                escape(
+                    _(
+                        "To complete your registration, please set your password "
+                        "by clicking the link below. This link will expire in 1 hour."
+                    )
+                )
+            }</p>
 
-            <p><a href="{reset_url}">Set Your Password</a></p>
+            <p><a href="{safe_url}">{escape(_("Set Your Password"))}</a></p>
 
-            <p>If you cannot click the link, copy and paste this URL into your
-            browser:</p>
-            <p>{reset_url}</p>
+            <p>{
+                escape(
+                    _(
+                        "If you cannot click the link, copy and paste this URL "
+                        "into your browser:"
+                    )
+                )
+            }</p>
+            <p>{safe_url}</p>
 
-            <p>If you did not create this account, please ignore this email.</p>
+            <p>{
+                escape(
+                    _("If you did not create this account, please ignore this email.")
+                )
+            }</p>
 
-            <p>Best regards,<br>The Trends.Earth Team</p>
+            <p>{escape(_("Best regards,"))}<br>{escape(_("The Trends.Earth Team"))}</p>
             """
 
             try:
                 EmailService.send_html_email(
                     recipients=[user.email],
                     html=email_html,
-                    subject="[trends.earth] Welcome - Set Your Password",
+                    subject=_("[trends.earth] Welcome - Set Your Password"),
                     transactional=True,
                 )
                 logger.info(

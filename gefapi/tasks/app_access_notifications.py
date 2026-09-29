@@ -45,9 +45,9 @@ def notify_superadmins_of_app_access_request(self, grant_id):
             logger.warning("App access grant %s no longer exists", grant_id)
             return {"status": "skipped", "reason": "grant_not_found"}
 
-        recipients = AppAccessService.superadmin_recipients()
+        recipients = AppAccessService.request_notification_recipients(grant.app_key)
         if not recipients:
-            logger.warning("No superadmin recipients configured for app access alerts")
+            logger.warning("No recipients configured for app access alerts")
             return {"status": "skipped", "reason": "no_recipients"}
 
         user = grant.user

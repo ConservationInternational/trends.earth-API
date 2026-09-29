@@ -1,0 +1,25 @@
+{% extends "auth/base.html" %}
+{% block title %}{{ _('Sign in') }}{% endblock %}
+{% block heading %}{{ _('Sign in') }}{% endblock %}
+{% block content %}
+<p class="te-auth-subtitle">{{ _('Use your Trends.Earth account to continue to %(client)s.', client=client_name) }}</p>
+<form method="post" action="{{ authorize_url }}">
+  {% for key, value in params.items() %}
+  <input type="hidden" name="{{ key }}" value="{{ value }}">
+  {% endfor %}
+  <input type="hidden" name="login_csrf" value="{{ csrf }}">
+  <div class="te-auth-field">
+    <label for="email">{{ _('Email') }}</label>
+    <input id="email" name="email" type="email" value="{{ email or '' }}"
+           placeholder="{{ _('Enter email') }}" autocomplete="username" required autofocus>
+  </div>
+  <div class="te-auth-field">
+    <label for="password">{{ _('Password') }}</label>
+    <input id="password" name="password" type="password"
+           placeholder="{{ _('Enter password') }}" autocomplete="current-password" required>
+  </div>
+  <button class="te-auth-btn te-auth-btn-primary" type="submit">{{ _('Sign in') }}</button>
+  <a class="te-auth-btn te-auth-btn-outline" href="{{ register_url }}">{{ _('Register') }}</a>
+  <p class="te-auth-link"><a href="{{ forgot_password_url }}">{{ _('Forgot your password?') }}</a></p>
+</form>
+{% endblock %}

@@ -422,6 +422,8 @@ class User(db.Model):
             return 0
         if self.locked_until is None:
             return None  # Shouldn't happen, but be safe
+        if (self.failed_login_count or 0) >= self.LOCKOUT_THRESHOLDS[-1][0]:
+            return None
         now = utcnow()
         remaining = self.locked_until - now
         return max(1, int(remaining.total_seconds() / 60))

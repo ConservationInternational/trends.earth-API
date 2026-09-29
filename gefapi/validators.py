@@ -8,6 +8,7 @@ import unicodedata
 from flask import request
 
 from gefapi.config import SETTINGS
+from gefapi.i18n import N_
 from gefapi.routes.api.v1 import error
 
 ROLES = SETTINGS.get("ROLES")
@@ -80,7 +81,7 @@ def sanitize_text(text, max_length=None, allow_html=False):
 
     for pattern in dangerous_patterns:
         if re.search(pattern, text, re.IGNORECASE | re.DOTALL):
-            raise ValueError("Invalid content detected")
+            raise ValueError(N_("Invalid content detected"))
 
     # Normalize unicode characters (NFC normalization)
     text = unicodedata.normalize("NFC", text)
@@ -97,14 +98,14 @@ def validate_name(name):
     Validate names with international character support
     """
     if not name:
-        raise ValueError("Name is required")
+        raise ValueError(N_("Name is required"))
 
     # Sanitize but preserve international characters
     clean_name = sanitize_text(name, max_length=120)
 
     # Check minimum length
     if len(clean_name.strip()) < 1:
-        raise ValueError("Name cannot be empty")
+        raise ValueError(N_("Name cannot be empty"))
 
     # Allow letters, spaces, apostrophes, hyphens, dots (international support)
     # Using a more compatible regex pattern for international characters
@@ -119,7 +120,7 @@ def validate_name(name):
             or char in " '-."  # Allowed punctuation
             or unicodedata.category(char) == "Zs"
         ):  # Spaces
-            raise ValueError("Name contains invalid characters")
+            raise ValueError(N_("Name contains invalid characters"))
 
     return clean_name
 
@@ -129,15 +130,15 @@ def validate_email(email):
     Validate email addresses
     """
     if not email:
-        raise ValueError("Email is required")
+        raise ValueError(N_("Email is required"))
 
     email = email.strip().lower()
 
     if len(email) > 254:  # RFC 5321 limit
-        raise ValueError("Email address too long")
+        raise ValueError(N_("Email address too long"))
 
     if not EMAIL_REGEX.match(email):
-        raise ValueError("Invalid email format")
+        raise ValueError(N_("Invalid email format"))
 
     return email
 
@@ -219,7 +220,7 @@ def validate_country(country):
             or char in " '-.()"  # Allowed punctuation
             or unicodedata.category(char) == "Zs"
         ):  # Spaces
-            raise ValueError("Country contains invalid characters")
+            raise ValueError(N_("Country contains invalid characters"))
 
     return clean_country
 
@@ -244,7 +245,7 @@ def validate_institution(institution):
             or char in " '-.()&,[]/"  # Allowed punctuation
             or unicodedata.category(char) == "Zs"
         ):  # Spaces
-            raise ValueError("Institution contains invalid characters")
+            raise ValueError(N_("Institution contains invalid characters"))
 
     return clean_institution
 

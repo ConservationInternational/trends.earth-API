@@ -1,0 +1,41 @@
+{% extends "auth/base.html" %}
+{% block title %}{{ _('Register') }}{% endblock %}
+{% block heading %}{{ _('Register') }}{% endblock %}
+{% block content %}
+{% if registered %}
+<div class="te-auth-alert te-auth-alert-success" role="status">
+  {{ _('Thanks for registering. If the address is not already in use, you will receive an email with a link to set your password. Once your password is set, return here to sign in.') }}
+</div>
+<a class="te-auth-btn te-auth-btn-primary" href="{{ authorize_url }}">{{ _('Back to sign in') }}</a>
+{% else %}
+<p class="te-auth-subtitle">{{ _('Create a Trends.Earth account to use %(client)s.', client=client_name) }}</p>
+<form method="post" action="{{ register_url }}">
+  {% for key, value in params.items() %}
+  <input type="hidden" name="{{ key }}" value="{{ value }}">
+  {% endfor %}
+  <input type="hidden" name="register_csrf" value="{{ csrf }}">
+  <div class="te-auth-field">
+    <label for="name">{{ _('Name') }}</label>
+    <input id="name" name="name" type="text" value="{{ form.name or '' }}"
+           autocomplete="name" maxlength="120" required autofocus>
+  </div>
+  <div class="te-auth-field">
+    <label for="email">{{ _('Email') }}</label>
+    <input id="email" name="email" type="email" value="{{ form.email or '' }}"
+           autocomplete="email" maxlength="254" required>
+  </div>
+  <div class="te-auth-field">
+    <label for="country">{{ _('Country') }} <span class="te-auth-optional">{{ _('(optional)') }}</span></label>
+    <input id="country" name="country" type="text" value="{{ form.country or '' }}"
+           autocomplete="country-name" maxlength="120">
+  </div>
+  <div class="te-auth-field">
+    <label for="institution">{{ _('Institution') }} <span class="te-auth-optional">{{ _('(optional)') }}</span></label>
+    <input id="institution" name="institution" type="text" value="{{ form.institution or '' }}"
+           autocomplete="organization" maxlength="200">
+  </div>
+  <button class="te-auth-btn te-auth-btn-primary" type="submit">{{ _('Register') }}</button>
+  <a class="te-auth-btn te-auth-btn-outline" href="{{ authorize_url }}">{{ _('Back to sign in') }}</a>
+</form>
+{% endif %}
+{% endblock %}

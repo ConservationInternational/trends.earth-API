@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="{{ current_language() }}" dir="{{ text_direction() }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} | {{ client_name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='auth/auth.css') }}">
+</head>
+<body>
+  <main class="te-auth">
+    <section class="te-auth-card">
+      <header class="te-auth-header">
+        <img class="te-auth-logo" src="{{ logo_url }}" alt="{{ client_name }}">
+        <h1>{% block heading %}{% endblock %}</h1>
+      </header>
+      <div class="te-auth-body">
+        {% if error %}
+        <div class="te-auth-alert te-auth-alert-error" role="alert">{{ error }}</div>
+        {% endif %}
+        {% block content %}{% endblock %}
+      </div>
+    </section>
+    {# Shared footer: intentionally not a block so apps cannot remove it. #}
+    <footer class="te-auth-footer">
+      <a class="te-auth-powered" href="https://trends.earth" target="_blank" rel="noopener noreferrer">
+        <span>{{ _('Powered by') }}</span>
+        <img src="{{ url_for('static', filename='auth/trends_earth_bl_print.png') }}" alt="Trends.Earth">
+      </a>
+      <p class="te-auth-legal">
+        <a href="{{ privacy_url }}" target="_blank" rel="noopener noreferrer">{{ _('Privacy Policy') }}</a>
+        |
+        <a href="{{ terms_url }}" target="_blank" rel="noopener noreferrer">{{ _('Terms of Use') }}</a>
+      </p>
+      <nav class="te-auth-languages" aria-label="{{ _('Language') }}">
+        {% for code, label, href in language_links %}
+        {% if code == current_language() %}
+        <span lang="{{ code }}" aria-current="true">{{ label }}</span>
+        {% else %}
+        <a lang="{{ code }}" hreflang="{{ code }}" href="{{ href }}">{{ label }}</a>
+        {% endif %}
+        {% endfor %}
+      </nav>
+    </footer>
+  </main>
+</body>
+</html>

@@ -228,3 +228,13 @@ class TestAccountLockout:
         assert "message" in data
         assert data.get("minutes_remaining") is None  # No time limit
         assert data.get("requires_password_reset") is True
+
+        # Later attempts must keep asking for a reset, not a ~100-year wait.
+        response = client.post(
+            "/auth",
+            json={"email": "lockout_test@test.com", "password": USER_TEST_PASSWORD},
+        )
+        data = response.get_json()
+        assert response.status_code == 401
+        assert data.get("minutes_remaining") is None
+        assert data.get("requires_password_reset") is True

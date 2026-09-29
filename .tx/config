@@ -1,0 +1,9 @@
+[main]
+host = https://www.transifex.com
+
+# Shares the Transifex project used by trends.earth-api-ui, as a separate resource.
+[o:conservation-international:p:trendsearth-api-ui:r:api-messages]
+file_filter = gefapi/translations/<lang>/LC_MESSAGES/messages.po
+source_file = gefapi/translations/messages.pot
+source_lang = en
+type = PO

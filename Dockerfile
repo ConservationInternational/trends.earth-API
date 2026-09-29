@@ -31,6 +31,9 @@ COPY README.md ./README.md
 
 RUN poetry install --no-interaction --no-ansi
 
+# .mo files are gitignored; build them from the committed .po catalogs.
+RUN pybabel compile -d gefapi/translations --use-fuzzy
+
 # Copy the rest of the application
 COPY entrypoint.sh ./entrypoint.sh
 COPY main.py ./main.py

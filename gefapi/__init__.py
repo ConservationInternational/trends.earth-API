@@ -26,6 +26,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from gefapi.celery import make_celery
 from gefapi.config import SETTINGS
+from gefapi.i18n import init_i18n
 from gefapi.utils.permissions import is_admin_or_higher
 from gefapi.utils.rate_limiting import (
     RateLimitConfig,
@@ -55,6 +56,7 @@ ALWAYS_RATE_LIMITED_ENDPOINTS = frozenset(
 
 # Flask App
 app = Flask(__name__)
+init_i18n(app)
 
 # Respect trusted proxy configuration for accurate client IP detection
 trusted_proxy_count = SETTINGS.get("TRUSTED_PROXY_COUNT", 0)

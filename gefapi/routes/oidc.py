@@ -1,18 +1,34 @@
 """OIDC/OAuth endpoints used by first-party applications such as Rio."""
 
-import html
 import logging
 import secrets
 import time
 from urllib.parse import urlencode
 
 from authlib.jose.errors import JoseError
-from flask import Blueprint, jsonify, redirect, request, session
+from flask import (
+    Blueprint,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+from flask_babel import gettext as _
+from flask_babel import ngettext
 from flask_jwt_extended import current_user, get_jwt, jwt_required
 
 from gefapi import db, limiter
 from gefapi.config import SETTINGS
-from gefapi.errors import AccountLockedError
+from gefapi.errors import (
+    AccountLockedError,
+    EmailError,
+    PasswordValidationError,
+    UserDuplicated,
+    UserNotFound,
+)
+from gefapi.i18n import SUPPORTED_LANGUAGES
 from gefapi.models import OAuthClient, User
 from gefapi.services.oidc_service import (
     access_token_client,
@@ -27,6 +43,7 @@ from gefapi.services.oidc_service import (
     revoke_all_oidc_refresh_tokens,
     revoke_oidc_refresh_token_for_client,
     rotate_oidc_refresh_token,
+    valid_logo_url,
     valid_pkce_code_challenge,
 )
 from gefapi.services.user_service import UserService
@@ -34,12 +51,33 @@ from gefapi.utils.app_access import app_label, has_app_access, valid_app_key
 from gefapi.utils.permissions import is_admin_or_higher
 from gefapi.utils.scopes import require_scope
 from gefapi.utils.security_events import log_security_event
+from gefapi.validators import (
+    validate_country,
+    validate_email,
+    validate_institution,
+    validate_name,
+)
 
 oidc = Blueprint("oidc", __name__)
 
 logger = logging.getLogger(__name__)
 
 MAX_ACCESS_TOKEN_SECONDS = 300
+
+AUTHORIZE_PARAMS = (
+    "response_type",
+    "client_id",
+    "redirect_uri",
+    "scope",
+    "state",
+    "code_challenge",
+    "code_challenge_method",
+    "nonce",
+    "ui_locales",
+)
+DEFAULT_LOGO = "auth/trends_earth_logo_from_CI.png"
+PRIVACY_POLICY_URL = "https://www.conservation.org/policies/privacy"
+TERMS_OF_USE_URL = "https://www.conservation.org/policies/terms-of-use"
 
 
 def _access_token_seconds():
@@ -77,10 +115,13 @@ def _app_access_denied_redirect(user, client, redirect_uri, state):
 
     label = app_label(app_key)
     if access_state == "pending":
-        description = f"Access to {label} is pending administrator approval."
+        description = _(
+            "Access to %(app)s is pending administrator approval.", app=label
+        )
     else:
-        description = (
-            f"Access to {label} has been removed. Please contact an administrator."
+        description = _(
+            "Access to %(app)s has been removed. Please contact an administrator.",
+            app=label,
         )
     log_security_event(
         "APP_ACCESS_DENIED",
@@ -127,6 +168,66 @@ def _validated_request(data):
     return (client, redirect_uri, " ".join(requested)), None
 
 
+def _new_form_csrf(session_key):
+    token = secrets.token_urlsafe(32)
+    session[session_key] = token
+    return token
+
+
+def _form_csrf_valid(session_key, submitted):
+    expected = session.pop(session_key, None)
+    return bool(expected) and secrets.compare_digest(expected, submitted or "")
+
+
+def _render_auth_page(template, client, data, status=200, **context):
+    params = {
+        key: data.get(key, "")
+        for key in AUTHORIZE_PARAMS
+        if key != "ui_locales" or data.get(key)
+    }
+    query = urlencode(params)
+    page_endpoint = {
+        "auth/register.html": "oidc.register",
+        "auth/forgot_password.html": "oidc.forgot_password",
+    }.get(template, "oidc.authorize")
+    language_links = [
+        (
+            code,
+            label,
+            f"{url_for(page_endpoint)}?{urlencode({**params, 'ui_locales': code})}",
+        )
+        for code, label in SUPPORTED_LANGUAGES.items()
+    ]
+    return (
+        render_template(
+            template,
+            client_name=client.name,
+            logo_url=client.logo_url or url_for("static", filename=DEFAULT_LOGO),
+            params=params,
+            authorize_url=f"{url_for('oidc.authorize')}?{query}",
+            register_url=f"{url_for('oidc.register')}?{query}",
+            forgot_password_url=f"{url_for('oidc.forgot_password')}?{query}",
+            privacy_url=PRIVACY_POLICY_URL,
+            terms_url=TERMS_OF_USE_URL,
+            language_links=language_links,
+            **context,
+        ),
+        status,
+    )
+
+
+def _render_login(client, data, status=200, error=None):
+    return _render_auth_page(
+        "auth/login.html",
+        client,
+        data,
+        status,
+        csrf=_new_form_csrf("oidc_login_csrf"),
+        email=data.get("email", ""),
+        error=error,
+    )
+
+
 @oidc.post("/api/v1/admin/oidc-clients")
 @jwt_required()
 @require_scope("client:manage")
@@ -160,6 +261,11 @@ def register_client():
             "invalid_request",
             f"Unknown required_app_key '{required_app_key}'",
         )
+    logo_url = data.get("logo_url") or None
+    if logo_url and not valid_logo_url(logo_url):
+        return _oauth_error(
+            "invalid_request", "logo_url must be an https URL or a /static/ path"
+        )
     client = create_client(
         name=data["name"],
         client_id=data["client_id"],
@@ -170,12 +276,14 @@ def register_client():
         is_public=is_public,
         client_secret=client_secret,
         required_app_key=required_app_key,
+        logo_url=logo_url,
     )
     response = {
         "client_id": client.client_id,
         "audience": client.audience,
         "scopes": client.scopes.split(),
         "required_app_key": client.required_app_key,
+        "logo_url": client.logo_url,
     }
     if client_secret:
         response["client_secret"] = client_secret
@@ -199,6 +307,7 @@ def discovery():
         id_token_signing_alg_values_supported=["RS256"],
         token_endpoint_auth_methods_supported=["none", "client_secret_post"],
         scopes_supported=["openid", "email", "profile"],
+        ui_locales_supported=list(SUPPORTED_LANGUAGES),
         claims_supported=[
             "iss",
             "aud",
@@ -245,50 +354,39 @@ def authorize():
             session.pop("oidc_auth_version", None)
 
     if request.method == "GET" and not session.get("oidc_user_id"):
-        login_csrf = secrets.token_urlsafe(32)
-        session["oidc_login_csrf"] = login_csrf
-        fields = {
-            key: data.get(key, "")
-            for key in (
-                "response_type",
-                "client_id",
-                "redirect_uri",
-                "scope",
-                "state",
-                "code_challenge",
-                "code_challenge_method",
-                "nonce",
-            )
-        }
-        fields["login_csrf"] = login_csrf
-        hidden = "".join(
-            f'<input type="hidden" name="{html.escape(k)}" value="{html.escape(v)}">'
-            for k, v in fields.items()
-        )
-        return (
-            (
-                f"<form method='post'><h1>Sign in to Trends.Earth</h1>{hidden}"
-                "<input name='email' type='email' required>"
-                "<input name='password' type='password' required>"
-                "<button>Continue</button></form>"
-            ),
-            200,
-        )
+        return _render_login(client, data)
     if request.method == "POST" and not session.get("oidc_user_id"):
-        login_csrf = session.pop("oidc_login_csrf", None)
-        if not login_csrf or not secrets.compare_digest(
-            login_csrf, data.get("login_csrf", "")
-        ):
-            return "Invalid login request", 400
+        if not _form_csrf_valid("oidc_login_csrf", data.get("login_csrf")):
+            return _render_login(
+                client,
+                data,
+                400,
+                error=_("Your sign-in form expired. Please try again."),
+            )
         try:
             user = UserService.authenticate_user(
                 (data.get("email") or "").strip().lower(),
                 data.get("password") or "",
             )
-        except AccountLockedError:
-            return "Invalid credentials", 401
+        except AccountLockedError as exc:
+            if exc.requires_password_reset or exc.minutes_remaining is None:
+                message = _(
+                    "This account is locked after too many failed sign-in "
+                    "attempts. Reset your password to unlock it."
+                )
+            else:
+                message = ngettext(
+                    "This account is temporarily locked after too many failed "
+                    "sign-in attempts. Please try again in %(num)d minute.",
+                    "This account is temporarily locked after too many failed "
+                    "sign-in attempts. Please try again in %(num)d minutes.",
+                    exc.minutes_remaining,
+                )
+            return _render_login(client, data, 401, error=message)
         if not user:
-            return "Invalid credentials", 401
+            return _render_login(
+                client, data, 401, error=_("Invalid email or password.")
+            )
         session.clear()
         session["oidc_user_id"] = str(user.id)
         session["oidc_auth_version"] = user.auth_version
@@ -296,9 +394,14 @@ def authorize():
     if not user or not user.is_active:
         session.pop("oidc_user_id", None)
         session.pop("oidc_auth_version", None)
-        return "Account disabled", 403
+        return _render_login(client, data, 403, error=_("This account is disabled."))
     if not user.email_verified:
-        return "Email verification is required", 403
+        return _render_login(
+            client,
+            data,
+            403,
+            error=_("Please verify your email address before signing in."),
+        )
     denied = _app_access_denied_redirect(user, client, redirect_uri, data.get("state"))
     if denied is not None:
         return denied
@@ -309,6 +412,98 @@ def authorize():
     if data.get("state"):
         params["state"] = data["state"]
     return redirect(f"{redirect_uri}?{urlencode(params)}")
+
+
+@oidc.route("/oauth/register", methods=["GET", "POST"])
+@limiter.limit("5 per hour", methods=["POST"])
+def register():
+    """Hosted self-registration that returns the user to the client's sign-in."""
+    data = request.args if request.method == "GET" else request.form
+    validated, error = _validated_request(data)
+    if error:
+        return error
+    client = validated[0]
+    form = {
+        key: (data.get(key) or "").strip()
+        for key in ("name", "email", "country", "institution")
+    }
+
+    def render(status=200, **context):
+        return _render_auth_page(
+            "auth/register.html",
+            client,
+            data,
+            status,
+            csrf=_new_form_csrf("oidc_register_csrf"),
+            form=form,
+            **context,
+        )
+
+    if request.method == "GET":
+        return render()
+    if not _form_csrf_valid("oidc_register_csrf", data.get("register_csrf")):
+        return render(400, error=_("Your registration form expired. Please try again."))
+    try:
+        user_data = {
+            "name": validate_name(form["name"]),
+            "email": validate_email(form["email"]),
+            "role": "USER",
+        }
+        if form["country"]:
+            user_data["country"] = validate_country(form["country"])
+        if form["institution"]:
+            user_data["institution"] = validate_institution(form["institution"])
+    except ValueError as exc:
+        # Validator messages are marked with N_() so they have catalog entries.
+        return render(400, error=_(str(exc)))
+    try:
+        UserService.create_user(user_data)
+    except UserDuplicated:
+        # Same response as success so the form cannot enumerate accounts.
+        pass
+    except PasswordValidationError as exc:
+        return render(400, error=_(exc.message))
+    return render(registered=True)
+
+
+@oidc.route("/oauth/forgot-password", methods=["GET", "POST"])
+@limiter.limit("3 per hour", methods=["POST"])
+def forgot_password():
+    """Hosted password-reset request that returns the user to the client's sign-in."""
+    data = request.args if request.method == "GET" else request.form
+    validated, error = _validated_request(data)
+    if error:
+        return error
+    client = validated[0]
+    email = (data.get("email") or "").strip()
+
+    def render(status=200, **context):
+        return _render_auth_page(
+            "auth/forgot_password.html",
+            client,
+            data,
+            status,
+            csrf=_new_form_csrf("oidc_forgot_csrf"),
+            email=email,
+            **context,
+        )
+
+    if request.method == "GET":
+        return render()
+    if not _form_csrf_valid("oidc_forgot_csrf", data.get("forgot_csrf")):
+        return render(400, error=_("Your reset form expired. Please try again."))
+    try:
+        normalized = validate_email(email)
+    except ValueError as exc:
+        return render(400, error=_(str(exc)))
+    try:
+        UserService.recover_password(normalized)
+    except UserNotFound:
+        # Same response as success so the form cannot enumerate accounts.
+        pass
+    except EmailError:
+        logger.exception("Password reset email failed for client %s", client.client_id)
+    return render(sent=True)
 
 
 @oidc.post("/oauth/token")

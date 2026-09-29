@@ -31,6 +31,8 @@ class OAuthClient(db.Model):
     # NULL means the client is ungated.  Non-null requires an active
     # user_app_access grant for that application key.
     required_app_key = db.Column(db.String(50), nullable=True)
+    # Shown on the sign-in/register pages; NULL uses the Trends.Earth logo.
+    logo_url = db.Column(db.String(500), nullable=True)
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.UTC)
     )

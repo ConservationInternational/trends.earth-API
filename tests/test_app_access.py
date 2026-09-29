@@ -223,6 +223,35 @@ def test_superadmin_recipients_are_deduplicated(app, superadmin_user):
     assert superadmin_user.email in recipients
 
 
+def test_request_recipients_default_to_superadmins(app, superadmin_user, monkeypatch):
+    monkeypatch.delenv("RIO_COHERENCE_ACCESS_REQUEST_EMAILS", raising=False)
+    assert AppAccessService.request_notification_recipients(RIO) == (
+        AppAccessService.superadmin_recipients()
+    )
+
+
+def test_request_recipients_env_replaces_superadmins(app, superadmin_user, monkeypatch):
+    monkeypatch.delenv("AVOIDED_EMISSIONS_ACCESS_REQUEST_EMAILS", raising=False)
+    monkeypatch.setenv(
+        "RIO_COHERENCE_ACCESS_REQUEST_EMAILS",
+        " a@example.org, A@example.org ,,b@example.org",
+    )
+    recipients = AppAccessService.request_notification_recipients(RIO)
+    assert recipients == ["a@example.org", "b@example.org"]
+    assert superadmin_user.email not in recipients
+    # Other applications are unaffected.
+    assert superadmin_user.email in AppAccessService.request_notification_recipients(AE)
+
+
+def test_avoided_emissions_request_recipients_env(app, superadmin_user, monkeypatch):
+    monkeypatch.delenv("RIO_COHERENCE_ACCESS_REQUEST_EMAILS", raising=False)
+    monkeypatch.setenv("AVOIDED_EMISSIONS_ACCESS_REQUEST_EMAILS", "ae@example.org")
+    assert AppAccessService.request_notification_recipients(AE) == ["ae@example.org"]
+    assert superadmin_user.email in AppAccessService.request_notification_recipients(
+        RIO
+    )
+
+
 def test_notification_failure_does_not_fail_the_request(app, regular_user):
     with patch(
         "gefapi.tasks.app_access_notifications."
@@ -466,7 +495,7 @@ def test_authorize_rejects_browser_session_from_before_password_change(
     )
 
     assert response.status_code == 200
-    assert b"Sign in to Trends.Earth" in response.data
+    assert b'name="login_csrf"' in response.data
     assert AuthorizationCode.query.count() == 0
     with client.session_transaction() as session:
         assert "oidc_user_id" not in session

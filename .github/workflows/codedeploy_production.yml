@@ -220,6 +220,9 @@ jobs:
         BULK_EMAIL_APPROVED_SENDERS: ${{ vars.BULK_EMAIL_APPROVED_SENDERS || '' }}
         BULK_EMAIL_MAX_RECIPIENTS: ${{ vars.BULK_EMAIL_MAX_RECIPIENTS || '50' }}
         BULK_EMAIL_FROM_EMAIL: ${{ vars.BULK_EMAIL_FROM_EMAIL || 'noreply@trends.earth' }}
+        # Empty = notify all superadmins of app access requests
+        RIO_COHERENCE_ACCESS_REQUEST_EMAILS: ${{ vars.RIO_COHERENCE_ACCESS_REQUEST_EMAILS || '' }}
+        AVOIDED_EMISSIONS_ACCESS_REQUEST_EMAILS: ${{ vars.AVOIDED_EMISSIONS_ACCESS_REQUEST_EMAILS || '' }}
         API_ENVIRONMENT_USER: ${{ secrets.API_ENVIRONMENT_USER }}
         API_ENVIRONMENT_USER_PASSWORD: ${{ secrets.API_ENVIRONMENT_USER_PASSWORD }}
         CORS_ORIGINS: ${{ vars.PRODUCTION_CORS_ORIGINS || 'https://trends.earth,https://api.trends.earth' }}
@@ -348,6 +351,10 @@ jobs:
           echo "BULK_EMAIL_APPROVED_SENDERS=$BULK_EMAIL_APPROVED_SENDERS"
           echo "BULK_EMAIL_MAX_RECIPIENTS=$BULK_EMAIL_MAX_RECIPIENTS"
           echo "BULK_EMAIL_FROM_EMAIL=$BULK_EMAIL_FROM_EMAIL"
+          echo ""
+          echo "# App access request notifications"
+          echo "RIO_COHERENCE_ACCESS_REQUEST_EMAILS=$RIO_COHERENCE_ACCESS_REQUEST_EMAILS"
+          echo "AVOIDED_EMISSIONS_ACCESS_REQUEST_EMAILS=$AVOIDED_EMISSIONS_ACCESS_REQUEST_EMAILS"
           echo ""
           echo "# CORS Configuration"
           echo "CORS_ORIGINS=$CORS_ORIGINS"

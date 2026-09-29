@@ -19,6 +19,10 @@ can be provisioned with the same script:
     AVOIDED_EMISSIONS_REDIRECT_URIS,
     AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS,
     RIO_REDIRECT_URIS, RIO_POST_LOGOUT_REDIRECT_URIS
+
+The logo shown on the hosted sign-in/register pages can be set per client with
+API_UI_LOGO_URL, TE_WEB_LOGO_URL, AVOIDED_EMISSIONS_LOGO_URL, or RIO_LOGO_URL
+(an https URL or a /static/ path).  When unset, an existing logo is kept.
 """
 
 import argparse
@@ -30,7 +34,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from gefapi import app, db
 from gefapi.models import OAuthClient
-from gefapi.services.oidc_service import TRENDS_API_AUDIENCE
+from gefapi.services.oidc_service import TRENDS_API_AUDIENCE, valid_logo_url
 from gefapi.utils.app_access import APP_AVOIDED_EMISSIONS, APP_RIO_COHERENCE
 
 DEFAULT_SCOPES = ["openid", "email", "profile"]
@@ -55,6 +59,7 @@ def client_definitions():
             "audience": "trends-earth-api-ui",
             "is_public": True,
             "required_app_key": None,
+            "logo_url": os.getenv("API_UI_LOGO_URL"),
             "redirect_uris": _uris(
                 "API_UI_REDIRECT_URIS", ["http://localhost:8050/auth/callback"]
             ),
@@ -78,6 +83,7 @@ def client_definitions():
             "audience": TRENDS_API_AUDIENCE,
             "is_public": True,
             "required_app_key": None,
+            "logo_url": os.getenv("TE_WEB_LOGO_URL"),
             "redirect_uris": _uris("TE_WEB_REDIRECT_URIS", []),
             "post_logout_redirect_uris": _uris("TE_WEB_POST_LOGOUT_REDIRECT_URIS", []),
         },
@@ -87,6 +93,7 @@ def client_definitions():
             "audience": "avoided-emissions",
             "is_public": False,
             "required_app_key": APP_AVOIDED_EMISSIONS,
+            "logo_url": os.getenv("AVOIDED_EMISSIONS_LOGO_URL"),
             "redirect_uris": _uris(
                 "AVOIDED_EMISSIONS_REDIRECT_URIS",
                 ["http://localhost:8051/auth/callback"],
@@ -102,6 +109,7 @@ def client_definitions():
             "audience": "rio-coherence",
             "is_public": True,
             "required_app_key": APP_RIO_COHERENCE,
+            "logo_url": os.getenv("RIO_LOGO_URL"),
             "redirect_uris": _uris(
                 "RIO_REDIRECT_URIS", ["http://localhost:3000/auth/callback"]
             ),
@@ -119,6 +127,12 @@ def upsert_client(definition, rotate_secret=False):
         raise SystemExit(
             f"No redirect URI configured for {definition['client_id']}; "
             "set its *_REDIRECT_URIS environment variable before registration."
+        )
+    logo_url = definition.get("logo_url")
+    if logo_url and not valid_logo_url(logo_url):
+        raise SystemExit(
+            f"Invalid logo URL for {definition['client_id']}: "
+            "use an https URL or a /static/ path."
         )
 
     existing = OAuthClient.query.filter_by(
@@ -141,6 +155,7 @@ def upsert_client(definition, rotate_secret=False):
             is_public=definition["is_public"],
             is_active=True,
             required_app_key=definition["required_app_key"],
+            logo_url=logo_url or None,
             client_secret_hash=generate_password_hash(secret) if secret else None,
         )
         db.session.add(existing)
@@ -154,6 +169,8 @@ def upsert_client(definition, rotate_secret=False):
         )
         existing.is_public = definition["is_public"]
         existing.required_app_key = definition["required_app_key"]
+        if logo_url:
+            existing.logo_url = logo_url
         existing.is_active = True
         if rotate_secret and not definition["is_public"]:
             secret = secrets.token_urlsafe(32)

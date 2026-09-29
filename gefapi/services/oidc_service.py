@@ -7,6 +7,7 @@ import json
 import os
 import re
 import secrets
+from urllib.parse import urlsplit
 import uuid
 
 from authlib.jose import JsonWebKey, jwt
@@ -88,6 +89,19 @@ def jwks():
 def valid_pkce_code_challenge(challenge):
     """Validate a S256 PKCE code challenge per RFC 7636 syntax bounds."""
     return bool(challenge and PKCE_CODE_CHALLENGE_RE.fullmatch(challenge))
+
+
+def valid_logo_url(url):
+    """Accept only https URLs or paths under this server's /static/ folder."""
+    if not isinstance(url, str) or not url or len(url) > 500:
+        return False
+    if url.startswith("/static/"):
+        return ".." not in url and "//" not in url and "\\" not in url
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return False
+    return parsed.scheme == "https" and bool(parsed.netloc)
 
 
 def valid_pkce_code_verifier(verifier):
@@ -188,6 +202,7 @@ def create_client(
     client_secret=None,
     post_logout_redirect_uris="",
     required_app_key=None,
+    logo_url=None,
 ):
     client = OAuthClient(
         name=name,
@@ -198,6 +213,7 @@ def create_client(
         scopes=" ".join(scopes),
         is_public=is_public,
         required_app_key=required_app_key,
+        logo_url=logo_url,
         client_secret_hash=generate_password_hash(client_secret)
         if client_secret
         else None,
