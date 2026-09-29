@@ -35,6 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TX_TOKEN: ${{ secrets.TX_TOKEN }}
+      TX_HOSTNAME: ${{ vars.TX_HOSTNAME }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
