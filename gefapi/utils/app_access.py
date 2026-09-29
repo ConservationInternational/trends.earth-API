@@ -20,6 +20,7 @@ from gefapi.models.app_access import (
     STATUS_ACTIVE,
     UserAppAccess,
 )
+from gefapi.utils.permissions import is_superadmin
 
 logger = logging.getLogger(__name__)
 
@@ -78,16 +79,24 @@ def app_access_status(user, app_key):
 
 
 def has_app_access(user, app_key):
-    """Return True only when *user* holds an ``active`` grant for *app_key*."""
+    """Return whether *user* has effective access to *app_key*."""
     if user is None or not getattr(user, "is_active", False):
         return False
+    if is_superadmin(user) and valid_app_key(app_key):
+        return True
     return app_access_status(user, app_key) == STATUS_ACTIVE
 
 
 def app_role(user, app_key):
-    """Return *user*'s role within *app_key*, or ``None`` without active access."""
+    """Return *user*'s effective role within *app_key*, if they have access."""
     if user is None:
         return None
+    if (
+        getattr(user, "is_active", False)
+        and is_superadmin(user)
+        and valid_app_key(app_key)
+    ):
+        return "admin"
     grant = get_grant(user.id, app_key)
     if grant is None or grant.status != STATUS_ACTIVE:
         return None
@@ -106,6 +115,8 @@ def _active_grants(user):
 
 def active_app_keys(user):
     """Return the sorted app keys *user* currently has active access to."""
+    if user is not None and getattr(user, "is_active", False) and is_superadmin(user):
+        return sorted(APP_KEYS)
     return [
         grant.app_key for grant in _active_grants(user) if valid_app_key(grant.app_key)
     ]
@@ -113,6 +124,8 @@ def active_app_keys(user):
 
 def active_app_roles(user):
     """Return ``{app_key: role}`` for every application *user* can access."""
+    if user is not None and getattr(user, "is_active", False) and is_superadmin(user):
+        return dict.fromkeys(sorted(APP_KEYS), "admin")
     return {
         grant.app_key: grant.role
         for grant in _active_grants(user)

@@ -91,6 +91,20 @@ def test_active_grant_exposes_role(app, regular_user):
     assert active_app_roles(regular_user) == {AE: "admin"}
 
 
+@pytest.mark.parametrize("status", [None, STATUS_PENDING, STATUS_REVOKED])
+def test_superadmin_has_effective_access_without_active_grants(
+    app, superadmin_user, status
+):
+    if status is not None:
+        _grant(superadmin_user, AE, status=status)
+
+    assert has_app_access(superadmin_user, AE) is True
+    assert has_app_access(superadmin_user, RIO) is True
+    assert app_role(superadmin_user, AE) == "admin"
+    assert active_app_keys(superadmin_user) == sorted((AE, RIO))
+    assert active_app_roles(superadmin_user) == {AE: "admin", RIO: "admin"}
+
+
 def test_app_access_guard_binds_client_to_registered_app(app, regular_user):
     from flask import g
 
