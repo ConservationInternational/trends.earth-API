@@ -1,0 +1,96 @@
+name: Machine translation
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_languages:
+        description: 'Target languages (comma-separated, e.g., "es,fr,ar"). Leave empty for all.'
+        required: false
+        type: string
+        default: ''
+      overwrite_existing:
+        description: 'Overwrite existing translations'
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Dry run - do not create PR'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  ALL_LANGUAGES: "ar,es,fa,fr,pt,ru,sw,zh"
+
+jobs:
+  machine_translate:
+    name: Prepopulate translations with Google Translate
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_TRANSLATE_CREDENTIALS }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install google-cloud-translate polib babel jinja2
+
+      - name: Setup Google Cloud credentials
+        run: |
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/gcloud-credentials.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcloud-credentials.json" >> $GITHUB_ENV
+
+      # babel.cfg paths are relative to the input dir, so extract from the repo root.
+      - name: Extract translatable strings
+        run: |
+          pybabel extract -F babel.cfg -k _ -k N_ -k gettext -k lazy_gettext \
+            -o gefapi/translations/messages.pot .
+
+      - name: Determine target languages
+        id: languages
+        env:
+          REQUESTED: ${{ inputs.target_languages }}
+        run: echo "languages=${REQUESTED:-$ALL_LANGUAGES}" >> $GITHUB_OUTPUT
+
+      - name: Update PO files from POT
+        run: |
+          for lang in $(echo "${{ steps.languages.outputs.languages }}" | tr ',' ' '); do
+            pybabel update -i gefapi/translations/messages.pot \
+              -d gefapi/translations -l $lang --no-fuzzy-matching
+          done
+
+      - name: Run machine translation
+        run: |
+          python scripts/machine_translate.py \
+            --target-langs "${{ steps.languages.outputs.languages }}" \
+            --translations-dir gefapi/translations \
+            ${{ inputs.overwrite_existing && '--overwrite' || '' }}
+
+      - name: Create pull request
+        if: ${{ !inputs.dry_run }}
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: develop
+          commit-message: "Prepopulate translations with machine translation"
+          committer: GitHub <noreply@github.com>
+          author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
+          branch: machine-translation-updates
+          delete-branch: true
+          title: "Prepopulate translations with machine translation"
+          body: |
+            Machine translations for: ${{ steps.languages.outputs.languages }}
+            (overwrite existing: ${{ inputs.overwrite_existing }}).
+
+            Entries are flagged fuzzy for review in Transifex. The Docker build
+            compiles with `--use-fuzzy`, so they are served until reviewed.
+            Plural-form strings are left for human translators.
