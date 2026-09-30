@@ -460,6 +460,14 @@ def test_oidc_access_token_lifetime_is_capped(monkeypatch):
     assert _access_token_seconds() == 300
 
 
+def test_oidc_token_endpoints_prevent_response_caching(client):
+    for path in ("/oauth/token", "/oauth/refresh"):
+        response = client.post(path, data={"client_id": "unknown"})
+
+        assert response.headers["Cache-Control"] == "no-store"
+        assert response.headers["Pragma"] == "no-cache"
+
+
 def test_oidc_refresh_token_reuse_revokes_token_family(app, regular_user):
     client = _oidc_client("rio-family", "rio-resource")
     db.session.add(client)

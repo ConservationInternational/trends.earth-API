@@ -80,6 +80,14 @@ PRIVACY_POLICY_URL = "https://www.conservation.org/policies/privacy"
 TERMS_OF_USE_URL = "https://www.conservation.org/policies/terms-of-use"
 
 
+@oidc.after_request
+def prevent_token_caching(response):
+    if request.endpoint in {"oidc.token", "oidc.refresh"}:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 def _access_token_seconds():
     configured = SETTINGS.get("OIDC_ACCESS_TOKEN_SECONDS", MAX_ACCESS_TOKEN_SECONDS)
     return max(1, min(configured, MAX_ACCESS_TOKEN_SECONDS))
