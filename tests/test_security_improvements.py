@@ -351,3 +351,103 @@ class TestAdminPasswordChangePermissions:
 
         # ADMIN can change another ADMIN's password
         assert can_admin_change_user_password(admin1, admin2) is True
+
+    def test_admin_cannot_change_configured_environment_user_password(self, app):
+        """ADMIN cannot reset the configured API_ENVIRONMENT_USER's password.
+
+        That account is treated as a superadmin by email even when its DB role
+        is USER, so resetting its password would escalate ADMIN to SUPERADMIN.
+        """
+        from gefapi.config import SETTINGS
+        from gefapi.utils.permissions import can_admin_change_user_password
+
+        class MockUser:
+            def __init__(self, role, email="test@example.com"):
+                self.role = role
+                self.email = email
+
+        admin = MockUser("ADMIN", "admin1@example.com")
+        env_user = MockUser("USER", SETTINGS["API_ENVIRONMENT_USER"].upper())
+        superadmin = MockUser("SUPERADMIN", "super@example.com")
+
+        assert can_admin_change_user_password(admin, env_user) is False
+        assert can_admin_change_user_password(superadmin, env_user) is True
+
+
+class TestSafeTarExtraction:
+    """Tests for script archive extraction hardening."""
+
+    @staticmethod
+    def _build_tar(tar_path, members):
+        import io
+        import tarfile
+
+        with tarfile.open(tar_path, "w:gz") as tar:
+            for info, data in members:
+                if data is not None:
+                    info.size = len(data)
+                    tar.addfile(info, io.BytesIO(data))
+                else:
+                    tar.addfile(info)
+
+    def test_symlink_pivot_cannot_escape_extraction_dir(self, tmp_path):
+        import tarfile
+
+        from gefapi.services.docker_service import _safe_extract_tar
+
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        extract_dir = tmp_path / "extract"
+        tar_path = tmp_path / "evil.tar.gz"
+
+        link = tarfile.TarInfo("pivot")
+        link.type = tarfile.SYMTYPE
+        link.linkname = str(outside)
+        payload = tarfile.TarInfo("pivot/pwned.sh")
+        good = tarfile.TarInfo("ok/main.py")
+        self._build_tar(
+            tar_path, [(link, None), (payload, b"evil"), (good, b"print(1)")]
+        )
+
+        with tarfile.open(tar_path, "r:gz") as tar:
+            _safe_extract_tar(tar, str(extract_dir))
+
+        assert not (outside / "pwned.sh").exists()
+        assert not (extract_dir / "pivot").is_symlink()
+        assert (extract_dir / "ok" / "main.py").read_bytes() == b"print(1)"
+
+    def test_rejects_hardlinks_traversal_and_setuid(self, tmp_path):
+        import stat
+        import tarfile
+
+        from gefapi.services.docker_service import _safe_extract_tar
+
+        extract_dir = tmp_path / "extract"
+        tar_path = tmp_path / "evil.tar.gz"
+
+        hardlink = tarfile.TarInfo("hl")
+        hardlink.type = tarfile.LNKTYPE
+        hardlink.linkname = "/etc/passwd"
+        traversal = tarfile.TarInfo("../escape.txt")
+        absolute = tarfile.TarInfo(str(tmp_path / "abs.txt"))
+        setuid = tarfile.TarInfo("run.sh")
+        setuid.mode = 0o4777
+        self._build_tar(
+            tar_path,
+            [
+                (hardlink, None),
+                (traversal, b"x"),
+                (absolute, b"x"),
+                (setuid, b"#!/bin/sh\n"),
+            ],
+        )
+
+        with tarfile.open(tar_path, "r:gz") as tar:
+            _safe_extract_tar(tar, str(extract_dir))
+
+        assert not (extract_dir / "hl").exists()
+        assert not (tmp_path / "escape.txt").exists()
+        assert not (tmp_path / "abs.txt").exists()
+        mode = (extract_dir / "run.sh").stat().st_mode
+        assert not mode & stat.S_ISUID
+        assert mode & 0o777 == 0o755

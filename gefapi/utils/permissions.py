@@ -93,10 +93,11 @@ def can_admin_change_user_password(admin_user, target_user):
     if is_superadmin(admin_user):
         return True
 
-    # ADMINs can change passwords, but not for SUPERADMINs
+    # ADMINs can change passwords, but not for SUPERADMINs. Use the effective
+    # privilege check so the configured API_ENVIRONMENT_USER is also protected
+    # even if its database role is not SUPERADMIN.
     if is_admin_or_higher(admin_user):
-        # Check if target is a SUPERADMIN
-        return target_user.role != "SUPERADMIN"
+        return not is_superadmin(target_user)
 
     return False
 

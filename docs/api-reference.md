@@ -154,6 +154,81 @@ GET /api/v1/user?filter=country=USA&sort=name
 GET /api/v1/user?filter=role=ADMIN&page=1&per_page=10
 ```
 
+## Application-scoped user API (OIDC user tokens)
+
+Bounded identity and app-access API shared by OIDC-gated applications
+(currently `rio_coherence` and `avoided_emissions`; unknown keys return
+`404 unknown_app` after authentication). There are no application-specific
+handlers or aliases: behaviour comes from the explicit, fail-closed policy
+registry in `gefapi/utils/app_access.py` (`APP_POLICIES`: roles, default role,
+admin roles, superadmin role, member discovery, directory fields).
+
+Every route requires an **RS256 OIDC access token issued to an OAuth client
+whose `required_app_key` equals the `{app_key}` in the path**. Legacy
+`POST /auth` (HS256) tokens, service-client tokens, ID tokens and tokens for
+other clients/apps are rejected. Account state, token revocation, email
+verification and the caller's current grant are re-checked on every request
+(stale signed app claims are never trusted); app `admin` comes from the
+current grant role or an effective SUPERADMIN (global `ADMIN` does not confer
+it).
+
+Scopes: every route requires `openid email profile` plus the operation scope
+below. The effective scopes are the token's granted `scope` **intersected with
+the client's registered allowlist**, so removing a scope from the client
+disables it for already-issued tokens. Scopes never confer roles.
+
+```
+GET   /api/v1/apps/{app_key}/me                      app:read          Own profile + effective access
+GET   /api/v1/apps/{app_key}/users?email=<exact>     app-users:read    Exact-email lookup
+GET   /api/v1/apps/{app_key}/users                   app-users:read    Directory (app admin)
+POST  /api/v1/apps/{app_key}/users/resolve           app-users:read    Batch subject lookup (max 100)
+PUT   /api/v1/apps/{app_key}/users/<subject>/access  app-access:write  Set status/role (app admin)
+PATCH /api/v1/account/profile                        account:write     Update own name/institution
+```
+
+App profile shape (`GET /me`, lookups, directory and access responses wrap
+profiles in `data`):
+
+```json
+{"sub": "<uuid>", "email": "a@b.org", "email_verified": true, "name": "A",
+ "institution": "B", "active": true, "app_access": "active", "app_role": "member"}
+```
+
+`app_access` is `active` when access is effective (including via SUPERADMIN),
+otherwise the grant status (`pending`, `revoked`) or `null`; `app_role` is a
+policy role only while access is effective, else `null`.
+
+- `PATCH /api/v1/account/profile` is the only profile write (there is no
+  `PATCH /apps/{app_key}/me`). It accepts only `name` and `institution`; any
+  other field returns `400 field_not_allowed`. It requires an OIDC client
+  (`403 client_identity_required` otherwise), a current grant when the client
+  is app-gated, and a verified email. The response is identity-only:
+  `{"data": {"sub", "email", "email_verified", "name", "institution",
+  "active"}}` (no `app_access`/`app_role`).
+- Member discovery (`?email=` and `resolve` for non-admins) is a policy flag:
+  enabled for `rio_coherence`, disabled for `avoided_emissions`
+  (`403 app_role_required`). App admins can always use them.
+- `GET /users?email=` returns `{"data": [profile]}` only for an active,
+  verified user with effective access, otherwise `{"data": []}`.
+- `GET /users` (no `email`, admin only) returns `{"data": [...], "page",
+  "per_page", "total"}` listing users with any grant for the app
+  (pending/active/revoked) plus effective superadmins. `per_page` defaults to
+  50 and must be 1-100; optional `status=pending|active|revoked` filter.
+- `POST /users/resolve` body `{"subjects": ["<uuid>", ...]}` (<=100) returns
+  eligible users; admins additionally receive users holding a pending/revoked
+  grant. Unrelated users are never returned.
+- `PUT /users/<subject>/access` body `{"status": "active|pending|revoked",
+  "role": "<policy role>", "note": "..."}` updates only that app's grant.
+  Revoking/demoting an effective superadmin returns `403 superadmin_protected`;
+  revoking/demoting yourself returns `409 self_demotion_forbidden`; unknown
+  subjects return `404 not_found`.
+
+Errors: `401` for missing/invalid/expired/revoked tokens or disabled accounts;
+`403` with `error` of `client_identity_required`, `client_app_mismatch`,
+`insufficient_scope` (includes `required_scopes` and `missing_scopes`),
+`email_unverified`, `app_access_required` (includes `app_access`), or
+`app_role_required`; `404 unknown_app`; `400 invalid_request`.
+
 ## Rate Limiting (SuperAdmin only)
 
 ```
