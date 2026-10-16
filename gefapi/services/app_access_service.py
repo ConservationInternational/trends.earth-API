@@ -321,9 +321,9 @@ class AppAccessService:
 
 
 def _roles_for(app_key):
-    from gefapi.utils.app_access import APP_ROLES
+    from gefapi.utils.app_access import app_roles_for
 
-    return APP_ROLES.get(app_key, ())
+    return app_roles_for(app_key)
 
 
 __all__ = ["APP_KEYS", "AppAccessError", "AppAccessService"]

@@ -8,8 +8,10 @@ def error(status=400, detail="Bad Request"):
 
 
 endpoints = Blueprint("endpoints", __name__)
+import gefapi.routes.api.v1.account_profile  # noqa: E402
 import gefapi.routes.api.v1.admin  # noqa: E402
 import gefapi.routes.api.v1.app_access  # noqa: E402
+import gefapi.routes.api.v1.app_users  # noqa: E402
 import gefapi.routes.api.v1.boundaries  # noqa: E402
 import gefapi.routes.api.v1.bulk_email  # noqa: E402
 import gefapi.routes.api.v1.executions  # noqa: E402

@@ -48,6 +48,11 @@ from gefapi.services.oidc_service import (
 )
 from gefapi.services.user_service import UserService
 from gefapi.utils.app_access import app_label, has_app_access, valid_app_key
+from gefapi.utils.oidc_scopes import (
+    SUPPORTED_OIDC_SCOPES,
+    client_scope_error,
+    default_client_scopes,
+)
 from gefapi.utils.permissions import is_admin_or_higher
 from gefapi.utils.scopes import require_scope
 from gefapi.utils.security_events import log_security_event
@@ -105,7 +110,9 @@ def _app_access_denied_redirect(user, client, redirect_uri, state):
     The pending request is created *before* the redirect, so self-service
     provisioning and an ``access_denied`` response are not in tension: the
     application reads ``te_app_access`` to decide whether to show "request
-    submitted, awaiting approval" or "access removed".
+    submitted, awaiting approval" (``pending``), "access removed"
+    (``revoked``), or "try again later" (``unavailable``, when the request
+    could not be persisted).
     """
     app_key = client.required_app_key
     if not app_key or has_app_access(user, app_key):
@@ -113,18 +120,31 @@ def _app_access_denied_redirect(user, client, redirect_uri, state):
 
     from gefapi.services.app_access_service import AppAccessError, AppAccessService
 
-    access_state = "pending"
     try:
-        AppAccessService.request_access(user, app_key)
+        grant, _created = AppAccessService.request_access(user, app_key)
+        if grant.is_active:
+            return None
+        access_state = grant.status
     except AppAccessError as exc:
         access_state = exc.payload.get("status", "denied")
     except Exception:
+        # Never claim a request is pending unless it was actually persisted.
         logger.exception("Failed to record app access request for %s", app_key)
+        try:
+            db.session.rollback()
+        except Exception:  # the redirect must still be issued
+            logger.exception("Rollback after failed app access request failed")
+        access_state = "unavailable"
 
     label = app_label(app_key)
     if access_state == "pending":
         description = _(
             "Access to %(app)s is pending administrator approval.", app=label
+        )
+    elif access_state == "unavailable":
+        description = _(
+            "Access to %(app)s could not be checked right now. Please try again later.",
+            app=label,
         )
     else:
         description = _(
@@ -260,15 +280,23 @@ def register_client():
     post_logout_redirect_uris = data.get("post_logout_redirect_uris", [])
     if isinstance(post_logout_redirect_uris, str):
         post_logout_redirect_uris = [post_logout_redirect_uris]
-    scopes = data.get("scopes", ["openid", "email", "profile"])
-    if isinstance(scopes, str):
-        scopes = scopes.split()
     required_app_key = data.get("required_app_key") or None
     if required_app_key and not valid_app_key(required_app_key):
         return _oauth_error(
             "invalid_request",
             f"Unknown required_app_key '{required_app_key}'",
         )
+    scopes = data.get("scopes") or default_client_scopes(required_app_key)
+    if isinstance(scopes, str):
+        scopes = scopes.split()
+    if not isinstance(scopes, list) or not all(
+        isinstance(item, str) for item in scopes
+    ):
+        return _oauth_error("invalid_scope", "scopes must be a list of strings")
+    scopes = list(dict.fromkeys(scopes))
+    scope_error = client_scope_error(scopes, required_app_key)
+    if scope_error:
+        return _oauth_error("invalid_scope", scope_error)
     logo_url = data.get("logo_url") or None
     if logo_url and not valid_logo_url(logo_url):
         return _oauth_error(
@@ -314,7 +342,7 @@ def discovery():
         subject_types_supported=["public"],
         id_token_signing_alg_values_supported=["RS256"],
         token_endpoint_auth_methods_supported=["none", "client_secret_post"],
-        scopes_supported=["openid", "email", "profile"],
+        scopes_supported=list(SUPPORTED_OIDC_SCOPES),
         ui_locales_supported=list(SUPPORTED_LANGUAGES),
         claims_supported=[
             "iss",
@@ -538,6 +566,8 @@ def token():
         user = db.session.get(User, code.user_id)
         if not user or not user.is_active:
             return _oauth_error("invalid_grant", "User account is disabled")
+        if not user.email_verified:
+            return _oauth_error("invalid_grant", "User email is not verified")
         if client.required_app_key and not has_app_access(
             user, client.required_app_key
         ):
@@ -568,6 +598,8 @@ def token():
         refresh, user, scope = result
         if not user.is_active:
             return _oauth_error("invalid_grant", "User account is disabled")
+        if not user.email_verified:
+            return _oauth_error("invalid_grant", "User email is not verified")
         if client.required_app_key and not has_app_access(
             user, client.required_app_key
         ):

@@ -9,17 +9,14 @@ activated their access.  Gating is declared per OAuth client via
 Absence of a grant row means **no access**.  Nothing here ever default-allows.
 """
 
+from dataclasses import dataclass
 import functools
 import logging
 
 from flask import g, jsonify
 from flask_jwt_extended import current_user
 
-from gefapi.models.app_access import (
-    DEFAULT_APP_ROLE,
-    STATUS_ACTIVE,
-    UserAppAccess,
-)
+from gefapi.models.app_access import STATUS_ACTIVE, UserAppAccess
 from gefapi.utils.permissions import is_superadmin
 
 logger = logging.getLogger(__name__)
@@ -27,40 +24,125 @@ logger = logging.getLogger(__name__)
 APP_AVOIDED_EMISSIONS = "avoided_emissions"
 APP_RIO_COHERENCE = "rio_coherence"
 
-APP_KEYS = frozenset({APP_AVOIDED_EMISSIONS, APP_RIO_COHERENCE})
+# Fields an application-scoped profile response may contain.
+PROFILE_RESPONSE_FIELDS = (
+    "sub",
+    "email",
+    "email_verified",
+    "name",
+    "institution",
+    "active",
+    "app_access",
+    "app_role",
+)
 
-APP_LABELS = {
-    APP_AVOIDED_EMISSIONS: "Avoided Emissions",
-    APP_RIO_COHERENCE: "Rio Coherence",
+
+@dataclass(frozen=True)
+class AppPolicy:
+    """Explicit per-application vocabulary and capability policy.
+
+    Every capability must be declared; anything not declared is denied.
+    Construction fails when the policy is internally inconsistent so that a
+    misconfiguration cannot silently widen access.
+    """
+
+    label: str
+    roles: tuple
+    default_role: str
+    admin_roles: frozenset
+    superadmin_role: str
+    member_discovery: bool
+    directory_fields: tuple
+
+    def __post_init__(self):
+        if not self.roles or len(set(self.roles)) != len(self.roles):
+            raise ValueError("roles must be a non-empty tuple of unique names")
+        if self.default_role not in self.roles:
+            raise ValueError("default_role must be one of roles")
+        if not self.admin_roles or not set(self.admin_roles) <= set(self.roles):
+            raise ValueError("admin_roles must be a non-empty subset of roles")
+        if self.default_role in self.admin_roles:
+            raise ValueError("default_role must not be an administering role")
+        if self.superadmin_role not in self.admin_roles:
+            raise ValueError("superadmin_role must be an administering role")
+        if not isinstance(self.member_discovery, bool):
+            raise TypeError("member_discovery must be explicitly True or False")
+        fields = set(self.directory_fields)
+        if "sub" not in fields or not fields <= set(PROFILE_RESPONSE_FIELDS):
+            raise ValueError("directory_fields must include sub and known fields")
+
+
+# The application registry.  ``member_discovery`` controls whether ordinary
+# members may look up other eligible users (exact email / subject resolution);
+# application administrators always can.
+APP_POLICIES = {
+    APP_AVOIDED_EMISSIONS: AppPolicy(
+        label="Avoided Emissions",
+        roles=("member", "admin"),
+        default_role="member",
+        admin_roles=frozenset({"admin"}),
+        superadmin_role="admin",
+        member_discovery=False,
+        directory_fields=PROFILE_RESPONSE_FIELDS,
+    ),
+    APP_RIO_COHERENCE: AppPolicy(
+        label="Rio Coherence",
+        roles=("member", "admin"),
+        default_role="member",
+        admin_roles=frozenset({"admin"}),
+        superadmin_role="admin",
+        # Group owners add eligible members before their first Rio sign-in.
+        member_discovery=True,
+        directory_fields=PROFILE_RESPONSE_FIELDS,
+    ),
 }
 
+APP_KEYS = frozenset(APP_POLICIES)
+APP_LABELS = {key: policy.label for key, policy in APP_POLICIES.items()}
 # Per-application role vocabularies.  These replace each application's own
 # local role model so that no application needs a local user store.
-APP_ROLES = {
-    APP_AVOIDED_EMISSIONS: ("member", "admin"),
-    APP_RIO_COHERENCE: ("member", "admin"),
-}
+APP_ROLES = {key: policy.roles for key, policy in APP_POLICIES.items()}
+
+
+def get_app_policy(app_key):
+    """Return the :class:`AppPolicy` for *app_key*, or ``None`` when unknown."""
+    if not isinstance(app_key, str):
+        return None
+    return APP_POLICIES.get(app_key)
 
 
 def valid_app_key(app_key):
     """Return True when *app_key* names a known gated application."""
-    return app_key in APP_KEYS
+    return get_app_policy(app_key) is not None
 
 
 def app_label(app_key):
     """Return the human-readable label for *app_key*."""
-    return APP_LABELS.get(app_key, app_key)
+    policy = get_app_policy(app_key)
+    return policy.label if policy else app_key
+
+
+def app_roles_for(app_key):
+    """Return *app_key*'s role vocabulary (empty for unknown applications)."""
+    policy = get_app_policy(app_key)
+    return policy.roles if policy else ()
 
 
 def valid_app_role(app_key, role):
     """Return True when *role* is part of *app_key*'s role vocabulary."""
-    return role in APP_ROLES.get(app_key, ())
+    return role in app_roles_for(app_key)
 
 
 def default_role(app_key):
-    """Return the default role granted for *app_key*."""
-    roles = APP_ROLES.get(app_key, (DEFAULT_APP_ROLE,))
-    return DEFAULT_APP_ROLE if DEFAULT_APP_ROLE in roles else roles[0]
+    """Return the default role granted for *app_key* (``None`` if unknown)."""
+    policy = get_app_policy(app_key)
+    return policy.default_role if policy else None
+
+
+def is_admin_role(app_key, role):
+    """Return whether *role* administers *app_key*."""
+    policy = get_app_policy(app_key)
+    return bool(policy and role in policy.admin_roles)
 
 
 def get_grant(user_id, app_key):
@@ -91,16 +173,26 @@ def app_role(user, app_key):
     """Return *user*'s effective role within *app_key*, if they have access."""
     if user is None:
         return None
-    if (
-        getattr(user, "is_active", False)
-        and is_superadmin(user)
-        and valid_app_key(app_key)
-    ):
-        return "admin"
+    policy = get_app_policy(app_key)
+    if policy is None:
+        return None
+    if getattr(user, "is_active", False) and is_superadmin(user):
+        return policy.superadmin_role
     grant = get_grant(user.id, app_key)
     if grant is None or grant.status != STATUS_ACTIVE:
         return None
     return grant.role
+
+
+def is_app_admin(user, app_key):
+    """Return whether *user* currently administers *app_key*.
+
+    Reads the live grant (or effective superadmin status) on every call; a
+    global ``ADMIN`` role does not make a user an application administrator.
+    """
+    return has_app_access(user, app_key) and is_admin_role(
+        app_key, app_role(user, app_key)
+    )
 
 
 def _active_grants(user):
@@ -125,7 +217,7 @@ def active_app_keys(user):
 def active_app_roles(user):
     """Return ``{app_key: role}`` for every application *user* can access."""
     if user is not None and getattr(user, "is_active", False) and is_superadmin(user):
-        return dict.fromkeys(sorted(APP_KEYS), "admin")
+        return {key: APP_POLICIES[key].superadmin_role for key in sorted(APP_KEYS)}
     return {
         grant.app_key: grant.role
         for grant in _active_grants(user)

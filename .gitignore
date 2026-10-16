@@ -92,3 +92,4 @@ ENV/
 
 # Generated API documentation
 gefapi/static/swagger.json
+scripts/setup-oidc-redirect-variables.sh

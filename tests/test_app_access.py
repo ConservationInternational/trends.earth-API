@@ -564,6 +564,105 @@ def test_refresh_grant_is_denied_after_revocation(app, client, regular_user):
     assert response.get_json()["error"] in ("access_denied", "invalid_grant")
 
 
+def _unverify(user):
+    User.query.filter_by(id=user.id).update({"email_verified": False})
+    db.session.commit()
+
+
+def test_code_redemption_is_denied_after_email_unverified(app, client, regular_user):
+    import base64
+    import hashlib
+
+    oauth_client = _client(
+        "ae-unverify-code",
+        "ae-unverify-code-audience",
+        required_app_key=AE,
+        redirect="https://ae.test/cb",
+    )
+    _grant(regular_user, AE, status=STATUS_ACTIVE)
+    _verified(regular_user)
+    verifier = "v" * 64
+    challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
+        .rstrip(b"=")
+        .decode()
+    )
+    with client.session_transaction() as session:
+        session["oidc_login_csrf"] = "csrf"
+        session["oidc_user_id"] = str(regular_user.id)
+    response = client.post(
+        "/oauth/authorize",
+        data={
+            "client_id": oauth_client.client_id,
+            "redirect_uri": "https://ae.test/cb",
+            "scope": "openid email profile",
+            "state": "state-123",
+            "nonce": "nonce-123",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+            "login_csrf": "csrf",
+            "email": regular_user.email,
+            "password": USER_TEST_PASSWORD,
+        },
+    )
+    assert response.status_code == 302, response.get_data(as_text=True)[:300]
+    code = urllib.parse.parse_qs(
+        urllib.parse.urlparse(response.headers["Location"]).query
+    )["code"][0]
+
+    _unverify(regular_user)
+
+    response = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "client_id": oauth_client.client_id,
+            "code": code,
+            "redirect_uri": "https://ae.test/cb",
+            "code_verifier": verifier,
+        },
+    )
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "invalid_grant"
+    assert "access_token" not in response.get_json()
+
+
+@pytest.mark.parametrize("required_app_key", [None, AE])
+def test_refresh_grant_is_denied_after_email_unverified(
+    app, client, regular_user, required_app_key
+):
+    oauth_client = _client(
+        f"unverify-refresh-{required_app_key}",
+        f"unverify-refresh-audience-{required_app_key}",
+        required_app_key=required_app_key,
+    )
+    _grant(regular_user, AE, status=STATUS_ACTIVE)
+    _verified(regular_user)
+    refresh = create_oidc_refresh_token(regular_user, oauth_client, "openid email")
+
+    def _refresh(token):
+        return client.post(
+            "/oauth/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": oauth_client.client_id,
+                "refresh_token": token,
+            },
+        )
+
+    response = _refresh(refresh)
+    assert response.status_code == 200
+    rotated = response.get_json()["refresh_token"]
+
+    _unverify(regular_user)
+
+    response = _refresh(rotated)
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "invalid_grant"
+    assert "access_token" not in response.get_json()
+
+
 # ---------------------------------------------------------------------------
 # Admin and self-service routes
 # ---------------------------------------------------------------------------
