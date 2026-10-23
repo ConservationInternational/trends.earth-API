@@ -29,10 +29,16 @@ can be provisioned with the same script:
     TE_WEB_POST_LOGOUT_REDIRECT_URIS,
     AVOIDED_EMISSIONS_REDIRECT_URIS,
     AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS,
-    RIO_REDIRECT_URIS, RIO_POST_LOGOUT_REDIRECT_URIS
+    RIO_REDIRECT_URIS, RIO_POST_LOGOUT_REDIRECT_URIS,
+    RIO_STAGING_REDIRECT_URIS, RIO_STAGING_POST_LOGOUT_REDIRECT_URIS
+
+``rio-coherence-staging`` serves staging and local Rio instances.  It is gated
+by its own ``rio_coherence_staging`` app key, so testers sign in with their
+existing accounts but need a separate staging grant.
 
 The logo shown on the hosted sign-in/register pages can be set per client with
-API_UI_LOGO_URL, TE_WEB_LOGO_URL, AVOIDED_EMISSIONS_LOGO_URL, or RIO_LOGO_URL
+API_UI_LOGO_URL, TE_WEB_LOGO_URL, AVOIDED_EMISSIONS_LOGO_URL, RIO_LOGO_URL, or
+RIO_STAGING_LOGO_URL
 (an https URL or a /static/ path).  When unset, an existing logo is kept.
 """
 
@@ -46,7 +52,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from gefapi import app, db
 from gefapi.models import OAuthClient
 from gefapi.services.oidc_service import TRENDS_API_AUDIENCE, valid_logo_url
-from gefapi.utils.app_access import APP_AVOIDED_EMISSIONS, APP_RIO_COHERENCE
+from gefapi.utils.app_access import (
+    APP_AVOIDED_EMISSIONS,
+    APP_RIO_COHERENCE,
+    APP_RIO_COHERENCE_STAGING,
+)
 from gefapi.utils.oidc_scopes import (
     DEFAULT_APP_CLIENT_SCOPES,
     DEFAULT_CLIENT_SCOPES,
@@ -135,6 +145,22 @@ def client_definitions():
             ),
             "post_logout_redirect_uris": _uris(
                 "RIO_POST_LOGOUT_REDIRECT_URIS", ["http://localhost:3000/"]
+            ),
+        },
+        {
+            # Staging and local Rio instances; separate grants from production Rio.
+            "client_id": "rio-coherence-staging",
+            "name": "Rio Coherence (staging)",
+            "audience": "rio-coherence-staging",
+            "is_public": True,
+            "required_app_key": APP_RIO_COHERENCE_STAGING,
+            "scopes": list(DEFAULT_APP_CLIENT_SCOPES),
+            "logo_url": os.getenv("RIO_STAGING_LOGO_URL"),
+            "redirect_uris": _uris(
+                "RIO_STAGING_REDIRECT_URIS", ["http://localhost:3000/auth/callback"]
+            ),
+            "post_logout_redirect_uris": _uris(
+                "RIO_STAGING_POST_LOGOUT_REDIRECT_URIS", ["http://localhost:3000/"]
             ),
         },
     ]

@@ -38,7 +38,8 @@ def list_app_access():
     **Access**: ADMIN or SUPERADMIN
 
     **Query Parameters**:
-    - `app`: Filter by application key (`avoided_emissions`, `rio_coherence`)
+    - `app`: Filter by application key (`avoided_emissions`, `rio_coherence`,
+      `rio_coherence_staging`)
     - `status`: Filter by grant status (`pending`, `active`, `revoked`)
     - `role`: Filter by application role
     - `user_id`: Filter by user

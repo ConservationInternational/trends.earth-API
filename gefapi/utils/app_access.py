@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 APP_AVOIDED_EMISSIONS = "avoided_emissions"
 APP_RIO_COHERENCE = "rio_coherence"
+# Staging Rio deployments sign in with production accounts but need their own grants.
+APP_RIO_COHERENCE_STAGING = "rio_coherence_staging"
 
 # Fields an application-scoped profile response may contain.
 PROFILE_RESPONSE_FIELDS = (
@@ -92,6 +94,15 @@ APP_POLICIES = {
         admin_roles=frozenset({"admin"}),
         superadmin_role="admin",
         # Group owners add eligible members before their first Rio sign-in.
+        member_discovery=True,
+        directory_fields=PROFILE_RESPONSE_FIELDS,
+    ),
+    APP_RIO_COHERENCE_STAGING: AppPolicy(
+        label="Rio Coherence (staging)",
+        roles=("member", "admin"),
+        default_role="member",
+        admin_roles=frozenset({"admin"}),
+        superadmin_role="admin",
         member_discovery=True,
         directory_fields=PROFILE_RESPONSE_FIELDS,
     ),

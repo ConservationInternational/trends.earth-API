@@ -23,6 +23,7 @@ from gefapi.services.app_access_service import AppAccessError, AppAccessService
 from gefapi.services.oidc_service import create_oidc_refresh_token, issue_token
 from gefapi.services.refresh_token_service import RefreshTokenService
 from gefapi.utils.app_access import (
+    APP_KEYS,
     active_app_keys,
     active_app_roles,
     app_role,
@@ -101,8 +102,8 @@ def test_superadmin_has_effective_access_without_active_grants(
     assert has_app_access(superadmin_user, AE) is True
     assert has_app_access(superadmin_user, RIO) is True
     assert app_role(superadmin_user, AE) == "admin"
-    assert active_app_keys(superadmin_user) == sorted((AE, RIO))
-    assert active_app_roles(superadmin_user) == {AE: "admin", RIO: "admin"}
+    assert active_app_keys(superadmin_user) == sorted(APP_KEYS)
+    assert active_app_roles(superadmin_user) == dict.fromkeys(APP_KEYS, "admin")
 
 
 def test_app_access_guard_binds_client_to_registered_app(app, regular_user):
@@ -711,7 +712,7 @@ def test_admin_list_filters_by_status(app, client, auth_headers_admin, regular_u
 def test_user_can_view_and_request_own_access(app, client, auth_headers_user):
     response = client.get("/api/v1/user/me/app-access", headers=auth_headers_user)
     assert response.status_code == 200
-    assert {item["app_key"] for item in response.get_json()["data"]} == {AE, RIO}
+    assert {item["app_key"] for item in response.get_json()["data"]} == set(APP_KEYS)
 
     with patch.object(AppAccessService, "_dispatch_request_notification"):
         response = client.post(

@@ -13,7 +13,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "register_oidc_client
 
 BASE = ["openid", "email", "profile"]
 APP_SCOPES = ["app:read", "account:write", "app-users:read", "app-access:write"]
-GATED = ["rio-coherence", "avoided-emissions-web"]
+GATED = ["rio-coherence", "rio-coherence-staging", "avoided-emissions-web"]
 UNGATED = ["te-api-ui", "te-qgis-plugin", "te-web"]
 
 
@@ -42,6 +42,7 @@ def env(monkeypatch):
         "TE_WEB_LOGO_URL",
         "AVOIDED_EMISSIONS_LOGO_URL",
         "RIO_LOGO_URL",
+        "RIO_STAGING_LOGO_URL",
     ):
         monkeypatch.delenv(var, raising=False)
 
