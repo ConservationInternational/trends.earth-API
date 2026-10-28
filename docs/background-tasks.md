@@ -61,6 +61,34 @@ task attempts (`RESTART_LOOP_THRESHOLD`), the monitor marks it as failed.
 
 ## Celery Configuration
 
+### Credential-safe execution dispatch
+
+New Docker/GEE, AWS Batch, and openEO task messages contain only the execution
+ID. The worker loads the saved script, analysis parameters, and current owner
+credentials from the database, then builds the workload environment locally.
+Legacy `API_USER`/`API_PASSWORD` and the additive execution callback token remain
+available **inside workloads**; plugin and script parameter contracts are unchanged.
+Retries retain the ID-only request and resolve credentials again.
+
+Workers and beat start at INFO, without worker events. Sent-task and worker-task
+events are disabled by default. The task-failure reporter includes only the task
+ID, not argument bundles or exception values; Rollbar traceback-local capture is
+disabled so worker environment dictionaries cannot be exported as stack locals.
+Do not enable SDK/HTTP DEBUG logging against credential-bearing infrastructure
+requests.
+
+**Deployment order:** pause new execution submissions and periodic queue
+processing during the worker upgrade (the queue processor is itself worker
+code). Let in-flight queue-dispatch tasks finish, update **all** runner workers,
+then update API producers and resume queue processing/submissions. Updated
+workers still accept the old four-argument task format to drain pre-upgrade
+messages; old workers cannot consume the new ID-only format. Do not mix new
+producers with old runner workers. Pre-upgrade queued messages, broker snapshots,
+logs, event archives, and error reports can still contain credentials. Restrict
+access, review retention, and rotate potentially exposed credentials in
+coordination with running workloads. These changes do not erase historical
+telemetry or remove the separate retained risk from shared workload API passwords.
+
 Workers are configured via environment variables:
 
 - `REDIS_URL` — Redis connection string for Celery broker and result backend

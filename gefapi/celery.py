@@ -59,6 +59,11 @@ def make_celery(app):
     # limit when running with the default concurrency.
     celery.conf.worker_max_memory_per_child = 358400  # KB
 
+    # Workers only consume the "default" and "build" queues (see
+    # CELERY_WORKER_QUEUES), so unrouted tasks must not fall back to Celery's
+    # built-in "celery" queue, where they would never be processed.
+    celery.conf.task_default_queue = "default"
+
     # Configure task routing - build tasks go to build queue
     celery.conf.task_routes = {
         "gefapi.services.docker_service.docker_build": {"queue": "build"},
@@ -120,7 +125,7 @@ def make_celery(app):
         "gefapi.tasks.sparkpost_suppression_sync.sync_sparkpost_suppressions": {
             "queue": "default"
         },
-        # All other tasks use default queue
+        # All other tasks use task_default_queue ("default")
     }
 
     # Configure periodic tasks
