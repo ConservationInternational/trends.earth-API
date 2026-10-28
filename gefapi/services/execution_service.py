@@ -13,16 +13,22 @@ from gefapi.config import SETTINGS
 from gefapi.errors import (
     ExecutionNotFound,
     GeeTermsRequiredError,
+    InvalidExecutionParameters,
     ScriptNotFound,
     ScriptStateNotValid,
 )
 from gefapi.models import Execution, ExecutionLog, Script, StatusLog, User
-from gefapi.services.batch_service import batch_run
+from gefapi.services.batch_service import (
+    DEFAULT_BATCH_JOB_DEFINITION,
+    DEFAULT_BATCH_JOB_QUEUE,
+    batch_run,
+)
 from gefapi.services.docker_service import docker_run
 from gefapi.services.email_service import EmailService
 from gefapi.services.script_service import ScriptService
 from gefapi.services.user_service import UserService
 from gefapi.utils import mask_email
+from gefapi.utils.batch_policy import validate_batch_execution_params
 from gefapi.utils.permissions import is_admin_or_higher
 
 
@@ -318,6 +324,16 @@ class ExecutionService:
         if environment_password and "API_PASSWORD" not in environment:
             environment["API_PASSWORD"] = environment_password
 
+        if user:
+            from gefapi.services.execution_token_service import create_execution_token
+
+            environment["API_EXECUTION_TOKEN"] = create_execution_token(
+                execution_id, user
+            )
+            environment["API_EXECUTION_CALLBACK_PATH"] = (
+                f"/api/v1/execution/{execution_id}/callback"
+            )
+
         # Add GEE authentication based on user's credential type
         if user and user.has_gee_credentials():
             if user.gee_credentials_type == "oauth":
@@ -367,6 +383,12 @@ class ExecutionService:
                 if service_account_data:
                     import base64
                     import json
+
+                    from gefapi.services.gee_service import GEEService
+
+                    service_account_data = GEEService.sanitize_service_account_key(
+                        service_account_data
+                    )
 
                     # Encode service account as base64 for container
                     service_account_json = json.dumps(service_account_data)
@@ -738,6 +760,29 @@ class ExecutionService:
             raise ScriptStateNotValid(
                 message="Script with id " + script_id + " is not BUILT"
             )
+        if ExecutionService._is_batch_environment(script):
+            validate_batch_execution_params(
+                params,
+                script,
+                default_queue=DEFAULT_BATCH_JOB_QUEUE,
+                default_definition=DEFAULT_BATCH_JOB_DEFINITION,
+            )
+
+        if user.gee_credentials_type == "service_account":
+            from gefapi.services.gee_service import GEEService
+
+            try:
+                GEEService.sanitize_service_account_key(user.get_gee_service_account())
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "[SECURITY]: Invalid stored GEE service-account credentials"
+                )
+                raise InvalidExecutionParameters(
+                    message=(
+                        "Please replace unsupported GEE service-account "
+                        f"credentials: {e}"
+                    )
+                ) from e
 
         # Enforce GEE terms acceptance for scripts that use GEE
         gee_enforcement = SETTINGS.get("GEE_TERMS_ENFORCEMENT_ENABLED", False)

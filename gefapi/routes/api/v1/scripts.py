@@ -5,6 +5,7 @@ publishing, and retrieval operations.
 """
 
 from datetime import UTC
+from functools import wraps
 import logging
 import os
 import tempfile
@@ -14,16 +15,35 @@ from flask import jsonify, request, send_from_directory
 from flask_jwt_extended import current_user, jwt_required
 
 from gefapi import db
-from gefapi.errors import InvalidFile, NotAllowed, ScriptDuplicated, ScriptNotFound
+from gefapi.errors import (
+    InvalidExecutionParameters,
+    InvalidFile,
+    NotAllowed,
+    ScriptDuplicated,
+    ScriptNotFound,
+)
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.s3 import get_script_from_s3
 from gefapi.services import ScriptService
+from gefapi.utils.batch_policy import validate_batch_policy
 from gefapi.utils.bearer_auth import bearer_required
 from gefapi.utils.permissions import can_access_admin_features, is_admin_or_higher
 from gefapi.utils.scopes import require_scope
 from gefapi.validators import validate_file
 
 logger = logging.getLogger()
+
+
+def _authorize_execution_include(fn):
+    protected = require_scope("execution:read")(fn)
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if "executions" in request.args.get("include", "").split(","):
+            return protected(*args, **kwargs)
+        return fn(*args, **kwargs)
+
+    return wrapper
 
 
 # SCRIPT CREATION
@@ -236,6 +256,7 @@ def export_scripts_csv():
 @endpoints.route("/script", strict_slashes=False, methods=["GET"])
 @jwt_required()
 @require_scope("script:read")
+@_authorize_execution_include
 def get_scripts():
     """
     Retrieve all scripts with flexible filtering, sorting, and pagination.
@@ -369,6 +390,7 @@ def get_scripts():
 @endpoints.route("/script/<script>", strict_slashes=False, methods=["GET"])
 @bearer_required()
 @require_scope("script:read")
+@_authorize_execution_include
 def get_script(script):
     """
     Retrieve details for a specific script by ID or slug.
@@ -835,6 +857,10 @@ def update_script_config(script):
     - `name`: Script display name
     - `description`: Script description text
     - `uses_gee`: Whether the script uses Google Earth Engine (boolean)
+    - `batch_execution_config`: Publisher-approved commands and alternate
+      queues/definitions (admin only)
+    - `batch_image`, `batch_job_queue`, `batch_job_definition`: Trusted Batch
+      infrastructure configuration (admin only)
 
     **Error Responses**:
     - `400 Bad Request`: No valid fields provided
@@ -865,6 +891,28 @@ def update_script_config(script):
     import datetime
 
     updated = False
+    batch_fields = {
+        "batch_execution_config",
+        "batch_image",
+        "batch_job_queue",
+        "batch_job_definition",
+    }
+    if batch_fields & data.keys():
+        if not is_admin_or_higher(user):
+            return error(status=403, detail="Only admins can change Batch policy")
+        try:
+            if "batch_execution_config" in data:
+                validate_batch_policy(data["batch_execution_config"])
+            for key in batch_fields - {"batch_execution_config"}:
+                if key in data and (
+                    not isinstance(data[key], str) or not data[key].strip()
+                ):
+                    return error(status=400, detail=f"{key} must be a nonempty string")
+        except InvalidExecutionParameters as e:
+            return error(status=400, detail=e.message)
+        for key in batch_fields & data.keys():
+            setattr(target_script, key, data[key])
+        updated = True
     if data.get("name"):
         target_script.name = data["name"]
         updated = True

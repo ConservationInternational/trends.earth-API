@@ -3,6 +3,8 @@
 import datetime
 import uuid
 
+from sqlalchemy.dialects.postgresql import JSONB
+
 from gefapi import db
 from gefapi.models import GUID
 from gefapi.utils.permissions import is_admin_or_higher
@@ -64,6 +66,7 @@ class Script(db.Model):
     batch_job_queue = db.Column(db.String(255), default=None)
     # Full container image URI for batch execution (e.g. ECR URI)
     batch_image = db.Column(db.String(512), default=None)
+    batch_execution_config = db.Column(JSONB, nullable=True)
     # Optional build error field for reporting build failures
     build_error = db.Column(db.Text(), default=None)
     # Whether this script uses Google Earth Engine
@@ -99,6 +102,7 @@ class Script(db.Model):
         uses_gee=True,
         openeo_backend_url=None,
         required_app_key=None,
+        batch_execution_config=None,
     ):
         self.name = name
         self.slug = slug
@@ -113,6 +117,7 @@ class Script(db.Model):
         self.batch_job_definition = batch_job_definition
         self.batch_job_queue = batch_job_queue
         self.batch_image = batch_image
+        self.batch_execution_config = batch_execution_config
         self.allowed_roles = allowed_roles
         self.allowed_users = allowed_users
         self.restricted = restricted
@@ -299,7 +304,7 @@ class Script(db.Model):
         if "user_email" in include and (not user or is_admin_or_higher(user)):
             script["user_email"] = getattr(self.user, "email", None)
         if "executions" in include:
-            script["executions"] = self.serialize_executions
+            script["executions"] = self.serialize_executions(user)
         if "environment" in include:
             script["environment"] = self.environment
             script["environment_version"] = self.environment_version
@@ -308,6 +313,7 @@ class Script(db.Model):
                 script["batch_job_definition"] = self.batch_job_definition
                 script["batch_job_queue"] = self.batch_job_queue
                 script["batch_image"] = self.batch_image
+                script["batch_execution_config"] = self.batch_execution_config
             if self.compute_type == "openeo":
                 script["openeo_backend_url"] = self.openeo_backend_url
         if "access_control" in include:
@@ -337,7 +343,13 @@ class Script(db.Model):
         """Serialize Logs"""
         return [item.serialize() for item in self.logs]
 
-    @property
-    def serialize_executions(self):
-        """Serialize Logs"""
-        return [item.serialize() for item in self.executions]
+    def serialize_executions(self, user=None):
+        """Nested execution access follows the direct execution ownership policy."""
+        if user is None:
+            return []
+        executions = self.executions
+        if not is_admin_or_higher(user):
+            from gefapi.models.execution import Execution
+
+            executions = executions.filter(Execution.user_id == user.id)
+        return [item.serialize(user=user) for item in executions]

@@ -17,6 +17,7 @@ from gefapi import db, limiter
 from gefapi.config import SETTINGS
 from gefapi.models import User
 from gefapi.routes.api.v1 import endpoints, error
+from gefapi.services.bulk_email_service import _unsubscribe_secret
 from gefapi.utils import utcnow
 from gefapi.utils.rate_limiting import (
     RateLimitConfig,
@@ -38,17 +39,31 @@ def _decode_unsubscribe_token(token):
     """Decode and validate an unsubscribe JWT.
 
     Returns (user_id_str, error_response) — exactly one will be non-None.
-    Uses UNSUBSCRIBE_JWT_SECRET when set (falling back to JWT_SECRET_KEY) so
-    that the two token lifecycles remain independent.
+    Accepts the historical API-key signature only here, for links generated
+    before the unsubscribe key was separated from API authentication.
     """
-    secret = SETTINGS.get("UNSUBSCRIBE_JWT_SECRET") or SETTINGS.get("JWT_SECRET_KEY")
+    secret = _unsubscribe_secret()
+    legacy_secret = SETTINGS.get("JWT_SECRET_KEY")
     if not secret:
         return None, error(500, "Server misconfiguration: JWT secret not set.")
-    try:
-        payload = pyjwt.decode(token, secret, algorithms=["HS256"])
-    except pyjwt.ExpiredSignatureError:
+
+    secrets = [secret]
+    if legacy_secret and legacy_secret != secret:
+        secrets.append(legacy_secret)
+    payload = None
+    expired = False
+    for signing_secret in secrets:
+        try:
+            payload = pyjwt.decode(token, signing_secret, algorithms=["HS256"])
+            break
+        except pyjwt.ExpiredSignatureError:
+            expired = True
+        except pyjwt.InvalidTokenError:
+            continue
+
+    if payload is None and expired:
         return None, error(400, "Unsubscribe link has expired. Please contact support.")
-    except pyjwt.InvalidTokenError:
+    if payload is None:
         return None, error(400, "Invalid or malformed unsubscribe token.")
 
     if payload.get("purpose") != "unsubscribe":

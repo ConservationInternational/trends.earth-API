@@ -7,7 +7,7 @@ import os
 import re
 import tempfile
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import rollbar
 
@@ -15,6 +15,51 @@ from gefapi.config import SETTINGS
 from gefapi.utils import mask_email
 
 logger = logging.getLogger(__name__)
+
+_GOOGLE_SERVICE_ACCOUNT_TOKEN_URI = "https://oauth2.googleapis.com/token"
+_GOOGLE_SERVICE_ACCOUNT_TOKEN_URIS = frozenset(
+    {
+        _GOOGLE_SERVICE_ACCOUNT_TOKEN_URI,
+        "https://accounts.google.com/o/oauth2/token",
+        "https://www.googleapis.com/oauth2/v4/token",
+    }
+)
+
+
+def _service_account_credentials(service_account_data):
+    """Build credentials whose token refresh cannot follow HTTP redirects."""
+    from google.auth.transport.requests import Request
+    from google.oauth2 import service_account
+    import requests
+
+    class PinnedServiceAccountCredentials(service_account.Credentials):
+        def refresh(self, request):
+            # EE may supply either a requests or httplib2 transport. Use our own
+            # transport so redirect protection is independent of that choice.
+            with requests.Session() as session:
+                token_request = Request(session=session)
+
+                def trusted_request(url, **kwargs):
+                    if url != _GOOGLE_SERVICE_ACCOUNT_TOKEN_URI:
+                        raise RefreshError(
+                            "Service account refresh requires the standard "
+                            "Google HTTPS token endpoint."
+                        )
+                    kwargs["allow_redirects"] = False
+                    response = token_request(url, **kwargs)
+                    if 300 <= response.status < 400:
+                        raise RefreshError(
+                            "Google service account token endpoint returned a "
+                            "redirect; redirects are not permitted."
+                        )
+                    return response
+
+                return super().refresh(trusted_request)
+
+    return PinnedServiceAccountCredentials.from_service_account_info(
+        service_account_data, scopes=ee.oauth.SCOPES
+    )
+
 
 # Import ee at module level for test mocking, but allow ImportError
 try:
@@ -69,6 +114,17 @@ class GEEService:
         try:
             if ee is None:
                 logger.error("Google Earth Engine API not available")
+                return False
+            # Stored keys may predate upload validation. Reject unsafe keys even
+            # when process-global Earth Engine credentials are already initialized.
+            if (
+                user
+                and user.has_gee_credentials()
+                and user.gee_credentials_type == "service_account"
+                and not GEEService.validate_service_account_key(
+                    user.get_gee_service_account()
+                )
+            ):
                 return False
             # Check if already initialized by making a simple API call
             try:
@@ -283,37 +339,16 @@ class GEEService:
                 )
                 return False
 
-            # Validate service account data structure
-            required_fields = ["client_email", "private_key", "type"]
-            if not all(field in service_account_data for field in required_fields):
-                logger.error(
-                    f"Invalid service account data for user {mask_email(user.email)}"
-                )
-                return False
-
-            # Write service account data to a temporary file
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".json", delete=False
-            ) as temp_file:
-                json.dump(service_account_data, temp_file)
-                temp_key_path = temp_file.name
-
-            try:
-                # Initialize Earth Engine with user service account
-                service_account_email = service_account_data["client_email"]
-                credentials = ee.ServiceAccountCredentials(  # type: ignore[attr-defined]
-                    service_account_email, temp_key_path
-                )  # type: ignore
-                ee.Initialize(credentials)  # type: ignore
-                logger.info(
-                    f"Successfully initialized Google Earth Engine with "
-                    f"service account for user {user.email}"
-                )
-                return True
-            finally:
-                # Clean up the temporary file
-                with contextlib.suppress(Exception):
-                    os.unlink(temp_key_path)
+            service_account_data = GEEService.sanitize_service_account_key(
+                service_account_data
+            )
+            credentials = _service_account_credentials(service_account_data)
+            ee.Initialize(credentials)  # type: ignore
+            logger.info(
+                f"Successfully initialized Google Earth Engine with "
+                f"service account for user {user.email}"
+            )
+            return True
 
         except Exception as e:
             logger.error(
@@ -326,49 +361,119 @@ class GEEService:
     def validate_service_account_key(service_account_data: dict[str, Any]) -> bool:
         """Validate a service account key structure and basic functionality"""
         try:
-            # Check required fields
-            required_fields = [
-                "type",
-                "project_id",
-                "private_key_id",
-                "private_key",
-                "client_email",
-                "client_id",
-                "auth_uri",
-                "token_uri",
-            ]
-
-            if not all(field in service_account_data for field in required_fields):
-                missing_fields = [
-                    field
-                    for field in required_fields
-                    if field not in service_account_data
-                ]
-                logger.error(
-                    f"Service account key missing required fields: {missing_fields}"
-                )
-                return False
-
-            # Check that it's a service account
-            if service_account_data.get("type") != "service_account":
-                logger.error("Invalid service account type")
-                return False
-
-            # Basic format validation
-            client_email = service_account_data.get("client_email", "")
-            if not client_email or "@" not in client_email:
-                logger.error("Invalid client email format")
-                return False
-
-            if not service_account_data.get("private_key", "").startswith("-----BEGIN"):
-                logger.error("Invalid private key format")
-                return False
-
+            GEEService.sanitize_service_account_key(service_account_data)
             return True
-
         except Exception as e:
             logger.error(f"Error validating service account key: {e}")
             return False
+
+    @staticmethod
+    def sanitize_service_account_key(
+        service_account_data: dict[str, Any],
+    ) -> dict[str, str]:
+        """Return a validated copy suitable for API or workload credentials.
+
+        Call before serializing stored user keys into EE_SERVICE_ACCOUNT_JSON;
+        loading a stored document does not imply it passed upload validation.
+        The result pins Google's token endpoint and universe and excludes
+        optional fields that might influence credential loading.
+
+        Raises:
+            TypeError: If the document is not a JSON object.
+            ValueError: If its schema, universe, or endpoints are unsupported.
+        """
+        return GEEService._validated_service_account_key(service_account_data)
+
+    @staticmethod
+    def _validated_service_account_key(
+        service_account_data: dict[str, Any],
+    ) -> dict[str, str]:
+        """Validate uploaded or stored keys and pin their effective token URI."""
+        if not isinstance(service_account_data, dict):
+            raise TypeError("Service account key must be a JSON object.")
+
+        required_fields = {
+            "type",
+            "project_id",
+            "private_key_id",
+            "private_key",
+            "client_email",
+            "client_id",
+            "auth_uri",
+            "token_uri",
+        }
+        optional_fields = {
+            "auth_provider_x509_cert_url",
+            "client_x509_cert_url",
+            "universe_domain",
+        }
+        missing_fields = required_fields - service_account_data.keys()
+        if missing_fields:
+            raise ValueError(
+                f"Service account key missing required fields: {sorted(missing_fields)}"
+            )
+        if service_account_data.keys() - required_fields - optional_fields:
+            raise ValueError(
+                "Unsupported service account fields. Upload a standard Google "
+                "service account JSON key, not external or impersonated credentials."
+            )
+        if any(
+            not isinstance(value, str) or not value.strip()
+            for value in service_account_data.values()
+        ):
+            raise ValueError("Service account key fields must be nonempty strings.")
+        if service_account_data["type"] != "service_account":
+            raise ValueError("Credential type must be service_account.")
+        client_email = service_account_data["client_email"]
+        if not re.fullmatch(r"[^@\s/]+@[^@\s/]+", client_email):
+            raise ValueError("Invalid service account client email format.")
+        if not service_account_data["private_key"].startswith("-----BEGIN"):
+            raise ValueError("Invalid service account private key format.")
+        if service_account_data.get("universe_domain", "googleapis.com") != (
+            "googleapis.com"
+        ):
+            raise ValueError(
+                "Unsupported service account universe_domain; only googleapis.com "
+                "is supported."
+            )
+        if service_account_data["token_uri"] not in _GOOGLE_SERVICE_ACCOUNT_TOKEN_URIS:
+            raise ValueError(
+                "Unsupported service account token_uri; use "
+                "https://oauth2.googleapis.com/token."
+            )
+        if service_account_data["auth_uri"] != (
+            "https://accounts.google.com/o/oauth2/auth"
+        ):
+            raise ValueError(
+                "Unsupported service account auth_uri; use "
+                "https://accounts.google.com/o/oauth2/auth."
+            )
+        if (
+            service_account_data.get(
+                "auth_provider_x509_cert_url",
+                "https://www.googleapis.com/oauth2/v1/certs",
+            )
+            != "https://www.googleapis.com/oauth2/v1/certs"
+        ):
+            raise ValueError("Unsupported service account auth_provider_x509_cert_url.")
+        cert_prefix = "https://www.googleapis.com/robot/v1/metadata/x509/"
+        if "client_x509_cert_url" in service_account_data and service_account_data[
+            "client_x509_cert_url"
+        ] not in {
+            cert_prefix + quote(client_email, safe=""),
+            cert_prefix + quote(client_email, safe="@"),
+        }:
+            raise ValueError(
+                "Unsupported service account client_x509_cert_url; use the "
+                "standard Google certificate URL for this client_email."
+            )
+
+        # Do not let optional uploaded fields influence google-auth behavior.
+        return {
+            **{field: service_account_data[field] for field in required_fields},
+            "token_uri": _GOOGLE_SERVICE_ACCOUNT_TOKEN_URI,
+            "universe_domain": "googleapis.com",
+        }
 
     @staticmethod
     def extract_gee_task_ids_from_logs(execution_logs: list[str]) -> list[str]:

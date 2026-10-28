@@ -47,6 +47,10 @@ class ScriptStateNotValid(Error):
     pass
 
 
+class InvalidExecutionParameters(Error):
+    pass
+
+
 class EmailError(Error):
     pass
 

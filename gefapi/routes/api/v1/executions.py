@@ -5,16 +5,19 @@ logs retrieval, and execution lifecycle management.
 """
 
 from datetime import UTC
+from functools import wraps
 import logging
 
 import dateutil.parser
 from flask import Response, json, jsonify, request
 from flask_jwt_extended import current_user, jwt_required
+import jwt
 
 from gefapi import limiter
 from gefapi.errors import (
     ExecutionNotFound,
     GeeTermsRequiredError,
+    InvalidExecutionParameters,
     ScriptNotFound,
     ScriptStateNotValid,
 )
@@ -31,6 +34,57 @@ from gefapi.utils.scopes import require_scope
 from gefapi.validators import validate_execution_log_creation, validate_execution_update
 
 logger = logging.getLogger()
+
+
+def _execution_callback_required(fn):
+    @wraps(fn)
+    def wrapper(execution):
+        from gefapi.services.execution_token_service import verify_execution_token
+
+        scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+        if scheme.lower() != "bearer" or not token:
+            return error(status=401, detail="Execution callback credential required")
+        try:
+            verify_execution_token(token, execution)
+        except jwt.InvalidTokenError:
+            logger.warning("[SECURITY]: Invalid execution callback credential")
+            return error(status=401, detail="Invalid execution callback credential")
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return error(status=400, detail="JSON object required")
+        return fn(execution)
+
+    return wrapper
+
+
+@endpoints.route("/execution/<execution>/callback", methods=["PATCH"])
+@_execution_callback_required
+@validate_execution_update
+def execution_callback(execution):
+    """Update only the execution identified by an execution-bound credential."""
+    body = request.get_json()
+    if body.keys() - {"status", "progress", "results"}:
+        return error(status=400, detail="Unsupported callback fields")
+    try:
+        updated = ExecutionService.update_execution(body, execution)
+    except ExecutionNotFound as e:
+        return error(status=404, detail=e.message)
+    return jsonify(data=updated.serialize()), 200
+
+
+@endpoints.route("/execution/<execution>/callback/log", methods=["POST"])
+@_execution_callback_required
+@validate_execution_log_creation
+def execution_log_callback(execution):
+    """Append a log only to the credential's execution."""
+    body = request.get_json()
+    if body.keys() - {"text", "level"}:
+        return error(status=400, detail="Unsupported callback log fields")
+    try:
+        log = ExecutionService.create_execution_log(body, execution)
+    except ExecutionNotFound as e:
+        return error(status=404, detail=e.message)
+    return jsonify(data=log.serialize()), 200
 
 
 # SCRIPT EXECUTION
@@ -148,6 +202,8 @@ def run_script(script):
         return error(status=404, detail=e.message)
     except ScriptStateNotValid as e:
         logger.error("[ROUTER]: " + e.message)
+        return error(status=400, detail=e.message)
+    except InvalidExecutionParameters as e:
         return error(status=400, detail=e.message)
     except GeeTermsRequiredError as e:
         logger.warning("[ROUTER]: GEE terms not accepted by user %s", user.email)

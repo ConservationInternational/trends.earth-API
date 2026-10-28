@@ -290,9 +290,17 @@ class TestInitializeEEDispatch:
         """For service_account credential type, the SA path is used."""
         with app.app_context():
             user = _make_user()
-            user.gee_credentials_type = "service_account"
-            user.gee_service_account_key = user._encrypt_gee_data(
-                '{"client_email": "test@sa.com"}'
+            user.set_gee_service_account(
+                {
+                    "type": "service_account",
+                    "project_id": "test-project",
+                    "private_key_id": "test-key-id",
+                    "private_key": "-----BEGIN PRIVATE KEY-----\ntest\n",
+                    "client_email": "test@test-project.iam.gserviceaccount.com",
+                    "client_id": "12345",
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                }
             )
 
             mock_ee.data.listOperations.side_effect = Exception("not init")

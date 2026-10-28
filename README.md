@@ -65,6 +65,7 @@ Full documentation is in the [`docs/`](docs/) directory:
 - [Background Tasks](docs/background-tasks.md) — Celery tasks and Docker service monitoring
 - [Development Guide](docs/development.md) — Local setup, testing, migrations, and troubleshooting
 - [Deployment Guide](docs/deployment/README.md) — Production deployment on AWS
+- [Security Review](SECURITY-REVIEW.md) — Findings, fixes, and compatibility rollout
 
 ## Contributing
 

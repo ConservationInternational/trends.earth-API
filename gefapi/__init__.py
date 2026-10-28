@@ -1117,13 +1117,37 @@ def is_token_in_blocklist(jti: str) -> bool:
     return jti in _revoked_tokens
 
 
+def _is_access_jwt_payload(jwt_payload):
+    purpose = jwt_payload.get("purpose")
+    return (
+        jwt_payload.get("type") == "access"
+        and isinstance(jwt_payload.get("jti"), str)
+        and bool(jwt_payload["jti"])
+        and purpose in (None, "access")
+    )
+
+
+@jwt.decode_key_loader
+def decode_access_jwt_key(jwt_header, unverified_payload):
+    """Return the API key only for raw payloads shaped like access JWTs.
+
+    Flask-JWT-Extended fills missing ``type`` and ``jti`` before later
+    callbacks run, so these checks must inspect the raw payload here.
+    """
+    from flask_jwt_extended.default_callbacks import default_decode_key_callback
+    from flask_jwt_extended.exceptions import JWTDecodeError
+
+    if not _is_access_jwt_payload(unverified_payload):
+        raise JWTDecodeError("Invalid access token claims")
+    return default_decode_key_callback(jwt_header, unverified_payload)
+
+
 @jwt.token_in_blocklist_loader
 def check_if_token_in_blocklist(jwt_header, jwt_payload):
-    """Check if JWT access token has been revoked."""
-    jti = jwt_payload.get("jti")
-    if not jti:
-        return False
-    return is_token_in_blocklist(jti)
+    """Reject malformed or non-access JWTs, then check access-token revocation."""
+    if not _is_access_jwt_payload(jwt_payload):
+        return True
+    return is_token_in_blocklist(jwt_payload["jti"])
 
 
 from gefapi.errors import AccountLockedError  # noqa:E402
@@ -1305,7 +1329,9 @@ def logout_all():
 
 @jwt.user_lookup_loader
 def user_lookup_callback(_jwt_header, jwt_data):
-    identity = jwt_data["sub"]
+    identity = jwt_data.get("sub")
+    if not identity:
+        return None
     user = User.query.filter_by(id=identity, is_active=True).one_or_none()
     if user and jwt_data.get("auth_version", 0) != user.auth_version:
         return None
@@ -1346,7 +1372,7 @@ def missing_token_callback(error_message):
 @jwt.revoked_token_loader
 def revoked_token_callback(jwt_header, jwt_payload):
     """Handle revoked JWT tokens with consistent error response."""
-    jti = jwt_payload.get("jti", "unknown")
+    jti = jwt_payload.get("jti") or "unknown"
     logger.info(f"[JWT]: Revoked token access attempt: {jti[:8]}...")
     return jsonify(
         {"status": 401, "detail": "Token has been revoked", "error": "token_revoked"}

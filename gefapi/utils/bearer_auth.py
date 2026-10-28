@@ -74,6 +74,14 @@ def _verify_oidc_access_token():
     except (JoseError, ValueError, TypeError, KeyError):
         return None
 
+    if (
+        claims.get("token_use") != "access_token"
+        or not isinstance(claims.get("jti"), str)
+        or not claims["jti"]
+        or claims.get("purpose") not in (None, "access")
+    ):
+        return None
+
     client = access_token_client(claims)
     if client is None:
         return None

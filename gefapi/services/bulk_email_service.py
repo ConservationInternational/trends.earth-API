@@ -1,6 +1,8 @@
 """BULK EMAIL SERVICE"""
 
 import datetime
+import hashlib
+import hmac
 import logging
 
 import jwt as pyjwt
@@ -162,11 +164,21 @@ def _api_ui_url():
 def _unsubscribe_secret():
     """Return the JWT secret for unsubscribe tokens.
 
-    Uses the dedicated UNSUBSCRIBE_JWT_SECRET when set, falling back to
-    JWT_SECRET_KEY.  Keeping these separate means rotating the auth secret
-    does not invalidate outstanding unsubscribe links.
+    Prefer the dedicated secret. When it is not configured, derive a
+    domain-separated key so unsubscribe tokens cannot authenticate to the API.
     """
-    return SETTINGS.get("UNSUBSCRIBE_JWT_SECRET") or SETTINGS.get("JWT_SECRET_KEY")
+    secret = SETTINGS.get("UNSUBSCRIBE_JWT_SECRET")
+    if secret:
+        return secret
+
+    api_secret = SETTINGS.get("JWT_SECRET_KEY")
+    if not api_secret:
+        return None
+    return hmac.new(
+        str(api_secret).encode("utf-8"),
+        b"trends.earth:unsubscribe:v1",
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def _generate_unsubscribe_token(user_id):

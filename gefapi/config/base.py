@@ -62,6 +62,10 @@ SETTINGS = {
     "SECRET_KEY": os.getenv("SECRET_KEY"),
     "SESSION_SECRET_KEY": os.getenv("SESSION_SECRET_KEY"),
     "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY"),
+    "EXECUTION_TOKEN_SECRET": os.getenv("EXECUTION_TOKEN_SECRET"),
+    "EXECUTION_TOKEN_TTL_SECONDS": int(
+        os.getenv("EXECUTION_TOKEN_TTL_SECONDS", "604800")
+    ),
     "DOCKER_HOST": os.getenv("DOCKER_HOST"),
     "REGISTRY_URL": os.getenv("REGISTRY_URL"),
     # Orchestrator type: "docker" (Docker Swarm, current) or "k8s" (Kubernetes, future)

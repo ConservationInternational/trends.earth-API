@@ -18,6 +18,7 @@ from gefapi.errors import InvalidFile, NotAllowed, ScriptDuplicated, ScriptNotFo
 from gefapi.models import Script, ScriptLog, User
 from gefapi.s3 import push_script_to_s3
 from gefapi.services.docker_service import docker_build
+from gefapi.utils.batch_policy import validate_batch_policy
 from gefapi.utils.permissions import is_admin_or_higher
 
 # Security: Explicitly allowed fields for filter and sort operations
@@ -96,6 +97,14 @@ class ScriptService:
                 batch_job_definition = config.get("batch_job_definition", None)
                 batch_job_queue = config.get("batch_job_queue", None)
                 batch_image = config.get("batch_image", None)
+                batch_execution_config = config.get("batch_execution_config", None)
+                if batch_execution_config is not None:
+                    from gefapi.errors import InvalidExecutionParameters
+
+                    try:
+                        validate_batch_policy(batch_execution_config)
+                    except InvalidExecutionParameters as e:
+                        raise InvalidFile(message=e.message) from e
                 uses_gee = config.get("uses_gee", True)
                 openeo_backend_url = config.get("openeo_backend_url", None)
         except Exception:
@@ -132,6 +141,7 @@ class ScriptService:
                 batch_job_definition=batch_job_definition,
                 batch_job_queue=batch_job_queue,
                 batch_image=batch_image,
+                batch_execution_config=batch_execution_config,
                 uses_gee=uses_gee,
                 openeo_backend_url=openeo_backend_url,
             )
@@ -160,6 +170,8 @@ class ScriptService:
                 script.batch_job_queue = batch_job_queue
             if batch_image is not None:
                 script.batch_image = batch_image
+            if batch_execution_config is not None:
+                script.batch_execution_config = batch_execution_config
             if uses_gee is not None:
                 script.uses_gee = uses_gee
             openeo_backend_url = config.get("openeo_backend_url", None)

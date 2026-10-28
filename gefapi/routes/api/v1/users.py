@@ -4,7 +4,7 @@ from datetime import UTC
 import logging
 
 from flask import jsonify, request
-from flask_jwt_extended import current_user, jwt_required
+from flask_jwt_extended import current_user, get_jwt, jwt_required
 
 from gefapi import limiter
 from gefapi.errors import (
@@ -32,7 +32,7 @@ from gefapi.utils.rate_limiting import (
     get_non_exempt_key,
     is_rate_limiting_disabled,
 )
-from gefapi.utils.scopes import require_scope
+from gefapi.utils.scopes import _has_scope, require_scope
 from gefapi.validators import validate_user_creation, validate_user_update
 
 logger = logging.getLogger()
@@ -114,7 +114,10 @@ def create_user():
     if identity:
         user_role = body.get("role", "USER")
         # Only superadmin can create admin or superadmin users
-        if user_role in ["ADMIN", "SUPERADMIN"] and not can_change_user_role(identity):
+        if user_role in ["ADMIN", "SUPERADMIN"] and (
+            not can_change_user_role(identity)
+            or not _has_scope("admin:write", get_jwt())
+        ):
             return error(status=403, detail="Forbidden")
     else:
         body["role"] = "USER"

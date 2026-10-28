@@ -936,7 +936,7 @@ def batch_run(self, execution_id, image, environment, params):
 
     The job definition and queue are resolved (in priority order) from:
 
-    1. ``params["batch"]`` override block
+    1. ``params["batch"]`` values approved by the script's execution policy
     2. The Script model's ``batch_job_definition`` / ``batch_job_queue``
     3. Environment-variable defaults
 
@@ -950,7 +950,6 @@ def batch_run(self, execution_id, image, environment, params):
         params = {
             ...,
             "batch": {
-                "job_queue": "my-queue",
                 "tags": {"Project": "my-project"},
             },
         }
@@ -974,9 +973,17 @@ def batch_run(self, execution_id, image, environment, params):
         db.session.commit()
         logger.info("[BATCH] Execution %s → READY", execution_id)
 
-        # ---- resolve Batch settings ----
+        # Revalidate queued/retried payloads before any infrastructure operation.
+        from gefapi.utils.batch_policy import validate_batch_execution_params
+
         batch_overrides = params.get("batch", {})
         script = Script.query.get(execution.script_id) if execution.script_id else None
+        validate_batch_execution_params(
+            params,
+            script,
+            default_queue=DEFAULT_BATCH_JOB_QUEUE,
+            default_definition=DEFAULT_BATCH_JOB_DEFINITION,
+        )
 
         job_queue = (
             batch_overrides.get("job_queue")
@@ -984,8 +991,9 @@ def batch_run(self, execution_id, image, environment, params):
             or DEFAULT_BATCH_JOB_QUEUE
         )
 
+        # An explicit image has already been checked against the published image.
         # Resolve the full container image URI.  Priority:
-        #   1. params["batch"]["image"]  (per-execution override)
+        #   1. params["batch"]["image"]  (same published image)
         #   2. script.batch_image        (set via configuration.json)
         #   3. {ECR_REGISTRY}/{slug}:latest  (auto-constructed)
         #   4. the raw slug passed in ``image`` (legacy fallback)
