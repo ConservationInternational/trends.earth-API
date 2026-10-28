@@ -60,21 +60,14 @@ def _dispatch_queued_execution(execution, user, script):
     Clears the queued_at timestamp and dispatches to the appropriate runner.
     Delegates to ``_dispatch_execution`` to avoid duplicating the routing logic.
     """
-    from gefapi.services.execution_service import ExecutionService, _dispatch_execution
+    from gefapi.services.execution_service import _dispatch_execution
 
     # Clear the queued_at timestamp
     execution.queued_at = None
     db.session.commit()
 
-    # Build environment and dispatch
-    environment = ExecutionService._build_execution_environment(
-        user, execution.id, script=script
-    )
-
     compute_type = (getattr(script, "compute_type", None) or "gee").lower()
-    _dispatch_execution(
-        execution.id, script.slug, environment, execution.params, compute_type
-    )
+    _dispatch_execution(execution.id, compute_type)
 
     logger.info(
         f"[QUEUE]: Dispatched queued execution {execution.id} for user {user.id}"

@@ -921,7 +921,7 @@ def _add_log(execution_id, text, level="INFO"):
 
 
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=60)
-def batch_run(self, execution_id, image, environment, params):
+def batch_run(self, execution_id, image=None, environment=None, params=None):
     """Celery task: push params to S3 and submit to AWS Batch.
 
     Works for both single-job and multi-step pipeline executions.
@@ -968,6 +968,10 @@ def batch_run(self, execution_id, image, environment, params):
         return
 
     try:
+        if image is None:
+            from gefapi.services.execution_service import load_execution_context
+
+            image, environment, params = load_execution_context(execution_id, "batch")
         execution.status = "READY"
         db.session.add(execution)
         db.session.commit()

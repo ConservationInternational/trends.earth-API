@@ -17,6 +17,7 @@ from flask import jsonify, request
 from flask_jwt_extended import (
     create_access_token,
     current_user,
+    get_jwt,
     jwt_required,
 )
 
@@ -29,7 +30,7 @@ from gefapi.utils.rate_limiting import (
     get_non_exempt_key,
     is_rate_limiting_disabled,
 )
-from gefapi.utils.scopes import require_scope
+from gefapi.utils.scopes import is_service_client_token, require_scope
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +158,24 @@ def create_oauth2_client():
 
     Response (201): client metadata **including the one-time
     ``client_secret``**.
+
+    Service-client (``client_credentials``) tokens cannot create service
+    clients, even with ``client:manage``: a new client's secret is a persistent
+    credential, so minting it from a scoped token would escape that token's
+    scopes and lifetime. Clients must be created with an interactive user
+    session. Service tokens with ``client:manage`` may still list and revoke.
     """
+    if is_service_client_token(get_jwt()):
+        logger.warning(
+            "Rejected service-client creation via client_credentials token (user %s)",
+            current_user.id,
+        )
+        return error(
+            403,
+            "Service-client tokens cannot create service clients; "
+            "sign in as a user to create one",
+        )
+
     body = request.get_json(silent=True) or {}
 
     name = body.get("name")

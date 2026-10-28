@@ -82,15 +82,15 @@ case "$1" in
         # Check for specific queue configuration
         if [ -n "$CELERY_WORKER_QUEUES" ]; then
             echo "Starting worker with queues: $CELERY_WORKER_QUEUES"
-            exec celery -A gefapi.celery worker -Q "$CELERY_WORKER_QUEUES" -E --loglevel=DEBUG
+            exec celery -A gefapi.celery worker -Q "$CELERY_WORKER_QUEUES" --loglevel=INFO
         else
             echo "Starting worker with default queues"
-            exec celery -A gefapi.celery worker -E --loglevel=DEBUG
+            exec celery -A gefapi.celery worker --loglevel=INFO
         fi
         ;;
     beat)
         echo "Running celery beat"
-        exec celery -A gefapi.celery beat --loglevel=DEBUG
+        exec celery -A gefapi.celery beat --loglevel=INFO
         ;;
     migrate)
         echo "Running database migrations"

@@ -12,7 +12,11 @@ rollbar.BASE_DATA_HOOK = celery_base_data_hook
 
 @task_failure.connect
 def handle_task_failure(**kw):
-    rollbar.report_exc_info(extra_data=kw)
+    rollbar.report_message(
+        "Celery task failed",
+        level="error",
+        extra_data={"task_id": kw.get("task_id")},
+    )
 
 
 def make_celery(app):
@@ -22,6 +26,8 @@ def make_celery(app):
         broker=app.config["broker_url"],
     )
     celery.conf.update(app.config)
+    celery.conf.task_send_sent_event = False
+    celery.conf.worker_send_task_events = False
 
     # --- Worker resilience settings ---
     # Acknowledge tasks AFTER execution completes, not on receipt.

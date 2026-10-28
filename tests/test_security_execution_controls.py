@@ -112,8 +112,10 @@ def test_worker_rechecks_queued_batch_params(sample_execution, batch_script):
 
 
 @pytest.mark.parametrize("pipeline", [False, True])
+@pytest.mark.parametrize("id_only", [False, True])
 def test_worker_preserves_approved_batch_dispatch(
     pipeline,
+    id_only,
     sample_execution,
     batch_script,
 ):
@@ -128,7 +130,14 @@ def test_worker_preserves_approved_batch_dispatch(
     }
     if pipeline:
         params["pipeline"] = [{"name": "extract", "command": ["extract"]}]
+    sample_execution.params = params
+    db.session.commit()
     with (
+        patch.object(
+            ExecutionService,
+            "_build_execution_environment",
+            return_value={"API_USER": "legacy"},
+        ),
         patch(
             "gefapi.services.batch_service._ensure_job_definition",
             return_value="approved-definition",
@@ -146,12 +155,15 @@ def test_worker_preserves_approved_batch_dispatch(
             return_value={"extract": "job"},
         ) as steps,
     ):
-        batch_run.run(
-            sample_execution.id,
-            batch_script.slug,
-            {"API_USER": "legacy"},
-            params,
-        )
+        if id_only:
+            batch_run.run(sample_execution.id)
+        else:
+            batch_run.run(
+                sample_execution.id,
+                batch_script.slug,
+                {"API_USER": "legacy"},
+                params,
+            )
     register.assert_called_once_with(
         "approved.example/analysis:version",
         definition_name=None,
@@ -282,8 +294,10 @@ def test_legacy_analysis_parameters_unchanged(
             regular_user,
         )
     assert execution.params == params
-    assert dispatch.call_args.args[3] == params
-    environment = dispatch.call_args.args[2]
+    dispatch.assert_called_once_with(execution.id, compute_type="gee")
+    environment = ExecutionService._build_execution_environment(
+        regular_user, execution.id, script=sample_script
+    )
     assert environment["API_USER"]
     assert environment["API_PASSWORD"]
     assert environment["API_EXECUTION_TOKEN"]

@@ -32,7 +32,7 @@ from gefapi.utils.rate_limiting import (
     get_non_exempt_key,
     is_rate_limiting_disabled,
 )
-from gefapi.utils.scopes import _has_scope, require_scope
+from gefapi.utils.scopes import _has_scope, is_service_client_token, require_scope
 from gefapi.validators import validate_user_creation, validate_user_update
 
 logger = logging.getLogger()
@@ -977,6 +977,7 @@ def reset_password_with_token():
 @endpoints.route("/user/<user>", strict_slashes=False, methods=["PATCH"])
 @jwt_required()
 @require_scope("user:write")
+@require_scope("admin:write")
 @validate_user_update
 def update_user(user):
     """
@@ -985,6 +986,7 @@ def update_user(user):
     **Authentication**: JWT token required
     **Authorization**: Admin level access required for most updates
     **Special Permissions**: Role changes require SUPERADMIN access
+    **Service-client tokens**: Require both `user:write` and `admin:write`
 
     **Path Parameters**:
     - `user`: User identifier (email address or numeric ID) to update
@@ -1074,12 +1076,14 @@ def update_user(user):
 @endpoints.route("/user/<user>", strict_slashes=False, methods=["DELETE"])
 @jwt_required()
 @require_scope("user:write")
+@require_scope("admin:write")
 def delete_user(user):
     """
     Delete another user's account and all associated data (admin only).
 
     **Authentication**: JWT token required
     **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
+    **Service-client tokens**: Require both `user:write` and `admin:write`
     **Warning**: This action is irreversible and deletes all user data
 
     **Path Parameters**:
@@ -1167,6 +1171,7 @@ def delete_user(user):
 )
 @jwt_required()
 @require_scope("user:write")
+@require_scope("admin:write")
 def admin_change_password(user):
     """
     Change another user's password (admin only).
@@ -1174,6 +1179,9 @@ def admin_change_password(user):
     **Authentication**: JWT token required
     **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
     **Security**: Admin password reset without requiring old password
+    **Service-client tokens**: Require both `user:write` and `admin:write`, and
+    cannot target the token owner's own account (use
+    `/user/me/change-password`, which verifies the old password)
 
     **Path Parameters**:
     - `user`: User identifier (email address or numeric ID) for password change
@@ -1252,6 +1260,19 @@ def admin_change_password(user):
 
     try:
         target_user = UserService.get_user(user)
+
+        # A service-client token must not reset its owner's password without
+        # the old password: the new password would yield an unscoped session.
+        if is_service_client_token(get_jwt()) and str(target_user.id) == str(
+            identity.id
+        ):
+            return error(
+                status=403,
+                detail=(
+                    "Service-client tokens cannot reset the owning account's "
+                    "password; use /user/me/change-password"
+                ),
+            )
 
         # Check if admin can change this specific user's password
         # (ADMIN cannot change SUPERADMIN passwords)

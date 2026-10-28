@@ -201,7 +201,7 @@ def _build_soc_process_graph(connection, environment, params):
 
 
 @celery.task(base=OpenEOServiceTask, bind=True)
-def openeo_run(self, execution_id, script_slug, environment, params):
+def openeo_run(self, execution_id, script_slug=None, environment=None, params=None):
     """Submit an execution to an openEO backend.
 
     Steps:
@@ -225,6 +225,12 @@ def openeo_run(self, execution_id, script_slug, environment, params):
             return
 
         try:
+            if script_slug is None:
+                from gefapi.services.execution_service import load_execution_context
+
+                script_slug, environment, params = load_execution_context(
+                    execution_id, "openeo"
+                )
             backend_url = _resolve_backend_url(environment)
             logger.info("[OPENEO]: Connecting to backend %s", backend_url)
 

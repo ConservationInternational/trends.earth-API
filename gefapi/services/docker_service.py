@@ -440,9 +440,7 @@ def docker_build(script_id):
 
 
 @celery_app.task()
-def docker_run(execution_id, image, environment, params):
-    logger.info(f"[THREAD] Running script with image {image}")
-
+def docker_run(execution_id, image=None, environment=None, params=None):
     # Check if Docker is available
     try:
         client = get_docker_client()
@@ -460,6 +458,20 @@ def docker_run(execution_id, image, environment, params):
     if not execution:
         logger.error(f"Execution with id {execution_id} not found.")
         return
+    if image is None:
+        from gefapi.services.execution_service import load_execution_context
+
+        try:
+            image, environment, params = load_execution_context(execution_id, "gee")
+        except Exception:
+            execution.status = "FAILED"
+            db.session.commit()
+            logger.error(
+                "Could not resolve runtime context for execution %s", execution_id
+            )
+            rollbar.report_exc_info()
+            raise
+    logger.info(f"[THREAD] Running script with image {image}")
     try:
         execution.dispatched_at = utcnow()
         execution.status = "READY"

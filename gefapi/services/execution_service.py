@@ -57,7 +57,7 @@ def _get_user_active_execution_count(user_id):
     ).count()
 
 
-def _dispatch_execution(execution_id, script_slug, environment, params, compute_type):
+def _dispatch_execution(execution_id, compute_type):
     """Dispatch an execution to the appropriate runner.
 
     Routes based on the per-script ``compute_type`` string rather than a
@@ -77,19 +77,35 @@ def _dispatch_execution(execution_id, script_slug, environment, params, compute_
     if compute_type == "openeo":
         from gefapi.services.openeo_service import openeo_run
 
-        openeo_run.delay(execution_id, script_slug, environment, params)
+        openeo_run.delay(str(execution_id))
         return
 
     if compute_type == "batch":
-        batch_run.delay(execution_id, script_slug, environment, params)
+        batch_run.delay(str(execution_id))
         return
 
     # Default: gee (compute_type == "gee" or unrecognised value) — runs via Docker Swarm
     orchestrator = SETTINGS.get("ORCHESTRATOR", "docker")
     if orchestrator == "docker":
-        docker_run.delay(execution_id, script_slug, environment, params)
+        docker_run.delay(str(execution_id))
     else:
         raise ValueError(f"Unknown orchestrator: {orchestrator}")
+
+
+def load_execution_context(execution_id, expected_compute_type):
+    """Resolve secrets inside the worker, never in the Celery message."""
+    execution = ExecutionService.get_execution(execution_id)
+    script = ScriptService.get_script(str(execution.script_id))
+    compute_type = (script.compute_type or "gee").lower()
+    if compute_type != expected_compute_type:
+        raise ValueError("Script compute type changed before execution dispatch")
+    user = UserService.get_user(str(execution.user_id))
+    if not user.is_active:
+        raise ValueError("Execution owner is disabled")
+    environment = ExecutionService._build_execution_environment(
+        user, execution.id, script=script
+    )
+    return script.slug, environment, execution.params
 
 
 # Security: Explicitly allowed fields for filter and sort operations
@@ -833,14 +849,8 @@ class ExecutionService:
 
         # Dispatch immediately for admins or users under the limit
         try:
-            environment = ExecutionService._build_execution_environment(
-                user, execution.id, script=script
-            )
             _dispatch_execution(
                 execution.id,
-                script.slug,
-                environment,
-                params,
                 compute_type=(getattr(script, "compute_type", None) or "gee").lower(),
             )
         except Exception:

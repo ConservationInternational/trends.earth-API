@@ -60,9 +60,9 @@ SCOPE_DESCRIPTIONS = {
     "gee:read": "View Google Earth Engine credential status",
     "gee:write": "Manage Google Earth Engine credentials",
     "stats:read": "View dashboard and system statistics",
-    "client:manage": "Create, list, and revoke service clients",
+    "client:manage": "List and revoke service clients",
     "admin:read": "View administrative monitoring data",
-    "admin:write": "Change administrative settings",
+    "admin:write": "Change administrative settings and manage other users",
 }
 
 
@@ -104,6 +104,11 @@ def requested_scopes(scopes_string: str) -> set[str]:
 def has_privileged_service_client_scope(scopes_string: str) -> bool:
     """Return True when scopes include administrative/user-management powers."""
     return bool(requested_scopes(scopes_string) & PRIVILEGED_SERVICE_CLIENT_SCOPES)
+
+
+def is_service_client_token(jwt_claims: dict | None) -> bool:
+    """Return True when *jwt_claims* come from the client_credentials grant."""
+    return bool(jwt_claims) and jwt_claims.get("grant_type") == "client_credentials"
 
 
 def _has_scope(required_scope: str, jwt_claims: dict) -> bool:
