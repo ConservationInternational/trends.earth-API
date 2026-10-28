@@ -80,6 +80,16 @@ def remove_role_from_script(script, role):
     return script
 
 
+def set_script_required_app(script, app_key):
+    """Let users with an active *app_key* grant access the script.
+
+    This is an additional allow path: it never removes existing role/user
+    access, and ``None`` clears it.
+    """
+    script.required_app_key = app_key or None
+    return script
+
+
 def clear_script_restrictions(script):
     """Remove all access restrictions from a script"""
     script.allowed_roles = None
@@ -95,6 +105,7 @@ def get_access_summary(script):
         "public": script.public,
         "allowed_roles": script.get_allowed_roles(),
         "allowed_users": script.get_allowed_users(),
+        "required_app_key": script.required_app_key,
     }
 
     if not script.restricted and not script.public:

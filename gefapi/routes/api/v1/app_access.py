@@ -14,7 +14,7 @@ from gefapi.utils.app_access import (
     APP_ROLES,
     valid_app_key,
 )
-from gefapi.utils.permissions import is_admin_or_higher
+from gefapi.utils.permissions import is_admin_or_higher, is_superadmin
 from gefapi.utils.scopes import require_scope
 
 logger = logging.getLogger(__name__)
@@ -99,6 +99,93 @@ def list_gated_apps():
             for app_key in sorted(APP_KEYS)
         ]
     ), 200
+
+
+def _notification_recipients_payload(app_key):
+    listed = AppAccessService.listed_notification_recipients(app_key)
+    plan = AppAccessService.request_notification_plan(app_key)
+    return {
+        "app_key": app_key,
+        "listed_recipients": [
+            {
+                "user_id": str(row.user_id),
+                "email": row.user.email,
+                "name": row.user.name,
+                "role": row.user.role,
+                "is_active": bool(row.user.is_active),
+                "eligible": AppAccessService.is_eligible_notification_recipient(
+                    row.user
+                ),
+                "added_at": row.added_at.isoformat() if row.added_at else None,
+            }
+            for row in listed
+        ],
+        "auto_app_admins": [
+            {"user_id": str(user.id), "email": user.email, "name": user.name}
+            for user in AppAccessService.auto_app_admins(app_key)
+        ],
+        "effective_recipients": AppAccessService.request_notification_recipients(
+            app_key
+        ),
+        "using_default": plan["using_default"],
+    }
+
+
+@endpoints.route(
+    "/admin/app-access/apps/<app_key>/notification-recipients",
+    strict_slashes=False,
+    methods=["GET"],
+)
+@jwt_required()
+@require_scope("admin:read")
+def get_app_notification_recipients(app_key):
+    """Show who is emailed about new access requests for *app_key*.
+
+    **Authentication**: JWT token required
+    **Access**: SUPERADMIN only
+
+    Recipients are the listed ADMIN/SUPERADMIN users (or every superadmin when
+    none are listed) plus application administrators who can approve users
+    for *app_key*; each address is emailed once.
+    """
+    if not is_superadmin(current_user):
+        return error(status=403, detail="Forbidden")
+    if not valid_app_key(app_key):
+        return error(status=404, detail=f"Unknown application '{app_key}'")
+    return jsonify(data=_notification_recipients_payload(app_key)), 200
+
+
+@endpoints.route(
+    "/admin/app-access/apps/<app_key>/notification-recipients",
+    strict_slashes=False,
+    methods=["PUT"],
+)
+@jwt_required()
+@require_scope("admin:write")
+def set_app_notification_recipients(app_key):
+    """Replace the access-request notification list for *app_key*.
+
+    **Authentication**: JWT token required
+    **Access**: SUPERADMIN only
+
+    **Request Schema**: `{"user_ids": ["<uuid>", ...]}`.  Every user must be an
+    active ADMIN or SUPERADMIN.  An empty list reverts to notifying all
+    superadmins.
+    """
+    if not is_superadmin(current_user):
+        return error(status=403, detail="Forbidden")
+    if not valid_app_key(app_key):
+        return error(status=404, detail=f"Unknown application '{app_key}'")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not isinstance(body.get("user_ids"), list):
+        return error(status=400, detail="user_ids must be a list")
+    try:
+        AppAccessService.set_notification_recipients(
+            app_key, body["user_ids"], acting_user=current_user
+        )
+    except AppAccessError as exc:
+        return _app_access_error(exc)
+    return jsonify(data=_notification_recipients_payload(app_key)), 200
 
 
 @endpoints.route(

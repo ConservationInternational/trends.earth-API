@@ -113,3 +113,40 @@ class UserAppAccess(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class AppAccessNotificationRecipient(db.Model):
+    """A user configured to receive *app_key* access-request notifications.
+
+    Managed by superadmins.  When an application has no eligible listed
+    recipients, notifications fall back to all superadmins (see
+    :meth:`AppAccessService.request_notification_plan`).
+    """
+
+    __tablename__ = "app_access_notification_recipient"
+
+    app_key = db.Column(db.String(50), primary_key=True)
+    user_id = db.Column(
+        GUID(),
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+    added_by_user_id = db.Column(
+        GUID(), db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
+    added_at = db.Column(db.DateTime(), nullable=False, default=utcnow)
+
+    user = db.relationship("User", foreign_keys=[user_id])
+
+    def __init__(self, app_key, user_id, added_by_user_id=None):
+        self.app_key = app_key
+        self.user_id = user_id
+        self.added_by_user_id = added_by_user_id
+        self.added_at = utcnow()
+
+    def __repr__(self):
+        return (
+            f"<AppAccessNotificationRecipient(app_key={self.app_key}, "
+            f"user_id={self.user_id})>"
+        )

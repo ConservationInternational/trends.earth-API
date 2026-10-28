@@ -228,13 +228,11 @@ def get_user_id_or_ip():
     Get user ID for authenticated requests, IP address for anonymous requests.
     This provides better rate limiting granularity.
     """
-    try:
-        verify_jwt_in_request(optional=True)
-        current_user = get_current_user()
-        if current_user:
-            return f"user:{current_user.id}"
-    except Exception as e:
-        logger.debug(f"Failed to get current user for rate limiting: {e}")
+    from gefapi.utils.bearer_auth import resolve_request_user
+
+    current_user = resolve_request_user()
+    if current_user:
+        return f"user:{current_user.id}"
     return f"ip:{get_remote_address()}"
 
 
@@ -285,16 +283,14 @@ def get_admin_aware_key():
     if is_internal_network_request():
         return None  # Exempt from rate limiting
 
-    try:
-        verify_jwt_in_request(optional=True)
-        current_user = get_current_user()
-        if current_user:
-            # Exempt admin and superadmin users from rate limiting
-            if is_admin_or_higher(current_user):
-                return None  # Exempt from rate limiting
-            return f"user:{current_user.id}"
-    except Exception as e:
-        logger.debug(f"Failed to get current user for admin-aware rate limiting: {e}")
+    from gefapi.utils.bearer_auth import resolve_request_user
+
+    current_user = resolve_request_user()
+    if current_user:
+        # Exempt admin and superadmin users from rate limiting
+        if is_admin_or_higher(current_user):
+            return None  # Exempt from rate limiting
+        return f"user:{current_user.id}"
     return f"ip:{get_remote_address()}"
 
 

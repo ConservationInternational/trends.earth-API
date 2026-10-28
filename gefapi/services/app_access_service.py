@@ -6,7 +6,9 @@ first-party applications.
 
 from datetime import timedelta
 import logging
-import os
+import uuid
+
+from sqlalchemy import func
 
 from gefapi import db
 from gefapi.models import OAuthClient, User
@@ -14,15 +16,18 @@ from gefapi.models.app_access import (
     STATUS_ACTIVE,
     STATUS_PENDING,
     STATUS_REVOKED,
+    AppAccessNotificationRecipient,
     UserAppAccess,
 )
 from gefapi.utils import mask_email, utcnow
 from gefapi.utils.app_access import (
     APP_KEYS,
     default_role,
+    get_app_policy,
     valid_app_key,
     valid_app_role,
 )
+from gefapi.utils.oidc_scopes import SCOPE_APP_ACCESS_WRITE
 from gefapi.utils.security_events import log_security_event
 
 logger = logging.getLogger(__name__)
@@ -30,6 +35,8 @@ logger = logging.getLogger(__name__)
 # A user repeatedly bouncing off a gated application must not be able to spam
 # the superadmins with notification email.
 REQUEST_NOTIFICATION_COOLDOWN = timedelta(hours=24)
+# Global roles that may be listed as access-request notification recipients.
+NOTIFICATION_RECIPIENT_ROLES = ("ADMIN", "SUPERADMIN")
 
 
 class AppAccessError(Exception):
@@ -278,22 +285,158 @@ class AppAccessService:
                 exc,
             )
 
+    # ------------------------------------------------------------------
+    # Access-request notification recipients
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def is_eligible_notification_recipient(user):
+        """Only active global ADMIN/SUPERADMIN accounts may be listed."""
+        return bool(
+            user is not None
+            and user.is_active
+            and user.email
+            and user.role in NOTIFICATION_RECIPIENT_ROLES
+        )
+
+    @staticmethod
+    def listed_notification_recipients(app_key):
+        """Return configured recipient rows for *app_key* (any eligibility)."""
+        if not valid_app_key(app_key):
+            raise AppAccessError(f"Unknown application '{app_key}'", status=404)
+        return (
+            AppAccessNotificationRecipient.query.filter_by(app_key=app_key)
+            .join(User, AppAccessNotificationRecipient.user_id == User.id)
+            .order_by(func.lower(User.email))
+            .all()
+        )
+
+    @classmethod
+    def set_notification_recipients(cls, app_key, user_ids, acting_user):
+        """Replace *app_key*'s recipient list with *user_ids*.
+
+        An empty list reverts to notifying all superadmins.  Raises
+        :class:`AppAccessError` (400) listing ids that are unknown or not
+        active ADMIN/SUPERADMIN accounts.
+        """
+        if not valid_app_key(app_key):
+            raise AppAccessError(f"Unknown application '{app_key}'", status=404)
+        if not isinstance(user_ids, list):
+            raise AppAccessError("user_ids must be a list")
+
+        parsed = {}
+        invalid = []
+        for raw in user_ids:
+            try:
+                parsed[uuid.UUID(str(raw))] = raw
+            except (ValueError, TypeError, AttributeError):
+                invalid.append(str(raw))
+        users = (
+            {user.id: user for user in User.query.filter(User.id.in_(parsed)).all()}
+            if parsed
+            else {}
+        )
+        for user_id, raw in parsed.items():
+            if not cls.is_eligible_notification_recipient(users.get(user_id)):
+                invalid.append(str(raw))
+        if invalid:
+            raise AppAccessError(
+                "Recipients must be existing, active ADMIN or SUPERADMIN users",
+                payload={"invalid_user_ids": sorted(set(invalid))},
+            )
+
+        existing = AppAccessNotificationRecipient.query.filter_by(app_key=app_key)
+        before = sorted(str(row.user_id) for row in existing.all())
+        existing.delete(synchronize_session=False)
+        for user_id in parsed:
+            db.session.add(
+                AppAccessNotificationRecipient(
+                    app_key=app_key,
+                    user_id=user_id,
+                    added_by_user_id=acting_user.id if acting_user else None,
+                )
+            )
+        db.session.commit()
+
+        after = sorted(str(user_id) for user_id in parsed)
+        if before != after:
+            log_security_event(
+                "APP_ACCESS_NOTIFY_RECIPIENTS_CHANGED",
+                user_id=str(acting_user.id) if acting_user else None,
+                user_email=acting_user.email if acting_user else None,
+                details={"app_key": app_key, "before": before, "after": after},
+                level="info",
+            )
+        return cls.listed_notification_recipients(app_key)
+
+    @staticmethod
+    def app_approval_clients(app_key):
+        """Active OAuth clients through which *app_key* admins can approve users."""
+        return [
+            client
+            for client in OAuthClient.query.filter_by(
+                required_app_key=app_key, is_active=True
+            ).all()
+            if SCOPE_APP_ACCESS_WRITE in (client.scopes or "").split()
+        ]
+
+    @classmethod
+    def auto_app_admins(cls, app_key):
+        """Users notified automatically because they can approve *app_key* users.
+
+        Mirrors the authorization of
+        ``PUT /api/v1/apps/<app_key>/users/<sub>/access``: an explicit active
+        administering grant, an active verified account, and an application
+        client registered for ``app-access:write``.  A superadmin's implicit
+        app-admin status does not qualify on its own, so that an explicit
+        recipient list really does replace the all-superadmin default.
+        """
+        policy = get_app_policy(app_key)
+        if policy is None or not cls.app_approval_clients(app_key):
+            return []
+        return (
+            User.query.join(UserAppAccess, UserAppAccess.user_id == User.id)
+            .filter(
+                UserAppAccess.app_key == app_key,
+                UserAppAccess.status == STATUS_ACTIVE,
+                UserAppAccess.role.in_(sorted(policy.admin_roles)),
+                User.is_active.is_(True),
+                User.email_verified.is_(True),
+            )
+            .order_by(func.lower(User.email))
+            .all()
+        )
+
+    @classmethod
+    def request_notification_plan(cls, app_key):
+        """Return who to notify about *app_key* requests, and where to link.
+
+        ``{"te_ui": [emails], "app_admin": [emails], "using_default": bool}``.
+        Base recipients (eligible listed users, or all superadmins when there
+        are none) review in the API UI.  Automatically included application
+        admins who are not base recipients review in the application's own
+        admin page.  Every address appears exactly once.
+        """
+        listed = [
+            row.user.email
+            for row in cls.listed_notification_recipients(app_key)
+            if cls.is_eligible_notification_recipient(row.user)
+        ]
+        using_default = not listed
+        base = _dedupe_emails(cls.superadmin_recipients() if using_default else listed)
+        base_keys = {email.lower() for email in base}
+        app_admins = _dedupe_emails(
+            user.email
+            for user in cls.auto_app_admins(app_key)
+            if user.email and user.email.strip().lower() not in base_keys
+        )
+        return {"te_ui": base, "app_admin": app_admins, "using_default": using_default}
+
     @classmethod
     def request_notification_recipients(cls, app_key):
-        """Recipients for *app_key* access requests.
-
-        ``<APP_KEY>_ACCESS_REQUEST_EMAILS`` (comma-separated, e.g.
-        ``RIO_COHERENCE_ACCESS_REQUEST_EMAILS``) replaces the default of all
-        superadmins when set.
-        """
-        configured = os.getenv(f"{app_key.upper()}_ACCESS_REQUEST_EMAILS", "")
-        seen = {}
-        for email in configured.split(","):
-            if email.strip():
-                seen.setdefault(email.strip().lower(), email.strip())
-        if seen:
-            return sorted(seen.values())
-        return cls.superadmin_recipients()
+        """Every address notified about *app_key* access requests."""
+        plan = cls.request_notification_plan(app_key)
+        return _dedupe_emails(plan["te_ui"] + plan["app_admin"])
 
     @staticmethod
     def superadmin_recipients():
@@ -308,16 +451,22 @@ class AppAccessService:
         configured = _configured_admin_email()
         if configured:
             emails.append(configured)
-        seen = {}
-        for email in emails:
-            seen.setdefault(email.strip().lower(), email.strip())
-        recipients = sorted(seen.values())
+        recipients = _dedupe_emails(emails)
         logger.debug(
             "Resolved %s superadmin notification recipient(s): %s",
             len(recipients),
             ", ".join(mask_email(item) for item in recipients),
         )
         return recipients
+
+
+def _dedupe_emails(emails):
+    """Return sorted, case-insensitively de-duplicated, non-empty addresses."""
+    seen = {}
+    for email in emails:
+        if email and email.strip():
+            seen.setdefault(email.strip().lower(), email.strip())
+    return sorted(seen.values(), key=str.lower)
 
 
 def _roles_for(app_key):

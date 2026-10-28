@@ -72,10 +72,18 @@ POST   /api/v1/script/<id>/access/users/<uid> Add user
 DELETE /api/v1/script/<id>/access/users/<uid> Remove user
 POST   /api/v1/script/<id>/access/roles/<role> Add role
 DELETE /api/v1/script/<id>/access/roles/<role> Remove role
+PUT    /api/v1/script/<id>/access/app         Set/clear required application (Admin only)
 DELETE /api/v1/script/<id>/access             Clear all restrictions
 ```
 
-Access control fields: `restricted` (boolean), `allowed_roles`, `allowed_users`.
+Access control fields: `restricted` (boolean), `allowed_roles`, `allowed_users`,
+`required_app_key`.
+
+`PUT /access/app` takes `{"app_key": "<app_key>" | null}`. When set, users with
+an active grant for that application can also access the script. This only adds
+access and never removes access granted by the other rules.
+`required_app_key` appears only in the admin/owner `access_control` view and is
+not part of default script payloads. `DELETE /access` does not clear it.
 
 ### Script Filtering Examples
 
@@ -108,6 +116,25 @@ GET    /api/v1/execution/<id>/download-results      Download results as JSON fil
 GET    /api/v1/execution/<id>/docker-logs           Get raw Docker service logs (Admin only)
 GET    /api/v1/execution/<id>/batch-logs            Get AWS Batch / CloudWatch logs (Admin only)
 ```
+
+### OIDC user tokens on script/execution routes
+
+`GET /script/<id>`, `POST /script/<id>/run`, `GET /execution`,
+`GET /execution/user`, `GET /execution/<id>`, `POST /execution/<id>/cancel`,
+`GET /execution/<id>/log` and `GET /execution/<id>/download-results` also accept
+RS256 OIDC access tokens. Legacy `POST /auth` tokens (QGIS plugin, API UI) and
+service-client tokens are checked first and behave exactly as before. An OIDC
+token is tried only if legacy verification fails and the token header says
+`alg: RS256`. Otherwise the original legacy error is returned unchanged.
+
+An OIDC token needs `script:read`, `execution:read` or `execution:write` for
+these routes. That scope must be in the token's granted scopes and in the
+client's registered scopes, or the route returns `403 Insufficient scope`. If
+the client is app-gated, the user's application grant is also checked on every
+request, so revoking access takes effect immediately
+(`403 app_access_required`). Executions are owned by the token's user (`sub`).
+Rate limits and the per-user concurrent-execution limit apply to that user, as
+for a legacy token.
 
 ### Execution Cancellation
 
@@ -157,7 +184,8 @@ GET /api/v1/user?filter=role=ADMIN&page=1&per_page=10
 ## Application-scoped user API (OIDC user tokens)
 
 Bounded identity and app-access API shared by OIDC-gated applications
-(currently `rio_coherence` and `avoided_emissions`; unknown keys return
+(currently `rio_coherence`, `rio_coherence_staging`, `avoided_emissions` and
+`avoided_emissions_staging`; unknown keys return
 `404 unknown_app` after authentication). There are no application-specific
 handlers or aliases: behaviour comes from the explicit, fail-closed policy
 registry in `gefapi/utils/app_access.py` (`APP_POLICIES`: roles, default role,
@@ -185,6 +213,10 @@ POST  /api/v1/apps/{app_key}/users/resolve           app-users:read    Batch sub
 PUT   /api/v1/apps/{app_key}/users/<subject>/access  app-access:write  Set status/role (app admin)
 PATCH /api/v1/account/profile                        account:write     Update own name/institution
 ```
+
+OIDC access tokens include an `auth_version` claim. A token is rejected (`401`)
+after a password change, password reset or deactivation increments the
+account's `auth_version`.
 
 App profile shape (`GET /me`, lookups, directory and access responses wrap
 profiles in `data`):
@@ -229,6 +261,44 @@ Errors: `401` for missing/invalid/expired/revoked tokens or disabled accounts;
 `email_unverified`, `app_access_required` (includes `app_access`), or
 `app_role_required`; `404 unknown_app`; `400 invalid_request`.
 
+## Access-request notification recipients (SuperAdmin only)
+
+```
+GET  /api/v1/admin/app-access/apps/<app_key>/notification-recipients
+PUT  /api/v1/admin/app-access/apps/<app_key>/notification-recipients
+```
+
+Each application has its own list of reviewers who are emailed about new access
+requests. `PUT` body: `{"user_ids": ["<uuid>", ...]}`. Every user must be an
+active global `ADMIN` or `SUPERADMIN`; otherwise the request returns `400` with
+`invalid_user_ids`. Sending an empty list switches back to the default, which
+emails every superadmin.
+
+Application admins are also emailed automatically. To qualify, a user needs:
+- an active administering grant for the app;
+- an active, verified account;
+- an active OAuth client for the app with `app-access:write`, so they can
+  actually approve users.
+
+A superadmin's implicit app-admin status does not count. Listed or default
+reviewers get a link to the API UI (`API_UI_URL`). Automatically included app
+admins get the app's own admin page (`<APP_KEY>_ADMIN_URL`, which must be https,
+or http on localhost); if that is not configured, their email has no link. Each
+person gets at most one email.
+
+`GET` returns:
+
+```json
+{"data": {"app_key": "avoided_emissions",
+          "listed_recipients": [{"user_id", "email", "name", "role", "is_active",
+                                 "eligible", "added_at"}],
+          "auto_app_admins": [{"user_id", "email", "name"}],
+          "effective_recipients": ["a@b.org"],
+          "using_default": false}}
+```
+
+Changes are logged as the `APP_ACCESS_NOTIFY_RECIPIENTS_CHANGED` security event.
+
 ## Rate Limiting (SuperAdmin only)
 
 ```
@@ -236,8 +306,9 @@ GET  /api/v1/rate-limit/status    Query current rate limit state
 POST /api/v1/rate-limit/reset     Reset all rate limit counters
 ```
 
-Rate limits apply per user (authenticated) or per IP address (unauthenticated). Admin and
-SuperAdmin users are automatically exempt.
+Rate limits apply per user (authenticated with a legacy or OIDC access token) or
+per IP address (unauthenticated). Admin and SuperAdmin users are automatically
+exempt.
 
 ## Access Control Summary
 

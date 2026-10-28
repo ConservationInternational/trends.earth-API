@@ -238,32 +238,9 @@ def test_superadmin_recipients_are_deduplicated(app, superadmin_user):
     assert superadmin_user.email in recipients
 
 
-def test_request_recipients_default_to_superadmins(app, superadmin_user, monkeypatch):
-    monkeypatch.delenv("RIO_COHERENCE_ACCESS_REQUEST_EMAILS", raising=False)
+def test_request_recipients_default_to_superadmins(app, superadmin_user):
     assert AppAccessService.request_notification_recipients(RIO) == (
         AppAccessService.superadmin_recipients()
-    )
-
-
-def test_request_recipients_env_replaces_superadmins(app, superadmin_user, monkeypatch):
-    monkeypatch.delenv("AVOIDED_EMISSIONS_ACCESS_REQUEST_EMAILS", raising=False)
-    monkeypatch.setenv(
-        "RIO_COHERENCE_ACCESS_REQUEST_EMAILS",
-        " a@example.org, A@example.org ,,b@example.org",
-    )
-    recipients = AppAccessService.request_notification_recipients(RIO)
-    assert recipients == ["a@example.org", "b@example.org"]
-    assert superadmin_user.email not in recipients
-    # Other applications are unaffected.
-    assert superadmin_user.email in AppAccessService.request_notification_recipients(AE)
-
-
-def test_avoided_emissions_request_recipients_env(app, superadmin_user, monkeypatch):
-    monkeypatch.delenv("RIO_COHERENCE_ACCESS_REQUEST_EMAILS", raising=False)
-    monkeypatch.setenv("AVOIDED_EMISSIONS_ACCESS_REQUEST_EMAILS", "ae@example.org")
-    assert AppAccessService.request_notification_recipients(AE) == ["ae@example.org"]
-    assert superadmin_user.email in AppAccessService.request_notification_recipients(
-        RIO
     )
 
 

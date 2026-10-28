@@ -18,8 +18,10 @@ missing definition scopes, and ``--add-scopes`` adds them (it never removes a
 scope).  ``--dry-run`` reports what would change without writing anything.
 Application-bound clients default to ``openid email profile`` plus
 ``app:read account:write app-users:read app-access:write``; ungated clients
-get ``openid email profile`` only.  App scopes must be provisioned before an
-application requests them.
+get ``openid email profile`` only.  The Avoided Emissions clients also get
+``script:read execution:read execution:write`` so they can run the analysis
+script on behalf of the signed-in user.  App scopes must be provisioned before
+an application requests them.
 
 Redirect URIs come from environment variables so that staging and production
 can be provisioned with the same script:
@@ -29,16 +31,20 @@ can be provisioned with the same script:
     TE_WEB_POST_LOGOUT_REDIRECT_URIS,
     AVOIDED_EMISSIONS_REDIRECT_URIS,
     AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS,
+    AVOIDED_EMISSIONS_STAGING_REDIRECT_URIS,
+    AVOIDED_EMISSIONS_STAGING_POST_LOGOUT_REDIRECT_URIS,
     RIO_REDIRECT_URIS, RIO_POST_LOGOUT_REDIRECT_URIS,
     RIO_STAGING_REDIRECT_URIS, RIO_STAGING_POST_LOGOUT_REDIRECT_URIS
 
 ``rio-coherence-staging`` serves staging and local Rio instances.  It is gated
 by its own ``rio_coherence_staging`` app key, so testers sign in with their
 existing accounts but need a separate staging grant.
+``avoided-emissions-web-staging`` works the same way with the
+``avoided_emissions_staging`` app key.
 
 The logo shown on the hosted sign-in/register pages can be set per client with
-API_UI_LOGO_URL, TE_WEB_LOGO_URL, AVOIDED_EMISSIONS_LOGO_URL, RIO_LOGO_URL, or
-RIO_STAGING_LOGO_URL
+API_UI_LOGO_URL, TE_WEB_LOGO_URL, AVOIDED_EMISSIONS_LOGO_URL,
+AVOIDED_EMISSIONS_STAGING_LOGO_URL, RIO_LOGO_URL, or RIO_STAGING_LOGO_URL
 (an https URL or a /static/ path).  When unset, an existing logo is kept.
 """
 
@@ -54,12 +60,14 @@ from gefapi.models import OAuthClient
 from gefapi.services.oidc_service import TRENDS_API_AUDIENCE, valid_logo_url
 from gefapi.utils.app_access import (
     APP_AVOIDED_EMISSIONS,
+    APP_AVOIDED_EMISSIONS_STAGING,
     APP_RIO_COHERENCE,
     APP_RIO_COHERENCE_STAGING,
 )
 from gefapi.utils.oidc_scopes import (
     DEFAULT_APP_CLIENT_SCOPES,
     DEFAULT_CLIENT_SCOPES,
+    EXECUTION_SCOPES,
     client_scope_error,
     default_client_scopes,
 )
@@ -121,15 +129,35 @@ def client_definitions():
             "audience": "avoided-emissions",
             "is_public": False,
             "required_app_key": APP_AVOIDED_EMISSIONS,
-            "scopes": list(DEFAULT_APP_CLIENT_SCOPES),
+            # Execution scopes let the app run the analysis script as the
+            # signed-in user with that user's own access token.
+            "scopes": [*DEFAULT_APP_CLIENT_SCOPES, *EXECUTION_SCOPES],
             "logo_url": os.getenv("AVOIDED_EMISSIONS_LOGO_URL"),
             "redirect_uris": _uris(
                 "AVOIDED_EMISSIONS_REDIRECT_URIS",
-                ["http://localhost:8051/auth/callback"],
+                ["http://localhost:8050/auth/callback"],
             ),
             "post_logout_redirect_uris": _uris(
                 "AVOIDED_EMISSIONS_POST_LOGOUT_REDIRECT_URIS",
-                ["http://localhost:8051/"],
+                ["http://localhost:8050/"],
+            ),
+        },
+        {
+            # Staging and local AE instances; separate grants from production AE.
+            "client_id": "avoided-emissions-web-staging",
+            "name": "Avoided Emissions Webapp (staging)",
+            "audience": "avoided-emissions-staging",
+            "is_public": False,
+            "required_app_key": APP_AVOIDED_EMISSIONS_STAGING,
+            "scopes": [*DEFAULT_APP_CLIENT_SCOPES, *EXECUTION_SCOPES],
+            "logo_url": os.getenv("AVOIDED_EMISSIONS_STAGING_LOGO_URL"),
+            "redirect_uris": _uris(
+                "AVOIDED_EMISSIONS_STAGING_REDIRECT_URIS",
+                ["http://localhost:8050/auth/callback"],
+            ),
+            "post_logout_redirect_uris": _uris(
+                "AVOIDED_EMISSIONS_STAGING_POST_LOGOUT_REDIRECT_URIS",
+                ["http://localhost:8050/"],
             ),
         },
         {

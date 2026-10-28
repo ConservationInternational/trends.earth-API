@@ -18,6 +18,7 @@ from gefapi.errors import InvalidFile, NotAllowed, ScriptDuplicated, ScriptNotFo
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.s3 import get_script_from_s3
 from gefapi.services import ScriptService
+from gefapi.utils.bearer_auth import bearer_required
 from gefapi.utils.permissions import can_access_admin_features, is_admin_or_higher
 from gefapi.utils.scopes import require_scope
 from gefapi.validators import validate_file
@@ -366,7 +367,7 @@ def get_scripts():
 
 
 @endpoints.route("/script/<script>", strict_slashes=False, methods=["GET"])
-@jwt_required()
+@bearer_required()
 @require_scope("script:read")
 def get_script(script):
     """

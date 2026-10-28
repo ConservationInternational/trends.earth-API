@@ -73,6 +73,10 @@ class Script(db.Model):
     # openEO-specific: URL of the backend to submit jobs to.
     # When None, falls back to SETTINGS["OPENEO_DEFAULT_BACKEND_URL"].
     openeo_backend_url = db.Column(db.String(512), default=None)
+    # Additive allow path: users with an active grant for this application may
+    # access the script in addition to the role/user allowlists.  NULL for
+    # every pre-existing script.
+    required_app_key = db.Column(db.String(50), default=None, nullable=True)
 
     def __init__(
         self,
@@ -94,6 +98,7 @@ class Script(db.Model):
         restricted=False,
         uses_gee=True,
         openeo_backend_url=None,
+        required_app_key=None,
     ):
         self.name = name
         self.slug = slug
@@ -113,6 +118,7 @@ class Script(db.Model):
         self.restricted = restricted
         self.uses_gee = uses_gee
         self.openeo_backend_url = openeo_backend_url
+        self.required_app_key = required_app_key
 
     def __repr__(self):
         return f"<Script {self.name!r}>"
@@ -156,6 +162,13 @@ class Script(db.Model):
                     return True
             except (json.JSONDecodeError, AttributeError):
                 pass
+
+        # Application-grant access (additive; never denies on its own)
+        if self.required_app_key:
+            from gefapi.utils.app_access import has_app_access
+
+            if has_app_access(user, self.required_app_key):
+                return True
 
         return False
 
@@ -302,11 +315,13 @@ class Script(db.Model):
                 script["restricted"] = self.restricted or False
                 script["allowed_roles"] = self.get_allowed_roles()
                 script["allowed_users"] = self.get_allowed_users()
+                script["required_app_key"] = self.required_app_key
             elif user and user.id == self.user_id:
                 # Script owners can see access control info for their own scripts
                 script["restricted"] = self.restricted or False
                 script["allowed_roles"] = self.get_allowed_roles()
                 script["allowed_users"] = self.get_allowed_users()
+                script["required_app_key"] = self.required_app_key
 
         if "build_error" in include:
             script["build_error"] = self.build_error

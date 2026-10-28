@@ -7,14 +7,32 @@ import pytest
 
 from gefapi import db
 from gefapi.models import OAuthClient
-from gefapi.utils.oidc_scopes import DEFAULT_APP_CLIENT_SCOPES, DEFAULT_CLIENT_SCOPES
+from gefapi.utils.oidc_scopes import (
+    DEFAULT_APP_CLIENT_SCOPES,
+    DEFAULT_CLIENT_SCOPES,
+    EXECUTION_SCOPES,
+)
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "register_oidc_clients.py"
 
 BASE = ["openid", "email", "profile"]
 APP_SCOPES = ["app:read", "account:write", "app-users:read", "app-access:write"]
-GATED = ["rio-coherence", "rio-coherence-staging", "avoided-emissions-web"]
+GATED = [
+    "rio-coherence",
+    "rio-coherence-staging",
+    "avoided-emissions-web",
+    "avoided-emissions-web-staging",
+]
 UNGATED = ["te-api-ui", "te-qgis-plugin", "te-web"]
+EXECUTION_CLIENTS = {"avoided-emissions-web", "avoided-emissions-web-staging"}
+
+
+def _expected(client_id):
+    if client_id not in GATED:
+        return BASE
+    if client_id in EXECUTION_CLIENTS:
+        return BASE + APP_SCOPES + list(EXECUTION_SCOPES)
+    return BASE + APP_SCOPES
 
 
 @pytest.fixture(scope="module")
@@ -41,6 +59,7 @@ def env(monkeypatch):
         "API_UI_LOGO_URL",
         "TE_WEB_LOGO_URL",
         "AVOIDED_EMISSIONS_LOGO_URL",
+        "AVOIDED_EMISSIONS_STAGING_LOGO_URL",
         "RIO_LOGO_URL",
         "RIO_STAGING_LOGO_URL",
     ):
@@ -78,7 +97,7 @@ def test_presets_are_explicit(script, env):
     assert list(DEFAULT_CLIENT_SCOPES) == BASE
     assert list(DEFAULT_APP_CLIENT_SCOPES) == BASE + APP_SCOPES
     for definition in script.client_definitions():
-        expected = BASE + APP_SCOPES if definition["required_app_key"] else BASE
+        expected = _expected(definition["client_id"])
         assert definition["scopes"] == expected, definition["client_id"]
         assert script.definition_scopes(definition) == expected
     gated = {
@@ -92,7 +111,7 @@ def test_new_client_created_with_preset(app, script, env, client_id):
     action, _, scopes, missing = script.upsert_client(_definition(script, client_id))
     assert action == "created"
     assert missing == []
-    expected = BASE + APP_SCOPES if client_id in GATED else BASE
+    expected = _expected(client_id)
     assert scopes == expected
     assert _client(client_id).scopes.split() == expected
 
@@ -103,7 +122,7 @@ def test_existing_client_scopes_unchanged_without_flag(app, script, env, client_
     action, _, scopes, missing = script.upsert_client(_definition(script, client_id))
     assert action == "updated"
     assert scopes == BASE
-    assert missing == APP_SCOPES
+    assert missing == _expected(client_id)[len(BASE) :]
     assert _client(client_id).scopes.split() == BASE
 
 
@@ -122,6 +141,7 @@ def test_add_scopes_unions_and_preserves(app, script, env, client_id):
         "account:write",
         "app-users:read",
         "app-access:write",
+        *(EXECUTION_SCOPES if client_id in EXECUTION_CLIENTS else ()),
     ]
     assert scopes == client.scopes.split()
     assert client.audience == "original-audience"
@@ -182,7 +202,7 @@ def test_dry_run_never_creates(app, script, env):
     )
     assert action == "would create"
     assert secret is None
-    assert scopes == BASE + APP_SCOPES
+    assert scopes == _expected("avoided-emissions-web")
     assert _client("avoided-emissions-web") is None
 
 

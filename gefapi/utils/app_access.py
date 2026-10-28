@@ -12,6 +12,8 @@ Absence of a grant row means **no access**.  Nothing here ever default-allows.
 from dataclasses import dataclass
 import functools
 import logging
+import os
+import urllib.parse
 
 from flask import g, jsonify
 from flask_jwt_extended import current_user
@@ -22,6 +24,8 @@ from gefapi.utils.permissions import is_superadmin
 logger = logging.getLogger(__name__)
 
 APP_AVOIDED_EMISSIONS = "avoided_emissions"
+# Staging/local Avoided Emissions deployments: production accounts, separate grants.
+APP_AVOIDED_EMISSIONS_STAGING = "avoided_emissions_staging"
 APP_RIO_COHERENCE = "rio_coherence"
 # Staging Rio deployments sign in with production accounts but need their own grants.
 APP_RIO_COHERENCE_STAGING = "rio_coherence_staging"
@@ -80,6 +84,15 @@ class AppPolicy:
 APP_POLICIES = {
     APP_AVOIDED_EMISSIONS: AppPolicy(
         label="Avoided Emissions",
+        roles=("member", "admin"),
+        default_role="member",
+        admin_roles=frozenset({"admin"}),
+        superadmin_role="admin",
+        member_discovery=False,
+        directory_fields=PROFILE_RESPONSE_FIELDS,
+    ),
+    APP_AVOIDED_EMISSIONS_STAGING: AppPolicy(
+        label="Avoided Emissions (staging)",
         roles=("member", "admin"),
         default_role="member",
         admin_roles=frozenset({"admin"}),
@@ -154,6 +167,30 @@ def is_admin_role(app_key, role):
     """Return whether *role* administers *app_key*."""
     policy = get_app_policy(app_key)
     return bool(policy and role in policy.admin_roles)
+
+
+def app_admin_url(app_key):
+    """Return the trusted admin-page URL where *app_key* admins approve access.
+
+    Read from deployment configuration (``<APP_KEY>_ADMIN_URL``, e.g.
+    ``AVOIDED_EMISSIONS_STAGING_ADMIN_URL``), never from request data.  Only
+    ``https`` URLs (or ``http`` on a loopback host, for local development) are
+    accepted; anything else returns ``None`` so that no link is sent.
+    """
+    if not valid_app_key(app_key):
+        return None
+    raw = (os.getenv(f"{app_key.upper()}_ADMIN_URL") or "").strip()
+    if not raw:
+        return None
+    parsed = urllib.parse.urlsplit(raw)
+    if not parsed.netloc or parsed.username or parsed.password:
+        return None
+    if parsed.scheme == "https" or (
+        parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"}
+    ):
+        return raw
+    logger.warning("Ignoring invalid %s_ADMIN_URL", app_key.upper())
+    return None
 
 
 def get_grant(user_id, app_key):

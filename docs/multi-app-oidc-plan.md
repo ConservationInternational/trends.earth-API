@@ -123,6 +123,14 @@ def active_app_roles(user) -> dict[str, str]
 def require_app_access(app_key, role=None)   # decorator, applied in §1.10
 ```
 
+Implemented as an explicit `APP_POLICIES` registry of frozen `AppPolicy`
+entries (roles, default role, admin roles, superadmin role, `member_discovery`,
+directory fields). Invalid policies raise at import and unknown keys fail
+closed; `APP_KEYS`/`APP_LABELS`/`APP_ROLES` are derived from it. The generic
+`/api/v1/apps/<app_key>/...` user-token API and the identity-only
+`PATCH /api/v1/account/profile` are documented in
+[api-reference.md](api-reference.md#application-scoped-user-api-oidc-user-tokens).
+
 Absence of a row means **no access**. Never default-allow.
 
 ### 1.2 `user_app_access` model and migration
@@ -218,8 +226,10 @@ container) to create or update the first-party clients:
 | `te-api-ui` | `trends-earth-api-ui` | yes (PKCE) | `NULL` | api-ui staging + prod callbacks |
 | `te-qgis-plugin` | `https://api.trends.earth` | yes (PKCE) | `NULL` | `http://127.0.0.1/callback`, `http://[::1]/callback` |
 | `te-web` | `https://api.trends.earth` | yes (PKCE) | `NULL` | explicitly configured HTTPS staging + prod callbacks |
-| `avoided-emissions-web` | `avoided-emissions` | no (secret) | `avoided_emissions` | AE staging + prod callbacks |
-| `rio-coherence` | `rio-coherence` | yes (PKCE) | `rio_coherence` | Rio staging + prod callbacks |
+| `avoided-emissions-web` | `avoided-emissions` | no (secret) | `avoided_emissions` | AE production callbacks |
+| `avoided-emissions-web-staging` | `avoided-emissions-staging` | no (secret) | `avoided_emissions_staging` | AE staging + local development callbacks |
+| `rio-coherence` | `rio-coherence` | yes (PKCE) | `rio_coherence` | Rio production callbacks |
+| `rio-coherence-staging` | `rio-coherence-staging` | yes (PKCE) | `rio_coherence_staging` | Rio staging + local development callbacks |
 
 The API UI retains its own access-token audience. The QGIS plugin and `te-web`
 share the Trends.Earth API resource audience while retaining distinct client
@@ -227,7 +237,17 @@ IDs and ID-token audiences. Set `TE_WEB_REDIRECT_URIS` and
 `TE_WEB_POST_LOGOUT_REDIRECT_URIS` to the real HTTPS callback and logout URLs
 when provisioning staging or production; the script does not fall back to
 localhost in those environments. Likewise, set `RIO_REDIRECT_URIS` and
-`RIO_POST_LOGOUT_REDIRECT_URIS` to Rio's actual staging or production URLs.
+`RIO_POST_LOGOUT_REDIRECT_URIS` to Rio's production URLs only.
+
+Staging and local Rio instances use `rio-coherence-staging` against the
+production API, so testers sign in with their existing Trends.Earth accounts.
+The client is gated by its own `rio_coherence_staging` app key: staging access
+is granted separately from production access, and roles changed through a
+staging Rio do not affect production Rio. Its audience differs, so tokens issued
+to one Rio deployment are rejected by the other. Set
+`RIO_STAGING_REDIRECT_URIS` and `RIO_STAGING_POST_LOGOUT_REDIRECT_URIS` to the
+staging callbacks plus `http://localhost:3000/auth/callback` and
+`http://localhost:3000/` for local development.
 `API_UI_REDIRECT_URIS`, `API_UI_POST_LOGOUT_REDIRECT_URIS`, and the matching
 Avoided Emissions variables must also be configured for deployed environments.
 QGIS uses loopback callbacks by design.
@@ -235,6 +255,20 @@ QGIS uses loopback callbacks by design.
 The existing `POST /api/v1/admin/oidc-clients` route in
 [gefapi/routes/oidc.py](../gefapi/routes/oidc.py) already handles registration;
 extend it to accept `required_app_key` and validate it against `APP_KEYS`.
+
+**Scopes.** Ungated clients default to `openid email profile`. App-gated
+clients default to `openid email profile app:read account:write
+app-users:read app-access:write`; the definitions in
+`scripts/register_oidc_clients.py` set these presets explicitly, and the
+registration route validates scopes against the supported set (app scopes are
+rejected for ungated clients). Effective token scopes are the granted `scope`
+intersected with the client's current allowlist.
+
+Existing deployed clients are never broadened silently: re-running the script
+only reports missing definition scopes. Add them explicitly before an
+application starts requesting them, e.g.
+`python scripts/register_oidc_clients.py --client rio-coherence --add-scopes`
+(scopes are only appended, never removed).
 
 ### 1.7 Admin and self-service API for app access
 
@@ -297,16 +331,27 @@ Rules:
   `status: "revoked"` body so the app can tell the user to contact an
   administrator. Re-opening is an explicit admin action.
 
-### 1.7.2 Superadmin notification
+### 1.7.2 Access-request notification
 
-Every **newly created** request (either path) sends an email to the superadmins.
+Every **newly created** request (either path) sends an email to reviewers.
 
-* Recipients: all users with `role == "SUPERADMIN"`, plus the configured
-  `API_ENVIRONMENT_USER` address resolved through
-  `_configured_admin_email()` in [gefapi/utils/permissions.py](../gefapi/utils/permissions.py).
-  De-duplicate the list case-insensitively.
-* Content: requester name and email, app label, `request_note`, and a deep link
-  into the API UI pending-requests view.
+* Recipients are chosen separately for each app. Superadmins maintain a list in
+  `app_access_notification_recipient`, using
+  `GET/PUT /api/v1/admin/app-access/apps/<app_key>/notification-recipients`.
+  Only active global `ADMIN`/`SUPERADMIN` accounts can be listed.
+* If no eligible users are listed, the email goes to all users with
+  `role == "SUPERADMIN"` plus the configured `API_ENVIRONMENT_USER` address,
+  resolved through `_configured_admin_email()` in
+  [gefapi/utils/permissions.py](../gefapi/utils/permissions.py).
+* App admins are added automatically when they can approve users through the
+  app. That requires an active administering grant, an active verified account,
+  and an active client for the app with `app-access:write`.
+* Every address gets at most one email; addresses are compared
+  case-insensitively.
+* Content: requester name and email, app label, and `request_note`, all
+  HTML-escaped. Listed or default reviewers get a deep link to the API UI
+  pending-requests view for the app. Automatically added app admins get the
+  app's admin page (`<APP_KEY>_ADMIN_URL`) instead.
 * Sent with `EmailService.send_html_email` from
   [gefapi/services/email_service.py](../gefapi/services/email_service.py). This
   is an operational notification, not marketing, so it is **not** gated on the
@@ -395,6 +440,22 @@ failure modes, before and after the change.
 Surface the resolved client on the request context (e.g. `g.oidc_client`) so
 downstream code and logging can use it.
 
+**Implemented hardening (script/execution routes):**
+
+* The OIDC fallback runs only when the unverified header says `alg: RS256`. For
+  any other token, the original legacy exception is raised again.
+* OIDC access tokens carry `auth_version`; a token with a stale value is
+  rejected.
+* On an OIDC request, `require_scope` checks the scope against the token's
+  granted scopes intersected with the client's registered scopes. For
+  app-gated clients it also re-checks the live app grant.
+* Rate-limit keys resolve the user from a legacy or OIDC token without setting
+  the request's authentication context.
+* AE executions are already owned by the TE user today, because per-user
+  service-client tokens use `identity=user.id`. Moving AE to user OIDC tokens
+  therefore changes neither the plugin's `/execution/user` feed nor per-user
+  concurrency accounting.
+
 ### 1.10 Enforcement points
 
 Three layers, defense in depth:
@@ -427,7 +488,7 @@ The redirect carries:
 | `error` | `access_denied` (RFC 6749 §4.1.2.1) |
 | `error_description` | Human-readable, e.g. `Access to Avoided Emissions is pending administrator approval.` |
 | `state` | The original `state`, unmodified — required so the client can match the response to its request |
-| `te_app_access` | `pending` or `revoked` — the extension parameter the app branches on |
+| `te_app_access` | `pending`, `revoked`, or `unavailable` — the extension parameter the app branches on |
 | `te_app_key` | The `required_app_key` that blocked the request |
 
 Application behaviour:
@@ -437,6 +498,9 @@ Application behaviour:
   No further action offered.
 * `te_app_access=revoked` → "Your access to this application has been removed.
   Please contact an administrator." No automatic re-request.
+* `te_app_access=unavailable` → the access request could not be recorded
+  (e.g. a database failure). Nothing was persisted, so the application must
+  not claim a request was submitted; offer "try again later".
 
 Constraints:
 

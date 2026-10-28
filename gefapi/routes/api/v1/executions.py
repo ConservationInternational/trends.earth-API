@@ -20,6 +20,7 @@ from gefapi.errors import (
 )
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services import ExecutionService
+from gefapi.utils.bearer_auth import bearer_required
 from gefapi.utils.permissions import can_access_admin_features, is_admin_or_higher
 from gefapi.utils.rate_limiting import (
     RateLimitConfig,
@@ -39,7 +40,7 @@ logger = logging.getLogger()
     key_func=get_admin_aware_key,
     exempt_when=is_rate_limiting_disabled,
 )  # Rate limit script execution
-@jwt_required()
+@bearer_required()
 @require_scope("execution:write")
 def run_script(script):
     """
@@ -158,7 +159,7 @@ def run_script(script):
 
 
 @endpoints.route("/execution/user", strict_slashes=False, methods=["GET"])
-@jwt_required()
+@bearer_required()
 @require_scope("execution:read")
 def get_user_executions():
     """
@@ -456,7 +457,7 @@ def export_executions_csv():
 
 
 @endpoints.route("/execution", strict_slashes=False, methods=["GET"])
-@jwt_required()
+@bearer_required()
 @require_scope("execution:read")
 def get_executions():
     """
@@ -612,7 +613,7 @@ def get_executions():
 
 
 @endpoints.route("/execution/<execution>", strict_slashes=False, methods=["GET"])
-@jwt_required()
+@bearer_required()
 @require_scope("execution:read")
 def get_execution(execution):
     """
@@ -758,7 +759,7 @@ def update_execution(execution):
 @endpoints.route(
     "/execution/<execution>/cancel", strict_slashes=False, methods=["POST"]
 )
-@jwt_required()
+@bearer_required()
 @require_scope("execution:write")
 def cancel_execution(execution):
     """
@@ -936,7 +937,7 @@ def cancel_execution(execution):
 
 
 @endpoints.route("/execution/<execution>/log", strict_slashes=False, methods=["GET"])
-@jwt_required()
+@bearer_required()
 @require_scope("execution:read")
 def get_execution_logs(execution):
     """
@@ -1023,7 +1024,7 @@ def get_execution_logs(execution):
 @endpoints.route(
     "/execution/<execution>/download-results", strict_slashes=False, methods=["GET"]
 )
-@jwt_required()
+@bearer_required()
 @require_scope("execution:read")
 def get_download_results(execution):
     """Download execution results as a JSON file.

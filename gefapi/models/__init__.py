@@ -46,7 +46,10 @@ class GUID(TypeDecorator):
         return value
 
 
-from gefapi.models.app_access import UserAppAccess  # noqa: E402
+from gefapi.models.app_access import (  # noqa: E402
+    AppAccessNotificationRecipient,
+    UserAppAccess,
+)
 from gefapi.models.boundary import (  # noqa: E402
     AdminBoundary0Metadata,
     AdminBoundary1Metadata,
@@ -85,6 +88,7 @@ __all__ = [
     "AdminBoundary0Metadata",
     "AdminBoundary1Metadata",
     "AdminBoundary1Unit",
+    "AppAccessNotificationRecipient",
     "AuthorizationCode",
     "BulkEmail",
     "BulkEmailRecipientList",

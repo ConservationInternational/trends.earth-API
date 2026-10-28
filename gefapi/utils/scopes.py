@@ -11,7 +11,7 @@ Scope enforcement is intentionally limited to tokens issued via the
 import functools
 import logging
 
-from flask import jsonify
+from flask import g, jsonify
 from flask_jwt_extended import get_jwt
 
 logger = logging.getLogger(__name__)
@@ -149,6 +149,60 @@ def require_scope(scope: str):
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
+            # OIDC user tokens (accepted via bearer_required) must carry the
+            # scope and their client must still be registered for it.  Legacy
+            # and service-client tokens never reach this branch.
+            oidc_client = g.get("oidc_client")
+            # Only trust the OIDC slots when they describe the token verified
+            # for this request (a legacy jwt_required route never sets them).
+            if oidc_client is not None and g.get("_jwt_extended_jwt") is g.get(
+                "oidc_claims"
+            ):
+                from gefapi.utils.oidc_scopes import effective_token_scopes
+
+                if scope not in effective_token_scopes():
+                    logger.warning(
+                        "Scope '%s' denied for OIDC client %s",
+                        scope,
+                        oidc_client.client_id,
+                    )
+                    return (
+                        jsonify(
+                            {
+                                "status": 403,
+                                "detail": f"Insufficient scope. Required: {scope}",
+                            }
+                        ),
+                        403,
+                    )
+                # Re-check the live application grant: revoking access must
+                # take effect before already-issued tokens expire.
+                app_key = oidc_client.required_app_key
+                if app_key:
+                    from flask_jwt_extended import current_user
+
+                    from gefapi.utils.app_access import (
+                        app_access_status,
+                        has_app_access,
+                    )
+
+                    if not has_app_access(current_user, app_key):
+                        return (
+                            jsonify(
+                                {
+                                    "status": 403,
+                                    "detail": "Application access is not active",
+                                    "error": "app_access_required",
+                                    "app_key": app_key,
+                                    "app_access": app_access_status(
+                                        current_user, app_key
+                                    ),
+                                }
+                            ),
+                            403,
+                        )
+                return fn(*args, **kwargs)
+
             # jwt_required() has already run; just read the claims.
             claims = get_jwt()
             if not _has_scope(scope, claims):

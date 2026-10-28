@@ -16,6 +16,7 @@ from gefapi.utils.script_access import (
     get_access_summary,
     remove_role_from_script,
     remove_user_from_script,
+    set_script_required_app,
     set_script_roles,
     set_script_users,
 )
@@ -600,6 +601,59 @@ def remove_script_access_role(script_id, role):
 
         summary = get_access_summary(script)
         return jsonify(data=summary), 200
+
+    except Exception as e:
+        return error(status=500, detail=str(e))
+
+
+@endpoints.route("/script/<script_id>/access/app", methods=["PUT"])
+@jwt_required()
+@require_scope("admin:write")
+def set_script_access_app(script_id):
+    """
+    Allow users with an active application grant to access a script.
+
+    **Authentication**: JWT token required
+    **Authorization**: Admin level access required (ADMIN or SUPERADMIN)
+
+    **Request Schema**:
+    ```json
+    {"app_key": "avoided_emissions"}
+    ```
+
+    `app_key` must be a known gated application, or `null` to clear it.
+
+    **Behavior**:
+    - Additive: users with an active grant for `app_key` may access the script
+      *in addition to* any existing role/user allowlists, which are unchanged.
+    - Does not change the script's `public` or `restricted` flags.
+
+    **Error Responses**:
+    - `400 Bad Request`: Missing or unknown `app_key`
+    - `401 Unauthorized`: JWT token required
+    - `403 Forbidden`: Admin privileges required
+    - `404 Not Found`: Script does not exist
+    """
+    from gefapi.utils.app_access import valid_app_key
+
+    try:
+        if not is_admin_or_higher(current_user):
+            return error(status=403, detail="Admin privileges required")
+
+        script = ScriptService.get_script(script_id, current_user)
+        if not script:
+            return error(status=404, detail="Script not found")
+
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or "app_key" not in data:
+            return error(status=400, detail="Missing 'app_key' in request body")
+        app_key = data["app_key"]
+        if app_key is not None and not valid_app_key(app_key):
+            return error(status=400, detail=f"Unknown application '{app_key}'")
+
+        set_script_required_app(script, app_key)
+        db.session.commit()
+        return jsonify(data=get_access_summary(script)), 200
 
     except Exception as e:
         return error(status=500, detail=str(e))

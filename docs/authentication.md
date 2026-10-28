@@ -93,6 +93,20 @@ Content-Type: application/json
 
 Tokens are valid for 30 minutes.
 
+## OIDC User Tokens (first-party applications)
+
+Applications such as Avoided Emissions and Rio Coherence sign users in through
+the Trends.Earth OIDC provider (`/oauth/authorize`, `/oauth/token`). The
+resulting RS256 access tokens are accepted on the application-scoped API and on
+the script/execution routes listed in [api-reference.md](api-reference.md),
+provided they carry the required scope (`script:read`, `execution:read`, or
+`execution:write`).
+
+Legacy tokens from `POST /auth` are always checked first, so the QGIS plugin and
+API UI behave exactly as before. OIDC access tokens include an `auth_version`
+claim and stop working after a password change, password reset, or account
+deactivation.
+
 ## Common Authentication Errors
 
 | Status | Meaning |

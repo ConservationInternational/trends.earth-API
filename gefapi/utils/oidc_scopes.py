@@ -22,7 +22,14 @@ SCOPE_ACCOUNT_WRITE = "account:write"
 SCOPE_APP_USERS_READ = "app-users:read"
 SCOPE_APP_ACCESS_WRITE = "app-access:write"
 
+# Opt-in scopes letting a user token call the shared script/execution routes.
+# Named like the service-client scopes they mirror; never granted by default.
+SCOPE_SCRIPT_READ = "script:read"
+SCOPE_EXECUTION_READ = "execution:read"
+SCOPE_EXECUTION_WRITE = "execution:write"
+
 BASE_SCOPES = (SCOPE_OPENID, SCOPE_EMAIL, SCOPE_PROFILE)
+EXECUTION_SCOPES = (SCOPE_SCRIPT_READ, SCOPE_EXECUTION_READ, SCOPE_EXECUTION_WRITE)
 # Scopes that only make sense for a client bound to an application.
 APP_SCOPES = (SCOPE_APP_READ, SCOPE_APP_USERS_READ, SCOPE_APP_ACCESS_WRITE)
 ACCOUNT_SCOPES = (SCOPE_ACCOUNT_WRITE,)
@@ -33,6 +40,7 @@ SUPPORTED_OIDC_SCOPES = (
         SCOPE_APP_USERS_READ,
         SCOPE_APP_ACCESS_WRITE,
     )
+    + EXECUTION_SCOPES
 )
 
 # Registration defaults.  Existing clients are never changed automatically.

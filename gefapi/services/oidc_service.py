@@ -140,6 +140,9 @@ def issue_token(user, client, token_use, expires_in, scope, nonce=None):
         claims["azp"] = client.client_id
         claims["client_id"] = client.client_id
         claims["role"] = user.role
+        # Lets resource servers reject tokens issued before a password change
+        # or forced sign-out (see gefapi.utils.bearer_auth).
+        claims["auth_version"] = user.auth_version
         claims["app_access"] = active_app_keys(user)
         claims["app_roles"] = active_app_roles(user)
     token = jwt.encode(
