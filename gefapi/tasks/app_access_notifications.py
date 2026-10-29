@@ -117,7 +117,7 @@ def notify_superadmins_of_app_access_request(self, grant_id):
 
 @celery.task(base=AppAccessNotificationTask, bind=True)
 def notify_user_of_app_access_decision(self, grant_id, status):
-    """Notify a user that their application access was granted or revoked."""
+    """Send an access decision regardless of optional notification preferences."""
     from gefapi import app
     from gefapi.models.app_access import STATUS_ACTIVE, UserAppAccess
     from gefapi.services.email_service import EmailService
@@ -128,8 +128,9 @@ def notify_user_of_app_access_decision(self, grant_id, status):
         if grant is None:
             return {"status": "skipped", "reason": "grant_not_found"}
         user = grant.user
-        if user is None or not user.email_notifications_enabled:
-            return {"status": "skipped", "reason": "notifications_disabled"}
+        if user is None:
+            logger.warning("User for app access grant %s no longer exists", grant_id)
+            return {"status": "skipped", "reason": "user_not_found"}
 
         label = app_label(grant.app_key)
         name = html.escape(user.name or "")
