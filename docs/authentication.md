@@ -50,6 +50,22 @@ Response (same shape as login):
 By default the same refresh token is returned. Pass `?rotate=true` to issue a fresh
 refresh token (rotating invalidates the old one).
 
+## Application access decision emails
+
+When an administrator approves application access (`active`) or denies/removes
+access (`revoked`), the API queues a transactional email to the affected user.
+This applies to both the global admin API and application-scoped admin API,
+including Avoided Emissions and its staging application. Approval emails tell
+the user they can sign in; denial/removal emails explain that access is not
+active and direct them to an administrator.
+
+These required account-access emails are sent regardless of the user's
+`email_notifications_enabled` preference or optional email subscriptions.
+Repeated updates to the same status and role-only changes do not send another
+decision email. Delivery requires a Celery worker consuming the `default` queue
+and a configured SparkPost API key; persisting the decision does not guarantee
+email delivery.
+
 ## Logout
 
 ```http

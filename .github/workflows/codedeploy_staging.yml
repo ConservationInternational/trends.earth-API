@@ -125,6 +125,8 @@ jobs:
         IMAGE_URI="$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
         
         docker buildx build \
+          --pull \
+          --no-cache \
           --platform linux/amd64 \
           --cache-from=type=gha,scope=trendsearth-api-staging \
           --cache-to=type=gha,mode=max,scope=trendsearth-api-staging \

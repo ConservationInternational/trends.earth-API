@@ -215,7 +215,7 @@ services:
         window: 120s
 
   postgres:
-    image: postgis/postgis:16-3.4
+    image: postgis/postgis:16-3.6
     environment:
       POSTGRES_DB: ${STAGING_DB_NAME:-trendsearth_staging}
       POSTGRES_USER: ${STAGING_DB_USER:-trendsearth_staging}

@@ -97,24 +97,24 @@ setup_steps:
       echo "🐳 Pulling Docker images for Trends.Earth API..."
       
       # Pull PostgreSQL database image (version 16 as used in docker-compose)
-      docker pull postgres:16
+      docker pull postgis/postgis:16-3.6
       echo "✅ PostgreSQL 16 image pulled"
       
       # Pull Redis image for Celery message broker
-      docker pull redis:latest
+      docker pull redis:7-alpine
       echo "✅ Redis image pulled"
       
       # Pull Docker registry image for local script storage
-      docker pull registry:2.8.1
-      echo "✅ Docker registry 2.8.1 image pulled"
+      docker pull registry:3.1.2
+      echo "✅ Docker registry 3.1.2 image pulled"
       
       # Pull Python Alpine base image used in Dockerfile
-      docker pull python:3.11-alpine
-      echo "✅ Python 3.11 Alpine image pulled"
+      docker pull python:3.13-alpine3.24
+      echo "✅ Python 3.13 Alpine image pulled"
       
       # Display pulled images
       echo "📋 Docker images ready:"
-      docker images --filter "reference=postgres:16" --filter "reference=redis:latest" --filter "reference=registry:2.8.1" --filter "reference=python:3.11-alpine" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+      docker images --filter "reference=postgis/postgis:16-3.6" --filter "reference=redis:7-alpine" --filter "reference=registry:3.1.2" --filter "reference=python:3.13-alpine3.24" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
 
   # =============================================================================
   # ENVIRONMENT CONFIGURATION
@@ -273,7 +273,7 @@ setup_steps:
       echo "  • Poetry $(poetry --version | cut -d' ' -f3)"
       echo ""
       echo "🐳 DOCKER IMAGES READY:"
-      docker images --filter "reference=postgres:16" --filter "reference=redis:latest" --filter "reference=registry:2.8.1" --filter "reference=python:3.11-alpine" --format "  • {{.Repository}}:{{.Tag}} ({{.Size}})"
+      docker images --filter "reference=postgis/postgis:16-3.6" --filter "reference=redis:7-alpine" --filter "reference=registry:3.1.2" --filter "reference=python:3.13-alpine3.24" --format "  • {{.Repository}}:{{.Tag}} ({{.Size}})"
       echo ""
       echo "📁 ENVIRONMENT FILES:"
       echo "  • develop.env (development configuration)"
