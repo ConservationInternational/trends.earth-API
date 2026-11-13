@@ -22,6 +22,7 @@ def validate_batch_policy(policy):
         "allowed_job_queues",
         "allowed_job_definitions",
         "allowed_workflow_backends",
+        "default_workflow_backend",
     }
     if policy.keys() - allowed_keys:
         _reject("Unknown batch_execution_config fields")
@@ -44,6 +45,17 @@ def validate_batch_policy(policy):
         not isinstance(backend, str) or backend != "nextflow" for backend in backends
     ):
         _reject("allowed_workflow_backends must contain only 'nextflow'")
+    if (
+        "default_workflow_backend" in policy
+        and policy["default_workflow_backend"] not in backends
+    ):
+        _reject("default_workflow_backend must be a publisher-approved backend")
+
+
+def batch_workflow_backend(params, script):
+    """Resolve a Batch-only publisher default without modifying caller parameters."""
+    policy = getattr(script, "batch_execution_config", None) or {}
+    return params.get("workflow_backend", policy.get("default_workflow_backend"))
 
 
 def _command_allowed(command, allowed):
@@ -69,12 +81,23 @@ def validate_batch_execution_params(
         _reject("Execution parameters must be an object")
     policy = getattr(script, "batch_execution_config", None) or {}
     validate_batch_policy(policy)
-    if "workflow_backend" in params:
-        backend = params["workflow_backend"]
-        if backend != "nextflow" or backend not in policy.get(
-            "allowed_workflow_backends", []
-        ):
-            _reject("Workflow backend is not approved by the script publisher")
+    backend = batch_workflow_backend(params, script)
+    if (backend is not None or "workflow_backend" in params) and (
+        backend != "nextflow"
+        or backend not in policy.get("allowed_workflow_backends", [])
+    ):
+        _reject("Workflow backend is not approved by the script publisher")
+    if backend == "nextflow":
+        if "pipeline" in params:
+            _reject(
+                "Nextflow owns the workflow; legacy pipeline descriptors "
+                "are not supported"
+            )
+        if "batch" in params:
+            _reject(
+                "Nextflow driver settings are publisher/server-controlled; "
+                "use workflow inputs for task settings"
+            )
     batch = params.get("batch", {})
     if not isinstance(batch, dict):
         _reject("batch must be an object")

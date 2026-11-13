@@ -280,13 +280,31 @@ def test_trusted_pipeline_and_resource_tuning_remain_supported(batch_script):
         validate_batch_execution_params(params, batch_script)
 
 
+@pytest.mark.parametrize("compute_type", ["gee", "openeo"])
+@pytest.mark.parametrize("include_backend", [True, False])
 def test_legacy_analysis_parameters_unchanged(
     sample_script,
     regular_user,
     monkeypatch,
+    compute_type,
+    include_backend,
 ):
     monkeypatch.setitem(SETTINGS, "EXECUTION_QUEUE", {"ENABLED": False})
-    params = {"task_notes": "notes", "local_context": {}, "geojsons": ["marker"]}
+    sample_script.compute_type = compute_type
+    sample_script.batch_execution_config = {
+        "allowed_workflow_backends": ["nextflow"],
+        "default_workflow_backend": "nextflow",
+    }
+    params = {
+        "task_notes": "notes",
+        "local_context": {},
+        "geojsons": ["marker"],
+        "workflow_backend": "caller-defined-analysis-value",
+        "pipeline": {"unchanged": True},
+        "batch": {"unrelated": "analysis-data"},
+    }
+    if not include_backend:
+        params.pop("workflow_backend")
     with patch("gefapi.services.execution_service._dispatch_execution") as dispatch:
         execution = ExecutionService.create_execution(
             sample_script.id,
@@ -294,7 +312,7 @@ def test_legacy_analysis_parameters_unchanged(
             regular_user,
         )
     assert execution.params == params
-    dispatch.assert_called_once_with(execution.id, compute_type="gee")
+    dispatch.assert_called_once_with(execution.id, compute_type=compute_type)
     environment = ExecutionService._build_execution_environment(
         regular_user, execution.id, script=sample_script
     )

@@ -177,7 +177,7 @@ def _nextflow_config(script, image_override=None):
     if not enabled:
         raise ValueError("Nextflow execution is not enabled")
 
-    job_definition = os.getenv(
+    job_definition = getattr(script, "batch_job_definition", None) or os.getenv(
         "NEXTFLOW_DRIVER_JOB_DEFINITION",
         SETTINGS.get("NEXTFLOW_DRIVER_JOB_DEFINITION", ""),
     )
@@ -186,7 +186,7 @@ def _nextflow_config(script, image_override=None):
     ):
         raise ValueError("NEXTFLOW_DRIVER_JOB_DEFINITION must be a pinned Batch ARN")
 
-    job_queue = os.getenv(
+    job_queue = getattr(script, "batch_job_queue", None) or os.getenv(
         "NEXTFLOW_DRIVER_JOB_QUEUE", SETTINGS.get("NEXTFLOW_DRIVER_JOB_QUEUE", "")
     )
     work_root = os.getenv("NEXTFLOW_WORK_ROOT", SETTINGS.get("NEXTFLOW_WORK_ROOT", ""))
@@ -206,7 +206,7 @@ def _nextflow_config(script, image_override=None):
 
     image = (
         image_override
-        or os.getenv("NEXTFLOW_ANALYSIS_IMAGE")
+        or os.getenv("NEXTFLOW_TASK_IMAGE")
         or getattr(script, "batch_image", None)
     )
     if not image:
@@ -230,20 +230,7 @@ def _nextflow_config(script, image_override=None):
         "work_root": work_root.rstrip("/"),
         "state_root": state_root.rstrip("/"),
         "image": image,
-        "spot_queue": os.getenv("AE_NEXTFLOW_SPOT_QUEUE", ""),
-        "ondemand_queue": os.getenv("AE_NEXTFLOW_ONDEMAND_QUEUE", ""),
-        "allow_ondemand": os.getenv(
-            "AE_NEXTFLOW_ALLOW_ONDEMAND",
-            str(SETTINGS.get("AE_NEXTFLOW_ALLOW_ONDEMAND", False)),
-        ).lower()
-        == "true",
-        "job_role_arn": os.getenv("AE_NEXTFLOW_JOB_ROLE_ARN", ""),
-        "max_forks": os.getenv("AE_NEXTFLOW_MAX_FORKS", ""),
-        "max_hours": os.getenv("AE_NEXTFLOW_MAX_HOURS", ""),
-        "match_memory_mib": os.getenv(
-            "AE_NEXTFLOW_MATCH_MEMORY_MIB",
-            str(SETTINGS.get("AE_NEXTFLOW_MATCH_MEMORY_MIB", "")),
-        ),
+        "max_hours": os.getenv("NEXTFLOW_MAX_HOURS", ""),
     }
 
 
@@ -254,9 +241,9 @@ def _nextflow_driver_timeout_seconds(max_hours):
     try:
         hours = Decimal(str(max_hours))
     except InvalidOperation as exc:
-        raise ValueError("AE_NEXTFLOW_MAX_HOURS must be a positive number") from exc
+        raise ValueError("NEXTFLOW_MAX_HOURS must be a positive number") from exc
     if not hours.is_finite() or hours <= 0:
-        raise ValueError("AE_NEXTFLOW_MAX_HOURS must be a positive number")
+        raise ValueError("NEXTFLOW_MAX_HOURS must be a positive number")
     return int((hours * 3600).to_integral_value(rounding=ROUND_CEILING)) + 900
 
 
@@ -573,7 +560,12 @@ def submit_single_job(
 
 
 def submit_nextflow_driver(
-    execution_id, params_s3_uri, script, *, resume=False, previous_metadata=None
+    execution_id,
+    params_s3_uri,
+    script,
+    *,
+    resume=False,
+    previous_metadata=None,
 ):
     """Submit the publisher-approved Nextflow driver with server-owned settings."""
     previous_metadata = previous_metadata or {}
@@ -608,17 +600,11 @@ def submit_nextflow_driver(
         "PARAMS_S3_BUCKET": params_bucket,
         "PARAMS_S3_PREFIX": params_prefix,
         "AWS_REGION": AWS_REGION,
-        "AE_NEXTFLOW_IMAGE": config["image"],
-        "AE_NEXTFLOW_WORK_URI": work_uri,
-        "AE_NEXTFLOW_STATE_URI": state_uri,
-        "AE_NEXTFLOW_RESUME": "true" if resume else "false",
-        "AE_NEXTFLOW_SPOT_QUEUE": config["spot_queue"],
-        "AE_NEXTFLOW_ONDEMAND_QUEUE": config["ondemand_queue"],
-        "AE_NEXTFLOW_ALLOW_ONDEMAND": str(config["allow_ondemand"]).lower(),
-        "AE_NEXTFLOW_JOB_ROLE_ARN": config["job_role_arn"],
-        "AE_NEXTFLOW_MAX_FORKS": config["max_forks"],
-        "AE_NEXTFLOW_MAX_HOURS": max_hours,
-        "AE_NEXTFLOW_MATCH_MEMORY_MIB": config["match_memory_mib"],
+        "NEXTFLOW_TASK_IMAGE": config["image"],
+        "NEXTFLOW_WORK_URI": work_uri,
+        "NEXTFLOW_STATE_URI": state_uri,
+        "NEXTFLOW_RESUME": "true" if resume else "false",
+        "NEXTFLOW_MAX_HOURS": max_hours,
     }
     job_name = f"te-nf-{str(execution_id)[:8]}"
     submit_kwargs = {
@@ -626,7 +612,6 @@ def submit_nextflow_driver(
         "jobQueue": job_queue,
         "jobDefinition": job_definition,
         "containerOverrides": {
-            "command": ["python", "/opt/ae-workflow/driver.py"],
             "environment": [
                 {"name": name, "value": str(value)}
                 for name, value in env.items()
@@ -880,20 +865,22 @@ def _nextflow_child_job_ids(execution_id, execution=None, client=None, state_uri
     batch = client or _get_batch_client()
     queues = list(
         dict.fromkeys(
-            queue
-            for queue in (
-                os.getenv(
-                    "AE_NEXTFLOW_SPOT_QUEUE",
-                    SETTINGS.get("AE_NEXTFLOW_SPOT_QUEUE", ""),
-                ),
-                os.getenv(
-                    "AE_NEXTFLOW_ONDEMAND_QUEUE",
-                    SETTINGS.get("AE_NEXTFLOW_ONDEMAND_QUEUE", ""),
-                ),
-            )
-            if queue
+            queue.strip()
+            for queue in os.getenv(
+                "NEXTFLOW_CHILD_JOB_QUEUES",
+                SETTINGS.get("NEXTFLOW_CHILD_JOB_QUEUES", ""),
+            ).split(",")
+            if queue.strip()
         )
-    ) or [None]
+    )
+    if not queues:
+        try:
+            for page in batch.get_paginator("describe_job_queues").paginate():
+                queues.extend(
+                    queue["jobQueueArn"] for queue in page.get("jobQueues", [])
+                )
+        except Exception as exc:
+            errors.append(f"Could not discover Nextflow child job queues: {exc}")
     candidates = set()
     for queue in queues:
         for status in _BATCH_CANCELLABLE:
@@ -1401,6 +1388,21 @@ def batch_run(self, execution_id, image=None, environment=None, params=None):
             from gefapi.services.execution_service import load_execution_context
 
             image, environment, params = load_execution_context(execution_id, "batch")
+        from gefapi.utils.batch_policy import (
+            batch_workflow_backend,
+            validate_batch_execution_params,
+        )
+
+        script = Script.query.get(execution.script_id) if execution.script_id else None
+        validate_batch_execution_params(
+            params,
+            script,
+            default_queue=DEFAULT_BATCH_JOB_QUEUE,
+            default_definition=DEFAULT_BATCH_JOB_DEFINITION,
+        )
+        backend = batch_workflow_backend(params, script)
+        if backend is not None:
+            params = {**params, "workflow_backend": backend}
         nextflow_execution = bool(
             params and params.get("workflow_backend") == "nextflow"
         )
@@ -1412,6 +1414,8 @@ def batch_run(self, execution_id, image=None, environment=None, params=None):
                 .populate_existing()
                 .first()
             )
+            if execution is not None:
+                execution.params = params
         if not execution or execution.status in {
             "CANCELLING",
             "CANCELLED",
@@ -1439,17 +1443,7 @@ def batch_run(self, execution_id, image=None, environment=None, params=None):
             db.session.commit()
         logger.info("[BATCH] Execution %s → READY", execution_id)
 
-        # Revalidate queued/retried payloads before any infrastructure operation.
-        from gefapi.utils.batch_policy import validate_batch_execution_params
-
         batch_overrides = params.get("batch", {})
-        script = Script.query.get(execution.script_id) if execution.script_id else None
-        validate_batch_execution_params(
-            params,
-            script,
-            default_queue=DEFAULT_BATCH_JOB_QUEUE,
-            default_definition=DEFAULT_BATCH_JOB_DEFINITION,
-        )
 
         if params.get("workflow_backend") == "nextflow":
             resume = bool(prior_nextflow.get("resume_requested"))

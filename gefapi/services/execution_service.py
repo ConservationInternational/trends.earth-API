@@ -29,7 +29,10 @@ from gefapi.services.email_service import EmailService
 from gefapi.services.script_service import ScriptService
 from gefapi.services.user_service import UserService
 from gefapi.utils import mask_email
-from gefapi.utils.batch_policy import validate_batch_execution_params
+from gefapi.utils.batch_policy import (
+    batch_workflow_backend,
+    validate_batch_execution_params,
+)
 from gefapi.utils.permissions import is_admin_or_higher
 
 
@@ -784,6 +787,9 @@ class ExecutionService:
                 default_queue=DEFAULT_BATCH_JOB_QUEUE,
                 default_definition=DEFAULT_BATCH_JOB_DEFINITION,
             )
+            backend = batch_workflow_backend(params, script)
+            if backend is not None:
+                params = {**params, "workflow_backend": backend}
 
         if user.gee_credentials_type == "service_account":
             from gefapi.services.gee_service import GEEService

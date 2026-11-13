@@ -11,7 +11,75 @@ from gefapi.errors import InvalidExecutionParameters
 from gefapi.models import Execution
 from gefapi.services import batch_service
 from gefapi.tasks import batch_monitoring
-from gefapi.utils.batch_policy import validate_batch_execution_params
+from gefapi.utils.batch_policy import (
+    validate_batch_execution_params,
+    validate_batch_policy,
+)
+
+
+@pytest.mark.standalone
+def test_nextflow_default_must_be_publisher_approved():
+    with pytest.raises(InvalidExecutionParameters):
+        validate_batch_policy({"default_workflow_backend": "nextflow"})
+    validate_batch_policy(
+        {
+            "allowed_workflow_backends": ["nextflow"],
+            "default_workflow_backend": "nextflow",
+        }
+    )
+
+
+@pytest.mark.standalone
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"workflow_backend": "batch"},
+        {"pipeline": [{"name": "first-stage", "command": ["stage"]}]},
+        {"batch": {}},
+        {"batch": {"job_queue": "unapproved"}},
+        {"batch": {"command": ["custom-command"]}},
+    ],
+)
+def test_nextflow_default_rejects_legacy_dispatch_and_invalid_resources(params):
+    script = SimpleNamespace(
+        batch_execution_config={
+            "allowed_workflow_backends": ["nextflow"],
+            "default_workflow_backend": "nextflow",
+            "allowed_job_queues": ["approved-workers"],
+        }
+    )
+    with pytest.raises(InvalidExecutionParameters):
+        validate_batch_execution_params(params, script)
+
+
+def test_nextflow_publisher_default_is_persisted_before_dispatch(
+    app,
+    batch_script,
+    regular_user,
+    db_session,
+    monkeypatch,
+):
+    from gefapi.config import SETTINGS
+    from gefapi.services.execution_service import ExecutionService
+
+    monkeypatch.setitem(SETTINGS, "EXECUTION_QUEUE", {"ENABLED": False})
+    script = db_session.merge(batch_script)
+    user = db_session.merge(regular_user)
+    script.batch_execution_config = {
+        "allowed_workflow_backends": ["nextflow"],
+        "default_workflow_backend": "nextflow",
+    }
+    db_session.commit()
+    original = {"task_name": "default-workflow"}
+    with patch("gefapi.services.execution_service._dispatch_execution") as dispatch:
+        execution = ExecutionService.create_execution(
+            script.id,
+            original,
+            user,
+        )
+    assert execution.params == {**original, "workflow_backend": "nextflow"}
+    assert original == {"task_name": "default-workflow"}
+    dispatch.assert_called_once_with(execution.id, compute_type="batch")
 
 
 @pytest.mark.standalone
@@ -40,7 +108,6 @@ def test_nextflow_resume_uses_pinned_image_without_ecr_lookup(monkeypatch):
     monkeypatch.setenv("NEXTFLOW_DRIVER_JOB_QUEUE", "trusted-ondemand")
     monkeypatch.setenv("NEXTFLOW_WORK_ROOT", "s3://work-root/work")
     monkeypatch.setenv("NEXTFLOW_STATE_ROOT", "s3://state-root/state")
-    monkeypatch.delenv("AE_NEXTFLOW_ALLOW_ONDEMAND", raising=False)
     monkeypatch.setattr(batch_service, "PARAMS_S3_BUCKET", "params-bucket")
 
     config = batch_service._nextflow_config(
@@ -48,7 +115,15 @@ def test_nextflow_resume_uses_pinned_image_without_ecr_lookup(monkeypatch):
     )
 
     assert config["image"] == image
-    assert config["allow_ondemand"] is False
+
+    script = SimpleNamespace(
+        batch_image=None,
+        batch_job_definition="arn:aws:batch:us-east-1:123456789012:job-definition/other-workflow:7",
+        batch_job_queue="other-driver-queue",
+    )
+    config = batch_service._nextflow_config(script, image_override=image)
+    assert config["job_definition"] == script.batch_job_definition
+    assert config["job_queue"] == script.batch_job_queue
 
 
 @pytest.mark.standalone
@@ -60,13 +135,7 @@ def test_driver_submission_uses_only_trusted_driver_settings():
         "state_root": "s3://state-root/state",
         "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/analysis@sha256:"
         + "a" * 64,
-        "spot_queue": "trusted-spot",
-        "ondemand_queue": "trusted-workflow",
-        "allow_ondemand": False,
-        "job_role_arn": "arn:aws:iam::123456789012:role/analysis",
-        "max_forks": "8",
         "max_hours": "12",
-        "match_memory_mib": "4096",
     }
     batch = MagicMock()
     batch.submit_job.return_value = {"jobId": "driver-job"}
@@ -105,22 +174,18 @@ def test_driver_submission_uses_only_trusted_driver_settings():
     }
     assert submission["jobDefinition"] == previous_metadata["driver_job_definition"]
     assert submission["jobQueue"] == previous_metadata["driver_job_queue"]
-    assert submission["containerOverrides"]["command"] == [
-        "python",
-        "/opt/ae-workflow/driver.py",
-    ]
+    assert "command" not in submission["containerOverrides"]
     assert submission["retryStrategy"] == {"attempts": 1}
     assert submission["timeout"] == {"attemptDurationSeconds": 44100}
     assert submission["tags"] == {"execution_id": "execution-id"}
-    assert environment["AE_NEXTFLOW_IMAGE"] == previous_metadata["image"]
-    assert environment["AE_NEXTFLOW_RESUME"] == "true"
-    assert environment["AE_NEXTFLOW_ALLOW_ONDEMAND"] == "false"
-    assert environment["AE_NEXTFLOW_MAX_HOURS"] == "12"
-    assert environment["AE_NEXTFLOW_STATE_URI"] == previous_metadata["state_uri"]
-    assert environment["AE_NEXTFLOW_WORK_URI"] == previous_metadata["work_uri"]
+    assert environment["NEXTFLOW_TASK_IMAGE"] == previous_metadata["image"]
+    assert environment["NEXTFLOW_RESUME"] == "true"
+    assert environment["NEXTFLOW_MAX_HOURS"] == "12"
+    assert environment["NEXTFLOW_STATE_URI"] == previous_metadata["state_uri"]
+    assert environment["NEXTFLOW_WORK_URI"] == previous_metadata["work_uri"]
     assert environment["PARAMS_S3_BUCKET"] == previous_metadata["params_s3_bucket"]
     assert environment["PARAMS_S3_PREFIX"] == previous_metadata["params_s3_prefix"]
-    assert environment["AE_NEXTFLOW_MATCH_MEMORY_MIB"] == "4096"
+    assert not any(name.startswith("AE_") for name in environment)
     assert result["batch_jobs"] == {"nextflow": "driver-job"}
 
 
@@ -210,14 +275,25 @@ def test_nextflow_cancellation_marks_state_and_terminates_children(monkeypatch):
 
 
 @pytest.mark.standalone
-def test_nextflow_failure_cleanup_discovers_children_by_tag(monkeypatch):
+@pytest.mark.parametrize("configured_queues", [True, False])
+def test_nextflow_failure_cleanup_discovers_children_by_tag(
+    monkeypatch, configured_queues
+):
+    queues = ["workflow-one-workers", "workflow-two-workers"]
+    if configured_queues:
+        monkeypatch.setenv("NEXTFLOW_CHILD_JOB_QUEUES", ",".join(queues))
+    else:
+        monkeypatch.delenv("NEXTFLOW_CHILD_JOB_QUEUES", raising=False)
     s3 = MagicMock()
     s3.get_object.side_effect = ClientError(
         {"Error": {"Code": "NoSuchKey"}}, "GetObject"
     )
     batch = MagicMock()
+    batch.get_paginator.return_value.paginate.return_value = [
+        {"jobQueues": [{"jobQueueArn": queue}]} for queue in queues
+    ]
     batch.list_jobs.side_effect = lambda **kwargs: (
-        {"jobSummaryList": [{"jobId": "orphan-child"}]}
+        {"jobSummaryList": [{"jobId": "orphan-child"}, {"jobId": "unrelated-job"}]}
         if kwargs["jobStatus"] == "RUNNING"
         else {"jobSummaryList": []}
     )
@@ -228,7 +304,12 @@ def test_nextflow_failure_cleanup_discovers_children_by_tag(monkeypatch):
                     "jobId": "orphan-child",
                     "status": "RUNNING",
                     "tags": {"execution_id": "execution-id"},
-                }
+                },
+                {
+                    "jobId": "unrelated-job",
+                    "status": "RUNNING",
+                    "tags": {"execution_id": "another-execution"},
+                },
             ]
         },
         {"jobs": [{"jobId": "orphan-child", "status": "RUNNING"}]},
@@ -253,6 +334,9 @@ def test_nextflow_failure_cleanup_discovers_children_by_tag(monkeypatch):
         )
 
     assert cleanup["cleaned"] is True
+    assert {call.kwargs["jobQueue"] for call in batch.list_jobs.call_args_list} == set(
+        queues
+    )
     assert cleanup["jobs_terminated"] == ["orphan-child"]
     batch.terminate_job.assert_called_once_with(
         jobId="orphan-child",
