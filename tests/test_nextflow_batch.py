@@ -189,6 +189,42 @@ def test_driver_submission_uses_only_trusted_driver_settings():
     assert result["batch_jobs"] == {"nextflow": "driver-job"}
 
 
+def test_queued_dispatch_persists_publisher_default(
+    app, regular_user, batch_script, db_session
+):
+    user = db_session.merge(regular_user)
+    script = db_session.merge(batch_script)
+    script.batch_execution_config = {
+        "allowed_workflow_backends": ["nextflow"],
+        "default_workflow_backend": "nextflow",
+    }
+    original = {"workflow_input": {"seed": 42}}
+    execution = Execution(script_id=script.id, params=original, user_id=user.id)
+    execution.status = "READY"
+    db_session.add(execution)
+    db_session.commit()
+    with (
+        patch.object(
+            batch_service, "push_params_to_s3", return_value="s3://params/input.json.gz"
+        ) as upload,
+        patch.object(
+            batch_service,
+            "submit_nextflow_driver",
+            return_value={
+                "batch_jobs": {"nextflow": "driver-job"},
+                "nextflow": {"driver_job_id": "driver-job"},
+            },
+        ) as submit,
+    ):
+        batch_service.batch_run.run(execution.id, script.slug, {}, original)
+    db_session.refresh(execution)
+    expected = {**original, "workflow_backend": "nextflow"}
+    assert execution.params == expected
+    upload.assert_called_once_with(expected, str(execution.id))
+    assert submit.call_args.kwargs["resume"] is False
+    assert execution.results["batch_jobs"] == {"nextflow": "driver-job"}
+
+
 def test_resume_dispatch_reuses_original_params_object(
     app, regular_user, batch_script, db_session
 ):

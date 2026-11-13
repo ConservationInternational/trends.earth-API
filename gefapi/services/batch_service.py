@@ -1463,6 +1463,7 @@ def batch_run(self, execution_id, image=None, environment=None, params=None):
                 staged_results = dict(execution.results or {})
                 staged_results["nextflow"] = prior_nextflow
                 execution.results = staged_results
+            db.session.flush()
             submitted = submit_nextflow_driver(
                 str(execution_id),
                 params_s3_uri,
