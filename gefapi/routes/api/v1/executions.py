@@ -813,6 +813,27 @@ def update_execution(execution):
 
 
 @endpoints.route(
+    "/execution/<execution>/resume", strict_slashes=False, methods=["POST"]
+)
+@bearer_required()
+@require_scope("execution:write")
+def resume_execution(execution):
+    """Resume the same failed Nextflow execution and retain its state."""
+    try:
+        resumed = ExecutionService.resume_nextflow_execution(execution, current_user)
+    except ExecutionNotFound as exc:
+        return error(status=404, detail=exc.message)
+    except InvalidExecutionParameters as exc:
+        return error(status=400, detail=exc.message)
+    except ValueError as exc:
+        return error(status=409, detail=str(exc))
+    except Exception:
+        logger.exception("Could not resume execution %s", execution)
+        return error(status=500, detail="Could not resume execution")
+    return jsonify(data=resumed.serialize(user=current_user)), 202
+
+
+@endpoints.route(
     "/execution/<execution>/cancel", strict_slashes=False, methods=["POST"]
 )
 @bearer_required()

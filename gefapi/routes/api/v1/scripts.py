@@ -857,8 +857,8 @@ def update_script_config(script):
     - `name`: Script display name
     - `description`: Script description text
     - `uses_gee`: Whether the script uses Google Earth Engine (boolean)
-    - `batch_execution_config`: Publisher-approved commands and alternate
-      queues/definitions (admin only)
+    - `batch_execution_config`: Publisher-approved commands, alternate
+      queues/definitions, and optional workflow backends (admin only)
     - `batch_image`, `batch_job_queue`, `batch_job_definition`: Trusted Batch
       infrastructure configuration (admin only)
 

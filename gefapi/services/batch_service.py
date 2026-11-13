@@ -58,11 +58,13 @@ array job.  Single-step executions omit the ``pipeline`` key altogether
 and the container runs the default command from its job definition.
 """
 
+from decimal import ROUND_CEILING, Decimal, InvalidOperation
 import gzip
 import json
 import logging
 import os
 from pathlib import Path
+import re
 import tempfile
 
 import boto3
@@ -162,6 +164,151 @@ def push_params_to_s3(params_dict, execution_id):
             ExtraArgs=extra_args if extra_args else None,
         )
     return f"s3://{PARAMS_S3_BUCKET}/{key}"
+
+
+def _nextflow_config(script, image_override=None):
+    """Load trusted Nextflow infrastructure settings and pin its analysis image."""
+    enabled = (
+        os.getenv(
+            "NEXTFLOW_ENABLED", str(SETTINGS.get("NEXTFLOW_ENABLED", False))
+        ).lower()
+        == "true"
+    )
+    if not enabled:
+        raise ValueError("Nextflow execution is not enabled")
+
+    job_definition = os.getenv(
+        "NEXTFLOW_DRIVER_JOB_DEFINITION",
+        SETTINGS.get("NEXTFLOW_DRIVER_JOB_DEFINITION", ""),
+    )
+    if not re.fullmatch(
+        r"arn:[^:]+:batch:[^:]+:\d{12}:job-definition/[^:]+:\d+", job_definition
+    ):
+        raise ValueError("NEXTFLOW_DRIVER_JOB_DEFINITION must be a pinned Batch ARN")
+
+    job_queue = os.getenv(
+        "NEXTFLOW_DRIVER_JOB_QUEUE", SETTINGS.get("NEXTFLOW_DRIVER_JOB_QUEUE", "")
+    )
+    work_root = os.getenv("NEXTFLOW_WORK_ROOT", SETTINGS.get("NEXTFLOW_WORK_ROOT", ""))
+    state_root = os.getenv(
+        "NEXTFLOW_STATE_ROOT", SETTINGS.get("NEXTFLOW_STATE_ROOT", "")
+    )
+    for name, uri in (
+        ("NEXTFLOW_WORK_ROOT", work_root),
+        ("NEXTFLOW_STATE_ROOT", state_root),
+    ):
+        if not re.fullmatch(r"s3://[^/]+(?:/[^?#]*)?", uri):
+            raise ValueError(f"{name} must be an s3:// URI")
+    if not job_queue:
+        raise ValueError("NEXTFLOW_DRIVER_JOB_QUEUE is required")
+    if not PARAMS_S3_BUCKET:
+        raise ValueError("PARAMS_S3_BUCKET is required for Nextflow execution")
+
+    image = (
+        image_override
+        or os.getenv("NEXTFLOW_ANALYSIS_IMAGE")
+        or getattr(script, "batch_image", None)
+    )
+    if not image:
+        raise ValueError("A trusted Nextflow analysis image is required")
+    if ".dkr.ecr." not in image.split("/", 1)[0]:
+        if ".dkr.ecr." not in ECR_REGISTRY:
+            raise ValueError("Nextflow analysis image must be hosted in ECR")
+        image = f"{ECR_REGISTRY.rstrip('/')}/{image.lstrip('/')}"
+    if image_override:
+        if "@sha256:" not in image or not re.fullmatch(
+            r"[^/]+\.dkr\.ecr\.[^/]+\.amazonaws\.com(?:\.cn)?/"
+            r".+@sha256:[0-9a-f]{64}",
+            image,
+        ):
+            raise ValueError("Stored Nextflow image is not a pinned ECR digest")
+    else:
+        image = _resolve_ecr_image_digest(image)
+    return {
+        "job_definition": job_definition,
+        "job_queue": job_queue,
+        "work_root": work_root.rstrip("/"),
+        "state_root": state_root.rstrip("/"),
+        "image": image,
+        "spot_queue": os.getenv("AE_NEXTFLOW_SPOT_QUEUE", ""),
+        "ondemand_queue": os.getenv("AE_NEXTFLOW_ONDEMAND_QUEUE", ""),
+        "allow_ondemand": os.getenv(
+            "AE_NEXTFLOW_ALLOW_ONDEMAND",
+            str(SETTINGS.get("AE_NEXTFLOW_ALLOW_ONDEMAND", False)),
+        ).lower()
+        == "true",
+        "job_role_arn": os.getenv("AE_NEXTFLOW_JOB_ROLE_ARN", ""),
+        "max_forks": os.getenv("AE_NEXTFLOW_MAX_FORKS", ""),
+        "max_hours": os.getenv("AE_NEXTFLOW_MAX_HOURS", ""),
+        "match_memory_mib": os.getenv(
+            "AE_NEXTFLOW_MATCH_MEMORY_MIB",
+            str(SETTINGS.get("AE_NEXTFLOW_MATCH_MEMORY_MIB", "")),
+        ),
+    }
+
+
+def _nextflow_driver_timeout_seconds(max_hours):
+    """Keep the Batch driver alive through its configured workflow budget."""
+    if not max_hours:
+        return None
+    try:
+        hours = Decimal(str(max_hours))
+    except InvalidOperation as exc:
+        raise ValueError("AE_NEXTFLOW_MAX_HOURS must be a positive number") from exc
+    if not hours.is_finite() or hours <= 0:
+        raise ValueError("AE_NEXTFLOW_MAX_HOURS must be a positive number")
+    return int((hours * 3600).to_integral_value(rounding=ROUND_CEILING)) + 900
+
+
+def _resolve_ecr_image_digest(image):
+    """Return a trusted ECR image pinned by immutable digest."""
+    if "@sha256:" in image:
+        registry, digest = image.split("@sha256:", 1)
+        if not registry or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError("Nextflow analysis image digest is invalid")
+        return image
+
+    registry, _, repository_tag = image.partition("/")
+    if ".dkr.ecr." not in registry:
+        raise ValueError("Nextflow analysis image must be hosted in ECR")
+    repository, separator, tag = repository_tag.rpartition(":")
+    if not separator:
+        repository, tag = repository_tag, "latest"
+    if not repository or not tag:
+        raise ValueError("Nextflow analysis image repository or tag is invalid")
+    ecr = boto3.client("ecr", region_name=AWS_REGION)
+    response = ecr.describe_images(
+        repositoryName=repository,
+        imageIds=[{"imageTag": tag}],
+    )
+    details = response.get("imageDetails", [])
+    digest = details[0].get("imageDigest") if details else None
+    if not digest or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        raise ValueError("Unable to resolve Nextflow analysis image to an ECR digest")
+    return f"{registry}/{repository}@{digest}"
+
+
+def _s3_location(uri):
+    """Split a trusted S3 URI into bucket and key."""
+    match = re.fullmatch(r"s3://([^/]+)(?:/(.*))?", uri)
+    if not match:
+        raise ValueError("Invalid S3 URI")
+    return match.group(1), match.group(2) or ""
+
+
+def _nextflow_state_location(execution_id, state_uri=None):
+    root = state_uri or _nextflow_config_for_state()
+    bucket, key = _s3_location(root)
+    if not state_uri:
+        key = f"{key.rstrip('/')}/{execution_id}"
+    return bucket, key.strip("/")
+
+
+def _nextflow_config_for_state():
+    root = os.getenv("NEXTFLOW_STATE_ROOT", SETTINGS.get("NEXTFLOW_STATE_ROOT", ""))
+    if not root:
+        return ""
+    return root.rstrip("/")
 
 
 # ---------------------------------------------------------------------------
@@ -425,6 +572,96 @@ def submit_single_job(
     return {"job_id": resp["jobId"]}
 
 
+def submit_nextflow_driver(
+    execution_id, params_s3_uri, script, *, resume=False, previous_metadata=None
+):
+    """Submit the publisher-approved Nextflow driver with server-owned settings."""
+    previous_metadata = previous_metadata or {}
+    config = _nextflow_config(
+        script,
+        image_override=previous_metadata.get("image") if resume else None,
+    )
+    work_uri = (
+        previous_metadata.get("work_uri") if resume else None
+    ) or f"{config['work_root']}/{execution_id}"
+    state_uri = (
+        previous_metadata.get("state_uri") if resume else None
+    ) or f"{config['state_root']}/{execution_id}"
+    job_definition = (
+        previous_metadata.get("driver_job_definition") if resume else None
+    ) or config["job_definition"]
+    job_queue = (
+        previous_metadata.get("driver_job_queue") if resume else None
+    ) or config["job_queue"]
+    params_bucket = (
+        previous_metadata.get("params_s3_bucket") if resume else None
+    ) or PARAMS_S3_BUCKET
+    params_prefix = (
+        previous_metadata.get("params_s3_prefix") if resume else None
+    ) or PARAMS_S3_PREFIX
+    max_hours = (previous_metadata.get("max_hours") if resume else None) or config[
+        "max_hours"
+    ]
+    driver_timeout_seconds = _nextflow_driver_timeout_seconds(max_hours)
+    env = {
+        "EXECUTION_ID": str(execution_id),
+        "PARAMS_S3_BUCKET": params_bucket,
+        "PARAMS_S3_PREFIX": params_prefix,
+        "AWS_REGION": AWS_REGION,
+        "AE_NEXTFLOW_IMAGE": config["image"],
+        "AE_NEXTFLOW_WORK_URI": work_uri,
+        "AE_NEXTFLOW_STATE_URI": state_uri,
+        "AE_NEXTFLOW_RESUME": "true" if resume else "false",
+        "AE_NEXTFLOW_SPOT_QUEUE": config["spot_queue"],
+        "AE_NEXTFLOW_ONDEMAND_QUEUE": config["ondemand_queue"],
+        "AE_NEXTFLOW_ALLOW_ONDEMAND": str(config["allow_ondemand"]).lower(),
+        "AE_NEXTFLOW_JOB_ROLE_ARN": config["job_role_arn"],
+        "AE_NEXTFLOW_MAX_FORKS": config["max_forks"],
+        "AE_NEXTFLOW_MAX_HOURS": max_hours,
+        "AE_NEXTFLOW_MATCH_MEMORY_MIB": config["match_memory_mib"],
+    }
+    job_name = f"te-nf-{str(execution_id)[:8]}"
+    submit_kwargs = {
+        "jobName": job_name,
+        "jobQueue": job_queue,
+        "jobDefinition": job_definition,
+        "containerOverrides": {
+            "command": ["python", "/opt/ae-workflow/driver.py"],
+            "environment": [
+                {"name": name, "value": str(value)}
+                for name, value in env.items()
+                if value != ""
+            ],
+        },
+        "retryStrategy": {"attempts": 1},
+        "tags": {"execution_id": str(execution_id)},
+        "propagateTags": True,
+    }
+    if driver_timeout_seconds is not None:
+        submit_kwargs["timeout"] = {"attemptDurationSeconds": driver_timeout_seconds}
+    response = _get_batch_client().submit_job(**submit_kwargs)
+    job_id = response["jobId"]
+    return {
+        "batch_jobs": {"nextflow": job_id},
+        "status": "SUBMITTED",
+        "nextflow": {
+            "driver_job_id": job_id,
+            "params_s3_uri": params_s3_uri,
+            "work_uri": work_uri,
+            "state_uri": state_uri,
+            "image": config["image"],
+            "params_s3_bucket": params_bucket,
+            "params_s3_prefix": params_prefix,
+            "driver_job_definition": job_definition,
+            "driver_job_queue": job_queue,
+            "max_hours": max_hours,
+            "driver_timeout_seconds": driver_timeout_seconds,
+            "resume": resume,
+            "phase": "SUBMITTED",
+        },
+    }
+
+
 def _build_step_resources(step, default_overrides):
     """Build ``resourceRequirements`` for a single pipeline step.
 
@@ -601,6 +838,155 @@ _BATCH_CANCELLABLE = frozenset(
 )
 
 
+def _nextflow_child_job_ids(execution_id, execution=None, client=None, state_uri=None):
+    """Find Nextflow children through the state manifest and execution tag."""
+    execution = execution or Execution.query.get(execution_id)
+    if not execution:
+        return [], [f"Execution {execution_id} not found"]
+
+    metadata = (execution.results or {}).get("nextflow") or {}
+    driver_id = ((execution.results or {}).get("batch_jobs") or {}).get("nextflow")
+    job_ids = set()
+    errors = []
+
+    try:
+        bucket, state_key = _nextflow_state_location(
+            execution_id, state_uri or metadata.get("state_uri")
+        )
+        response = _get_s3_client().get_object(
+            Bucket=bucket, Key=f"{state_key.rstrip('/')}/jobs.json"
+        )
+        manifest = json.loads(response["Body"].read().decode("utf-8"))
+        if isinstance(manifest, dict):
+            manifest = manifest.get("jobs", [])
+        if isinstance(manifest, list):
+            for entry in manifest:
+                job_id = (
+                    entry
+                    if isinstance(entry, str)
+                    else entry.get("jobId", entry.get("job_id"))
+                    if isinstance(entry, dict)
+                    else None
+                )
+                if isinstance(job_id, str) and job_id and job_id != driver_id:
+                    job_ids.add(job_id)
+        else:
+            errors.append("Nextflow jobs manifest must contain a list")
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        if error_code not in {"NoSuchKey", "404"}:
+            errors.append(f"Could not read Nextflow jobs manifest: {exc}")
+
+    batch = client or _get_batch_client()
+    queues = list(
+        dict.fromkeys(
+            queue
+            for queue in (
+                os.getenv(
+                    "AE_NEXTFLOW_SPOT_QUEUE",
+                    SETTINGS.get("AE_NEXTFLOW_SPOT_QUEUE", ""),
+                ),
+                os.getenv(
+                    "AE_NEXTFLOW_ONDEMAND_QUEUE",
+                    SETTINGS.get("AE_NEXTFLOW_ONDEMAND_QUEUE", ""),
+                ),
+            )
+            if queue
+        )
+    ) or [None]
+    candidates = set()
+    for queue in queues:
+        for status in _BATCH_CANCELLABLE:
+            kwargs = {"jobStatus": status, "maxResults": 1000}
+            if queue:
+                kwargs["jobQueue"] = queue
+            token = None
+            seen_tokens = set()
+            while True:
+                if token:
+                    kwargs["nextToken"] = token
+                try:
+                    response = batch.list_jobs(**kwargs)
+                except Exception as exc:
+                    errors.append(f"Could not list Nextflow child jobs: {exc}")
+                    break
+                candidates.update(
+                    summary["jobId"]
+                    for summary in response.get("jobSummaryList", [])
+                    if summary.get("jobId") and summary["jobId"] != driver_id
+                )
+                token = response.get("nextToken")
+                if not token or token in seen_tokens:
+                    break
+                seen_tokens.add(token)
+            kwargs.pop("nextToken", None)
+
+    candidate_ids = sorted(candidates - job_ids)
+    for index in range(0, len(candidate_ids), 100):
+        try:
+            response = batch.describe_jobs(jobs=candidate_ids[index : index + 100])
+            for job in response.get("jobs", []):
+                if (job.get("tags") or {}).get("execution_id") == str(execution_id):
+                    job_ids.add(job["jobId"])
+        except Exception as exc:
+            errors.append(f"Could not inspect Nextflow job tags: {exc}")
+    return sorted(job_ids), errors
+
+
+def terminate_nextflow_children(execution_id, state_uri=None):
+    """Terminate orphaned child jobs and confirm none remain active."""
+    result = {
+        "jobs_terminated": [],
+        "active_job_ids": [],
+        "errors": [],
+        "cleaned": False,
+    }
+    execution = Execution.query.get(execution_id)
+    if not execution:
+        result["errors"].append(f"Execution {execution_id} not found")
+        return result
+    client = _get_batch_client()
+    job_ids, errors = _nextflow_child_job_ids(
+        execution_id,
+        execution=execution,
+        client=client,
+        state_uri=state_uri,
+    )
+    result["errors"].extend(errors)
+    described = {}
+    for index in range(0, len(job_ids), 100):
+        try:
+            response = client.describe_jobs(jobs=job_ids[index : index + 100])
+            described.update({job["jobId"]: job for job in response.get("jobs", [])})
+        except Exception as exc:
+            result["errors"].append(f"Could not describe Nextflow child jobs: {exc}")
+
+    for job_id in job_ids:
+        job = described.get(job_id)
+        if not job or job.get("status") not in _BATCH_CANCELLABLE:
+            continue
+        try:
+            client.terminate_job(
+                jobId=job_id, reason="Nextflow driver failed; cleaning up children"
+            )
+            result["jobs_terminated"].append(job_id)
+        except Exception as exc:
+            result["errors"].append(f"Could not terminate child job {job_id}: {exc}")
+
+    for index in range(0, len(job_ids), 100):
+        try:
+            response = client.describe_jobs(jobs=job_ids[index : index + 100])
+            result["active_job_ids"].extend(
+                job["jobId"]
+                for job in response.get("jobs", [])
+                if job.get("status") in _BATCH_CANCELLABLE
+            )
+        except Exception as exc:
+            result["errors"].append(f"Could not verify Nextflow child cleanup: {exc}")
+    result["cleaned"] = not result["active_job_ids"] and not result["errors"]
+    return result
+
+
 def terminate_batch_jobs(execution_id, reason="Cancelled by user"):
     """Terminate all AWS Batch jobs associated with *execution_id*.
 
@@ -635,7 +1021,50 @@ def terminate_batch_jobs(execution_id, reason="Cancelled by user"):
         result["errors"].append(f"Execution {execution_id} not found")
         return result
 
-    batch_jobs = (execution.results or {}).get("batch_jobs")
+    execution_results = execution.results or {}
+    batch_jobs = execution_results.get("batch_jobs")
+    nextflow = (execution.params or {}).get("workflow_backend") == "nextflow"
+    client = None
+
+    if nextflow:
+        try:
+            bucket, state_key = _nextflow_state_location(
+                execution_id,
+                (execution_results.get("nextflow") or {}).get("state_uri"),
+            )
+            state_key = state_key.rstrip("/")
+            client_s3 = _get_s3_client()
+            client_s3.put_object(
+                Bucket=bucket,
+                Key=f"{state_key}/cancelled.json",
+                Body=json.dumps({"execution_id": str(execution_id)}).encode(),
+                ContentType="application/json",
+            )
+            result["cancellation_marker_written"] = True
+        except Exception as exc:
+            result["errors"].append(
+                f"Could not write Nextflow cancellation marker: {exc}"
+            )
+
+        try:
+            client = _get_batch_client()
+            child_ids, errors = _nextflow_child_job_ids(
+                execution_id,
+                execution=execution,
+                client=client,
+                state_uri=(execution_results.get("nextflow") or {}).get("state_uri"),
+            )
+            result["errors"].extend(errors)
+            batch_jobs = dict(batch_jobs or {})
+            batch_jobs.update(
+                {
+                    f"nextflow-child-{index}": job_id
+                    for index, job_id in enumerate(child_ids)
+                }
+            )
+        except Exception as exc:
+            result["errors"].append(f"Could not discover Nextflow child jobs: {exc}")
+
     if not batch_jobs:
         logger.info(
             "[BATCH-CANCEL] Execution %s has no batch_jobs in results",
@@ -649,7 +1078,7 @@ def terminate_batch_jobs(execution_id, reason="Cancelled by user"):
         )
         return result
 
-    client = _get_batch_client()
+    client = client or _get_batch_client()
 
     # Describe all jobs first to check which are still active
     job_ids = list(batch_jobs.values())
@@ -972,9 +1401,42 @@ def batch_run(self, execution_id, image=None, environment=None, params=None):
             from gefapi.services.execution_service import load_execution_context
 
             image, environment, params = load_execution_context(execution_id, "batch")
+        nextflow_execution = bool(
+            params and params.get("workflow_backend") == "nextflow"
+        )
+        if nextflow_execution:
+            execution = (
+                db.session.query(Execution)
+                .filter(Execution.id == execution_id)
+                .with_for_update()
+                .populate_existing()
+                .first()
+            )
+        if not execution or execution.status in {
+            "CANCELLING",
+            "CANCELLED",
+            "FINISHED",
+            "FAILED",
+        }:
+            logger.info("[BATCH] Execution %s is not dispatchable", execution_id)
+            return
+        prior_results = execution.results or {}
+        prior_nextflow = prior_results.get("nextflow") or {}
+        if (
+            nextflow_execution
+            and prior_results.get("batch_jobs", {}).get("nextflow")
+            and not prior_nextflow.get("resume_requested")
+        ):
+            logger.info(
+                "[BATCH] Nextflow driver for %s is already recorded; "
+                "skipping duplicate dispatch",
+                execution_id,
+            )
+            return
         execution.status = "READY"
         db.session.add(execution)
-        db.session.commit()
+        if not nextflow_execution:
+            db.session.commit()
         logger.info("[BATCH] Execution %s → READY", execution_id)
 
         # Revalidate queued/retried payloads before any infrastructure operation.
@@ -988,6 +1450,60 @@ def batch_run(self, execution_id, image=None, environment=None, params=None):
             default_queue=DEFAULT_BATCH_JOB_QUEUE,
             default_definition=DEFAULT_BATCH_JOB_DEFINITION,
         )
+
+        if params.get("workflow_backend") == "nextflow":
+            resume = bool(prior_nextflow.get("resume_requested"))
+            params_s3_uri = prior_nextflow.get("params_s3_uri")
+            if resume and not params_s3_uri:
+                raise ValueError("Original Nextflow params S3 location is missing")
+            if not resume:
+                params_s3_uri = push_params_to_s3(params, str(execution_id))
+                prior_nextflow = dict(prior_nextflow)
+                prior_nextflow.update(
+                    {
+                        "params_s3_uri": params_s3_uri,
+                        "params_s3_bucket": PARAMS_S3_BUCKET,
+                        "params_s3_prefix": PARAMS_S3_PREFIX,
+                    }
+                )
+                staged_results = dict(execution.results or {})
+                staged_results["nextflow"] = prior_nextflow
+                execution.results = staged_results
+            submitted = submit_nextflow_driver(
+                str(execution_id),
+                params_s3_uri,
+                script,
+                resume=resume,
+                previous_metadata=prior_nextflow,
+            )
+            nextflow_metadata = dict(prior_nextflow)
+            nextflow_metadata.update(submitted["nextflow"])
+            nextflow_metadata["resume_requested"] = False
+            nextflow_metadata.pop("error", None)
+            nextflow_metadata.pop("success", None)
+            nextflow_metadata.pop("child_cleanup", None)
+            submitted["nextflow"] = nextflow_metadata
+
+            db.session.refresh(execution)
+            if execution.status == "CANCELLING":
+                current = dict(execution.results or {})
+                current["batch_jobs"] = submitted["batch_jobs"]
+                current["nextflow"] = nextflow_metadata
+                execution.results = current
+                db.session.add(execution)
+                db.session.commit()
+                _get_batch_client().terminate_job(
+                    jobId=submitted["batch_jobs"]["nextflow"],
+                    reason="Execution cancellation requested during dispatch",
+                )
+                return
+
+            execution.results = submitted
+            execution.status = "RUNNING"
+            db.session.add(execution)
+            _add_log(execution.id, "Nextflow workflow driver submitted to AWS Batch")
+            db.session.commit()
+            return
 
         job_queue = (
             batch_overrides.get("job_queue")
@@ -1136,14 +1652,28 @@ def batch_run(self, execution_id, image=None, environment=None, params=None):
         )
         rollbar.report_exc_info()
         try:
+            if params and params.get("workflow_backend") == "nextflow":
+                preserved = dict(execution.results or {})
+                metadata = dict(preserved.get("nextflow") or {})
+                metadata.update(
+                    {
+                        "phase": "FAILED",
+                        "error": error_msg,
+                        "resume_requested": False,
+                    }
+                )
+                preserved["nextflow"] = metadata
+                preserved["error"] = f"Nextflow submission failed: {error_msg}"
+                execution.results = preserved
+            else:
+                execution.results = {
+                    "error": f"Batch submission failed: {error_msg}",
+                    "error_type": type(exc).__name__,
+                    "traceback": full_tb,
+                    "retry_attempt": self.request.retries,
+                }
             execution.status = "FAILED"
             execution.end_date = datetime.datetime.now(datetime.UTC)
-            execution.results = {
-                "error": f"Batch submission failed: {error_msg}",
-                "error_type": type(exc).__name__,
-                "traceback": full_tb,
-                "retry_attempt": self.request.retries,
-            }
             _add_log(
                 execution.id,
                 f"Batch submission failed: {error_msg}",
@@ -1157,4 +1687,6 @@ def batch_run(self, execution_id, image=None, environment=None, params=None):
                 execution_id,
                 inner,
             )
+        if params and params.get("workflow_backend") == "nextflow":
+            return
         raise self.retry(exc=exc) from None

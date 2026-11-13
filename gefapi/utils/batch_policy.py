@@ -21,6 +21,7 @@ def validate_batch_policy(policy):
         "allowed_commands",
         "allowed_job_queues",
         "allowed_job_definitions",
+        "allowed_workflow_backends",
     }
     if policy.keys() - allowed_keys:
         _reject("Unknown batch_execution_config fields")
@@ -38,6 +39,11 @@ def validate_batch_policy(policy):
             not isinstance(value, str) or not value for value in values
         ):
             _reject(f"{key} must be a list of nonempty strings")
+    backends = policy.get("allowed_workflow_backends", [])
+    if not isinstance(backends, list) or any(
+        not isinstance(backend, str) or backend != "nextflow" for backend in backends
+    ):
+        _reject("allowed_workflow_backends must contain only 'nextflow'")
 
 
 def _command_allowed(command, allowed):
@@ -63,6 +69,12 @@ def validate_batch_execution_params(
         _reject("Execution parameters must be an object")
     policy = getattr(script, "batch_execution_config", None) or {}
     validate_batch_policy(policy)
+    if "workflow_backend" in params:
+        backend = params["workflow_backend"]
+        if backend != "nextflow" or backend not in policy.get(
+            "allowed_workflow_backends", []
+        ):
+            _reject("Workflow backend is not approved by the script publisher")
     batch = params.get("batch", {})
     if not isinstance(batch, dict):
         _reject("batch must be an object")

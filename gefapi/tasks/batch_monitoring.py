@@ -29,6 +29,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import tempfile
 
 import boto3
@@ -37,6 +38,7 @@ import rollbar
 from sqlalchemy import and_
 
 from gefapi import db
+from gefapi.config import SETTINGS
 from gefapi.models import Execution, ExecutionLog, Script
 
 logger = logging.getLogger(__name__)
@@ -252,6 +254,9 @@ def _process_execution(execution, batch_jobs, job_details):
         {name: info["status"] for name, info in statuses.items()},
     )
 
+    if (execution.params or {}).get("workflow_backend") == "nextflow":
+        return _process_nextflow_execution(execution, batch_jobs, statuses)
+
     # --- any failure → mark execution FAILED ---
     if any(s == "FAILED" for s in all_job_statuses):
         reasons = [
@@ -331,12 +336,227 @@ def _process_execution(execution, batch_jobs, job_details):
     return None
 
 
+def _process_nextflow_execution(execution, batch_jobs, statuses):
+    """Apply the driver's state and result contract without success fallbacks."""
+    current = dict(execution.results or {})
+    metadata = dict(current.get("nextflow") or {})
+    status = statuses.get("nextflow", {})
+    state = _fetch_nextflow_status(
+        str(execution.id), state_uri=metadata.get("state_uri")
+    )
+    if status.get("status") == "FAILED":
+        error = (
+            (state or {}).get("error")
+            or status.get("reason")
+            or "Nextflow driver failed"
+        )
+        from gefapi.services.batch_service import terminate_nextflow_children
+
+        try:
+            cleanup = terminate_nextflow_children(
+                str(execution.id), state_uri=metadata.get("state_uri")
+            )
+        except Exception as exc:
+            cleanup = {
+                "cleaned": False,
+                "active_job_ids": [],
+                "jobs_terminated": [],
+                "errors": [f"Nextflow child cleanup failed: {exc}"],
+            }
+        now = datetime.datetime.now(datetime.UTC)
+        previous_cleanup = metadata.get("child_cleanup") or {}
+        previous_time = previous_cleanup.get("last_clean_at")
+        elapsed = 0
+        if previous_time:
+            try:
+                previous_datetime = datetime.datetime.fromisoformat(previous_time)
+                elapsed = (now - previous_datetime).total_seconds()
+            except (TypeError, ValueError):
+                elapsed = 0
+        clean_checks = (
+            previous_cleanup.get("clean_checks", 0) + 1
+            if cleanup.get("cleaned") and elapsed >= 30
+            else 1
+            if cleanup.get("cleaned")
+            else 0
+        )
+        metadata["child_cleanup"] = {
+            "clean_checks": clean_checks,
+            "last_clean_at": now.isoformat(),
+            "active_job_ids": cleanup.get("active_job_ids", []),
+            "terminated_job_ids": cleanup.get("jobs_terminated", []),
+            "errors": cleanup.get("errors", []),
+        }
+        if not cleanup.get("cleaned") or clean_checks < 2:
+            metadata.update(
+                {
+                    "phase": (state or {}).get("phase", "failed"),
+                    "success": False,
+                    "error": error,
+                }
+            )
+            current.update(
+                {
+                    "batch_jobs": batch_jobs,
+                    "batch_statuses": statuses,
+                    "nextflow": metadata,
+                    "error": error,
+                }
+            )
+            execution.results = current
+            db.session.add(execution)
+            return None
+
+        metadata.update(
+            {
+                "phase": (state or {}).get("phase", "failed"),
+                "success": False,
+                "error": error,
+            }
+        )
+        current.update(
+            {
+                "batch_jobs": batch_jobs,
+                "batch_statuses": statuses,
+                "nextflow": metadata,
+                "error": error,
+            }
+        )
+        execution.results = current
+        execution.status = "FAILED"
+        execution.end_date = datetime.datetime.now(datetime.UTC)
+        db.session.add(
+            ExecutionLog(
+                text=f"Nextflow workflow failed: {error}",
+                level="ERROR",
+                execution_id=execution.id,
+            )
+        )
+        db.session.add(execution)
+        return "FAILED"
+
+    if status.get("status") == "SUCCEEDED":
+        result_payload = _fetch_results_from_s3(
+            str(execution.id),
+            bucket=metadata.get("params_s3_bucket"),
+            prefix=metadata.get("params_s3_prefix"),
+        )
+        if (
+            state is None
+            or str(state.get("phase", "")).lower() != "succeeded"
+            or state.get("success") is not True
+            or not isinstance(result_payload, dict)
+        ):
+            error = (state or {}).get(
+                "error"
+            ) or "Nextflow driver succeeded without successful state and results"
+            metadata.update(
+                {
+                    "phase": (state or {}).get("phase", "FAILED"),
+                    "success": False,
+                    "error": error,
+                }
+            )
+            current.update(
+                {
+                    "batch_jobs": batch_jobs,
+                    "batch_statuses": statuses,
+                    "nextflow": metadata,
+                    "error": error,
+                }
+            )
+            execution.results = current
+            execution.status = "FAILED"
+            execution.end_date = datetime.datetime.now(datetime.UTC)
+            db.session.add(
+                ExecutionLog(
+                    text=f"Nextflow workflow failed: {error}",
+                    level="ERROR",
+                    execution_id=execution.id,
+                )
+            )
+            db.session.add(execution)
+            return "FAILED"
+
+        metadata.update(
+            {
+                key: state[key]
+                for key in ("phase", "success", "session_id", "error")
+                if key in state
+            }
+        )
+        result_payload["batch_jobs"] = batch_jobs
+        result_payload["batch_statuses"] = statuses
+        result_payload["nextflow"] = metadata
+        execution.results = result_payload
+        execution.status = "FINISHED"
+        execution.end_date = datetime.datetime.now(datetime.UTC)
+        db.session.add(
+            ExecutionLog(
+                text="Nextflow workflow completed successfully",
+                level="INFO",
+                execution_id=execution.id,
+            )
+        )
+        db.session.add(execution)
+        return "FINISHED"
+
+    if state:
+        metadata.update(
+            {
+                key: state[key]
+                for key in ("phase", "session_id", "error")
+                if key in state
+            }
+        )
+    current["batch_statuses"] = statuses
+    current["nextflow"] = metadata
+    execution.results = current
+    db.session.add(execution)
+    return None
+
+
+def _fetch_nextflow_status(execution_id, state_uri=None):
+    """Load driver status and stable session identity from the S3 state root."""
+    state_root = state_uri or os.getenv(
+        "NEXTFLOW_STATE_ROOT", SETTINGS.get("NEXTFLOW_STATE_ROOT", "")
+    )
+    match = re.fullmatch(r"s3://([^/]+)(?:/(.*))?", state_root)
+    if not match:
+        return None
+    bucket = match.group(1)
+    prefix = (match.group(2) or "").strip("/")
+    if not state_uri:
+        prefix = f"{prefix}/{execution_id}".strip("/")
+    s3 = _s3_client()
+    state = {}
+    for filename in ("status.json", "session.json"):
+        try:
+            response = s3.get_object(Bucket=bucket, Key=f"{prefix}/{filename}")
+            document = json.loads(response["Body"].read().decode("utf-8"))
+            if not isinstance(document, dict):
+                continue
+            if filename == "status.json":
+                state.update(document)
+            elif isinstance(document.get("session_id"), str):
+                state["session_id"] = document["session_id"]
+        except Exception as exc:
+            error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+            if error_code not in {"NoSuchKey", "404"}:
+                logger.error(
+                    "[BATCH-MONITOR] Could not fetch Nextflow %s: %s",
+                    filename,
+                    exc,
+                )
+    return state or None
+
+
 # ---------------------------------------------------------------------------
 # S3 results retrieval
 # ---------------------------------------------------------------------------
 
 
-def _fetch_results_from_s3(execution_id):
+def _fetch_results_from_s3(execution_id, *, bucket=None, prefix=None):
     """Download the results JSON deposited by the container.
 
     Convention: the container writes
@@ -344,19 +564,19 @@ def _fetch_results_from_s3(execution_id):
 
     Returns the parsed dict, or ``None`` if the file does not exist.
     """
-    if not PARAMS_S3_BUCKET:
+    bucket = bucket or PARAMS_S3_BUCKET
+    prefix = PARAMS_S3_PREFIX if prefix is None else prefix
+    if not bucket:
         logger.warning("[BATCH-MONITOR] PARAMS_S3_BUCKET is not configured")
         return None
 
-    key = f"{PARAMS_S3_PREFIX}/{execution_id}_results.json.gz"
-    logger.info(
-        "[BATCH-MONITOR] Fetching results from s3://%s/%s", PARAMS_S3_BUCKET, key
-    )
+    key = f"{prefix.rstrip('/')}/{execution_id}_results.json.gz".lstrip("/")
+    logger.info("[BATCH-MONITOR] Fetching results from s3://%s/%s", bucket, key)
     try:
         s3 = _s3_client()
         with tempfile.TemporaryDirectory() as tmp:
             gz_path = Path(tmp) / "results.json.gz"
-            s3.download_file(PARAMS_S3_BUCKET, key, str(gz_path))
+            s3.download_file(bucket, key, str(gz_path))
             with gzip.open(gz_path, "r") as f:
                 return json.loads(f.read().decode("utf-8"))
     except Exception as exc:

@@ -22,6 +22,7 @@ from gefapi.services.batch_service import (
     DEFAULT_BATCH_JOB_DEFINITION,
     DEFAULT_BATCH_JOB_QUEUE,
     batch_run,
+    terminate_nextflow_children,
 )
 from gefapi.services.docker_service import docker_run
 from gefapi.services.email_service import EmailService
@@ -1102,6 +1103,130 @@ class ExecutionService:
                 .all()
             )
         return execution.logs
+
+    @staticmethod
+    def resume_nextflow_execution(execution_id, user):
+        """Resume a failed Nextflow run in place without replacing its inputs."""
+        try:
+            execution_uuid = (
+                execution_id
+                if isinstance(execution_id, UUID)
+                else UUID(execution_id, version=4)
+            )
+        except (TypeError, ValueError) as exc:
+            raise ExecutionNotFound(message="Ticket Not Found") from exc
+
+        query = db.session.query(Execution).filter(Execution.id == execution_uuid)
+        if not is_admin_or_higher(user):
+            query = query.filter(Execution.user_id == user.id)
+        execution = query.with_for_update().first()
+        if not execution:
+            raise ExecutionNotFound(message="Ticket Not Found")
+        if (execution.params or {}).get("workflow_backend") != "nextflow":
+            raise ValueError("Only Nextflow executions can be resumed")
+        if execution.status != "FAILED":
+            raise ValueError("Only failed executions can be resumed")
+
+        script = Script.query.get(execution.script_id) if execution.script_id else None
+        if (
+            not script
+            or script.status != "SUCCESS"
+            or not ExecutionService._is_batch_environment(script)
+        ):
+            raise ValueError("The published execution script is no longer available")
+        validate_batch_execution_params(
+            execution.params,
+            script,
+            default_queue=DEFAULT_BATCH_JOB_QUEUE,
+            default_definition=DEFAULT_BATCH_JOB_DEFINITION,
+        )
+
+        results = dict(execution.results or {})
+        nextflow = dict(results.get("nextflow") or {})
+        cleanup = terminate_nextflow_children(
+            str(execution.id), state_uri=nextflow.get("state_uri")
+        )
+        cleanup_state = nextflow.get("child_cleanup") or {}
+        clean_checks = cleanup_state.get("clean_checks", 0)
+        previous_time = cleanup_state.get("last_clean_at")
+        elapsed = 0
+        if previous_time:
+            try:
+                elapsed = (
+                    datetime.datetime.now(datetime.UTC)
+                    - datetime.datetime.fromisoformat(previous_time)
+                ).total_seconds()
+            except (TypeError, ValueError):
+                elapsed = 0
+        if cleanup.get("cleaned") and not cleanup.get("jobs_terminated"):
+            if clean_checks < 2 and elapsed >= 30:
+                clean_checks += 1
+            elif clean_checks < 1:
+                clean_checks = 1
+        else:
+            clean_checks = 1 if cleanup.get("cleaned") else 0
+        if not cleanup.get("cleaned") or clean_checks < 2:
+            nextflow["child_cleanup"] = {
+                "clean_checks": clean_checks,
+                "last_clean_at": datetime.datetime.now(datetime.UTC).isoformat(),
+                "active_job_ids": cleanup.get("active_job_ids", []),
+                "terminated_job_ids": cleanup.get("jobs_terminated", []),
+                "errors": cleanup.get("errors", []),
+            }
+            results["nextflow"] = nextflow
+            execution.results = results
+            db.session.add(execution)
+            db.session.commit()
+            raise ValueError("Nextflow child cleanup is still being verified")
+
+        previous_driver = (results.get("batch_jobs") or {}).get("nextflow")
+        driver_history = list(nextflow.get("driver_job_history") or [])
+        if previous_driver and previous_driver not in driver_history:
+            driver_history.append(previous_driver)
+        nextflow["driver_job_history"] = driver_history
+        nextflow["resume_requested"] = True
+        nextflow["resume_count"] = int(nextflow.get("resume_count", 0)) + 1
+        results["nextflow"] = nextflow
+        results["batch_jobs"] = {}
+        results.pop("batch_statuses", None)
+        execution.results = results
+        execution.end_date = None
+        execution.progress = 0
+
+        queue_config = SETTINGS.get("EXECUTION_QUEUE", {})
+        max_concurrent = (
+            user.max_concurrent_executions
+            if user.max_concurrent_executions is not None
+            else queue_config.get("MAX_CONCURRENT_PER_USER", 3)
+        )
+        should_queue = (
+            queue_config.get("ENABLED", True)
+            and not is_admin_or_higher(user)
+            and _get_user_active_execution_count(user.id) >= max_concurrent
+        )
+        if should_queue:
+            execution.queued_at = datetime.datetime.now(datetime.UTC)
+            target_status = "PENDING"
+        else:
+            execution.queued_at = None
+            target_status = "READY"
+        update_execution_status_with_logging(execution, target_status)
+        if not should_queue:
+            try:
+                _dispatch_execution(
+                    execution.id,
+                    compute_type=(script.compute_type or "gee").lower(),
+                )
+            except Exception:
+                failed_results = dict(execution.results or {})
+                nextflow_metadata = dict(failed_results.get("nextflow") or {})
+                nextflow_metadata["resume_requested"] = False
+                failed_results["nextflow"] = nextflow_metadata
+                failed_results["error"] = "Failed to queue Nextflow resume"
+                execution.results = failed_results
+                update_execution_status_with_logging(execution, "FAILED")
+                raise
+        return execution
 
     @staticmethod
     def cancel_execution(execution_id):
