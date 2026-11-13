@@ -29,6 +29,30 @@ The API requires the following server-side configuration:
 | `NEXTFLOW_MAX_HOURS` | Optional overall workflow budget passed to the driver |
 | `NEXTFLOW_CHILD_JOB_QUEUES` | Optional comma-separated queues for tagged-child discovery; absent this, discover all queues using `batch:DescribeJobQueues` |
 
+The CodeDeploy workflows read these from GitHub Actions variables using the
+`PRODUCTION_NEXTFLOW_` and `STAGING_NEXTFLOW_` prefixes, then write them into
+the deployed environment file. `NEXTFLOW_ENABLED` defaults to `false`; the
+other settings default to empty. Configure separate work and state roots for
+staging and production.
+
+Provision the dedicated bucket and lifecycle rules with:
+
+```bash
+python scripts/setup/setup_nextflow_s3_bucket.py --profile your-profile --region us-east-1
+```
+
+The script creates `trendsearth-api-nextflow-{account-id}`, blocks public
+access, enables encryption and versioning, and sets lifecycle expiration for
+the `production/` and `staging/` prefixes. Current work objects expire after
+30 days and current state objects after 365 days; noncurrent versions are
+removed one day after becoming noncurrent, and expired delete markers are
+cleaned up. It prints the
+`*_NEXTFLOW_WORK_ROOT` and `*_NEXTFLOW_STATE_ROOT` values to enter as GitHub
+Actions variables. Ensure workflows complete within the work retention period
+and configure state retention to cover the desired resume window. The script
+does not modify IAM; grant the API role access to state prefixes and the
+Nextflow driver/task roles access to the work and state prefixes they use.
+
 When `NEXTFLOW_MAX_HOURS` is set, the API sets the AWS Batch driver timeout
 to that budget plus 900 seconds for shutdown and cleanup.
 
