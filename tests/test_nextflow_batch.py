@@ -124,7 +124,10 @@ def test_script_exposes_effective_nextflow_driver_only_to_admins(monkeypatch, ro
         "job_queue": "default",
     }
     monkeypatch.setenv("NEXTFLOW_DRIVER_JOB_QUEUE", "environment")
-    assert script.serialize(include=include, user=user)["nextflow_driver"]["job_queue"] == "environment"
+    assert (
+        script.serialize(include=include, user=user)["nextflow_driver"]["job_queue"]
+        == "environment"
+    )
     script.batch_job_definition = default_arn.replace(":4", ":5")
     script.batch_job_queue = "override"
     assert script.serialize(include=include, user=user)["nextflow_driver"] == {
