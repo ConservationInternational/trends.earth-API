@@ -9,7 +9,7 @@ import pytest
 
 from gefapi import db
 from gefapi.errors import InvalidExecutionParameters
-from gefapi.models import Execution
+from gefapi.models import Execution, Script
 from gefapi.services import batch_service
 from gefapi.tasks import batch_monitoring
 from gefapi.utils.batch_policy import (
@@ -96,6 +96,42 @@ def test_nextflow_backend_requires_publisher_policy():
     script.batch_execution_config = {}
     with pytest.raises(InvalidExecutionParameters):
         validate_batch_execution_params({"workflow_backend": "nextflow"}, script)
+
+
+@pytest.mark.standalone
+@pytest.mark.parametrize("role", ["ADMIN", "SUPERADMIN", "USER", None])
+def test_script_exposes_effective_nextflow_driver_only_to_admins(monkeypatch, role):
+    default_arn = "arn:aws:batch:us-east-1:123456789012:job-definition/driver:4"
+    monkeypatch.delenv("NEXTFLOW_DRIVER_JOB_DEFINITION", raising=False)
+    monkeypatch.delenv("NEXTFLOW_DRIVER_JOB_QUEUE", raising=False)
+    monkeypatch.setitem(
+        batch_service.SETTINGS, "NEXTFLOW_DRIVER_JOB_DEFINITION", default_arn
+    )
+    monkeypatch.setitem(batch_service.SETTINGS, "NEXTFLOW_DRIVER_JOB_QUEUE", "default")
+    script = Script("Nextflow", "nextflow", "owner", compute_type="batch")
+    script.created_at = script.updated_at = datetime.datetime.now(datetime.UTC)
+    user = SimpleNamespace(role=role) if role else None
+    include = ["environment", "nextflow_driver"]
+
+    data = script.serialize(include=include, user=user)
+    if role not in {"ADMIN", "SUPERADMIN"}:
+        assert "nextflow_driver" not in data
+        return
+    assert data["batch_job_definition"] is None
+    assert data["batch_job_queue"] is None
+    assert data["nextflow_driver"] == {
+        "job_definition": default_arn,
+        "job_queue": "default",
+    }
+    monkeypatch.setenv("NEXTFLOW_DRIVER_JOB_QUEUE", "environment")
+    assert script.serialize(include=include, user=user)["nextflow_driver"]["job_queue"] == "environment"
+    script.batch_job_definition = default_arn.replace(":4", ":5")
+    script.batch_job_queue = "override"
+    assert script.serialize(include=include, user=user)["nextflow_driver"] == {
+        "job_definition": script.batch_job_definition,
+        "job_queue": "override",
+    }
+    assert "nextflow_driver" not in script.serialize(include=["environment"], user=user)
 
 
 @pytest.mark.standalone

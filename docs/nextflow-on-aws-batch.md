@@ -86,6 +86,17 @@ Analysis images must be in ECR. Tags are resolved by the API to immutable
 one AWS Batch attempt; workflow task retry/resume is owned by Nextflow.
 
 Different scripts can publish different driver job definitions and queues.
+Administrators can discover the effective settings with
+`GET /api/v1/script/{id}?include=environment,nextflow_driver`. The additional
+`nextflow_driver` object contains `job_definition` and `job_queue`, resolved
+using the same Script-override/API-default precedence as new submissions.
+This lookup does not contact AWS or resolve the worker image. It leaves the
+raw `environment` fields unchanged and is omitted for non-admin callers.
+Publishers can clone the returned definition with a new driver image and
+publish its pinned revision to the Script without duplicating API defaults
+in their own environment variables. Invalid or missing driver configuration
+causes the lookup to fail rather than returning guessed infrastructure.
+
 Each trusted driver must implement this protocol:
 
 - Read `EXECUTION_ID`, `PARAMS_S3_BUCKET`, `PARAMS_S3_PREFIX`, `AWS_REGION`,

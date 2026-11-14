@@ -166,17 +166,8 @@ def push_params_to_s3(params_dict, execution_id):
     return f"s3://{PARAMS_S3_BUCKET}/{key}"
 
 
-def _nextflow_config(script, image_override=None):
-    """Load trusted Nextflow infrastructure settings and pin its analysis image."""
-    enabled = (
-        os.getenv(
-            "NEXTFLOW_ENABLED", str(SETTINGS.get("NEXTFLOW_ENABLED", False))
-        ).lower()
-        == "true"
-    )
-    if not enabled:
-        raise ValueError("Nextflow execution is not enabled")
-
+def get_nextflow_driver_config(script):
+    """Resolve the driver used for new submissions without AWS lookups."""
     job_definition = getattr(script, "batch_job_definition", None) or os.getenv(
         "NEXTFLOW_DRIVER_JOB_DEFINITION",
         SETTINGS.get("NEXTFLOW_DRIVER_JOB_DEFINITION", ""),
@@ -189,6 +180,23 @@ def _nextflow_config(script, image_override=None):
     job_queue = getattr(script, "batch_job_queue", None) or os.getenv(
         "NEXTFLOW_DRIVER_JOB_QUEUE", SETTINGS.get("NEXTFLOW_DRIVER_JOB_QUEUE", "")
     )
+    if not job_queue:
+        raise ValueError("NEXTFLOW_DRIVER_JOB_QUEUE is required")
+    return {"job_definition": job_definition, "job_queue": job_queue}
+
+
+def _nextflow_config(script, image_override=None):
+    """Load trusted Nextflow infrastructure settings and pin its analysis image."""
+    enabled = (
+        os.getenv(
+            "NEXTFLOW_ENABLED", str(SETTINGS.get("NEXTFLOW_ENABLED", False))
+        ).lower()
+        == "true"
+    )
+    if not enabled:
+        raise ValueError("Nextflow execution is not enabled")
+
+    driver = get_nextflow_driver_config(script)
     work_root = os.getenv("NEXTFLOW_WORK_ROOT", SETTINGS.get("NEXTFLOW_WORK_ROOT", ""))
     state_root = os.getenv(
         "NEXTFLOW_STATE_ROOT", SETTINGS.get("NEXTFLOW_STATE_ROOT", "")
@@ -199,8 +207,6 @@ def _nextflow_config(script, image_override=None):
     ):
         if not re.fullmatch(r"s3://[^/]+(?:/[^?#]*)?", uri):
             raise ValueError(f"{name} must be an s3:// URI")
-    if not job_queue:
-        raise ValueError("NEXTFLOW_DRIVER_JOB_QUEUE is required")
     if not PARAMS_S3_BUCKET:
         raise ValueError("PARAMS_S3_BUCKET is required for Nextflow execution")
 
@@ -225,8 +231,7 @@ def _nextflow_config(script, image_override=None):
     else:
         image = _resolve_ecr_image_digest(image)
     return {
-        "job_definition": job_definition,
-        "job_queue": job_queue,
+        **driver,
         "work_root": work_root.rstrip("/"),
         "state_root": state_root.rstrip("/"),
         "image": image,

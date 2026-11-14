@@ -404,6 +404,9 @@ def get_script(script):
     **Query Parameters**:
     - `include`: Comma-separated list of additional fields to include in response
       - Available: `logs`, `user`, `executions`, `access_controls`
+      - `nextflow_driver`: Admin-only effective Nextflow driver settings for
+        Batch scripts. Returns `job_definition` and `job_queue`, resolving
+        Script overrides before API defaults, without AWS lookups.
     - `exclude`: Comma-separated list of fields to exclude from response
       - Available: `description`, `logs`, `user_id`
 

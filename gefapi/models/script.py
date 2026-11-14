@@ -250,6 +250,8 @@ class Script(db.Model):
                 include)
             - environment: Include environment details (requires "environment"
                 in include)
+            - nextflow_driver: Include effective driver definition and queue
+                for batch scripts (admin only)
             - access_control: Include restriction fields (requires
                 "access_control" in include)
 
@@ -316,6 +318,15 @@ class Script(db.Model):
                 script["batch_execution_config"] = self.batch_execution_config
             if self.compute_type == "openeo":
                 script["openeo_backend_url"] = self.openeo_backend_url
+        if (
+            "nextflow_driver" in include
+            and self.compute_type == "batch"
+            and user
+            and is_admin_or_higher(user)
+        ):
+            from gefapi.services.batch_service import get_nextflow_driver_config
+
+            script["nextflow_driver"] = get_nextflow_driver_config(self)
         if "access_control" in include:
             if user and is_admin_or_higher(user):
                 script["restricted"] = self.restricted or False
