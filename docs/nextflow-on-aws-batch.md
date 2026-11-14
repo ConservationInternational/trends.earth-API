@@ -24,8 +24,8 @@ The API requires the following server-side configuration:
 | `NEXTFLOW_DRIVER_JOB_DEFINITION` | Fallback revision-pinned driver job-definition ARN; the published Script's `batch_job_definition` takes precedence |
 | `NEXTFLOW_DRIVER_JOB_QUEUE` | Fallback driver queue; the published Script's `batch_job_queue` takes precedence |
 | `NEXTFLOW_WORK_ROOT` | S3 URI root for Nextflow work directories |
-| `NEXTFLOW_STATE_ROOT` | S3 URI root for `session.json`, `jobs.json`, `status.json`, and `cancelled.json` |
-| `NEXTFLOW_TASK_IMAGE` | Optional trusted ECR task image; otherwise the published script image is used |
+| `NEXTFLOW_STATE_ROOT` | S3 URI root for `session.json`, `jobs.json`, `status.json`, `progress.json`, and `cancelled.json` |
+| `NEXTFLOW_TASK_IMAGE` | Optional trusted ECR image for Nextflow worker tasks (not the driver image); otherwise the published script's analysis image is used |
 | `NEXTFLOW_MAX_HOURS` | Optional overall workflow budget passed to the driver |
 | `NEXTFLOW_CHILD_JOB_QUEUES` | Optional comma-separated queues for tagged-child discovery; absent this, discover all queues using `batch:DescribeJobQueues` |
 
@@ -43,15 +43,40 @@ python scripts/setup/setup_nextflow_s3_bucket.py --profile your-profile --region
 
 The script creates `trendsearth-api-nextflow-{account-id}`, blocks public
 access, enables encryption and versioning, and sets lifecycle expiration for
-the `production/` and `staging/` prefixes. Current work objects expire after
-30 days and current state objects after 365 days; noncurrent versions are
+the `production/` and `staging/` prefixes. Current work and state objects
+expire after 365 days; noncurrent versions are
 removed one day after becoming noncurrent, and expired delete markers are
 cleaned up. It prints the
 `*_NEXTFLOW_WORK_ROOT` and `*_NEXTFLOW_STATE_ROOT` values to enter as GitHub
 Actions variables. Ensure workflows complete within the work retention period
 and configure state retention to cover the desired resume window. The script
-does not modify IAM; grant the API role access to state prefixes and the
-Nextflow driver/task roles access to the work and state prefixes they use.
+does not modify IAM. For the production deployment:
+
+- The API instances use `trendsearth-api-docker-swarm-role`; it needs
+  `s3:GetObject` and `s3:PutObject` on
+  `trendsearth-api-nextflow-{account-id}/production/state/*` for status checks
+  and cancellation.
+- The `avoided-emissions-web-nextflow-driver` Batch job definition uses
+  `avoided-emissions-web-nextflow-driver` as its `jobRoleArn` and
+  `trends-earth-batch-execution-role` as its `executionRoleArn`. The driver
+  definition must set both `AWS_REGION` and `AWS_DEFAULT_REGION` to the same
+  region; Boto3 needs the latter to resolve the Batch endpoint. The driver
+  role needs Batch submit/describe/list/terminate/register permissions,
+  `iam:PassRole` only for the child job role, and S3 access to production
+  work/state, API parameter objects, and avoided-emissions inputs/results.
+  Because the driver freezes site inputs with `CopyObject` while preserving
+  their tags, it also needs `s3:GetObjectTagging` on those inputs and
+  `s3:PutObjectTagging` on the production state prefix.
+- Child Nextflow jobs use `avoided-emissions-web-batch-execution` as their job
+  role via `AE_NEXTFLOW_JOB_ROLE_ARN`. That role needs
+  `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, multipart-upload actions,
+  and prefix-limited `s3:ListBucket` on the production work/state roots, in
+  addition to avoided-emissions data access. If tasks copy tagged S3 objects,
+  grant `s3:GetObjectTagging` and `s3:PutObjectTagging` on the relevant
+  workflow prefixes as well.
+- The Batch `executionRoleArn` is for image pulls and logs; it does not provide
+  S3 credentials to the driver or child containers. Do not grant the workflow's
+  S3 access only to `trends-earth-batch-execution-role`.
 
 When `NEXTFLOW_MAX_HOURS` is set, the API sets the AWS Batch driver timeout
 to that budget plus 900 seconds for shutdown and cleanup.
@@ -98,3 +123,19 @@ tag-discovered child jobs plus the driver. If the driver fails, the monitor
 uses the same manifest and `execution_id` Batch-tag discovery to terminate
 orphaned children and requires two clean checks before marking the execution
 failed or allowing resume.
+
+Drivers may publish `progress.json` with an integer `percent` from 0 to 99 and
+their AWS Batch `driver_job_id`. The monitor applies estimates only from the
+current driver and never decreases them within an attempt. Resume resets the
+execution's progress and ignores the previous driver's estimate. Only verified
+workflow success and results set progress to 100. Drivers without a progress
+document continue to work.
+
+The driver updates `jobs.json` as it discovers submitted tasks. The API's Batch
+monitor reads that manifest and summarizes submission and Batch status changes
+in the execution's normal user-visible logs (`GET /api/v1/execution/{id}/log`).
+Updates typically appear on the next monitoring cycle (every two minutes);
+they are aggregated, not a live stream or individual task output. Counts include
+task attempts across resumes. The API needs `batch:DescribeJobs` and read access
+to the execution's state prefix. Driver container output remains available
+separately through the execution's `batch-logs` endpoint.

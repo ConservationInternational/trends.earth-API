@@ -1,5 +1,6 @@
 import datetime
 from io import BytesIO
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -447,6 +448,7 @@ def test_nextflow_monitor_preserves_session_identity_on_success():
 
     assert outcome == "FINISHED"
     assert execution.status == "FINISHED"
+    assert execution.progress == 100
     assert execution.results["nextflow"]["session_id"] == "session-123"
     assert execution.results["batch_jobs"] == {"nextflow": "driver-job"}
 
@@ -498,6 +500,7 @@ def test_nextflow_monitor_reads_state_from_original_execution_uri():
     s3.get_object.side_effect = [
         {"Body": BytesIO(b'{"phase":"running"}')},
         {"Body": BytesIO(b'{"session_id":"session-123"}')},
+        {"Body": BytesIO(b'{"percent":20,"driver_job_id":"driver-job"}')},
     ]
 
     with patch.object(batch_monitoring, "_s3_client", return_value=s3):
@@ -505,13 +508,189 @@ def test_nextflow_monitor_reads_state_from_original_execution_uri():
             "execution-id", "s3://state-bucket/original/execution-id"
         )
 
-    assert state == {"phase": "running", "session_id": "session-123"}
+    assert state == {
+        "phase": "running",
+        "session_id": "session-123",
+        "progress": {"percent": 20, "driver_job_id": "driver-job"},
+    }
     assert s3.get_object.call_args_list[0].kwargs["Key"] == (
         "original/execution-id/status.json"
     )
     assert s3.get_object.call_args_list[1].kwargs["Key"] == (
         "original/execution-id/session.json"
     )
+    assert s3.get_object.call_args_list[2].kwargs["Key"] == (
+        "original/execution-id/progress.json"
+    )
+
+
+@pytest.mark.standalone
+def test_nextflow_monitor_applies_valid_progress_only_for_current_driver(caplog):
+    execution = SimpleNamespace(
+        id="execution-id",
+        params={"workflow_backend": "nextflow"},
+        results={},
+        status="RUNNING",
+        progress=0,
+    )
+    jobs = {"nextflow": "current-driver"}
+    statuses = {"nextflow": {"status": "RUNNING"}}
+    states = [
+        {"progress": {"driver_job_id": "current-driver", "percent": 40}},
+        {"progress": {"driver_job_id": "old-driver", "percent": 90}},
+        {"progress": {"driver_job_id": "current-driver", "percent": 20}},
+        {"progress": {"driver_job_id": "current-driver", "percent": 100}},
+    ]
+    with (
+        patch.object(batch_monitoring, "_fetch_nextflow_status", side_effect=states),
+        patch.object(batch_monitoring.db.session, "add"),
+    ):
+        for _ in states:
+            batch_monitoring._process_nextflow_execution(execution, jobs, statuses)
+            assert execution.progress == 40
+    assert "Invalid Nextflow progress" in caplog.text
+
+
+def test_nextflow_progress_is_visible_and_not_duplicated(
+    app, client, auth_headers_user, regular_user, batch_script, db_session
+):
+    user = db_session.merge(regular_user)
+    script = db_session.merge(batch_script)
+    execution = Execution(
+        script_id=script.id,
+        params={"workflow_backend": "nextflow"},
+        user_id=user.id,
+    )
+    execution.status = "RUNNING"
+    execution.results = {
+        "batch_jobs": {"nextflow": "driver"},
+        "nextflow": {"state_uri": "s3://state/original", "driver_job_id": "driver"},
+    }
+    db_session.add(execution)
+    db_session.commit()
+    s3 = MagicMock()
+    batch = MagicMock()
+    manifest = ["job-1"]
+    jobs = [{"jobId": "job-1", "status": "RUNNING"}]
+    s3.get_object.side_effect = lambda **_: {
+        "Body": BytesIO(json.dumps(manifest).encode())
+    }
+    batch.describe_jobs.side_effect = lambda **_: {"jobs": jobs}
+    statuses = {"nextflow": {"status": "RUNNING"}}
+
+    with (
+        patch.object(
+            batch_monitoring,
+            "_fetch_nextflow_status",
+            return_value={"progress": {"driver_job_id": "driver", "percent": 20}},
+        ),
+        patch.object(batch_monitoring, "_s3_client", return_value=s3),
+        patch.object(batch_monitoring, "_batch_client", return_value=batch),
+    ):
+        for _ in range(2):
+            batch_monitoring._process_nextflow_execution(
+                execution, {"nextflow": "driver"}, statuses
+            )
+            db_session.commit()
+        response = client.get(
+            f"/api/v1/execution/{execution.id}", headers=auth_headers_user
+        )
+        assert response.status_code == 200
+        assert response.get_json()["data"]["progress"] == 20
+        manifest.append("job-2")
+        jobs[:] = [
+            {"jobId": "job-1", "status": "SUCCEEDED"},
+            {"jobId": "job-2", "status": "RUNNING"},
+        ]
+        batch_monitoring._process_nextflow_execution(
+            execution, {"nextflow": "driver"}, statuses
+        )
+        db_session.commit()
+        jobs[1]["status"] = "SUCCEEDED"
+        with (
+            patch.object(
+                batch_monitoring,
+                "_fetch_nextflow_status",
+                return_value={"phase": "succeeded", "success": True},
+            ),
+            patch.object(
+                batch_monitoring, "_fetch_results_from_s3", return_value={"ok": True}
+            ),
+        ):
+            batch_monitoring._process_nextflow_execution(
+                execution, {"nextflow": "driver"}, {"nextflow": {"status": "SUCCEEDED"}}
+            )
+            db_session.commit()
+
+    response = client.get(
+        f"/api/v1/execution/{execution.id}/log", headers=auth_headers_user
+    )
+    assert response.status_code == 200
+    texts = [item["text"] for item in response.get_json()["data"]]
+    assert texts == [
+        "Nextflow: 1 AWS Batch task submitted (1 new); 1 running",
+        "Nextflow: 2 AWS Batch tasks submitted (1 new); 1 running, 1 succeeded",
+        "Nextflow: 2 AWS Batch tasks submitted; 2 succeeded",
+        "Nextflow workflow completed successfully",
+    ]
+    assert s3.get_object.call_args.kwargs == {
+        "Bucket": "state",
+        "Key": "original/jobs.json",
+    }
+    response = client.get(
+        f"/api/v1/execution/{execution.id}", headers=auth_headers_user
+    )
+    assert response.get_json()["data"]["progress"] == 100
+
+
+@pytest.mark.standalone
+def test_nextflow_progress_batches_jobs_and_reports_missing_descriptions():
+    execution = SimpleNamespace(id="execution-id")
+    metadata = {"state_uri": "s3://state/execution-id"}
+    job_ids = [f"job-{number:03}" for number in range(101)]
+    s3 = MagicMock()
+    s3.get_object.return_value = {"Body": BytesIO(json.dumps(job_ids).encode())}
+    batch = MagicMock()
+    batch.describe_jobs.side_effect = lambda jobs: {
+        "jobs": [
+            {"jobId": job, "status": "RUNNING"} for job in jobs if job != job_ids[-1]
+        ]
+    }
+    with (
+        patch.object(batch_monitoring, "_s3_client", return_value=s3),
+        patch.object(batch_monitoring, "_batch_client", return_value=batch),
+        patch.object(batch_monitoring.db.session, "add") as add,
+    ):
+        batch_monitoring._log_nextflow_progress(execution, metadata)
+    assert [
+        len(call.kwargs["jobs"]) for call in batch.describe_jobs.call_args_list
+    ] == [
+        100,
+        1,
+    ]
+    assert metadata["logged_progress"]["statuses"] == {"RUNNING": 100, "UNKNOWN": 1}
+    assert "1 unknown" in add.call_args.args[0].text
+
+
+@pytest.mark.standalone
+def test_nextflow_progress_errors_do_not_advance_cursor(caplog):
+    execution = SimpleNamespace(id="execution-id")
+    metadata = {
+        "state_uri": "s3://state/execution-id",
+        "logged_progress": {"submitted": 1, "statuses": {"RUNNING": 1}},
+    }
+    s3 = MagicMock()
+    s3.get_object.side_effect = ClientError(
+        {"Error": {"Code": "AccessDenied", "Message": "denied"}}, "GetObject"
+    )
+    with (
+        patch.object(batch_monitoring, "_s3_client", return_value=s3),
+        patch.object(batch_monitoring.db.session, "add") as add,
+    ):
+        batch_monitoring._log_nextflow_progress(execution, metadata)
+    assert metadata["logged_progress"]["submitted"] == 1
+    assert "Could not read Nextflow progress" in caplog.text
+    add.assert_not_called()
 
 
 def test_resume_endpoint_requeues_same_failed_execution(
@@ -533,6 +712,7 @@ def test_resume_endpoint_requeues_same_failed_execution(
             "session_id": "existing-session",
             "phase": "failed",
             "child_cleanup": {"clean_checks": 2},
+            "logged_progress": {"submitted": 2, "statuses": {"FAILED": 2}},
         },
     }
     db_session.add(execution)
@@ -561,6 +741,7 @@ def test_resume_endpoint_requeues_same_failed_execution(
     assert execution.results["nextflow"]["session_id"] == "existing-session"
     assert execution.results["nextflow"]["resume_requested"] is True
     assert execution.results["nextflow"]["resume_count"] == 1
+    assert execution.results["nextflow"]["logged_progress"]["submitted"] == 2
     assert execution.results["nextflow"]["driver_job_history"] == ["previous-driver"]
     assert execution.results["batch_jobs"] == {}
 

@@ -33,6 +33,7 @@ import re
 import tempfile
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from celery import Task
 import rollbar
 from sqlalchemy import and_
@@ -344,6 +345,25 @@ def _process_nextflow_execution(execution, batch_jobs, statuses):
     state = _fetch_nextflow_status(
         str(execution.id), state_uri=metadata.get("state_uri")
     )
+    estimate = (state or {}).get("progress")
+    if estimate is not None:
+        if (
+            isinstance(estimate, dict)
+            and estimate.get("driver_job_id") == batch_jobs.get("nextflow")
+            and type(estimate.get("percent")) is int
+            and 0 <= estimate["percent"] <= 99
+        ):
+            execution.progress = max(
+                getattr(execution, "progress", None) or 0, estimate["percent"]
+            )
+        elif not isinstance(estimate, dict) or estimate.get(
+            "driver_job_id"
+        ) == batch_jobs.get("nextflow"):
+            logger.warning(
+                "[BATCH-MONITOR] Invalid Nextflow progress for %s", execution.id
+            )
+    if metadata.get("state_uri"):
+        _log_nextflow_progress(execution, metadata)
     if status.get("status") == "FAILED":
         error = (
             (state or {}).get("error")
@@ -490,6 +510,7 @@ def _process_nextflow_execution(execution, batch_jobs, statuses):
         result_payload["nextflow"] = metadata
         execution.results = result_payload
         execution.status = "FINISHED"
+        execution.progress = 100
         execution.end_date = datetime.datetime.now(datetime.UTC)
         db.session.add(
             ExecutionLog(
@@ -516,6 +537,77 @@ def _process_nextflow_execution(execution, batch_jobs, statuses):
     return None
 
 
+def _log_nextflow_progress(execution, metadata):
+    """Turn the driver's cumulative child manifest into user-visible updates."""
+    from gefapi.services.batch_service import _nextflow_state_location
+
+    try:
+        bucket, prefix = _nextflow_state_location(
+            str(execution.id), metadata["state_uri"]
+        )
+        response = _s3_client().get_object(
+            Bucket=bucket, Key=f"{prefix.rstrip('/')}/jobs.json"
+        )
+        manifest = json.loads(response["Body"].read())
+        if isinstance(manifest, dict):
+            manifest = manifest.get("jobs")
+        if not isinstance(manifest, list):
+            raise TypeError("Nextflow jobs manifest must contain a list")
+        job_ids = set()
+        for entry in manifest:
+            if isinstance(entry, dict):
+                entry = entry.get("jobId", entry.get("job_id"))
+            if not isinstance(entry, str) or not entry:
+                raise ValueError("Nextflow jobs manifest contains an invalid job ID")
+            job_ids.add(entry)
+        job_ids.discard(metadata.get("driver_job_id"))
+
+        counts = {}
+        job_ids = sorted(job_ids)
+        if not job_ids:
+            return
+        client = _batch_client()
+        for index in range(0, len(job_ids), 100):
+            chunk = job_ids[index : index + 100]
+            jobs = client.describe_jobs(jobs=chunk).get("jobs", [])
+            found = set()
+            for job in jobs:
+                job_id = job["jobId"]
+                if job_id not in chunk or job_id in found:
+                    raise ValueError("Unexpected job in Batch describe_jobs response")
+                found.add(job_id)
+                status = job["status"]
+                counts[status] = counts.get(status, 0) + 1
+            missing = len(chunk) - len(found)
+            if missing:
+                counts["UNKNOWN"] = counts.get("UNKNOWN", 0) + missing
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}:
+            return
+        logger.warning("[BATCH-MONITOR] Could not read Nextflow progress: %s", exc)
+        return
+    except (BotoCoreError, ValueError, KeyError, TypeError) as exc:
+        logger.warning("[BATCH-MONITOR] Could not read Nextflow progress: %s", exc)
+        return
+
+    progress = {"submitted": len(job_ids), "statuses": counts}
+    previous = metadata.get("logged_progress") or {}
+    if progress == previous:
+        return
+    new_jobs = max(0, len(job_ids) - previous.get("submitted", 0))
+    summary = ", ".join(
+        f"{count} {status.lower()}" for status, count in sorted(counts.items())
+    )
+    task_word = "task" if len(job_ids) == 1 else "tasks"
+    text = f"Nextflow: {len(job_ids)} AWS Batch {task_word} submitted"
+    if new_jobs:
+        text += f" ({new_jobs} new)"
+    if summary:
+        text += f"; {summary}"
+    db.session.add(ExecutionLog(text=text, level="INFO", execution_id=execution.id))
+    metadata["logged_progress"] = progress
+
+
 def _fetch_nextflow_status(execution_id, state_uri=None):
     """Load driver status and stable session identity from the S3 state root."""
     state_root = state_uri or os.getenv(
@@ -530,7 +622,7 @@ def _fetch_nextflow_status(execution_id, state_uri=None):
         prefix = f"{prefix}/{execution_id}".strip("/")
     s3 = _s3_client()
     state = {}
-    for filename in ("status.json", "session.json"):
+    for filename in ("status.json", "session.json", "progress.json"):
         try:
             response = s3.get_object(Bucket=bucket, Key=f"{prefix}/{filename}")
             document = json.loads(response["Body"].read().decode("utf-8"))
@@ -538,8 +630,12 @@ def _fetch_nextflow_status(execution_id, state_uri=None):
                 continue
             if filename == "status.json":
                 state.update(document)
-            elif isinstance(document.get("session_id"), str):
+            elif filename == "session.json" and isinstance(
+                document.get("session_id"), str
+            ):
                 state["session_id"] = document["session_id"]
+            elif filename == "progress.json":
+                state["progress"] = document
         except Exception as exc:
             error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
             if error_code not in {"NoSuchKey", "404"}:

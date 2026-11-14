@@ -6,7 +6,7 @@ import argparse
 import boto3
 from botocore.exceptions import ClientError
 
-WORK_RETENTION_DAYS = 30
+WORK_RETENTION_DAYS = 365
 STATE_RETENTION_DAYS = 365
 ENVIRONMENTS = ("production", "staging")
 

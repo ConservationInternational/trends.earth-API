@@ -22,9 +22,9 @@ def test_nextflow_bucket_lifecycle_expires_each_environment_prefix():
         rule["Filter"]["Prefix"]: rule["Expiration"]["Days"]
         for rule in expiration_rules
     } == {
-        "production/work/": 30,
+        "production/work/": 365,
         "production/state/": 365,
-        "staging/work/": 30,
+        "staging/work/": 365,
         "staging/state/": 365,
     }
     assert all(
