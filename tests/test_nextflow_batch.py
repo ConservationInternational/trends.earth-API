@@ -138,7 +138,7 @@ def test_script_exposes_effective_nextflow_driver_only_to_admins(monkeypatch, ro
 
 
 @pytest.mark.standalone
-def test_nextflow_resume_uses_pinned_image_without_ecr_lookup(monkeypatch):
+def test_nextflow_config_resolves_current_published_image(monkeypatch):
     image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/analysis@sha256:" + "b" * 64
     monkeypatch.setenv("NEXTFLOW_ENABLED", "true")
     monkeypatch.setenv(
@@ -150,18 +150,25 @@ def test_nextflow_resume_uses_pinned_image_without_ecr_lookup(monkeypatch):
     monkeypatch.setenv("NEXTFLOW_STATE_ROOT", "s3://state-root/state")
     monkeypatch.setattr(batch_service, "PARAMS_S3_BUCKET", "params-bucket")
 
-    config = batch_service._nextflow_config(
-        SimpleNamespace(batch_image=None), image_override=image
+    resolver = MagicMock(return_value=image)
+    monkeypatch.setattr(batch_service, "_resolve_ecr_image_digest", resolver)
+    monkeypatch.setenv(
+        "NEXTFLOW_TASK_IMAGE",
+        "123456789012.dkr.ecr.us-east-1.amazonaws.com/analysis:latest",
     )
+    config = batch_service._nextflow_config(SimpleNamespace(batch_image=None))
 
     assert config["image"] == image
+    resolver.assert_called_once_with(
+        "123456789012.dkr.ecr.us-east-1.amazonaws.com/analysis:latest"
+    )
 
     script = SimpleNamespace(
         batch_image=None,
         batch_job_definition="arn:aws:batch:us-east-1:123456789012:job-definition/other-workflow:7",
         batch_job_queue="other-driver-queue",
     )
-    config = batch_service._nextflow_config(script, image_override=image)
+    config = batch_service._nextflow_config(script)
     assert config["job_definition"] == script.batch_job_definition
     assert config["job_queue"] == script.batch_job_queue
 
@@ -192,11 +199,10 @@ def test_driver_submission_uses_only_trusted_driver_settings():
         "driver_job_queue": "original-driver-queue",
     }
 
-    def config_for_resume(_script, image_override=None):
-        return {**config, "image": image_override or config["image"]}
-
     with (
-        patch.object(batch_service, "_nextflow_config", side_effect=config_for_resume),
+        patch.object(
+            batch_service, "_nextflow_config", return_value=config
+        ) as get_config,
         patch.object(batch_service, "_get_batch_client", return_value=batch),
     ):
         result = batch_service.submit_nextflow_driver(
@@ -212,13 +218,14 @@ def test_driver_submission_uses_only_trusted_driver_settings():
         item["name"]: item["value"]
         for item in submission["containerOverrides"]["environment"]
     }
-    assert submission["jobDefinition"] == previous_metadata["driver_job_definition"]
-    assert submission["jobQueue"] == previous_metadata["driver_job_queue"]
+    get_config.assert_called_once_with(script)
+    assert submission["jobDefinition"] == config["job_definition"]
+    assert submission["jobQueue"] == config["job_queue"]
     assert "command" not in submission["containerOverrides"]
     assert submission["retryStrategy"] == {"attempts": 1}
     assert submission["timeout"] == {"attemptDurationSeconds": 44100}
     assert submission["tags"] == {"execution_id": "execution-id"}
-    assert environment["NEXTFLOW_TASK_IMAGE"] == previous_metadata["image"]
+    assert environment["NEXTFLOW_TASK_IMAGE"] == config["image"]
     assert environment["NEXTFLOW_RESUME"] == "true"
     assert environment["NEXTFLOW_MAX_HOURS"] == "12"
     assert environment["NEXTFLOW_STATE_URI"] == previous_metadata["state_uri"]
@@ -227,6 +234,34 @@ def test_driver_submission_uses_only_trusted_driver_settings():
     assert environment["PARAMS_S3_PREFIX"] == previous_metadata["params_s3_prefix"]
     assert not any(name.startswith("AE_") for name in environment)
     assert result["batch_jobs"] == {"nextflow": "driver-job"}
+    assert result["nextflow"]["driver_job_definition"] == config["job_definition"]
+    assert result["nextflow"]["driver_job_queue"] == config["job_queue"]
+    assert result["nextflow"]["image"] == config["image"]
+
+
+@pytest.mark.standalone
+def test_resume_does_not_fall_back_to_old_images_when_resolution_fails():
+    batch = MagicMock()
+    with (
+        patch.object(
+            batch_service,
+            "_nextflow_config",
+            side_effect=ValueError("image unavailable"),
+        ),
+        patch.object(batch_service, "_get_batch_client", return_value=batch),
+        pytest.raises(ValueError, match="image unavailable"),
+    ):
+        batch_service.submit_nextflow_driver(
+            "execution-id",
+            "s3://params/execution-id.json.gz",
+            SimpleNamespace(),
+            resume=True,
+            previous_metadata={
+                "image": "old-image",
+                "driver_job_definition": "old-definition",
+            },
+        )
+    batch.submit_job.assert_not_called()
 
 
 def test_queued_dispatch_persists_publisher_default(

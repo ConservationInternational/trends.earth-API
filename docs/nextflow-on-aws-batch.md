@@ -120,6 +120,12 @@ administrator with `execution:write` scope. It only accepts failed Nextflow
 executions and resumes the same execution, parameter object, S3 state path,
 and Nextflow session. It does not create a replacement execution or reset
 inputs. Normal execution concurrency limits apply, and a resume may be queued.
+At dispatch, it uses the currently published driver definition and queue and
+resolves the current trusted worker image to a digest, rather than reusing the
+previous driver's definition or worker image. Existing state, work directories,
+parameter location, and workflow checkpoints are retained. The workflow is
+responsible for handling any incompatibility between old checkpoints and the
+new code.
 
 The driver writes a `session.json` document containing its stable
 `session_id`, a `jobs.json` manifest of child Batch job IDs, and a

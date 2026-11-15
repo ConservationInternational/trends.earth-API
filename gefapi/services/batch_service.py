@@ -181,7 +181,7 @@ def get_nextflow_driver_config(script):
     return {"job_definition": job_definition, "job_queue": job_queue}
 
 
-def _nextflow_config(script, image_override=None):
+def _nextflow_config(script):
     """Load trusted Nextflow infrastructure settings and pin its analysis image."""
     enabled = (
         os.getenv(
@@ -206,26 +206,14 @@ def _nextflow_config(script, image_override=None):
     if not PARAMS_S3_BUCKET:
         raise ValueError("PARAMS_S3_BUCKET is required for Nextflow execution")
 
-    image = (
-        image_override
-        or os.getenv("NEXTFLOW_TASK_IMAGE")
-        or getattr(script, "batch_image", None)
-    )
+    image = os.getenv("NEXTFLOW_TASK_IMAGE") or getattr(script, "batch_image", None)
     if not image:
         raise ValueError("A trusted Nextflow analysis image is required")
     if ".dkr.ecr." not in image.split("/", 1)[0]:
         if ".dkr.ecr." not in ECR_REGISTRY:
             raise ValueError("Nextflow analysis image must be hosted in ECR")
         image = f"{ECR_REGISTRY.rstrip('/')}/{image.lstrip('/')}"
-    if image_override:
-        if "@sha256:" not in image or not re.fullmatch(
-            r"[^/]+\.dkr\.ecr\.[^/]+\.amazonaws\.com(?:\.cn)?/"
-            r".+@sha256:[0-9a-f]{64}",
-            image,
-        ):
-            raise ValueError("Stored Nextflow image is not a pinned ECR digest")
-    else:
-        image = _resolve_ecr_image_digest(image)
+    image = _resolve_ecr_image_digest(image)
     return {
         **driver,
         "work_root": work_root.rstrip("/"),
@@ -570,22 +558,15 @@ def submit_nextflow_driver(
 ):
     """Submit the publisher-approved Nextflow driver with server-owned settings."""
     previous_metadata = previous_metadata or {}
-    config = _nextflow_config(
-        script,
-        image_override=previous_metadata.get("image") if resume else None,
-    )
+    config = _nextflow_config(script)
     work_uri = (
         previous_metadata.get("work_uri") if resume else None
     ) or f"{config['work_root']}/{execution_id}"
     state_uri = (
         previous_metadata.get("state_uri") if resume else None
     ) or f"{config['state_root']}/{execution_id}"
-    job_definition = (
-        previous_metadata.get("driver_job_definition") if resume else None
-    ) or config["job_definition"]
-    job_queue = (
-        previous_metadata.get("driver_job_queue") if resume else None
-    ) or config["job_queue"]
+    job_definition = config["job_definition"]
+    job_queue = config["job_queue"]
     params_bucket = (
         previous_metadata.get("params_s3_bucket") if resume else None
     ) or PARAMS_S3_BUCKET
