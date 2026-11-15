@@ -3,7 +3,6 @@ Tests for execution log-related endpoints that were previously untested.
 
 Covers:
 - GET /execution/<id>/docker-logs
-- GET /execution/<id>/batch-logs
 - GET /execution/<id>/download-results
 - POST /execution/<id>/log
 """
@@ -88,69 +87,10 @@ class TestGetExecutionDockerLogs:
 
 
 @pytest.mark.usefixtures("client")
-class TestGetExecutionBatchLogs:
-    """Tests for GET /api/v1/execution/<id>/batch-logs"""
-
-    def test_requires_auth(self, client):
-        fake_id = str(uuid.uuid4())
-        resp = client.get(f"/api/v1/execution/{fake_id}/batch-logs")
-        assert resp.status_code == 401
-
-    def test_forbidden_for_regular_user(self, client, auth_headers_user, execution_id):
-        resp = client.get(
-            f"/api/v1/execution/{execution_id}/batch-logs",
-            headers=auth_headers_user,
-        )
-        assert resp.status_code == 403
-
-    @patch(
-        "gefapi.services.batch_service.get_batch_logs",
-        return_value=[
-            {
-                "id": 0,
-                "created_at": "2025-01-01T00:00:00Z",
-                "text": "batch line 1",
-                "job_name": "extract",
-            },
-        ],
-    )
-    def test_returns_logs_for_admin(
-        self, mock_get_batch, client, auth_headers_admin, execution_id
-    ):
-        resp = client.get(
-            f"/api/v1/execution/{execution_id}/batch-logs",
-            headers=auth_headers_admin,
-        )
-        assert resp.status_code == 200
-        data = resp.json
-        assert "data" in data
-        assert len(data["data"]) == 1
-
-    @patch(
-        "gefapi.services.batch_service.get_batch_logs",
-        return_value=None,
-    )
-    def test_returns_404_when_no_logs(
-        self, mock_get_batch, client, auth_headers_admin, execution_id
-    ):
-        resp = client.get(
-            f"/api/v1/execution/{execution_id}/batch-logs",
-            headers=auth_headers_admin,
-        )
-        assert resp.status_code == 404
-
-    @patch(
-        "gefapi.services.batch_service.get_batch_logs",
-        side_effect=Exception("Batch error"),
-    )
-    def test_returns_500_on_exception(
-        self, mock_get_batch, client, auth_headers_admin, execution_id
-    ):
-        resp = client.get(
-            f"/api/v1/execution/{execution_id}/batch-logs",
-            headers=auth_headers_admin,
-        )
-        assert resp.status_code == 500
+class TestRemovedBatchLogs:
+    def test_batch_logs_endpoint_is_not_registered(self, client):
+        response = client.get(f"/api/v1/execution/{uuid.uuid4()}/batch-logs")
+        assert response.status_code == 404
 
 
 @pytest.mark.usefixtures("client")

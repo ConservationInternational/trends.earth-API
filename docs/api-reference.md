@@ -114,7 +114,6 @@ GET    /api/v1/execution/<id>/log                  Get logs
 POST   /api/v1/execution/<id>/log                  Add log entry (Admin only)
 GET    /api/v1/execution/<id>/download-results      Download results as JSON file
 GET    /api/v1/execution/<id>/docker-logs           Get raw Docker service logs (Admin only)
-GET    /api/v1/execution/<id>/batch-logs            Get AWS Batch / CloudWatch logs (Admin only)
 ```
 
 ### OIDC user tokens on script/execution routes

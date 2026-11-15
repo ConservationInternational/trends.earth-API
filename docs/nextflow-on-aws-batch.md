@@ -148,5 +148,4 @@ in the execution's normal user-visible logs (`GET /api/v1/execution/{id}/log`).
 Updates typically appear on the next monitoring cycle (every two minutes);
 they are aggregated, not a live stream or individual task output. Counts include
 task attempts across resumes. The API needs `batch:DescribeJobs` and read access
-to the execution's state prefix. Driver container output remains available
-separately through the execution's `batch-logs` endpoint.
+to the execution's state prefix.
