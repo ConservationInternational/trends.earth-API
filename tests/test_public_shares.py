@@ -830,6 +830,7 @@ def test_vector_validation_and_cleanup_share_lifecycle(
         _pmtiles_fixture(directory=b"\x01\x00\x01\x7f\x01"),
         _pmtiles_fixture(metadata={"vector_layers": [{"id": "secret", "fields": {}}]}),
     ],
+    ids=["not_pmtiles", "bad_tile", "bad_directory", "undeclared_layer"],
 )
 def test_invalid_archives_fail_closed(
     app, regular_user, public_share_config, monkeypatch, data
@@ -851,6 +852,10 @@ def test_invalid_archives_fail_closed(
         mint_public_link(share)
 
 
+@pytest.mark.skipif(
+    not all(shutil.which(t) for t in ("ogr2ogr", "gdal_create", "gdal_translate")),
+    reason="GDAL command-line tools are not installed",
+)
 def test_gdal_generated_pmtiles_and_cog_pass_worker_validation(
     app, regular_user, public_share_config, monkeypatch, tmp_path
 ):
@@ -969,6 +974,9 @@ def test_martin_discovery_delay_does_not_publish_a_link(
         (b"x" * (2 * 1024**2), "application/x-protobuf", 200, None, 200),
         (b"mvt", "application/x-protobuf", 200, "br", 502),
     ],
+    # Explicit ids keep multi-MB payloads out of verbose test names; CI log
+    # ingestion stalls on very long lines.
+    ids=["mvt", "gzip", "empty", "html", "oversized", "max_size", "brotli"],
 )
 def test_authorized_vector_tile_proxy(
     app,

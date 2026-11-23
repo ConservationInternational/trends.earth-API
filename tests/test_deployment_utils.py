@@ -52,15 +52,22 @@ class TestDeploymentUtils:
 
     @patch("subprocess.run")
     @patch("time.sleep")
-    def test_configure_docker_registry_success(self, mock_sleep, mock_run):
+    def test_configure_docker_registry_success(
+        self, mock_sleep, mock_run, monkeypatch, tmp_path
+    ):
         """Test Docker registry configuration."""
         mock_run.return_value = MagicMock(returncode=0)
+        # Isolate from the host: no existing daemon.json, and write the client
+        # config under tmp_path instead of the real ~/.docker/config.json.
+        monkeypatch.setattr("deployment_utils.Path.exists", lambda self: False)
+        monkeypatch.setattr("deployment_utils.Path.home", lambda: tmp_path)
 
         result = self.utils.configure_docker_registry()
 
         assert result is True
         # Should call mkdir, tee, and systemctl restart
         assert mock_run.call_count >= 3
+        assert (tmp_path / ".docker" / "config.json").exists()
 
     @patch("subprocess.run")
     def test_configure_docker_registry_failure(self, mock_run):
