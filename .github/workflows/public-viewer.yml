@@ -1,0 +1,37 @@
+name: Public viewer
+on:
+  pull_request:
+    paths: ["public-viewer/**", "docker-compose.public-shares.yml", ".github/workflows/public-viewer.yml"]
+  push:
+    branches: [master, develop, staging]
+    paths: ["public-viewer/**", "docker-compose.public-shares.yml", ".github/workflows/public-viewer.yml"]
+permissions:
+  contents: read
+jobs:
+  browser-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: public-viewer
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: public-viewer/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Build separate viewer and gateway images
+        run: |
+          docker build -f Dockerfile -t trendsearth-public-viewer:local ..
+          docker build -f nginx/Dockerfile -t trendsearth-public-viewer-gateway:local ..
+      - run: npm test
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: public-viewer-browser-failures
+          path: public-viewer/test-results
+          retention-days: 7

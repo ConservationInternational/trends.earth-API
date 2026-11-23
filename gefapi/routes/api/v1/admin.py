@@ -2,11 +2,14 @@
 
 from datetime import UTC, datetime, timedelta
 import logging
+import uuid
 
-from flask import jsonify, request
+from flask import current_app, jsonify, request
 from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 
-from gefapi import app, limiter
+from gefapi import app, db, limiter
+from gefapi.config import SETTINGS
+from gefapi.models import User
 from gefapi.models.refresh_token import RefreshToken
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services import (
@@ -16,9 +19,57 @@ from gefapi.services import (
     UserService,
 )
 from gefapi.services.refresh_token_service import RefreshTokenService
+from gefapi.utils.permissions import is_superadmin
 from gefapi.utils.scopes import require_scope
 
 logger = logging.getLogger()
+
+
+@endpoints.route(
+    "/admin/users/<user_id>/public-share-quota", methods=["PUT"]
+)
+@jwt_required()
+@require_scope("admin:write")
+def set_public_share_quota(user_id):
+    """Set or clear a user's public-share quota override (superadmin only)."""
+    if not is_superadmin(current_user):
+        return error(status=403, detail="Superadmin access required")
+    try:
+        user_uuid = str(uuid.UUID(user_id))
+    except (ValueError, TypeError, AttributeError):
+        return error(status=404, detail="User not found")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or set(body) != {"quota_bytes"}:
+        return error(status=400, detail="Request must contain only quota_bytes")
+    quota_bytes = body["quota_bytes"]
+    if quota_bytes is not None and (
+        type(quota_bytes) is not int or quota_bytes < 0 or quota_bytes > 2**63 - 1
+    ):
+        return error(
+            status=400,
+            detail="quota_bytes must be a non-negative integer or null",
+        )
+
+    user = User.query.filter_by(id=user_uuid).with_for_update().first()
+    if user is None:
+        return error(status=404, detail="User not found")
+    user.public_share_quota_bytes = quota_bytes
+    db.session.commit()
+    default_quota = SETTINGS["PUBLIC_SHARES"]["MAX_RESERVED_BYTES_PER_USER"]
+    effective_quota = quota_bytes if quota_bytes is not None else default_quota
+    current_app.logger.info(
+        "Superadmin %s set public-share quota for user %s to %s",
+        current_user.id,
+        user.id,
+        quota_bytes,
+    )
+    return jsonify(
+        data={
+            "user_id": str(user.id),
+            "quota_override_bytes": quota_bytes,
+            "quota_limit_bytes": effective_quota,
+        }
+    )
 
 
 @endpoints.route("/rate-limit/status", methods=["GET"])

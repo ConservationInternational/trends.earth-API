@@ -1,0 +1,25 @@
+name: Private sharing tiler
+on:
+  pull_request:
+    paths: ["cloud_functions/titiler_cogs/**", ".github/workflows/public-share-tiler.yml"]
+  push:
+    branches: [master, develop, staging]
+    paths: ["cloud_functions/titiler_cogs/**", ".github/workflows/public-share-tiler.yml"]
+permissions:
+  contents: read
+jobs:
+  lambda-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build Lambda image and test real COG rendering
+        run: |
+          docker build --platform linux/amd64 --target test \
+            -t trendsearth-share-tiler:test \
+            cloud_functions/titiler_cogs/titiler_cogs
+      - uses: aws-actions/setup-sam@v2
+      - name: Validate private deployment template
+        run: sam validate --lint --template cloud_functions/titiler_cogs/template.yaml --region us-east-1
+      - name: Build deployable Lambda image with SAM
+        run: sam build --template-file cloud_functions/titiler_cogs/template.yaml

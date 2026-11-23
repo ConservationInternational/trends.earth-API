@@ -120,6 +120,8 @@ def make_celery(app):
         "gefapi.services.batch_service.batch_run": {"queue": "default"},
         # Execution queue processor – dispatches queued executions (no Docker needed)
         "gefapi.tasks.queue_processor.process_queued_executions": {"queue": "default"},
+        "gefapi.tasks.public_shares.validate_public_share_task": {"queue": "default"},
+        "gefapi.tasks.public_shares.cleanup_public_shares_task": {"queue": "default"},
         # Bulk email send – calls SparkPost over HTTPS, no Docker access needed
         "gefapi.tasks.bulk_email_send.send_bulk_email_task": {"queue": "default"},
         "gefapi.tasks.sparkpost_suppression_sync.sync_sparkpost_suppressions": {
@@ -159,6 +161,11 @@ def make_celery(app):
                 "gefapi.tasks.refresh_token_cleanup.cleanup_inactive_refresh_tokens"
             ),
             "schedule": 86400.0,  # Every day (86400 seconds)
+        },
+        "cleanup-public-shares": {
+            "task": "gefapi.tasks.public_shares.cleanup_public_shares_task",
+            "schedule": 300.0,  # Retry failed deletion and expiry cleanup every 5 min
+            "options": {"queue": "default"},
         },
         # User cleanup tasks - run weekly for safety
         "cleanup-unverified-users": {

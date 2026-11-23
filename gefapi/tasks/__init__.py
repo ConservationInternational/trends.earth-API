@@ -10,6 +10,7 @@ from gefapi.tasks import (
     docker_service_monitoring,  # noqa: F401
     execution_cancellation,  # noqa: F401
     execution_cleanup,  # noqa: F401
+    public_shares,  # noqa: F401
     queue_processor,  # noqa: F401
     refresh_token_cleanup,  # noqa: F401
     sparkpost_suppression_sync,  # noqa: F401

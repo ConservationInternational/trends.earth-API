@@ -1,0 +1,17 @@
+{
+  "name": "trends-earth-public-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "playwright test"
+  },
+  "dependencies": {
+    "ol": "10.11.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "esbuild": "0.28.2"
+  }
+}

@@ -77,6 +77,53 @@ SETTINGS = {
     # openEO output bucket – separate from the params bucket.
     "OUTPUT_S3_BUCKET": os.getenv("OUTPUT_S3_BUCKET"),
     "OUTPUT_S3_PREFIX": os.getenv("OUTPUT_S3_PREFIX", "outputs"),
+    # Local-raster web maps use a dedicated private bucket and remain disabled
+    # until their viewer, public origin, session key, and TiTiler are deployed.
+    "PUBLIC_SHARES": {
+        "ENABLED": os.getenv("PUBLIC_SHARES_ENABLED", "false").lower() == "true",
+        "S3_BUCKET": os.getenv("PUBLIC_SHARES_S3_BUCKET"),
+        "S3_PREFIX": os.getenv("PUBLIC_SHARES_S3_PREFIX", "public-shares"),
+        "VIEWER_BASE_URL": os.getenv("PUBLIC_SHARES_VIEWER_BASE_URL"),
+        "PUBLIC_ORIGIN": os.getenv("PUBLIC_SHARES_PUBLIC_ORIGIN"),
+        "TITILER_INTERNAL_URL": os.getenv("PUBLIC_SHARES_TITILER_INTERNAL_URL"),
+        "TITILER_LAMBDA_ARN": os.getenv("PUBLIC_SHARES_TITILER_LAMBDA_ARN"),
+        "MARTIN_INTERNAL_URL": os.getenv("PUBLIC_SHARES_MARTIN_INTERNAL_URL"),
+        "SESSION_SECRET": os.getenv("PUBLIC_SHARES_SESSION_SECRET"),
+        "MAX_LAYERS": int(os.getenv("PUBLIC_SHARES_MAX_LAYERS", "10")),
+        "MAX_FILE_BYTES": int(
+            os.getenv("PUBLIC_SHARES_MAX_FILE_BYTES", str(2 * 1024**3))
+        ),
+        "MAX_SHARE_BYTES": int(
+            os.getenv("PUBLIC_SHARES_MAX_SHARE_BYTES", str(2 * 1024**3))
+        ),
+        "MAX_ACTIVE_SHARES_PER_USER": int(
+            os.getenv("PUBLIC_SHARES_MAX_ACTIVE_PER_USER", "10")
+        ),
+        "MAX_RESERVED_BYTES_PER_USER": int(
+            os.getenv("PUBLIC_SHARES_MAX_RESERVED_BYTES_PER_USER", str(10 * 1024**3))
+        ),
+        "MULTIPART_PART_BYTES": int(
+            os.getenv("PUBLIC_SHARES_MULTIPART_PART_BYTES", str(16 * 1024**2))
+        ),
+        "UPLOAD_URL_TTL_SECONDS": int(
+            os.getenv("PUBLIC_SHARES_UPLOAD_URL_TTL_SECONDS", "900")
+        ),
+        "DRAFT_TTL_SECONDS": int(os.getenv("PUBLIC_SHARES_DRAFT_TTL_SECONDS", "86400")),
+        "VIEWER_SESSION_TTL_SECONDS": int(
+            os.getenv("PUBLIC_SHARES_VIEWER_SESSION_TTL_SECONDS", "900")
+        ),
+        "MAX_VIEWER_SESSION_LIFETIME_SECONDS": int(
+            os.getenv("PUBLIC_SHARES_MAX_VIEWER_SESSION_LIFETIME_SECONDS", "86400")
+        ),
+        "MAX_TILE_ZOOM": int(os.getenv("PUBLIC_SHARES_MAX_TILE_ZOOM", "22")),
+        "MAX_RASTER_DIMENSION": int(
+            os.getenv("PUBLIC_SHARES_MAX_RASTER_DIMENSION", "100000")
+        ),
+        "MAX_RASTER_PIXELS": int(
+            os.getenv("PUBLIC_SHARES_MAX_RASTER_PIXELS", str(250 * 1000**2))
+        ),
+        "MAX_RASTER_BANDS": int(os.getenv("PUBLIC_SHARES_MAX_RASTER_BANDS", "16")),
+    },
     # GCS bucket used for GEE batch export results.  This is the bucket the
     # GEE service agent must have objectCreator access on.
     "GCS_OUTPUT_BUCKET": os.getenv("GCS_OUTPUT_BUCKET", "ldmt"),

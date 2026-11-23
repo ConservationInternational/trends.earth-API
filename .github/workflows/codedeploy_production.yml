@@ -20,6 +20,8 @@ on:
       - 'pyproject.toml'
       - 'poetry.lock'
       - 'run_db_migrations.py'
+      - 'public-viewer/**'
+      - 'docker-compose.public-shares.yml'
       - '.github/workflows/codedeploy_production.yml'
   workflow_dispatch:
     inputs:
@@ -55,6 +57,8 @@ jobs:
     environment: production
     outputs:
       image-uri: ${{ steps.build-push.outputs.image-uri }}
+      viewer-image-uri: ${{ steps.viewer-images.outputs.viewer-image-uri }}
+      gateway-image-uri: ${{ steps.viewer-images.outputs.gateway-image-uri }}
       image-tag: ${{ steps.deployment-info.outputs.image-tag }}
 
     steps:
@@ -129,6 +133,35 @@ jobs:
         echo "image-uri=$IMAGE_URI" >> $GITHUB_OUTPUT
         echo "✅ Docker image pushed to ECR: $IMAGE_URI"
 
+    - name: Build and push public viewer images
+      id: viewer-images
+      if: vars.PUBLIC_SHARES_INFRA_ENABLED == 'true'
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ steps.deployment-info.outputs.image-tag }}
+      run: |
+        for component in viewer gateway; do
+          if [ "$component" = viewer ]; then
+            REPO=trendsearth-public-viewer; DOCKERFILE=public-viewer/Dockerfile
+          else
+            REPO=trendsearth-public-viewer-gateway; DOCKERFILE=public-viewer/nginx/Dockerfile
+          fi
+          IMAGE_URI="$ECR_REGISTRY/$REPO:$IMAGE_TAG"
+          docker buildx build \
+            --pull \
+            --platform linux/amd64 \
+            --provenance=false \
+            --cache-from=type=gha,scope=$REPO-production \
+            --cache-to=type=gha,mode=max,scope=$REPO-production \
+            --file "$DOCKERFILE" \
+            --tag "$IMAGE_URI" \
+            --tag "$ECR_REGISTRY/$REPO:production-latest" \
+            --push \
+            .
+          echo "$component-image-uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+          echo "✅ Pushed $IMAGE_URI"
+        done
+
   deploy:
     name: Deploy to Production via CodeDeploy
     runs-on: ubuntu-latest
@@ -175,6 +208,20 @@ jobs:
 
     - name: Create environment file for deployment
       env:
+        # Public web-map sharing (written only after setup_public_shares_infrastructure.py)
+        PUBLIC_SHARES_INFRA_ENABLED: ${{ vars.PUBLIC_SHARES_INFRA_ENABLED || 'false' }}
+        PUBLIC_SHARES_ENABLED: ${{ vars.PUBLIC_SHARES_ENABLED || 'false' }}
+        PUBLIC_SHARES_S3_BUCKET: ${{ vars.PUBLIC_SHARES_S3_BUCKET }}
+        PUBLIC_SHARES_S3_PREFIX: ${{ vars.PUBLIC_SHARES_S3_PREFIX || 'public-shares' }}
+        PUBLIC_SHARES_PUBLIC_ORIGIN: ${{ vars.PUBLIC_SHARES_PUBLIC_ORIGIN }}
+        PUBLIC_SHARES_VIEWER_BASE_URL: ${{ vars.PUBLIC_SHARES_VIEWER_BASE_URL }}
+        PUBLIC_SHARES_TITILER_LAMBDA_ARN: ${{ vars.PUBLIC_SHARES_TITILER_LAMBDA_ARN }}
+        PUBLIC_VIEWER_PORT: ${{ vars.PUBLIC_VIEWER_PORT }}
+        PUBLIC_VIEWER_IMAGE: ${{ needs.build-and-push.outputs.viewer-image-uri }}
+        PUBLIC_VIEWER_GATEWAY_IMAGE: ${{ needs.build-and-push.outputs.gateway-image-uri }}
+        PUBLIC_SHARES_SESSION_SECRET: ${{ secrets.PUBLIC_SHARES_SESSION_SECRET }}
+        PUBLIC_SHARES_MARTIN_AWS_ACCESS_KEY_ID: ${{ secrets.PUBLIC_SHARES_MARTIN_AWS_ACCESS_KEY_ID }}
+        PUBLIC_SHARES_MARTIN_AWS_SECRET_ACCESS_KEY: ${{ secrets.PUBLIC_SHARES_MARTIN_AWS_SECRET_ACCESS_KEY }}
         ECR_REGISTRY: ${{ steps.images.outputs.ecr-registry }}
         API_IMAGE: ${{ steps.images.outputs.api-image }}
         SECRET_KEY: ${{ secrets.SECRET_KEY }}
@@ -387,6 +434,38 @@ jobs:
           echo "GIT_BRANCH=${{ github.ref_name }}"
           echo "DEPLOYMENT_ENVIRONMENT=production"
         } > prod.env
+
+        if [ "$PUBLIC_SHARES_INFRA_ENABLED" = "true" ]; then
+          for name in PUBLIC_SHARES_S3_BUCKET PUBLIC_SHARES_PUBLIC_ORIGIN PUBLIC_SHARES_VIEWER_BASE_URL \
+            PUBLIC_SHARES_TITILER_LAMBDA_ARN PUBLIC_VIEWER_PORT PUBLIC_VIEWER_IMAGE PUBLIC_VIEWER_GATEWAY_IMAGE \
+            PUBLIC_SHARES_SESSION_SECRET PUBLIC_SHARES_MARTIN_AWS_ACCESS_KEY_ID PUBLIC_SHARES_MARTIN_AWS_SECRET_ACCESS_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::PUBLIC_SHARES_INFRA_ENABLED=true but $name is missing"
+              exit 1
+            fi
+          done
+          {
+            echo ""
+            echo "# Public web-map sharing"
+            echo "PUBLIC_SHARES_INFRA_ENABLED=true"
+            echo "PUBLIC_SHARES_ENABLED=$PUBLIC_SHARES_ENABLED"
+            echo "PUBLIC_SHARES_S3_BUCKET=$PUBLIC_SHARES_S3_BUCKET"
+            echo "PUBLIC_SHARES_S3_PREFIX=$PUBLIC_SHARES_S3_PREFIX"
+            echo "PUBLIC_SHARES_PUBLIC_ORIGIN=$PUBLIC_SHARES_PUBLIC_ORIGIN"
+            echo "PUBLIC_SHARES_VIEWER_BASE_URL=$PUBLIC_SHARES_VIEWER_BASE_URL"
+            echo "PUBLIC_SHARES_TITILER_LAMBDA_ARN=$PUBLIC_SHARES_TITILER_LAMBDA_ARN"
+            echo "PUBLIC_SHARES_SESSION_SECRET=$PUBLIC_SHARES_SESSION_SECRET"
+            echo "PUBLIC_SHARES_MARTIN_AWS_ACCESS_KEY_ID=$PUBLIC_SHARES_MARTIN_AWS_ACCESS_KEY_ID"
+            echo "PUBLIC_SHARES_MARTIN_AWS_SECRET_ACCESS_KEY=$PUBLIC_SHARES_MARTIN_AWS_SECRET_ACCESS_KEY"
+            echo "PUBLIC_VIEWER_PORT=$PUBLIC_VIEWER_PORT"
+            echo "PUBLIC_VIEWER_IMAGE=$PUBLIC_VIEWER_IMAGE"
+            echo "PUBLIC_VIEWER_GATEWAY_IMAGE=$PUBLIC_VIEWER_GATEWAY_IMAGE"
+            echo "AWS_REGION=$AWS_REGION"
+          } >> prod.env
+        elif [ "$PUBLIC_SHARES_ENABLED" = "true" ]; then
+          echo "::error::PUBLIC_SHARES_ENABLED=true requires PUBLIC_SHARES_INFRA_ENABLED=true"
+          exit 1
+        fi
         echo "✅ Created prod.env with $(wc -l < prod.env) lines"
 
     - name: Update appspec.yml for production
@@ -413,6 +492,8 @@ jobs:
           scripts/codedeploy/ \
           scripts/setup/ \
           config/db/ \
+          docker-compose.public-shares.yml \
+          config/public-shares/ \
           entrypoint.sh \
           -x "*.pyc" \
           -x "__pycache__/*" \

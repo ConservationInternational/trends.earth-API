@@ -140,6 +140,24 @@ else
 fi
 
 # ============================================================================
+# Health Check - Public Share Viewer (only when its overlay is deployed)
+# ============================================================================
+
+ENV_FILE=$(get_env_file "$ENVIRONMENT")
+PUBLIC_SHARES_INFRA_ENABLED=$(grep -E '^PUBLIC_SHARES_INFRA_ENABLED=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+PUBLIC_VIEWER_PORT=$(grep -E '^PUBLIC_VIEWER_PORT=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+if [ "$PUBLIC_SHARES_INFRA_ENABLED" = "true" ] && [ -f docker-compose.public-shares.yml ]; then
+    VIEWER_HEALTH_URL="http://127.0.0.1:${PUBLIC_VIEWER_PORT:-8080}/health"
+    log_info "Checking public viewer gateway at $VIEWER_HEALTH_URL..."
+    if wait_for_service "$VIEWER_HEALTH_URL" 12 5; then
+        log_success "Public viewer gateway is healthy"
+    else
+        log_error "Public viewer gateway health check failed"
+        exit 1
+    fi
+fi
+
+# ============================================================================
 # Deployment Summary
 # ============================================================================
 

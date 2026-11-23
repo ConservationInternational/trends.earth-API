@@ -1,0 +1,9 @@
+listen_addresses: 0.0.0.0:3000
+cache: disable
+preferred_encoding: gzip
+pmtiles:
+  paths:
+    - s3://${PUBLIC_SHARES_S3_BUCKET}/${PUBLIC_SHARES_S3_PREFIX}/vector/
+  recursive: false
+  reload_interval: 10s
+  directory_cache: disable

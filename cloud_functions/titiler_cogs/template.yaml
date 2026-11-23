@@ -1,0 +1,121 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Private IAM-invoked COG renderer for expiring Trends.Earth shares
+
+Parameters:
+  FunctionName:
+    Type: String
+    Default: trendsearth-share-tiler
+    AllowedPattern: "[A-Za-z0-9_-]+"
+    MaxLength: 64
+  ShareBucket:
+    Type: String
+    AllowedPattern: "[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]"
+  SharePrefix:
+    Type: String
+    Default: public-shares
+    AllowedPattern: "[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*"
+  ApiRoleName:
+    Type: String
+    Description: Existing IAM role used by the API to invoke the renderer
+    AllowedPattern: "[A-Za-z0-9+=,.@_-]+"
+  KmsKeyArn:
+    Type: String
+    Default: ""
+    Description: Optional customer-managed KMS key for an SSE-KMS share bucket
+  ReservedConcurrency:
+    Type: Number
+    Default: 20
+    MinValue: 1
+    MaxValue: 1000
+
+Conditions:
+  UsesKms: !Not [!Equals [!Ref KmsKeyArn, ""]]
+
+Resources:
+  RendererLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${FunctionName}"
+      RetentionInDays: 14
+  RendererRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadShareRasters
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${ShareBucket}/${SharePrefix}/*/*.tif"
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "${RendererLogs.Arn}"
+              - !If
+                - UsesKms
+                - Effect: Allow
+                  Action: kms:Decrypt
+                  Resource: !Ref KmsKeyArn
+                  Condition:
+                    StringEquals:
+                      kms:ViaService: !Sub "s3.${AWS::Region}.${AWS::URLSuffix}"
+                    StringLike:
+                      kms:EncryptionContext:aws:s3:arn:
+                        - !Sub "arn:${AWS::Partition}:s3:::${ShareBucket}"
+                        - !Sub "arn:${AWS::Partition}:s3:::${ShareBucket}/${SharePrefix}/*"
+                - !Ref AWS::NoValue
+  TitilerCogsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Ref FunctionName
+      PackageType: Image
+      Architectures: [x86_64]
+      Role: !GetAtt RendererRole.Arn
+      AutoPublishAlias: live
+      AutoPublishAliasAllProperties: true
+      MemorySize: 1024
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref ReservedConcurrency
+      Environment:
+        Variables:
+          PUBLIC_SHARES_S3_BUCKET: !Ref ShareBucket
+          PUBLIC_SHARES_S3_PREFIX: !Ref SharePrefix
+          GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
+          GDAL_PAM_ENABLED: "NO"
+          CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif
+          GDAL_CACHEMAX: "64"
+          CPL_VSIL_CURL_CACHE_SIZE: "0"
+          VSI_CACHE: "FALSE"
+          GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
+          GDAL_HTTP_TIMEOUT: "5"
+          GDAL_HTTP_MAX_RETRY: "0"
+          OPENBLAS_NUM_THREADS: "1"
+          OMP_NUM_THREADS: "1"
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: ./titiler_cogs
+      DockerTag: python3.14-v1
+  ApiInvokePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "${FunctionName}-invoke"
+      Roles: [!Ref ApiRoleName]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource: !Sub "${TitilerCogsFunction.Arn}:live"
+
+Outputs:
+  RendererFunctionArn:
+    Description: Set PUBLIC_SHARES_TITILER_LAMBDA_ARN on the API and workers
+    Value: !Sub "${TitilerCogsFunction.Arn}:live"

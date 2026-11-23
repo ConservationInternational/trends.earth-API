@@ -167,7 +167,11 @@ def create_deployment_policy(account_id):
                     "ecr:DescribeRepositories",
                     "ecr:TagResource",
                 ],
-                "Resource": ["arn:aws:ecr:*:*:repository/trendsearth-api"],
+                "Resource": [
+                    "arn:aws:ecr:*:*:repository/trendsearth-api",
+                    "arn:aws:ecr:*:*:repository/trendsearth-public-viewer",
+                    "arn:aws:ecr:*:*:repository/trendsearth-public-viewer-gateway",
+                ],
             },
             {
                 "Sid": "STSGetCallerIdentity",

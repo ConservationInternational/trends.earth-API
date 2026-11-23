@@ -74,8 +74,35 @@ if [ ! -f "$COMPOSE_FILE" ]; then
     exit 1
 fi
 
+COMPOSE_ARGS=(-c "$COMPOSE_FILE")
+PUBLIC_SHARES_OVERLAY="docker-compose.public-shares.yml"
+PUBLIC_SHARES_MARTIN_CONFIG="config/public-shares/martin.yaml"
+
+if [ "${PUBLIC_SHARES_INFRA_ENABLED:-false}" = "true" ]; then
+    if [ -f "$PUBLIC_SHARES_OVERLAY" ] && [ -f "$PUBLIC_SHARES_MARTIN_CONFIG" ]; then
+        for required in PUBLIC_VIEWER_IMAGE PUBLIC_VIEWER_GATEWAY_IMAGE PUBLIC_SHARES_S3_BUCKET \
+            PUBLIC_SHARES_MARTIN_AWS_ACCESS_KEY_ID PUBLIC_SHARES_MARTIN_AWS_SECRET_ACCESS_KEY; do
+            if [ -z "${!required:-}" ]; then
+                log_error "PUBLIC_SHARES_INFRA_ENABLED=true but $required is not set"
+                exit 1
+            fi
+        done
+        # Swarm configs are immutable, so give each Martin config revision a unique name.
+        MARTIN_CONFIG_HASH=$(sha256sum "$PUBLIC_SHARES_MARTIN_CONFIG" | cut -c1-12)
+        export PUBLIC_SHARES_MARTIN_CONFIG_NAME="${STACK_NAME}_public_share_martin_${MARTIN_CONFIG_HASH}"
+        COMPOSE_ARGS+=(-c "$PUBLIC_SHARES_OVERLAY")
+        log_info "Including public-share viewer/Martin overlay"
+    else
+        log_warning "PUBLIC_SHARES_INFRA_ENABLED=true but the overlay is absent from this bundle; leaving existing share services unchanged"
+    fi
+fi
+
 log_info "Validating compose file..."
-if ! docker compose -f "$COMPOSE_FILE" config > /dev/null 2>&1; then
+COMPOSE_CONFIG_ARGS=()
+for ((i = 1; i < ${#COMPOSE_ARGS[@]}; i += 2)); do
+    COMPOSE_CONFIG_ARGS+=(-f "${COMPOSE_ARGS[$i]}")
+done
+if ! docker compose "${COMPOSE_CONFIG_ARGS[@]}" config > /dev/null 2>&1; then
     log_warning "Compose file validation warning (may be expected for swarm mode)"
 fi
 
@@ -140,7 +167,7 @@ while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
     log_info "Stack deploy attempt $ATTEMPT/$MAX_ATTEMPTS..."
     
     if docker stack deploy \
-        -c "$COMPOSE_FILE" \
+        "${COMPOSE_ARGS[@]}" \
         --with-registry-auth \
         --resolve-image always \
         "$STACK_NAME"; then

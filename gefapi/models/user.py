@@ -142,6 +142,9 @@ class User(db.Model):
     # A positive integer overrides the global default for this user.
     max_concurrent_executions = db.Column(db.Integer(), nullable=True)
 
+    # NULL uses the configured default public-share storage quota.
+    public_share_quota_bytes = db.Column(db.BigInteger(), nullable=True)
+
     # Bulk email subscription preferences
     # Each controls whether the user receives that category of bulk email.
     # system_updates defaults to True (opt-out) since it covers operational/

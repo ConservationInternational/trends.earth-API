@@ -11,6 +11,7 @@ from gefapi.utils.oidc_scopes import (
     DEFAULT_APP_CLIENT_SCOPES,
     DEFAULT_CLIENT_SCOPES,
     EXECUTION_SCOPES,
+    WEBMAP_SCOPES,
 )
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "register_oidc_clients.py"
@@ -28,6 +29,8 @@ EXECUTION_CLIENTS = {"avoided-emissions-web", "avoided-emissions-web-staging"}
 
 
 def _expected(client_id):
+    if client_id == "te-qgis-plugin":
+        return BASE + list(WEBMAP_SCOPES)
     if client_id not in GATED:
         return BASE
     if client_id in EXECUTION_CLIENTS:

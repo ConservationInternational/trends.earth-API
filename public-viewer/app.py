@@ -1,0 +1,168 @@
+"""Independent, read-only public viewer. Data access remains in the API."""
+
+from pathlib import Path
+import re
+
+from dash import Dash, html
+from flask import abort, request
+
+BASE = Path(__file__).parent
+app = Dash(
+    __name__,
+    assets_folder=str(BASE / "dist" / "assets"),
+    assets_ignore=r"bootstrap\.js|app\.js",
+    external_stylesheets=["/assets/style.css"],
+    title="Trends.Earth shared map",
+    update_title=None,
+)
+server = app.server
+server.config["MAX_CONTENT_LENGTH"] = 4096
+app.index_string = """<!DOCTYPE html>
+<html lang="en"><head>
+{%metas%}
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>{%title%}</title>
+<script src="/assets/bootstrap.js"></script>
+{%favicon%}{%css%}
+</head><body>
+{%app_entry%}
+<noscript>JavaScript is required to authorize and open this shared map.</noscript>
+<footer>{%config%}{%scripts%}{%renderer%}</footer>
+</body></html>"""
+
+app.layout = html.Div(
+    [
+        html.A("Skip to map controls", href="#controls", className="skip-link"),
+        html.Header(
+            [
+                html.Span("Trends.Earth", className="brand"),
+                html.H1("Shared map", id="title"),
+                html.P(id="expiry"),
+            ]
+        ),
+        html.Main(
+            [
+                html.Aside(
+                    [
+                        html.P(
+                            "This is an unlisted snapshot. Anyone with the "
+                            "original link can "
+                            "view, forward, or save its content until access expires.",
+                            className="notice",
+                        ),
+                        html.P(
+                            "No analytics or external basemap is loaded. Map data is "
+                            "requested only from this site.",
+                            className="privacy",
+                        ),
+                        html.Div(
+                            "Opening shared map...",
+                            id="status",
+                            role="status",
+                            **{"aria-live": "polite"},
+                        ),
+                        html.Button("Retry loading map", id="retry", hidden=True),
+                        html.Div(
+                            [
+                                html.Button("Show full extent", id="fit"),
+                                html.P(
+                                    "Focus the map to pan with arrow keys; "
+                                    "use + and - to zoom. "
+                                    "Drag to pan, or use the on-map zoom buttons.",
+                                    className="help",
+                                ),
+                                html.P(id="coordinates", **{"aria-live": "off"}),
+                            ],
+                            id="map-tools",
+                            hidden=True,
+                        ),
+                        html.Section(
+                            [
+                                html.H2("Layers and legends", id="layers-title"),
+                                html.Div(id="layers"),
+                            ],
+                            **{"aria-labelledby": "layers-title"},
+                        ),
+                        html.Section(
+                            [
+                                html.H2(
+                                    "Selected vector feature", id="selection-title"
+                                ),
+                                html.P(
+                                    "All embedded attributes are public "
+                                    "to link recipients."
+                                ),
+                                html.Dl(id="attributes"),
+                                html.Button("Clear selection", id="clear-selection"),
+                            ],
+                            id="selection",
+                            hidden=True,
+                            **{"aria-labelledby": "selection-title"},
+                        ),
+                    ],
+                    id="controls",
+                    tabIndex=-1,
+                    **{"aria-label": "Map controls and legend"},
+                ),
+                html.Section(
+                    [
+                        html.Div(
+                            id="map",
+                            tabIndex=0,
+                        ),
+                        html.P(
+                            "The map will appear after this link is authorized.",
+                            id="map-placeholder",
+                        ),
+                    ],
+                    id="map-region",
+                    **{"aria-label": "Shared geographic map"},
+                ),
+            ]
+        ),
+    ]
+)
+
+
+@server.before_request
+def restrict_viewer_routes():
+    """Expose only the UI and local dependency assets, never data callbacks."""
+    if request.method not in ("GET", "HEAD"):
+        abort(405)
+    if (
+        request.path not in ("/_dash-layout", "/_dash-dependencies", "/health")
+        and not request.path.startswith(("/assets/", "/_dash-component-suites/"))
+        and not re.fullmatch(r"/share/[0-9a-fA-F-]{36}", request.path)
+    ):
+        abort(404)
+
+
+@server.after_request
+def private_responses(response):
+    response.headers.update(
+        {
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "X-Robots-Tag": "noindex, nofollow, noarchive",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": (
+                "default-src 'none'; script-src 'self' "
+                + " ".join(app.csp_hashes())
+                + "; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+                "connect-src 'self'; font-src 'self'; object-src 'none'; "
+                "base-uri 'none'; frame-ancestors 'none'; form-action 'none'; "
+                "worker-src 'none'"
+            ),
+        }
+    )
+    return response
+
+
+@server.get("/health")
+def health():
+    return "OK", 200
+
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=8050, debug=False)

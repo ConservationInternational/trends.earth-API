@@ -9,7 +9,7 @@ ENV PATH="/opt/$NAME/.venv/bin:$PATH"
 RUN apk update && apk upgrade && \
    apk add --no-cache --update bash git openssl-dev build-base alpine-sdk \
    libffi-dev postgresql-dev postgresql-client gcc python3-dev musl-dev \
-   geos-dev gdal-dev proj-dev proj-util
+   geos-dev gdal gdal-dev gdal-tools proj-dev proj-util
 
 RUN addgroup $USER && adduser -s /bin/bash -D -G $USER $USER
 

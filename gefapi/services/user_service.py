@@ -863,7 +863,7 @@ class UserService:
         Raises:
             UserNotFound: If the user doesn't exist
         """
-        from gefapi.models import DeletionReason, UserDeletionAudit
+        from gefapi.models import DeletionReason, PublicShare, UserDeletionAudit
 
         # Default to user_request if no reason specified
         if deletion_reason is None:
@@ -900,6 +900,22 @@ class UserService:
             db.session.add(audit_record)
 
             user_uuid = user.id
+
+            # Public links stop working as soon as the account is removed.
+            # Keep only ownerless revoked rows until the storage cleanup worker
+            # deletes their private objects and multipart uploads.
+            PublicShare.query.filter_by(user_id=user_uuid).update(
+                {
+                    PublicShare.user_id: None,
+                    PublicShare.state: "revoked",
+                    PublicShare.revoked_at: utcnow(),
+                    PublicShare.token_hash: None,
+                    PublicShare.session_generation: (
+                        PublicShare.session_generation + 1
+                    ),
+                },
+                synchronize_session=False,
+            )
 
             # Get execution IDs for this user (needed for related table deletions)
             execution_ids_uuid = db.session.query(Execution.id).filter(

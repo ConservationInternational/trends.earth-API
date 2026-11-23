@@ -8,6 +8,13 @@ Interactive API documentation is available at `/api/docs/` (Swagger UI):
 
 For authentication details, see [authentication.md](authentication.md).
 
+## Expiring public web-map shares
+
+The local-raster share endpoints and deployment requirements are documented in
+[public-webmap-sharing.md](public-webmap-sharing.md). Owner routes require
+`webmap:read` or `webmap:write`; public manifest and tile routes require a
+short-lived same-origin viewer cookie. The feature is disabled by default.
+
 ## Common Query Parameters
 
 All listing endpoints support:

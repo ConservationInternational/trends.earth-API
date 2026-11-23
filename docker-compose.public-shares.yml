@@ -1,0 +1,84 @@
+# Opt-in overlay for docker-compose.prod.yml (also usable with staging).
+# Deploy behind HTTPS; never expose Dash or Martin directly.
+# TiTiler is the separately deployed private SAM Lambda; configure its alias ARN
+# with PUBLIC_SHARES_TITILER_LAMBDA_ARN in the API/worker environment files.
+services:
+  api:
+    environment:
+      PUBLIC_SHARES_MARTIN_INTERNAL_URL: http://martin:3000
+    networks:
+      - share_tiles
+      - share_gateway
+  public-viewer:
+    image: ${PUBLIC_VIEWER_IMAGE:?Build and publish the public-viewer image}
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    networks:
+      - viewer_frontend
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+  public-viewer-gateway:
+    image: ${PUBLIC_VIEWER_GATEWAY_IMAGE:?Build and publish the public-viewer-gateway image}
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    ports:
+      - target: 8080
+        published: ${PUBLIC_VIEWER_PORT:-8080}
+        protocol: tcp
+        mode: ingress
+    networks:
+      - viewer_frontend
+      - share_gateway
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+  martin:
+    image: ghcr.io/maplibre/martin:1.16.1@sha256:59902019bf9038926ff0c71174237d6852e64c457830a6349abe7090be8818ca
+    command: ["--config", "/etc/martin/config.yaml", "--on-invalid", "warn"]
+    user: "10001:10001"
+    read_only: true
+    environment:
+      PUBLIC_SHARES_S3_BUCKET: ${PUBLIC_SHARES_S3_BUCKET:?Set the dedicated share bucket}
+      PUBLIC_SHARES_S3_PREFIX: ${PUBLIC_SHARES_S3_PREFIX:-public-shares}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${PUBLIC_SHARES_MARTIN_AWS_ACCESS_KEY_ID:?Set Martin read-only credentials}
+      AWS_SECRET_ACCESS_KEY: ${PUBLIC_SHARES_MARTIN_AWS_SECRET_ACCESS_KEY:?Set Martin read-only credentials}
+    configs:
+      - source: public_share_martin
+        target: /etc/martin/config.yaml
+    networks:
+      - share_tiles
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+
+configs:
+  public_share_martin:
+    # CodeDeploy sets a content-hashed name because Swarm configs are immutable.
+    name: ${PUBLIC_SHARES_MARTIN_CONFIG_NAME:-public_share_martin}
+    file: ./config/public-shares/martin.yaml
+
+networks:
+  share_tiles:
+    driver: overlay
+  viewer_frontend:
+    driver: overlay
+    internal: true
+  share_gateway:
+    driver: overlay

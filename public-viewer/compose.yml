@@ -1,0 +1,22 @@
+# Local viewer-only stack; API and renderers must already be available.
+services:
+  public-viewer:
+    build:
+      context: ..
+      dockerfile: public-viewer/Dockerfile
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+  gateway:
+    build:
+      context: ..
+      dockerfile: public-viewer/nginx/Dockerfile
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    ports:
+      - "127.0.0.1:${PUBLIC_VIEWER_PORT:-8080}:8080"
+    extra_hosts:
+      - "api:host-gateway"
+    depends_on:
+      - public-viewer

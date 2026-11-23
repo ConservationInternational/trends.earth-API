@@ -20,8 +20,11 @@ Application-bound clients default to ``openid email profile`` plus
 ``app:read account:write app-users:read app-access:write``; ungated clients
 get ``openid email profile`` only.  The Avoided Emissions clients also get
 ``script:read execution:read execution:write`` so they can run the analysis
-script on behalf of the signed-in user.  App scopes must be provisioned before
-an application requests them.
+script on behalf of the signed-in user. The QGIS client has the explicit
+``webmap:read webmap:write`` allowlist for expiring local-raster shares; existing
+registrations require ``--add-scopes`` and the client requests the scopes only
+after the plugin has obtained user consent. App scopes must be provisioned
+before an application requests them.
 
 Redirect URIs come from environment variables so that staging and production
 can be provisioned with the same script:
@@ -68,6 +71,7 @@ from gefapi.utils.oidc_scopes import (
     DEFAULT_APP_CLIENT_SCOPES,
     DEFAULT_CLIENT_SCOPES,
     EXECUTION_SCOPES,
+    WEBMAP_SCOPES,
     client_scope_error,
     default_client_scopes,
 )
@@ -107,7 +111,7 @@ def client_definitions():
             "audience": TRENDS_API_AUDIENCE,
             "is_public": True,
             "required_app_key": None,
-            "scopes": list(DEFAULT_CLIENT_SCOPES),
+            "scopes": [*DEFAULT_CLIENT_SCOPES, *WEBMAP_SCOPES],
             # RFC 8252 loopback: the port is wildcarded at match time.
             "redirect_uris": ["http://127.0.0.1/callback", "http://[::1]/callback"],
             "post_logout_redirect_uris": [],

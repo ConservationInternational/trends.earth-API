@@ -71,6 +71,7 @@ from gefapi.models.oidc import (  # noqa: E402
     OIDCRefreshToken,
 )
 from gefapi.models.password_reset_token import PasswordResetToken  # noqa: E402
+from gefapi.models.public_share import PublicShare, PublicShareLayer  # noqa: E402
 from gefapi.models.rate_limit_event import RateLimitEvent  # noqa: E402
 from gefapi.models.refresh_token import RefreshToken  # noqa: E402
 from gefapi.models.script import Script  # noqa: E402
@@ -101,6 +102,8 @@ __all__ = [
     "OAuthClient",
     "OIDCRefreshToken",
     "PasswordResetToken",
+    "PublicShare",
+    "PublicShareLayer",
     "RateLimitEvent",
     "RefreshToken",
     "Script",
