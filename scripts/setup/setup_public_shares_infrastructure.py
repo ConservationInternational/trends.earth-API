@@ -7,9 +7,12 @@ after the live acceptance test passes.
 
 Example:
     poetry run python scripts/setup/setup_public_shares_infrastructure.py \\
-        --environment staging --viewer-host share-staging.trends.earth
+        --environment staging
     poetry run python scripts/setup/setup_public_shares_infrastructure.py \\
-        --environment staging --viewer-host share-staging.trends.earth --apply
+        --environment staging --apply
+
+The viewer is served from ``viewer-staging.trends.earth`` (staging) or
+``viewer.trends.earth`` (production), with share links under ``/share``.
 """
 
 import argparse
@@ -27,10 +30,14 @@ from botocore.exceptions import ClientError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TILER_TEMPLATE = REPO_ROOT / "cloud_functions" / "titiler_cogs" / "template.yaml"
-SAM_BUILD_DIR = REPO_ROOT / ".aws-sam" / "public-share-tiler"
+SAM_BUILD_DIR = REPO_ROOT / ".aws-sam" / "public-viewer-tiler"
 GITHUB_REPO = "ConservationInternational/trends.earth-API"
 VIEWER_REPOSITORIES = ("trendsearth-public-viewer", "trendsearth-public-viewer-gateway")
 DEFAULT_PORTS = {"production": 8080, "staging": 8081}
+DEFAULT_VIEWER_HOSTS = {
+    "production": "viewer.trends.earth",
+    "staging": "viewer-staging.trends.earth",
+}
 API_TARGET_GROUPS = {
     "production": "trendsearth-api-tg",
     "staging": "trendsearth-api-staging",
@@ -103,7 +110,7 @@ class Provisioner:
                         f"{tool} is required to build the tiler (or pass --skip-tiler)"
                     )
         self.bucket = self.args.bucket or (
-            f"trendsearth-public-shares-{self.env}-{self.account_id}"
+            f"trendsearth-public-viewer-{self.env}-{self.account_id}"
         )
         self.prefix = self.args.prefix.strip("/")
         self.port = self.args.viewer_port or DEFAULT_PORTS[self.env]
@@ -325,7 +332,7 @@ class Provisioner:
         }
 
     def ensure_api_role_policy(self):
-        name = f"TrendsEarthPublicShares-{self.env}"
+        name = f"TrendsEarthPublicViewer-{self.env}"
         self.step(f"API/worker S3 policy {name} on role {self.api_role}")
         iam = self.client("iam")
         self.change(
@@ -338,7 +345,7 @@ class Provisioner:
         )
 
     def ensure_martin_user(self, github_secrets):
-        user = f"trendsearth-public-shares-martin-{self.env}"
+        user = f"trendsearth-public-viewer-martin-{self.env}"
         self.step(f"Martin read-only IAM user {user}")
         iam = self.client("iam")
         try:
@@ -497,7 +504,7 @@ class Provisioner:
     # Private TiTiler Lambda
     # ------------------------------------------------------------------
     def ensure_tiler(self):
-        stack = f"trendsearth-public-share-tiler-{self.env}"
+        stack = f"trendsearth-public-viewer-tiler-{self.env}"
         self.step(f"Private TiTiler Lambda stack {stack}")
         cfn = self.client("cloudformation")
         try:
@@ -526,7 +533,7 @@ class Provisioner:
                 env,
             )
             overrides = {
-                "FunctionName": f"trendsearth-public-share-tiler-{self.env}",
+                "FunctionName": f"trendsearth-public-viewer-tiler-{self.env}",
                 "ShareBucket": self.bucket,
                 "SharePrefix": self.prefix,
                 "ApiRoleName": self.api_role,
@@ -602,7 +609,7 @@ class Provisioner:
         if not targets:
             sys.exit(f"{API_TARGET_GROUPS[self.env]} has no registered targets to copy")
 
-        tg_name = f"te-share-viewer-{self.env}"
+        tg_name = f"te-public-viewer-{self.env}"
         try:
             tg = elb.describe_target_groups(Names=[tg_name])["TargetGroups"][0]
             self.ok(f"target group {tg_name} exists")
@@ -986,8 +993,8 @@ def parse_args(argv=None):
     parser.add_argument("--environment", "-e", required=True, choices=DEFAULT_PORTS)
     parser.add_argument(
         "--viewer-host",
-        required=True,
-        help="Public viewer hostname, e.g. share.trends.earth",
+        help="Public viewer hostname (default: viewer.trends.earth for "
+        "production, viewer-staging.trends.earth for staging)",
     )
     parser.add_argument(
         "--apply", action="store_true", help="Make changes (default: plan)"
@@ -995,7 +1002,7 @@ def parse_args(argv=None):
     parser.add_argument("--profile", "-p", help="AWS profile")
     parser.add_argument("--region", "-r", default="us-east-1")
     parser.add_argument(
-        "--bucket", help="Default: trendsearth-public-shares-<env>-<account>"
+        "--bucket", help="Default: trendsearth-public-viewer-<env>-<account>"
     )
     parser.add_argument("--prefix", default="public-shares")
     parser.add_argument(
@@ -1031,6 +1038,15 @@ def parse_args(argv=None):
     args = parser.parse_args(argv)
     if args.trigger_deploy and args.skip_github:
         parser.error("--trigger-deploy requires GitHub access")
+    default_host = DEFAULT_VIEWER_HOSTS[args.environment]
+    if not args.viewer_host:
+        args.viewer_host = default_host
+    elif args.viewer_host != default_host:
+        print(
+            f"WARNING: --viewer-host {args.viewer_host} overrides the standard "
+            f"{args.environment} host {default_host}",
+            file=sys.stderr,
+        )
     return args
 
 

@@ -16,7 +16,7 @@ jobs:
       - name: Build Lambda image and test real COG rendering
         run: |
           docker build --platform linux/amd64 --target test \
-            -t trendsearth-share-tiler:test \
+            -t trendsearth-public-viewer-tiler:test \
             cloud_functions/titiler_cogs/titiler_cogs
       - uses: aws-actions/setup-sam@v2
       - name: Validate private deployment template

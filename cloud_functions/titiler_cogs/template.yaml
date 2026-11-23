@@ -5,7 +5,7 @@ Description: Private IAM-invoked COG renderer for expiring Trends.Earth shares
 Parameters:
   FunctionName:
     Type: String
-    Default: trendsearth-share-tiler
+    Default: trendsearth-public-viewer-tiler
     AllowedPattern: "[A-Za-z0-9_-]+"
     MaxLength: 64
   ShareBucket:

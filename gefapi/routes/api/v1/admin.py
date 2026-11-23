@@ -25,9 +25,7 @@ from gefapi.utils.scopes import require_scope
 logger = logging.getLogger()
 
 
-@endpoints.route(
-    "/admin/users/<user_id>/public-share-quota", methods=["PUT"]
-)
+@endpoints.route("/admin/users/<user_id>/public-share-quota", methods=["PUT"])
 @jwt_required()
 @require_scope("admin:write")
 def set_public_share_quota(user_id):

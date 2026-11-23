@@ -140,35 +140,39 @@ idempotently. It only prints a plan unless `--apply` is passed:
 
 ```bash
 poetry run python scripts/setup/setup_public_shares_infrastructure.py \
-  --environment staging --viewer-host share-staging.trends.earth
+  --environment staging
 poetry run python scripts/setup/setup_public_shares_infrastructure.py \
-  --environment staging --viewer-host share-staging.trends.earth --apply \
-  [--trigger-deploy --deploy-ref master]
+  --environment staging --apply [--trigger-deploy --deploy-ref master]
 ```
+
+The viewer host defaults to `viewer-staging.trends.earth` for staging and
+`viewer.trends.earth` for production, with share links under `/share`
+(for example `https://viewer-staging.trends.earth/share/<token>`). Pass
+`--viewer-host` only to override it.
 
 It requires administrator AWS credentials (`--profile`/`--region`), an
 authenticated `gh` CLI, and Docker and the SAM CLI for the tiler (`--sam-cli PATH`,
 or `--skip-tiler`). It performs the following steps:
 
-1. Creates/reconciles `trendsearth-public-shares-<env>-<account>` with blocked
+1. Creates/reconciles `trendsearth-public-viewer-<env>-<account>` with blocked
    public access, ACLs disabled, SSE-S3, versioning, a TLS-only policy and
    lifecycle backstops. Current objects expire after 100 days, noncurrent
    versions after 1 day, and incomplete uploads after 2 days.
-2. Adds `TrendsEarthPublicShares-<env>` to the Swarm instance role
+2. Adds `TrendsEarthPublicViewer-<env>` to the Swarm instance role
    (`trendsearth-api-docker-swarm-role`). This role is used by the API/workers;
    the policy grants list/read/write/delete/version/multipart access only under
    the share prefix. Staging and production share this instance role, so each
    environment's API can technically reach both buckets.
-3. Creates `trendsearth-public-shares-martin-<env>` with read/list access to
+3. Creates `trendsearth-public-viewer-martin-<env>` with read/list access to
    only `<prefix>/vector/`. Its access key is stored only as GitHub environment
    secrets through stdin. Use `--rotate-martin-key` to replace it; the script
    lists old keys to delete after the next successful deployment.
 4. Creates the `trendsearth-public-viewer` and
    `trendsearth-public-viewer-gateway` ECR repositories. It adds
    `GitHubActionsPublicViewerECR` push access to the GitHub OIDC deployment role.
-5. Builds/deploys the SAM stack `trendsearth-public-share-tiler-<env>` and reads
+5. Builds/deploys the SAM stack `trendsearth-public-viewer-tiler-<env>` and reads
    `RendererFunctionArn`.
-6. Adds an HTTPS host rule and `te-share-viewer-<env>` target group to the
+6. Adds an HTTPS host rule and `te-public-viewer-<env>` target group to the
    `trendsearth-api` ALB. It registers the same Swarm nodes as the environment's
    API target group, checks the listener certificate, and opens only the gateway
    port from the ALB security group. Ports are 8080 for production and 8081 for
@@ -305,10 +309,10 @@ From the repository root, validate, build and deploy:
 sam validate --lint --template-file cloud_functions/titiler_cogs/template.yaml --region <region>
 sam build --template-file cloud_functions/titiler_cogs/template.yaml
 sam deploy --template-file .aws-sam/build/template.yaml \
-  --stack-name trendsearth-share-tiler-staging --region <region> \
+  --stack-name trendsearth-public-viewer-tiler-staging --region <region> \
   --resolve-image-repos --resolve-s3 --capabilities CAPABILITY_IAM \
   --parameter-overrides \
-    FunctionName=trendsearth-share-tiler-staging \
+    FunctionName=trendsearth-public-viewer-tiler-staging \
     ShareBucket=<private-share-bucket> SharePrefix=public-shares \
     ApiRoleName=<api-runtime-role>
 ```
@@ -344,7 +348,7 @@ API sharing/OAuth suite (90 tests). Run the Lambda tests with:
 
 ```bash
 docker build --platform linux/amd64 --target test \
-  -t trendsearth-share-tiler:test cloud_functions/titiler_cogs/titiler_cogs
+  -t trendsearth-public-viewer-tiler:test cloud_functions/titiler_cogs/titiler_cogs
 ```
 
 The `Private sharing tiler` workflow builds/tests the image, lints the template
