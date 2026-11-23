@@ -73,8 +73,18 @@ function validateManifest(data, shareId) {
         throw new ViewerError(502, "The map contains invalid vector metadata.");
       }
     } else if (style.kind === "continuous") {
-      if (!Object.hasOwn(PALETTES, style.palette) ||
-          ![style.min, style.max].every(Number.isFinite) || style.min >= style.max) {
+      const validRange = [style.min, style.max].every(Number.isFinite) && style.min < style.max;
+      const hasPalette = Object.hasOwn(PALETTES, style.palette) &&
+        Object.keys(style).sort().join(",") === "kind,max,min,palette";
+      const hasStops = Array.isArray(style.stops) && style.stops.length >= 2 &&
+        style.stops.length <= 32 &&
+        Object.keys(style).sort().join(",") === "kind,max,min,stops" &&
+        style.stops.every((stop, index) => stop && Number.isFinite(stop.value) &&
+          RGB.test(stop.color) && stop.value >= style.min && stop.value <= style.max &&
+          (index === 0 || stop.value > style.stops[index - 1].value)) &&
+        style.stops[0].value === style.min &&
+        style.stops.at(-1).value === style.max;
+      if (!validRange || (!hasPalette && !hasStops)) {
         throw new ViewerError(502, "The map contains invalid raster metadata.");
       }
     } else if (style.kind !== "categorical") {
@@ -95,12 +105,16 @@ function legend(layer) {
   if (style.kind === "continuous") {
     const gradient = document.createElement("div");
     gradient.className = "gradient";
-    gradient.style.background = `linear-gradient(to right, ${PALETTES[style.palette].join(",")})`;
-    gradient.setAttribute("aria-label", `${style.palette} color ramp from ${style.min} to ${style.max}`);
+    const colors = style.stops ?
+      style.stops.map((stop) =>
+        `${stop.color} ${100 * (stop.value - style.min) / (style.max - style.min)}%`,
+      ) : PALETTES[style.palette];
+    gradient.style.background = `linear-gradient(to right, ${colors.join(",")})`;
+    gradient.setAttribute("aria-label", `Color ramp from ${style.min} to ${style.max}`);
     const range = document.createElement("div");
     range.className = "legend-range";
     range.append(textElement("span", style.min), textElement("span", style.max));
-    container.append(gradient, range, textElement("p", `${style.palette} (representative color ramp)`, "layer-detail"));
+    container.append(gradient, range);
     return container;
   }
   const list = document.createElement("ul");

@@ -137,7 +137,10 @@ def _validate_style(style):
         raise PublicShareError(400, "Each layer requires a supported style")
     kind = style.get("kind")
     if kind == "continuous":
-        if style.keys() != {"kind", "min", "max", "palette"}:
+        if style.keys() not in (
+            {"kind", "min", "max", "palette"},
+            {"kind", "min", "max", "stops"},
+        ):
             raise PublicShareError(400, "Continuous style fields are invalid")
         minimum, maximum = style.get("min"), style.get("max")
         if (
@@ -148,15 +151,51 @@ def _validate_style(style):
             or not isinstance(maximum, (int, float))
             or not math.isfinite(maximum)
             or minimum >= maximum
-            or style.get("palette") not in ALLOWED_PALETTES
         ):
             raise PublicShareError(400, "Continuous style values are invalid")
-        return {
+        safe_style = {
             "kind": kind,
             "min": float(minimum),
             "max": float(maximum),
-            "palette": style["palette"],
         }
+        if "palette" in style:
+            if style["palette"] not in ALLOWED_PALETTES:
+                raise PublicShareError(400, "Continuous style palette is invalid")
+            safe_style["palette"] = style["palette"]
+            return safe_style
+        stops = style.get("stops")
+        if not isinstance(stops, list) or not 2 <= len(stops) <= 32:
+            raise PublicShareError(400, "Continuous styles need 2 to 32 color stops")
+        safe_stops = []
+        for stop in stops:
+            if (
+                not isinstance(stop, dict)
+                or set(stop) != {"value", "color"}
+                or isinstance(stop["value"], bool)
+                or not isinstance(stop["value"], (int, float))
+                or not math.isfinite(stop["value"])
+                or not isinstance(stop["color"], str)
+                or not COLOR_RE.fullmatch(stop["color"])
+            ):
+                raise PublicShareError(400, "Continuous style stops are invalid")
+            if (
+                stop["value"] < minimum
+                or stop["value"] > maximum
+                or (
+                    safe_stops
+                    and stop["value"] <= safe_stops[-1]["value"]
+                )
+            ):
+                raise PublicShareError(400, "Continuous style stops are unordered")
+            safe_stops.append(
+                {"value": float(stop["value"]), "color": stop["color"].lower()}
+            )
+        if safe_stops[0]["value"] != minimum or safe_stops[-1]["value"] != maximum:
+            raise PublicShareError(
+                400, "Continuous style stops must span the full color range"
+            )
+        safe_style["stops"] = safe_stops
+        return safe_style
     if kind == "categorical":
         values = style.get("values")
         if style.keys() != {"kind", "values"} or not isinstance(values, dict):
@@ -1278,7 +1317,41 @@ def _raster_tile_request(layer, z, x, y):
     }
     if layer.style["kind"] == "continuous":
         query["rescale"] = f"{layer.style['min']},{layer.style['max']}"
-        query["colormap_name"] = layer.style["palette"]
+        if "palette" in layer.style:
+            query["colormap_name"] = layer.style["palette"]
+        else:
+            stops = layer.style["stops"]
+            colormap = {}
+            for index in range(256):
+                position = layer.style["min"] + (
+                    index * (layer.style["max"] - layer.style["min"]) / 255
+                )
+                right_index = next(
+                    (
+                        stop_index
+                        for stop_index, stop in enumerate(stops[1:], start=1)
+                        if position <= stop["value"]
+                    ),
+                    len(stops) - 1,
+                )
+                left, right = stops[right_index - 1], stops[right_index]
+                proportion = (position - left["value"]) / (
+                    right["value"] - left["value"]
+                )
+                left_rgb = tuple(
+                    int(left["color"][offset : offset + 2], 16)
+                    for offset in (1, 3, 5)
+                )
+                right_rgb = tuple(
+                    int(right["color"][offset : offset + 2], 16)
+                    for offset in (1, 3, 5)
+                )
+                color = "".join(
+                    f"{round(start + (end - start) * proportion):02x}"
+                    for start, end in zip(left_rgb, right_rgb, strict=True)
+                )
+                colormap[str(index)] = f"#{color}"
+            query["colormap"] = json.dumps(colormap, separators=(",", ":"))
     else:
         query["colormap"] = json.dumps(layer.style["values"], separators=(",", ":"))
     return path, urlencode(query)
