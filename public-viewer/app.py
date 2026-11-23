@@ -36,9 +36,14 @@ app.layout = html.Div(
         html.A("Skip to map controls", href="#controls", className="skip-link"),
         html.Header(
             [
-                html.Span("Trends.Earth", className="brand"),
+                html.Img(
+                    src="/assets/trends_earth_logo.png",
+                    alt="Trends.Earth",
+                    className="brand-logo",
+                ),
                 html.H1("Shared map", id="title"),
                 html.P(id="expiry"),
+                html.P("Powered by Trends.Earth", className="powered-by"),
             ]
         ),
         html.Main(

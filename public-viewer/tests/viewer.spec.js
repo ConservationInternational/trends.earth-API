@@ -217,3 +217,17 @@ test("shows expired state and supports responsive keyboard navigation and contin
   await page.keyboard.press("Space");
   await expect(page.getByRole("checkbox", { name: "Raster result" })).not.toBeChecked();
 });
+
+test("renders a custom color-stop legend", async ({ page, request }) => {
+  const id = await share(request, { customRamp: true });
+  await open(page, id);
+  const gradient = page.locator(".gradient").first();
+  await expect(gradient).toHaveAttribute(
+    "aria-label",
+    "Color ramp from -1 to 1",
+  );
+  await expect(gradient).toHaveCSS(
+    "background-image",
+    /rgb\(0, 0, 255\).*rgb\(255, 0, 0\)/,
+  );
+});

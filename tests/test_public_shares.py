@@ -27,6 +27,9 @@ from gefapi.config import SETTINGS
 from gefapi.models import PublicShare, PublicShareLayer, User
 from gefapi.services.public_share_service import (
     PublicShareError,
+    _raster_tile_request,
+    _validate_style,
+    add_layers_to_share,
     _delete_s3_object_versions,
     create_share,
     create_viewer_session,
@@ -117,6 +120,51 @@ def test_share_creation_rejects_unknown_file_path_and_invalid_retention(
         "/api/v1/shares", json=invalid_retention, headers=_headers(regular_user)
     )
     assert response.status_code == 400
+
+
+def test_custom_continuous_style_creates_bounded_tile_colormap(
+    public_share_config,
+):
+    from types import SimpleNamespace
+
+    style = _validate_style(
+        {
+            "kind": "continuous",
+            "min": -1,
+            "max": 1,
+            "stops": [
+                {"value": -1, "color": "#0000ff"},
+                {"value": 0, "color": "#ffffff"},
+                {"value": 1, "color": "#ff0000"},
+            ],
+        }
+    )
+    layer = SimpleNamespace(
+        object_key="public-shares/share/layer.tif",
+        band=1,
+        style=style,
+    )
+
+    _, query = _raster_tile_request(layer, 0, 0, 0)
+    parsed = parse_qs(query)
+    colors = json.loads(parsed["colormap"][0])
+    assert parsed["rescale"] == ["-1.0,1.0"]
+    assert len(colors) == 256
+    assert colors["0"] == "#0000ff"
+    assert colors["255"] == "#ff0000"
+    assert colors["128"].startswith("#")
+    with pytest.raises(PublicShareError, match="stops"):
+        _validate_style(
+            {
+                "kind": "continuous",
+                "min": 0,
+                "max": 1,
+                "stops": [
+                    {"value": 0.5, "color": "#000000"},
+                    {"value": 1, "color": "#ffffff"},
+                ],
+            }
+        )
 
 
 def test_share_status_is_owner_only(app, client, regular_user, public_share_config):
@@ -251,6 +299,7 @@ def test_fragment_exchange_sets_scoped_cookie_and_manifest_is_safe(
     share.state = "ready"
     layer = share.layers[0]
     layer.checksum_sha256 = layer.expected_sha256
+    layer.published = True
     layer.bounds = [-10.0, -5.0, 10.0, 5.0]
     layer.crs = "EPSG:4326"
     db.session.commit()
@@ -280,6 +329,35 @@ def test_fragment_exchange_sets_scoped_cookie_and_manifest_is_safe(
     assert "token_hash" not in manifest_text
     assert layer.name in manifest_text
 
+    added = client.post(
+        f"/api/v1/shares/{share.id}/layers",
+        json={
+            "layers": [
+                {
+                    "name": "Pending layer",
+                    "band": 1,
+                    "size_bytes": 64,
+                    "sha256": hashlib.sha256(b"pending").hexdigest(),
+                    "style": {
+                        "kind": "categorical",
+                        "values": {"1": "#ff0000"},
+                    },
+                }
+            ]
+        },
+        headers=_headers(regular_user),
+    )
+    assert added.status_code == 201
+    updated = added.get_json()["data"]
+    assert updated["state"] == "ready"
+    assert updated["update_state"] == "uploading"
+    assert updated["layers"][0]["published"] is True
+    assert updated["layers"][1]["published"] is False
+    unchanged_manifest = client.get(f"/api/v1/public-shares/{share.id}/manifest")
+    assert unchanged_manifest.status_code == 200
+    manifest_layers = unchanged_manifest.get_json()["data"]["layers"]
+    assert [item["name"] for item in manifest_layers] == [layer.name]
+
     mark_share_revoked(share)
     manifest = client.get(f"/api/v1/public-shares/{share.id}/manifest")
     assert manifest.status_code == 404
@@ -291,6 +369,7 @@ def test_refresh_preserves_absolute_session_lifetime_and_rejects_expired_cookie(
     share = create_share(regular_user, _payload())
     share.state = "ready"
     share.layers[0].checksum_sha256 = share.layers[0].expected_sha256
+    share.layers[0].published = True
     share.layers[0].bounds = [-10.0, -5.0, 10.0, 5.0]
     share.layers[0].crs = "EPSG:4326"
     db.session.commit()
@@ -497,6 +576,7 @@ def _publish_vector(share, monkeypatch, client):
     share.state = "ready"
     for layer in share.layers:
         layer.checksum_sha256 = layer.expected_sha256
+        layer.published = True
         if layer.kind == "vector":
             layer.vector_metadata = {
                 "source_layer": "analysis",

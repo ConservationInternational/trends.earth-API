@@ -181,10 +181,7 @@ def _validate_style(style):
             if (
                 stop["value"] < minimum
                 or stop["value"] > maximum
-                or (
-                    safe_stops
-                    and stop["value"] <= safe_stops[-1]["value"]
-                )
+                or (safe_stops and stop["value"] <= safe_stops[-1]["value"])
             ):
                 raise PublicShareError(400, "Continuous style stops are unordered")
             safe_stops.append(
@@ -798,9 +795,11 @@ def complete_share_uploads(share_id, user_id, body):
         return share, True
     elif share.state not in ("uploading", "failed"):
         raise PublicShareError(409, "Share is not ready for upload completion")
-    pending_layers = [
-        layer for layer in share.layers if not layer.published
-    ] if is_additive_update else share.layers
+    pending_layers = (
+        [layer for layer in share.layers if not layer.published]
+        if is_additive_update
+        else share.layers
+    )
     if not pending_layers or all(layer.upload_completed for layer in pending_layers):
         if not is_additive_update and share.state == "ready":
             return share, False
@@ -1114,9 +1113,11 @@ def validate_share(share_id):
     is_additive_update = share.state == "ready"
     bucket = _config()["S3_BUCKET"]
     failures = []
-    pending_layers = [
-        layer for layer in share.layers if not layer.published
-    ] if is_additive_update else share.layers
+    pending_layers = (
+        [layer for layer in share.layers if not layer.published]
+        if is_additive_update
+        else share.layers
+    )
     for layer in pending_layers:
         try:
             result = _download_and_validate(layer, bucket)
@@ -1339,12 +1340,10 @@ def _raster_tile_request(layer, z, x, y):
                     right["value"] - left["value"]
                 )
                 left_rgb = tuple(
-                    int(left["color"][offset : offset + 2], 16)
-                    for offset in (1, 3, 5)
+                    int(left["color"][offset : offset + 2], 16) for offset in (1, 3, 5)
                 )
                 right_rgb = tuple(
-                    int(right["color"][offset : offset + 2], 16)
-                    for offset in (1, 3, 5)
+                    int(right["color"][offset : offset + 2], 16) for offset in (1, 3, 5)
                 )
                 color = "".join(
                     f"{round(start + (end - start) * proportion):02x}"

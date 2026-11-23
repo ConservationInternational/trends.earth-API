@@ -97,8 +97,14 @@ function manifest(id, options) {
         id: rasterId, name: "Raster result", kind: "raster", band: 1,
         bounds: [-180, -85, 180, 85], crs: "EPSG:4326", nodata: null,
         attribution: options.attribution || "Raster attribution",
-        style: options.continuous ? { kind: "continuous", min: 0, max: 100, palette: "viridis" } :
-          { kind: "categorical", values: { "1": "#008000", "2": "#ffffff" } },
+        style: options.customRamp ?
+          { kind: "continuous", min: -1, max: 1, stops: [
+            { value: -1, color: "#0000ff" }, { value: 0, color: "#ffffff" },
+            { value: 1, color: "#ff0000" },
+          ] } :
+          options.continuous ?
+            { kind: "continuous", min: 0, max: 100, palette: "viridis" } :
+            { kind: "categorical", values: { "1": "#008000", "2": "#ffffff" } },
         vector_metadata: null, tile_format: "png", tiles: base + rasterId + "/{z}/{x}/{y}.png",
       },
       {
