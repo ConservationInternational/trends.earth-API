@@ -579,7 +579,7 @@ jobs:
             # Get deployment events for debugging
             echo "📋 Deployment events:"
             aws deploy list-deployment-targets --deployment-id "$DEPLOYMENT_ID" \
-              --query 'targetIds' --output text | while read TARGET_ID; do
+              --query 'targetIds[]' --output text | tr '\t' '\n' | while read -r TARGET_ID; do
               echo "Target: $TARGET_ID"
               aws deploy get-deployment-target \
                 --deployment-id "$DEPLOYMENT_ID" \

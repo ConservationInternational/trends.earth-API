@@ -10,7 +10,9 @@ services:
       - share_tiles
       - share_gateway
   public-viewer:
-    image: ${PUBLIC_VIEWER_IMAGE:?Build and publish the public-viewer image}
+    # docker stack parses "-" inside ${VAR:?msg} as a default separator, so keep
+    # these messages free of hyphens.
+    image: ${PUBLIC_VIEWER_IMAGE:?Set PUBLIC_VIEWER_IMAGE}
     read_only: true
     tmpfs:
       - /tmp:size=32m,mode=1777
@@ -24,7 +26,7 @@ services:
       restart_policy:
         condition: on-failure
   public-viewer-gateway:
-    image: ${PUBLIC_VIEWER_GATEWAY_IMAGE:?Build and publish the public-viewer-gateway image}
+    image: ${PUBLIC_VIEWER_GATEWAY_IMAGE:?Set PUBLIC_VIEWER_GATEWAY_IMAGE}
     read_only: true
     tmpfs:
       - /tmp:size=32m,mode=1777
@@ -52,8 +54,8 @@ services:
       PUBLIC_SHARES_S3_BUCKET: ${PUBLIC_SHARES_S3_BUCKET:?Set the dedicated share bucket}
       PUBLIC_SHARES_S3_PREFIX: ${PUBLIC_SHARES_S3_PREFIX:-public-shares}
       AWS_REGION: ${AWS_REGION:-us-east-1}
-      AWS_ACCESS_KEY_ID: ${PUBLIC_SHARES_MARTIN_AWS_ACCESS_KEY_ID:?Set Martin read-only credentials}
-      AWS_SECRET_ACCESS_KEY: ${PUBLIC_SHARES_MARTIN_AWS_SECRET_ACCESS_KEY:?Set Martin read-only credentials}
+      AWS_ACCESS_KEY_ID: ${PUBLIC_SHARES_MARTIN_AWS_ACCESS_KEY_ID:?Set Martin readonly credentials}
+      AWS_SECRET_ACCESS_KEY: ${PUBLIC_SHARES_MARTIN_AWS_SECRET_ACCESS_KEY:?Set Martin readonly credentials}
     configs:
       - source: public_share_martin
         target: /etc/martin/config.yaml
