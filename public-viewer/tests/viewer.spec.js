@@ -29,6 +29,11 @@ async function share(request, options = {}) {
 async function open(page, id) {
   await page.goto(`/share/${id}#${secret}`);
   await expect(page.locator("#status")).toContainText("Map ready");
+  await expect(page.locator(".brand-logo")).toBeVisible();
+  await expect(page.locator(".powered-by")).toHaveText("Powered by Trends.Earth");
+  await expect(page.locator("header")).toHaveCSS("background-color", "rgb(100, 100, 100)");
+  await expect.poll(() => page.locator(".brand-logo").evaluate((image) =>
+    image.complete && image.naturalWidth > 0)).toBe(true);
   await expect(page.locator(vectorCanvas).first()).toBeVisible();
 }
 
