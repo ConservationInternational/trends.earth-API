@@ -13,6 +13,7 @@ from gefapi.models import PublicShare
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.public_share_service import (
     PublicShareError,
+    add_layers_to_share,
     complete_share_uploads,
     create_or_refresh_upload,
     create_share,
@@ -121,6 +122,20 @@ def get_public_share(share_id):
     except PublicShareError as exc:
         return _expected_error(exc)
     return jsonify(data=share.serialize())
+
+
+@endpoints.route("/shares/<share_id>/layers", methods=["POST"])
+@bearer_required()
+@require_scope("webmap:write")
+def add_public_share_layers(share_id):
+    """Append validated layer declarations to an active published share."""
+    try:
+        share = add_layers_to_share(
+            share_id, current_user.id, request.get_json(silent=True)
+        )
+    except PublicShareError as exc:
+        return _expected_error(exc)
+    return jsonify(data=share.serialize()), 201
 
 
 @endpoints.route("/shares/<share_id>/uploads", methods=["POST"])
@@ -356,6 +371,7 @@ def get_public_share_manifest(share_id):
                         ),
                     }
                     for layer in share.layers
+                    if layer.published
                 ],
             }
         }
@@ -385,6 +401,7 @@ def get_public_share_tile(share_id, layer_id, z, x, y, tile_format="png"):
     layer = next((item for item in share.layers if str(item.id) == layer_id), None)
     if (
         layer is None
+        or not layer.published
         or not layer.checksum_sha256
         or tile_format != ("pbf" if layer.kind == "vector" else "png")
     ):

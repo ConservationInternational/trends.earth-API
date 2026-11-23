@@ -33,6 +33,7 @@ class PublicShare(db.Model):
     title = db.Column(db.String(120), nullable=False)
     retention_days = db.Column(db.Integer(), nullable=False)
     state = db.Column(db.String(20), nullable=False, default="draft", index=True)
+    update_state = db.Column(db.String(20), nullable=False, default="idle")
     created_at = db.Column(db.DateTime(), nullable=False, default=utcnow)
     ready_at = db.Column(db.DateTime(), nullable=True)
     expires_at = db.Column(db.DateTime(), nullable=True, index=True)
@@ -68,6 +69,7 @@ class PublicShare(db.Model):
             "id": str(self.id),
             "title": self.title,
             "state": self.state,
+            "update_state": self.update_state,
             "retention_days": self.retention_days,
             "created_at": self.created_at.isoformat() + "Z",
             "ready_at": self.ready_at.isoformat() + "Z" if self.ready_at else None,
@@ -123,6 +125,7 @@ class PublicShareLayer(db.Model):
     upload_part_size = db.Column(db.Integer(), nullable=True)
     upload_part_count = db.Column(db.Integer(), nullable=True)
     upload_completed = db.Column(db.Boolean(), nullable=False, default=False)
+    published = db.Column(db.Boolean(), nullable=False, default=False)
     validation_error = db.Column(db.String(500), nullable=True)
     created_at = db.Column(db.DateTime(), nullable=False, default=utcnow)
 
@@ -145,4 +148,5 @@ class PublicShareLayer(db.Model):
             "nodata": self.nodata,
             "raster_band_count": self.raster_band_count,
             "upload_completed": self.upload_completed,
+            "published": self.published,
         }

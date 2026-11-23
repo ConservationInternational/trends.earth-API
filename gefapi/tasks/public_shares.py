@@ -33,13 +33,19 @@ class PublicShareTask(Task):
         from gefapi import app
 
         with app.app_context():
-            share = PublicShare.query.filter_by(
-                id=str(args[0]), state="validating"
-            ).first()
-            if share is None:
+            share = PublicShare.query.filter_by(id=str(args[0])).first()
+            if share is None or (
+                share.state != "validating" and share.update_state != "validating"
+            ):
                 return
-            share.state = "failed"
+            is_additive_update = share.state == "ready"
+            if is_additive_update:
+                share.update_state = "failed"
+            else:
+                share.state = "failed"
             for layer in share.layers:
+                if is_additive_update and layer.published:
+                    continue
                 if layer.validation_error is None:
                     layer.validation_error = (
                         "Validation could not be completed; upload and retry"

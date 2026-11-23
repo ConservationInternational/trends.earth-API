@@ -246,6 +246,89 @@ def _martin_base_url():
     return url.rstrip("/")
 
 
+def _validate_layer_declarations(layers, existing_names=()):
+    config = _config()
+    if not isinstance(layers, list) or not layers:
+        raise PublicShareError(400, "layers must contain at least one item")
+    declarations = []
+    total_bytes = 0
+    layer_names = {name.casefold() for name in existing_names}
+    for declaration in layers:
+        if not isinstance(declaration, dict):
+            raise PublicShareError(400, "Each layer declaration must be an object")
+        if declaration.keys() - {
+            "name",
+            "kind",
+            "source_layer",
+            "band",
+            "size_bytes",
+            "sha256",
+            "style",
+            "attribution",
+        }:
+            raise PublicShareError(400, "Unsupported layer fields")
+        name = declaration.get("name")
+        kind = declaration.get("kind", "raster")
+        if kind not in ("raster", "vector"):
+            raise PublicShareError(400, "Layer kind must be raster or vector")
+        source_layer = declaration.get("source_layer")
+        if kind == "vector":
+            _martin_base_url()
+            if not isinstance(source_layer, str) or not VECTOR_NAME_RE.fullmatch(
+                source_layer
+            ):
+                raise PublicShareError(400, "Vector source_layer is invalid")
+        elif source_layer is not None:
+            raise PublicShareError(400, "Raster layers cannot specify source_layer")
+        band = declaration.get("band")
+        size = declaration.get("size_bytes")
+        checksum = declaration.get("sha256")
+        attribution = declaration.get("attribution", "")
+        if not isinstance(name, str) or not name.strip() or len(name.strip()) > 120:
+            raise PublicShareError(
+                400, "Each layer name must contain 1 to 120 characters"
+            )
+        normalized_name = name.strip()
+        if normalized_name.casefold() in layer_names:
+            raise PublicShareError(400, "Layer names must be unique")
+        layer_names.add(normalized_name.casefold())
+        if kind == "raster" and (type(band) is not int or band < 1):
+            raise PublicShareError(400, "Layer band must be a positive integer")
+        if kind == "vector" and band is not None:
+            raise PublicShareError(400, "Vector layers cannot specify band")
+        if type(size) is not int or not 1 <= size <= config["MAX_FILE_BYTES"]:
+            raise PublicShareError(400, "Layer size is outside the configured limit")
+        if not isinstance(checksum, str) or not SHA256_RE.fullmatch(checksum):
+            raise PublicShareError(
+                400, "Layer sha256 must be a lowercase SHA-256 digest"
+            )
+        if not isinstance(attribution, str) or len(attribution) > 500:
+            raise PublicShareError(
+                400, "Layer attribution must be at most 500 characters"
+            )
+        style = (
+            _validate_style(declaration.get("style"))
+            if kind == "raster"
+            else _validate_vector_style(declaration.get("style"))
+        )
+        total_bytes += size
+        declarations.append(
+            {
+                "name": normalized_name,
+                "kind": kind,
+                "source_layer": source_layer,
+                "band": band,
+                "size": size,
+                "checksum": checksum,
+                "style": style,
+                "attribution": attribution.strip(),
+            }
+        )
+    if total_bytes > config["MAX_SHARE_BYTES"]:
+        raise PublicShareError(400, "Share size exceeds the configured limit")
+    return declarations, total_bytes
+
+
 def create_share(user, body):
     """Create a quota-reserved draft with server-generated layer object keys."""
     ensure_public_shares_enabled()
@@ -412,6 +495,91 @@ def create_share(user, body):
     return share
 
 
+def add_layers_to_share(share_id, user_id, body):
+    """Reserve and declare additive layers without changing a published link."""
+    ensure_public_shares_enabled()
+    if not isinstance(body, dict) or set(body) != {"layers"}:
+        raise PublicShareError(400, "Request must contain only a layers array")
+
+    try:
+        initial_share = PublicShare.query.filter_by(
+            id=share_id, user_id=user_id
+        ).first()
+    except (ValueError, TypeError):
+        initial_share = None
+    if initial_share is None:
+        raise PublicShareError(404, "Share not found")
+    locked_user = User.query.filter_by(id=user_id).with_for_update().first()
+    if locked_user is None:
+        raise PublicShareError(401, "Authenticated owner no longer exists")
+    share = _share_query(share_id, user_id, lock=True)
+    if not share.is_accessible(_now()):
+        raise PublicShareError(409, "Only active published shares can add layers")
+    if share.update_state != "idle":
+        raise PublicShareError(409, "A share update is already in progress")
+
+    config = _config()
+    declarations, total_bytes = _validate_layer_declarations(
+        body["layers"], (layer.name for layer in share.layers)
+    )
+    if len(share.layers) + len(declarations) > config["MAX_LAYERS"]:
+        raise PublicShareError(
+            400, f"A share can contain at most {config['MAX_LAYERS']} layers"
+        )
+    if share.quota_reserved_bytes + total_bytes > config["MAX_SHARE_BYTES"]:
+        raise PublicShareError(400, "Share size exceeds the configured limit")
+
+    quota_limit = (
+        locked_user.public_share_quota_bytes
+        if locked_user.public_share_quota_bytes is not None
+        else config["MAX_RESERVED_BYTES_PER_USER"]
+    )
+    reserved_bytes = (
+        db.session.query(
+            db.func.coalesce(db.func.sum(PublicShare.quota_reserved_bytes), 0)
+        )
+        .filter(
+            PublicShare.user_id == user_id,
+            PublicShare.cleanup_completed_at.is_(None),
+        )
+        .scalar()
+    )
+    if reserved_bytes + total_bytes > quota_limit:
+        raise PublicShareError(429, "Reserved storage quota exceeded")
+
+    prefix = config.get("S3_PREFIX", "public-shares").strip("/")
+    if not prefix or ".." in prefix.split("/"):
+        raise PublicShareError(503, "Public share storage prefix is invalid")
+    for declaration in declarations:
+        layer_id = str(uuid.uuid4())
+        share.layers.append(
+            PublicShareLayer(
+                id=layer_id,
+                name=declaration["name"],
+                kind=declaration["kind"],
+                band=declaration["band"],
+                vector_metadata=(
+                    {"source_layer": declaration["source_layer"]}
+                    if declaration["kind"] == "vector"
+                    else None
+                ),
+                expected_size_bytes=declaration["size"],
+                expected_sha256=declaration["checksum"],
+                object_key=(
+                    f"{prefix}/{share_id}/{layer_id}.tif"
+                    if declaration["kind"] == "raster"
+                    else f"{prefix}/{share_id}/{layer_id}.pmtiles"
+                ),
+                style=declaration["style"],
+                attribution=declaration["attribution"],
+            )
+        )
+    share.quota_reserved_bytes += total_bytes
+    share.update_state = "uploading"
+    db.session.commit()
+    return share
+
+
 def get_share_storage_usage(user):
     """Return committed and reserved public-share storage for one owner."""
     config = _config()
@@ -488,11 +656,17 @@ def create_or_refresh_upload(share_id, layer_id, user_id):
     """Create a private multipart upload and bounded, short-lived part URLs."""
     ensure_public_shares_enabled()
     share = _share_query(share_id, user_id, lock=True)
-    if share.state not in ("draft", "uploading", "failed"):
+    is_additive_update = share.state == "ready" and share.update_state in (
+        "uploading",
+        "failed",
+    )
+    if not is_additive_update and share.state not in ("draft", "uploading", "failed"):
         raise PublicShareError(409, "Share is not accepting uploads")
     layer = next((item for item in share.layers if str(item.id) == str(layer_id)), None)
     if layer is None:
         raise PublicShareError(404, "Layer not found")
+    if is_additive_update and layer.published:
+        raise PublicShareError(409, "Published layers cannot be replaced")
 
     config = _config()
     client = _s3_client()
@@ -503,7 +677,7 @@ def create_or_refresh_upload(share_id, layer_id, user_id):
     if part_count > 10_000:
         raise PublicShareError(400, "Layer requires too many multipart parts")
     if layer.upload_completed:
-        if share.state != "failed":
+        if not is_additive_update and share.state != "failed":
             raise PublicShareError(409, "Layer upload is already complete")
         _delete_s3_object_versions(client, config["S3_BUCKET"], layer.object_key)
         if layer.kind == "vector":
@@ -535,7 +709,10 @@ def create_or_refresh_upload(share_id, layer_id, user_id):
         layer.upload_id = upload_id
     layer.upload_part_size = part_size
     layer.upload_part_count = part_count
-    share.state = "uploading"
+    if not is_additive_update:
+        share.state = "uploading"
+    else:
+        share.update_state = "uploading"
     db.session.commit()
 
     parts = []
@@ -570,14 +747,26 @@ def complete_share_uploads(share_id, user_id, body):
     if not isinstance(declared_parts, list):
         raise PublicShareError(400, "layers must be an array")
     share = _share_query(share_id, user_id, lock=True)
-    if share.state == "ready" and all(layer.upload_completed for layer in share.layers):
-        return share, False
-    if share.state == "validating" and all(
+    is_additive_update = share.state == "ready"
+    if is_additive_update:
+        if share.update_state == "validating":
+            return share, True
+        if share.update_state not in ("uploading", "failed"):
+            raise PublicShareError(409, "Share is not accepting update completion")
+    elif share.state == "validating" and all(
         layer.upload_completed for layer in share.layers
     ):
         return share, True
-    if share.state not in ("uploading", "failed"):
+    elif share.state not in ("uploading", "failed"):
         raise PublicShareError(409, "Share is not ready for upload completion")
+    pending_layers = [
+        layer for layer in share.layers if not layer.published
+    ] if is_additive_update else share.layers
+    if not pending_layers or all(layer.upload_completed for layer in pending_layers):
+        if not is_additive_update and share.state == "ready":
+            return share, False
+        if not is_additive_update and share.state == "validating":
+            return share, True
     part_map = {}
     for entry in declared_parts:
         if (
@@ -589,12 +778,14 @@ def complete_share_uploads(share_id, user_id, body):
         ):
             raise PublicShareError(400, "Invalid layer completion manifest")
         part_map[entry["layer_id"]] = entry["parts"]
-    if set(part_map) != {str(layer.id) for layer in share.layers}:
-        raise PublicShareError(400, "Completion manifest must include every layer")
+    if set(part_map) != {str(layer.id) for layer in pending_layers}:
+        raise PublicShareError(
+            400, "Completion manifest must include every pending layer"
+        )
 
     client = _s3_client()
     config = _config()
-    for layer in share.layers:
+    for layer in pending_layers:
         if layer.upload_completed:
             continue
         if not layer.upload_id or not layer.upload_part_count:
@@ -642,7 +833,10 @@ def complete_share_uploads(share_id, user_id, body):
         layer.upload_completed = True
         db.session.commit()
 
-    share.state = "validating"
+    if is_additive_update:
+        share.update_state = "validating"
+    else:
+        share.state = "validating"
     share.cleanup_error = None
     db.session.commit()
     return share, True
@@ -874,11 +1068,17 @@ def validate_share(share_id):
     """Validate all private objects and make a fully valid share publishable."""
     ensure_public_shares_enabled()
     share = PublicShare.query.filter_by(id=share_id).with_for_update().first()
-    if share is None or share.state != "validating":
+    if share is None or (
+        share.state != "validating" and share.update_state != "validating"
+    ):
         return
+    is_additive_update = share.state == "ready"
     bucket = _config()["S3_BUCKET"]
     failures = []
-    for layer in share.layers:
+    pending_layers = [
+        layer for layer in share.layers if not layer.published
+    ] if is_additive_update else share.layers
+    for layer in pending_layers:
         try:
             result = _download_and_validate(layer, bucket)
             layer.checksum_sha256 = result["checksum"]
@@ -899,9 +1099,19 @@ def validate_share(share_id):
             layer.validation_error = str(exc)[:500]
             failures.append(layer)
     if failures:
-        share.state = "failed"
+        if is_additive_update:
+            share.update_state = "failed"
+        else:
+            share.state = "failed"
     else:
-        share.state = "ready"
+        if is_additive_update:
+            for layer in pending_layers:
+                layer.published = True
+            share.update_state = "idle"
+        else:
+            for layer in pending_layers:
+                layer.published = True
+            share.state = "ready"
     db.session.commit()
 
 
