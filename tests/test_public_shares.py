@@ -27,10 +27,9 @@ from gefapi.config import SETTINGS
 from gefapi.models import PublicShare, PublicShareLayer, User
 from gefapi.services.public_share_service import (
     PublicShareError,
+    _delete_s3_object_versions,
     _raster_tile_request,
     _validate_style,
-    add_layers_to_share,
-    _delete_s3_object_versions,
     create_share,
     create_viewer_session,
     load_viewer_session,
