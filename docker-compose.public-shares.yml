@@ -14,8 +14,12 @@ services:
     # these messages free of hyphens.
     image: ${PUBLIC_VIEWER_IMAGE:?Set PUBLIC_VIEWER_IMAGE}
     read_only: true
-    tmpfs:
-      - /tmp:size=32m,mode=1777
+    # docker stack ignores the short tmpfs key; Swarm needs a tmpfs volume.
+    volumes:
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 33554432
     networks:
       - viewer_frontend
     deploy:
@@ -28,8 +32,11 @@ services:
   public-viewer-gateway:
     image: ${PUBLIC_VIEWER_GATEWAY_IMAGE:?Set PUBLIC_VIEWER_GATEWAY_IMAGE}
     read_only: true
-    tmpfs:
-      - /tmp:size=32m,mode=1777
+    volumes:
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 33554432
     ports:
       - target: 8080
         published: ${PUBLIC_VIEWER_PORT:-8080}

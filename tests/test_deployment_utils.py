@@ -7,6 +7,7 @@ reliable deployment operations.
 These tests are marked as standalone because they don't require database access.
 """
 
+import os
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -67,7 +68,8 @@ class TestDeploymentUtils:
         assert result is True
         # Should call mkdir, tee, and systemctl restart
         assert mock_run.call_count >= 3
-        assert (tmp_path / ".docker" / "config.json").exists()
+        # Path.exists is patched above, so check through os.path.
+        assert os.path.isfile(tmp_path / ".docker" / "config.json")
 
     @patch("subprocess.run")
     def test_configure_docker_registry_failure(self, mock_run):
