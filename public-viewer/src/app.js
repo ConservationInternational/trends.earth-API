@@ -186,7 +186,7 @@ export async function start(initialSecret, hadFragment) {
   const basemap = createBasemapLayer(DEFAULT_BASEMAP);
   const borders = createBorderLayer(BASEMAPS[DEFAULT_BASEMAP].borders);
 
-  function status(message, state = "ready") {
+  function status(message, state) {
     $("status").textContent = message;
     $("status").dataset.state = state;
     $("status").setAttribute("role", state === "error" ? "alert" : "status");
@@ -460,7 +460,7 @@ export async function start(initialSecret, hadFragment) {
     map.addLayer(basemap);
     map.addLayer(borders);
     for (const record of records) map.addLayer(record.grid);
-    status("Map ready. Select layers or inspect vector features.");
+    status("", "ready");
   }
 
   async function refresh() {
@@ -493,7 +493,7 @@ export async function start(initialSecret, hadFragment) {
     if (busy || stopped) return;
     busy = true;
     $("retry").hidden = true;
-    status("Loading shared map...");
+    status("Loading shared map...", "loading");
     try {
       await refresh();
       manifest = validateManifest((await request(`${base}/manifest`)).data, shareId);

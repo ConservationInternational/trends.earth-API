@@ -87,39 +87,24 @@ const vector = mvt();
 const rasterId = "11111111-1111-4111-8111-111111111111";
 const vectorId = "22222222-2222-4222-8222-222222222222";
 
+// Like the real API, the manifest echoes what the plugin uploaded (title, layer
+// names, attribution and styles including legend labels) and only adds
+// server-generated fields. This fake API defines no display text of its own.
 function manifest(id, options) {
   const base = `/api/v1/public-shares/${id}/tiles/`;
+  const [raster, vector] = options.layers;
   return {
-    // Names, titles and legend labels stand in for values the plugin uploads
-    // (already translated); the viewer must render them without adding its own.
-    id, title: options.title || "Example shared analysis",
+    id, title: options.title,
     expires_at: options.expires_at || new Date(Date.now() + 86400000).toISOString(),
     layers: [
       {
-        id: rasterId, name: "Raster result", kind: "raster", band: 1,
+        ...raster, id: rasterId, kind: "raster", band: 1,
         bounds: [-180, -85, 180, 85], crs: "EPSG:4326", nodata: null,
-        attribution: options.attribution || "Raster attribution",
-        style: options.customRamp ?
-          { kind: "continuous", min: -1, max: 1, stops: [
-            { value: -1, color: "#0000ff", label: "Plugin stop A" }, { value: 0, color: "#ffffff" },
-            { value: 1, color: "#ff0000", label: "Plugin stop B" },
-          ] } :
-          options.continuous ?
-            { kind: "continuous", min: 0, max: 100, palette: "viridis" } :
-            { kind: "categorical", values: { "2": "#ffffff", "-1": "#ff00ff", "1": "#008000" },
-              labels: { "-1": "Plugin class -1", "1": "Plugin class 1" } },
         vector_metadata: null, tile_format: "png", tiles: base + rasterId + "/{z}/{x}/{y}.png",
       },
       {
-        id: vectorId, name: "Vector result", kind: "vector", band: null,
+        ...vector, id: vectorId, kind: "vector", band: null,
         bounds: [-180, -85, 180, 85], crs: "EPSG:3857", nodata: null,
-        attribution: "Vector attribution",
-        style: {
-          kind: "vector", fill: "#cccccc", stroke: "#333333", width: 3,
-          fill_opacity: 1, radius: 8,
-          category: { field: "status", values: { point: "#ff0000", line: "#0000ff", polygon: "#ffff00" },
-            labels: { polygon: "Plugin polygon label" }, other_label: "Plugin other label" },
-        },
         vector_metadata: { source_layer: "analysis", minzoom: 0, maxzoom: 4, fields: { status: "string" } },
         tile_format: "pbf", tiles: base + vectorId + "/{z}/{x}/{y}.pbf",
       },
@@ -168,7 +153,6 @@ http.createServer(async (req, res) => {
   if (action === "manifest") {
     if (options.manifestFailure) { json(503, {}); return; }
     const data = manifest(id, options);
-    if (options.missingCategory) delete data.layers[1].style.category.values.point;
     if (options.maliciousUrl) data.layers[0].tiles = "https://external.invalid/{z}/{x}/{y}.png";
     json(200, { data }); return;
   }

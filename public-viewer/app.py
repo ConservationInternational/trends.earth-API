@@ -60,12 +60,6 @@ app.layout = html.Div(
                             "view, forward, or save its content until access expires.",
                             className="notice",
                         ),
-                        html.P(
-                            "No analytics are loaded. Shared map data is requested "
-                            "only from this site; basemap and national border tiles "
-                            "are loaded from Mapbox without the link or referrer.",
-                            className="privacy",
-                        ),
                         html.Div(
                             "Opening shared map...",
                             id="status",

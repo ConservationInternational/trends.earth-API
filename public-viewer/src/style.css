@@ -17,8 +17,9 @@ button:hover { background: #fff0f3; }
 :focus-visible { outline: 3px solid #ff0134; outline-offset: 3px; }
 .skip-link { position: absolute; top: -4rem; background: white; padding: .75rem; z-index: 3000; }
 .skip-link:focus { top: 0; }
-.notice, .privacy { font-size: .85rem; line-height: 1.4; }
+.notice { font-size: .85rem; line-height: 1.4; }
 .notice { border-left: 3px solid #ff0134; padding-left: .7rem; }
+#status:empty { display: none; }
 #status { margin: .8rem 0; padding: .6rem; background: #f2f2f2; line-height: 1.4; }
 #status[data-state="error"] { background: #ffe8e5; color: #77251b; }
 #status[data-state="warning"] { background: #fff2cd; }

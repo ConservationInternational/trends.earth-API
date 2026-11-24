@@ -37,14 +37,46 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+// Test inputs standing in for the plugin's upload declarations. In production
+// the plugin builds these names and (translated) legend labels with the same code
+// it uses for the QGIS layers panel; the fixture API only echoes them back.
+const uploadedTitle = "Uploaded map title";
+function upload(options) {
+  const rasterStyle = options.customRamp ?
+    { kind: "continuous", min: -1, max: 1, stops: [
+      { value: -1, color: "#0000ff", label: "Uploaded stop A" }, { value: 0, color: "#ffffff" },
+      { value: 1, color: "#ff0000", label: "Uploaded stop B" },
+    ] } :
+    options.continuous ?
+      { kind: "continuous", min: 0, max: 100, palette: "viridis" } :
+      { kind: "categorical", values: { "2": "#ffffff", "-1": "#ff00ff", "1": "#008000" },
+        labels: { "-1": "Uploaded class -1", "1": "Uploaded class 1" } };
+  const category = {
+    field: "status", values: { point: "#ff0000", line: "#0000ff", polygon: "#ffff00" },
+    labels: { polygon: "Uploaded polygon label" }, other_label: "Uploaded other label",
+  };
+  if (options.missingCategory) delete category.values.point;
+  return {
+    title: options.title ?? uploadedTitle,
+    layers: [
+      { name: "Raster result", attribution: options.attribution ?? "Raster attribution", style: rasterStyle },
+      {
+        name: "Vector result", attribution: "Vector attribution",
+        style: { kind: "vector", fill: "#cccccc", stroke: "#333333", width: 3, fill_opacity: 1, radius: 8, category },
+      },
+    ],
+  };
+}
+
 async function share(request, options = {}) {
   const id = randomUUID();
-  await request.post(`${fixtureUrl}/__share/${id}`, { data: options });
+  await request.post(`${fixtureUrl}/__share/${id}`, { data: { ...options, ...upload(options) } });
   return id;
 }
+const ready = (page) => expect(page.locator("#status")).toHaveAttribute("data-state", "ready");
 async function open(page, id) {
   await page.goto(`/share/${id}#${secret}`);
-  await expect(page.locator("#status")).toContainText("Map ready");
+  await ready(page);
   await expect(page.locator(".brand-logo")).toBeVisible();
   await expect(page.locator(".powered-by")).toHaveText("Powered by Trends.Earth");
   await expect(page.locator("header")).toHaveCSS("background-color", "rgb(100, 100, 100)");
@@ -58,15 +90,17 @@ test("renders authorized raster/vector tiles, legends, controls and safe attribu
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await open(page, id);
-  await expect(page.locator("#title")).toHaveText("Example shared analysis");
+  await expect(page.locator("#title")).toHaveText(uploadedTitle);
   await expect(page.locator("#expiry")).toContainText("UTC");
-  await expect(page.locator("#layers")).toContainText("Plugin polygon label");
-  await expect(page.locator("#layers")).toContainText("Plugin other label");
+  await expect(page.locator("#layers")).toContainText("Uploaded polygon label");
+  await expect(page.locator("#layers")).toContainText("Uploaded other label");
   await expect(page.locator("#layers")).not.toContainText(/Category:|Other \/ missing/);
   await expect(page.locator("#layers")).toContainText("point");
   await expect(page.locator("#layers .legend").first().locator("li")).toHaveText(
-    ["Plugin class -1", "Plugin class 1", "2"]);
+    ["Uploaded class -1", "Uploaded class 1", "2"]);
   await expect(page.locator("#map-tools")).not.toContainText(/arrow keys|Center:/);
+  await expect(page.locator("#status")).toBeHidden();
+  await expect(page.locator("body")).not.toContainText(/No analytics|Map ready/);
   await expect(page.locator("#layers")).not.toContainText(/#[0-9a-f]{6}|Raster band|Vector tiles/i);
   for (const color of [[255, 255, 0, 255], [255, 0, 0, 255], [0, 0, 255, 255]]) {
     await expect.poll(() => colorCount(page, vectorCanvas, color)).toBeGreaterThan(50);
@@ -143,7 +177,7 @@ test("renders gzip vector tiles, missing categories, and empty tiles", async ({ 
   await expect.poll(() => colorCount(page, vectorCanvas, [204, 204, 204, 255])).toBeGreaterThan(50);
   const empty = await share(request, { emptyVector: true });
   await open(page, empty);
-  await expect(page.locator("#status")).toContainText("Map ready");
+  await ready(page);
   await expect.poll(() => colorCount(page, vectorCanvas, [255, 255, 0, 255])).toBe(0);
 });
 
@@ -169,7 +203,7 @@ test("removes fragment before requests and does not leak capabilities or send ex
   expect(cookie.secure).toBe(true);
   expect(cookie.path).toBe(`/api/v1/public-shares/${id}`);
   await page.reload();
-  await expect(page.locator("#status")).toContainText("Map ready");
+  await ready(page);
 });
 
 test("gateway blocks dashboard, owner APIs, callbacks and non-public renderer endpoints", async ({ request }) => {
@@ -210,7 +244,7 @@ test("reports service errors and retries successfully", async ({ page, request }
   await expect(page.getByRole("button", { name: "Retry loading map" })).toBeVisible();
   await request.post(`${fixtureUrl}/__share/${id}`, { data: { manifestFailure: false } });
   await page.getByRole("button", { name: "Retry loading map" }).click();
-  await expect(page.locator("#status")).toContainText("Map ready");
+  await ready(page);
 });
 
 test("clears displayed data when revoked and refresh cannot extend an expired session", async ({ page, request }) => {
@@ -256,7 +290,7 @@ test("renders a custom color-stop legend", async ({ page, request }) => {
     /rgb\(0, 0, 255\).*rgb\(255, 0, 0\)/,
   );
   await expect(page.locator("#layers .legend").first().locator("li")).toHaveText(
-    ["Plugin stop A", "Plugin stop B"]);
+    ["Uploaded stop A", "Uploaded stop B"]);
 });
 
 test("adds Resilience Atlas basemaps and national borders only after authorization", async ({ page, request }) => {
