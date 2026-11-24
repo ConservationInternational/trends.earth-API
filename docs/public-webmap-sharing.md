@@ -63,7 +63,17 @@ layer toggles, opacity, safe uniform/categorical vector styles, legends,
 text-only attribution and feature attributes. OpenLayers owns the map lifecycle
 and provides native MVT rendering and feature picking; Dash hosts the responsive
 page independently of the authenticated API/dashboard. Current map tiles use
-EPSG:3857 and manifest extents use EPSG:4326. No external basemap is loaded.
+EPSG:3857 and manifest extents use EPSG:4326.
+
+After the session is authorized, the viewer adds the same Mapbox basemaps
+(Default, Satellite, Topographic and Dark) and national-border lines
+(`mapbox.mapbox-streets-v8`, `admin` layer, `admin_level` 0, maritime borders
+excluded) that Resilience Atlas uses, with Resilience Atlas's public `pk.`
+token. Users can switch the basemap and hide borders. Mapbox requests carry no
+share secret, cookie or referrer, but they do reveal the viewer's IP address and
+the viewed area to Mapbox. A bottom-left footer shows the Trends.Earth boundary
+disclaimer and links to the Conservation International privacy policy and terms
+of use.
 
 The early bootstrap removes the capability fragment before loading map code or
 making API requests. The browser exchanges it for the API's share-bound,
@@ -80,6 +90,8 @@ or browser cookies; neither Dash nor Martin publishes a port. Both viewer
 containers are non-root and read-only with writable temporary files only.
 Access logs are disabled; responses are no-store with no-referrer, noindex and
 a CSP using Dash renderer hashes rather than inline-script/eval permissions.
+The CSP's only external origin is `https://api.mapbox.com` (`img-src` and
+`connect-src`) for basemap and border tiles.
 Keep equivalent redaction at the external TLS terminator: never record cookies,
 request bodies, capability fragments or full viewer URLs.
 
@@ -184,7 +196,8 @@ or `--skip-tiler`). It performs the following steps:
    `PUBLIC_SHARES_TITILER_LAMBDA_ARN` and `PUBLIC_VIEWER_PORT`. Only when
    `PUBLIC_SHARES_ENABLED` is absent, it sets that variable to `false`. It
    generates the `PUBLIC_SHARES_SESSION_SECRET` secret if absent; use
-   `--rotate-session-secret` to replace it, which invalidates viewer sessions.
+   `--rotate-session-secret` to replace it, which invalidates viewer sessions
+   and makes stored share links unretrievable until each share is rotated.
    Finally it sets `PUBLIC_SHARES_INFRA_ENABLED=true`.
 
 The script never prints secret values and never enables sharing.
@@ -216,7 +229,7 @@ Configure these values before setting `PUBLIC_SHARES_ENABLED=true`:
 | `PUBLIC_SHARES_TITILER_LAMBDA_ARN` | Private Lambda function/alias ARN, preferably the SAM stack's `RendererFunctionArn` output. Selected for raster tiles when set. |
 | `PUBLIC_SHARES_TITILER_INTERNAL_URL` | Legacy internal HTTP TiTiler origin/base path; required only when no Lambda ARN is configured. Must be unreachable by public clients. |
 | `PUBLIC_SHARES_MARTIN_INTERNAL_URL` | Internal Martin origin/base path; required for vector declarations and publication, not raster-only deployments. |
-| `PUBLIC_SHARES_SESSION_SECRET` | Dedicated random secret of at least 32 characters for signed viewer cookies. |
+| `PUBLIC_SHARES_SESSION_SECRET` | Dedicated random secret of at least 32 characters for signed viewer cookies; an HKDF-derived key from it also encrypts stored share links. |
 | `PUBLIC_SHARES_VIEWER_SESSION_TTL_SECONDS` | Rolling signed-cookie age (default 900 seconds). |
 | `PUBLIC_SHARES_MAX_VIEWER_SESSION_LIFETIME_SECONDS` | Absolute session lifetime from capability exchange (default 86400 seconds); refresh does not extend this deadline. |
 
@@ -505,8 +518,9 @@ authenticated user; optional job IDs are not accepted as an ownership proxy.
 | `POST /api/v1/shares/{id}/uploads` | `webmap:write` | Start/refresh a multipart upload for a declared layer; returns fixed-size signed parts with a 15-minute default TTL. |
 | `POST /api/v1/shares/{id}/complete` | `webmap:write` | Complete every layer, verify actual size, and enqueue COG/PMTiles validation. Repeated completion can retry a lost validation enqueue. |
 | `GET /api/v1/shares` and `GET /api/v1/shares/{id}` | `webmap:read` | List/status for the owner only; never returns capability secrets, object keys, or upload credentials. |
+| `GET /api/v1/shares/{id}/link` | `webmap:write` | Return the owner's current viewer link (`{id, link, expires_at}`, `no-store`). Returns 409 when the share is not live or its link was not stored (published before link storage, or after a session-secret rotation); rotate once to fix. |
 | `GET /api/v1/shares/storage` | `webmap:read` | Return the owner's uploaded, reserved, pending-cleanup and available storage totals. |
-| `POST /api/v1/shares/{id}/publish` | `webmap:write` | After validation, set `ready_at` and `expires_at`, hash a new capability, and return its URL exactly once. |
+| `POST /api/v1/shares/{id}/publish` | `webmap:write` | After validation, set `ready_at` and `expires_at`, hash a new capability, store it encrypted for the owner, and return its URL. |
 | `POST /api/v1/shares/{id}/rotate` | `webmap:write` | Replace the capability and invalidate old viewer sessions without extending expiry. |
 | `DELETE /api/v1/shares/{id}` | `webmap:write` | Revoke synchronously, then schedule idempotent object/upload cleanup. |
 | `PUT /api/v1/admin/users/{user_id}/public-share-quota` | `admin:write`, SUPERADMIN | Set a non-negative byte override or `null` to use the configured default. |
@@ -517,7 +531,13 @@ authenticated user; optional job IDs are not accepted as an ownership proxy.
 | `GET /api/v1/public-shares/{id}/tiles/{layer}/{z}/{x}/{y}.pbf` | Viewer cookie | Re-check authorization before proxying bounded MVT requests to internal Martin. |
 
 The capability is 256-bit random data delivered only in the URL fragment and
-stored as a SHA-256 hash. The viewer must remove the fragment from browser
+stored as a SHA-256 hash, which is what authorizes access. So that the owner
+can view and copy the link again, the API also stores the secret in
+`link_ciphertext`, encrypted with Fernet under a key derived (HKDF-SHA256) from
+`PUBLIC_SHARES_SESSION_SECRET`; retrieval re-verifies the decrypted secret
+against the hash. Rotation replaces it; revocation and expiry clear it. Anyone
+holding both the database and the session secret could recover live links. The
+viewer must remove the fragment from browser
 history before POSTing it, keep no token in tile URLs, and call APIs on the
 configured same HTTPS origin. Responses containing links, sessions, manifests,
 or tiles are `no-store`; public responses also use `Referrer-Policy: no-referrer`
