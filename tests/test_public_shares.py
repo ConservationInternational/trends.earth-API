@@ -53,7 +53,6 @@ def public_share_config(monkeypatch, app):
     }
     for key, value in configured.items():
         monkeypatch.setitem(SETTINGS["PUBLIC_SHARES"], key, value)
-    app.config["PUBLIC_SHARES"] = SETTINGS["PUBLIC_SHARES"]
     app.config["JWT_SECRET_KEY"] = "public-share-tests-jwt-secret-32"
     return configured
 

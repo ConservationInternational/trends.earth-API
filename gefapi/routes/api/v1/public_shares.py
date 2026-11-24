@@ -5,10 +5,11 @@ from urllib.error import HTTPError, URLError
 import uuid
 
 import botocore
-from flask import Response, current_app, jsonify, request
+from flask import Response, jsonify, request
 from flask_jwt_extended import current_user
 
 from gefapi import limiter
+from gefapi.config import SETTINGS
 from gefapi.models import PublicShare
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.public_share_service import (
@@ -308,16 +309,14 @@ def exchange_public_share_secret(share_id):
     response = _public_json(
         {
             "data": {
-                "expires_in": current_app.config["PUBLIC_SHARES"][
-                    "VIEWER_SESSION_TTL_SECONDS"
-                ]
+                "expires_in": SETTINGS["PUBLIC_SHARES"]["VIEWER_SESSION_TTL_SECONDS"]
             }
         }
     )
     response.set_cookie(
         "te_share_session",
         cookie_value,
-        max_age=current_app.config["PUBLIC_SHARES"]["VIEWER_SESSION_TTL_SECONDS"],
+        max_age=SETTINGS["PUBLIC_SHARES"]["VIEWER_SESSION_TTL_SECONDS"],
         secure=True,
         httponly=True,
         samesite="Strict",
@@ -345,7 +344,7 @@ def refresh_public_share_session(share_id):
         return _public_json({"status": 404, "detail": "Share is unavailable"}, 404)
     refreshed_cookie, absolute_lifetime_remaining = refreshed_session
     cookie_lifetime = min(
-        current_app.config["PUBLIC_SHARES"]["VIEWER_SESSION_TTL_SECONDS"],
+        SETTINGS["PUBLIC_SHARES"]["VIEWER_SESSION_TTL_SECONDS"],
         absolute_lifetime_remaining,
     )
     response = _public_json({"data": {"expires_in": cookie_lifetime}})
@@ -420,7 +419,7 @@ def get_public_share_tile(share_id, layer_id, z, x, y, tile_format="png"):
         return _public_error(exc)
     if share is None:
         return _public_json({"status": 404, "detail": "Share is unavailable"}, 404)
-    maximum_zoom = current_app.config["PUBLIC_SHARES"]["MAX_TILE_ZOOM"]
+    maximum_zoom = SETTINGS["PUBLIC_SHARES"]["MAX_TILE_ZOOM"]
     if z < 0 or z > maximum_zoom or x < 0 or y < 0 or x >= 2**z or y >= 2**z:
         return _public_json({"status": 400, "detail": "Invalid tile coordinates"}, 400)
     layer = next((item for item in share.layers if str(item.id) == layer_id), None)
@@ -442,7 +441,7 @@ def get_public_share_tile(share_id, layer_id, z, x, y, tile_format="png"):
         tile_service = (
             invoke_raster_tile(share, layer, z, x, y)
             if layer.kind == "raster"
-            and current_app.config["PUBLIC_SHARES"].get("TITILER_LAMBDA_ARN")
+            and SETTINGS["PUBLIC_SHARES"].get("TITILER_LAMBDA_ARN")
             else open_tile_service(get_tile_url(share, layer, z, x, y), timeout=10)
         )
         with tile_service as tile_response:
