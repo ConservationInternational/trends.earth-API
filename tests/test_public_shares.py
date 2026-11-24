@@ -30,6 +30,7 @@ from gefapi.services.public_share_service import (
     _delete_s3_object_versions,
     _raster_tile_request,
     _validate_style,
+    _validate_vector_style,
     create_share,
     create_viewer_session,
     load_viewer_session,
@@ -212,10 +213,10 @@ def test_vector_legend_text_comes_from_style():
             "other_label": "Autres valeurs",
         },
     }
-    assert _validate_style(style)["category"]["other_label"] == "Autres valeurs"
+    assert _validate_vector_style(style)["category"]["other_label"] == "Autres valeurs"
     style["category"]["other_label"] = "Bad\nlabel"
     with pytest.raises(PublicShareError, match="labels"):
-        _validate_style(style)
+        _validate_vector_style(style)
 
 
 def test_share_status_is_owner_only(app, client, regular_user, public_share_config):
