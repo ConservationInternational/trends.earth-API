@@ -90,6 +90,8 @@ const vectorId = "22222222-2222-4222-8222-222222222222";
 function manifest(id, options) {
   const base = `/api/v1/public-shares/${id}/tiles/`;
   return {
+    // Names, titles and legend labels stand in for values the plugin uploads
+    // (already translated); the viewer must render them without adding its own.
     id, title: options.title || "Example shared analysis",
     expires_at: options.expires_at || new Date(Date.now() + 86400000).toISOString(),
     layers: [
@@ -99,12 +101,13 @@ function manifest(id, options) {
         attribution: options.attribution || "Raster attribution",
         style: options.customRamp ?
           { kind: "continuous", min: -1, max: 1, stops: [
-            { value: -1, color: "#0000ff" }, { value: 0, color: "#ffffff" },
-            { value: 1, color: "#ff0000" },
+            { value: -1, color: "#0000ff", label: "Plugin stop A" }, { value: 0, color: "#ffffff" },
+            { value: 1, color: "#ff0000", label: "Plugin stop B" },
           ] } :
           options.continuous ?
             { kind: "continuous", min: 0, max: 100, palette: "viridis" } :
-            { kind: "categorical", values: { "1": "#008000", "2": "#ffffff" } },
+            { kind: "categorical", values: { "2": "#ffffff", "-1": "#ff00ff", "1": "#008000" },
+              labels: { "-1": "Plugin class -1", "1": "Plugin class 1" } },
         vector_metadata: null, tile_format: "png", tiles: base + rasterId + "/{z}/{x}/{y}.png",
       },
       {
@@ -114,7 +117,8 @@ function manifest(id, options) {
         style: {
           kind: "vector", fill: "#cccccc", stroke: "#333333", width: 3,
           fill_opacity: 1, radius: 8,
-          category: { field: "status", values: { point: "#ff0000", line: "#0000ff", polygon: "#ffff00" } },
+          category: { field: "status", values: { point: "#ff0000", line: "#0000ff", polygon: "#ffff00" },
+            labels: { polygon: "Plugin polygon label" }, other_label: "Plugin other label" },
         },
         vector_metadata: { source_layer: "analysis", minzoom: 0, maxzoom: 4, fields: { status: "string" } },
         tile_format: "pbf", tiles: base + vectorId + "/{z}/{x}/{y}.pbf",

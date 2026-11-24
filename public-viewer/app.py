@@ -77,13 +77,6 @@ app.layout = html.Div(
                             [
                                 html.Button("Show full extent", id="fit"),
                                 html.Div(id="basemap-controls"),
-                                html.P(
-                                    "Focus the map to pan with arrow keys; "
-                                    "use + and - to zoom. "
-                                    "Drag to pan, or use the on-map zoom buttons.",
-                                    className="help",
-                                ),
-                                html.P(id="coordinates", **{"aria-live": "off"}),
                             ],
                             id="map-tools",
                             hidden=True,

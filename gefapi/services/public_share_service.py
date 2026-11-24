@@ -38,6 +38,8 @@ SHARE_SECRET_BYTES = 32
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 VECTOR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,119}$")
+MAX_LEGEND_LABEL = 200
+COLORMAP_LIMIT = 3.4e38
 ALLOWED_PALETTES = frozenset(
     {"viridis", "plasma", "magma", "inferno", "cividis", "turbo"}
 )
@@ -173,7 +175,7 @@ def _validate_style(style):
         for stop in stops:
             if (
                 not isinstance(stop, dict)
-                or set(stop) != {"value", "color"}
+                or not {"value", "color"} <= stop.keys() <= {"value", "color", "label"}
                 or isinstance(stop["value"], bool)
                 or not isinstance(stop["value"], (int, float))
                 or not math.isfinite(stop["value"])
@@ -187,9 +189,10 @@ def _validate_style(style):
                 or (safe_stops and stop["value"] <= safe_stops[-1]["value"])
             ):
                 raise PublicShareError(400, "Continuous style stops are unordered")
-            safe_stops.append(
-                {"value": float(stop["value"]), "color": stop["color"].lower()}
-            )
+            safe_stop = {"value": float(stop["value"]), "color": stop["color"].lower()}
+            if "label" in stop:
+                safe_stop["label"] = _safe_label(stop["label"])
+            safe_stops.append(safe_stop)
         if safe_stops[0]["value"] != minimum or safe_stops[-1]["value"] != maximum:
             raise PublicShareError(
                 400, "Continuous style stops must span the full color range"
@@ -198,7 +201,13 @@ def _validate_style(style):
         return safe_style
     if kind == "categorical":
         values = style.get("values")
-        if style.keys() != {"kind", "values"} or not isinstance(values, dict):
+        if (
+            not {"kind", "values"}
+            <= style.keys()
+            <= {"kind", "values", "labels", "classification"}
+            or not isinstance(values, dict)
+            or style.get("classification", "exact") not in ("exact", "discrete")
+        ):
             raise PublicShareError(400, "Categorical style fields are invalid")
         if not values or len(values) > 256:
             raise PublicShareError(400, "Categorical styles need 1 to 256 values")
@@ -213,8 +222,29 @@ def _validate_style(style):
             if not COLOR_RE.fullmatch(color):
                 raise PublicShareError(400, "Category colors must use #RRGGBB")
             safe_values[str(integer_value)] = color.lower()
-        return {"kind": kind, "values": safe_values}
+        safe_style = {"kind": kind, "values": safe_values}
+        if "labels" in style:
+            safe_style["labels"] = _safe_labels(style["labels"], safe_values)
+        if style.get("classification") == "discrete":
+            safe_style["classification"] = "discrete"
+        return safe_style
     raise PublicShareError(400, "Style kind must be continuous or categorical")
+
+
+def _safe_label(label):
+    if (
+        not isinstance(label, str)
+        or not 1 <= len(label) <= MAX_LEGEND_LABEL
+        or any(ord(character) < 32 for character in label)
+    ):
+        raise PublicShareError(400, "Legend labels are invalid")
+    return label
+
+
+def _safe_labels(labels, values):
+    if not isinstance(labels, dict) or labels.keys() - values.keys():
+        raise PublicShareError(400, "Legend labels must match style values")
+    return {key: _safe_label(label) for key, label in labels.items()}
 
 
 def _validate_vector_style(style):
@@ -245,7 +275,9 @@ def _validate_vector_style(style):
         category = style["category"]
         if (
             not isinstance(category, dict)
-            or category.keys() != {"field", "values"}
+            or not {"field", "values"}
+            <= category.keys()
+            <= {"field", "values", "labels", "other_label"}
             or not isinstance(category["field"], str)
             or not VECTOR_NAME_RE.fullmatch(category["field"])
             or not isinstance(category["values"], dict)
@@ -265,6 +297,10 @@ def _validate_vector_style(style):
             "field": category["field"],
             "values": {key: color.lower() for key, color in values.items()},
         }
+        if "labels" in category:
+            safe["category"]["labels"] = _safe_labels(category["labels"], values)
+        if "other_label" in category:
+            safe["category"]["other_label"] = _safe_label(category["other_label"])
     return safe
 
 
@@ -1390,6 +1426,20 @@ def _raster_tile_request(layer, z, x, y):
                 )
                 colormap[str(index)] = f"#{color}"
             query["colormap"] = json.dumps(colormap, separators=(",", ":"))
+    elif layer.style.get("classification") == "discrete":
+        # Match QGIS discrete classes: each color covers (previous, value].
+        breaks = sorted(layer.style["values"].items(), key=lambda item: int(item[0]))
+        intervals = []
+        lower = -COLORMAP_LIMIT
+        for index, (value, color) in enumerate(breaks):
+            upper = (
+                COLORMAP_LIMIT
+                if index == len(breaks) - 1
+                else math.nextafter(int(value), math.inf)
+            )
+            intervals.append([[lower, upper], color])
+            lower = upper
+        query["colormap"] = json.dumps(intervals, separators=(",", ":"))
     else:
         query["colormap"] = json.dumps(layer.style["values"], separators=(",", ":"))
     return path, urlencode(query)

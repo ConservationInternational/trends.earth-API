@@ -165,6 +165,59 @@ def test_custom_continuous_style_creates_bounded_tile_colormap(
         )
 
 
+def test_discrete_labelled_style_renders_qgis_value_ranges(public_share_config):
+    from types import SimpleNamespace
+
+    style = _validate_style(
+        {
+            "kind": "categorical",
+            "values": {"9": "#ffffe0", "-10": "#9b2779", "100": "#006500"},
+            "labels": {"-10": "Degradation", "9": "Stable", "100": "Improvement"},
+            "classification": "discrete",
+        }
+    )
+    assert style["labels"]["9"] == "Stable"
+    layer = SimpleNamespace(object_key="key.tif", band=1, style=style)
+
+    _, query = _raster_tile_request(layer, 0, 0, 0)
+    parsed = parse_qs(query)
+    intervals = json.loads(parsed["colormap"][0])
+
+    def color(value):
+        return next(c for (low, high), c in intervals if low <= value < high)
+
+    assert parsed["resampling"] == ["nearest"]
+    assert [color(v) for v in (-50, -10)] == ["#9b2779"] * 2
+    assert [color(v) for v in (-9, 0, 9)] == ["#ffffe0"] * 3
+    assert [color(v) for v in (10, 100, 150)] == ["#006500"] * 3
+    for labels in ({"2": "Unknown"}, {"9": ""}, {"9": "Bad\nlabel"}):
+        with pytest.raises(PublicShareError, match="labels"):
+            _validate_style({**style, "labels": labels})
+    with pytest.raises(PublicShareError):
+        _validate_style({**style, "classification": "interpolated"})
+
+
+def test_vector_legend_text_comes_from_style():
+    style = {
+        "kind": "vector",
+        "stroke": "#333333",
+        "fill": "#CCCCCC",
+        "width": 1,
+        "fill_opacity": 0.5,
+        "radius": 4,
+        "category": {
+            "field": "status",
+            "values": {"a": "#FF0000"},
+            "labels": {"a": "Dégradé"},
+            "other_label": "Autres valeurs",
+        },
+    }
+    assert _validate_style(style)["category"]["other_label"] == "Autres valeurs"
+    style["category"]["other_label"] = "Bad\nlabel"
+    with pytest.raises(PublicShareError, match="labels"):
+        _validate_style(style)
+
+
 def test_share_status_is_owner_only(app, client, regular_user, public_share_config):
     share = create_share(regular_user, _payload())
     other_user = User(

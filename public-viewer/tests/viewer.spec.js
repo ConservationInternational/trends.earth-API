@@ -60,7 +60,14 @@ test("renders authorized raster/vector tiles, legends, controls and safe attribu
   await open(page, id);
   await expect(page.locator("#title")).toHaveText("Example shared analysis");
   await expect(page.locator("#expiry")).toContainText("UTC");
-  await expect(page.locator("#layers")).toContainText("polygon (#ffff00)");
+  await expect(page.locator("#layers")).toContainText("Plugin polygon label");
+  await expect(page.locator("#layers")).toContainText("Plugin other label");
+  await expect(page.locator("#layers")).not.toContainText(/Category:|Other \/ missing/);
+  await expect(page.locator("#layers")).toContainText("point");
+  await expect(page.locator("#layers .legend").first().locator("li")).toHaveText(
+    ["Plugin class -1", "Plugin class 1", "2"]);
+  await expect(page.locator("#map-tools")).not.toContainText(/arrow keys|Center:/);
+  await expect(page.locator("#layers")).not.toContainText(/#[0-9a-f]{6}|Raster band|Vector tiles/i);
   for (const color of [[255, 255, 0, 255], [255, 0, 0, 255], [0, 0, 255, 255]]) {
     await expect.poll(() => colorCount(page, vectorCanvas, color)).toBeGreaterThan(50);
   }
@@ -115,10 +122,6 @@ test("renders authorized raster/vector tiles, legends, controls and safe attribu
   await expect(page.locator(vectorCanvas).first()).toBeHidden();
   await page.getByRole("checkbox", { name: "Vector result" }).check();
   await expect(page.locator(vectorCanvas).first()).toBeVisible();
-  await page.locator("#map").focus();
-  const beforeZoom = await page.locator("#coordinates").textContent();
-  await page.keyboard.press("+");
-  await expect(page.locator("#coordinates")).not.toHaveText(beforeZoom);
   await page.getByRole("button", { name: "Show full extent" }).click();
   expect(errors).toEqual([]);
 });
@@ -252,6 +255,8 @@ test("renders a custom color-stop legend", async ({ page, request }) => {
     "background-image",
     /rgb\(0, 0, 255\).*rgb\(255, 0, 0\)/,
   );
+  await expect(page.locator("#layers .legend").first().locator("li")).toHaveText(
+    ["Plugin stop A", "Plugin stop B"]);
 });
 
 test("adds Resilience Atlas basemaps and national borders only after authorization", async ({ page, request }) => {

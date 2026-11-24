@@ -8,7 +8,7 @@ import MVT from "ol/format/MVT.js";
 import Feature from "ol/Feature.js";
 import TileState from "ol/TileState.js";
 import { Circle, Fill, Stroke, Style } from "ol/style.js";
-import { fromLonLat, toLonLat, transformExtent } from "ol/proj.js";
+import { fromLonLat, transformExtent } from "ol/proj.js";
 import { createEmpty, extend } from "ol/extent.js";
 import { defaults as defaultControls } from "ol/control.js";
 import { createXYZ } from "ol/tilegrid.js";
@@ -98,8 +98,35 @@ function validateManifest(data, shareId) {
         !Object.values(values).every((color) => typeof color === "string" && RGB.test(color)))) {
       throw new ViewerError(502, "The map contains invalid legend colors.");
     }
+    const labels = style.kind === "categorical" ? style.labels : style.category?.labels;
+    const stopLabels = style.stops?.filter((stop) => stop.label !== undefined).map((stop) => stop.label) || [];
+    if ((style.category?.other_label !== undefined && !validLabel(style.category.other_label)) ||
+        (labels !== undefined && (!labels || typeof labels !== "object" ||
+        !Object.keys(labels).every((key) => Object.hasOwn(values || {}, key)))) ||
+        ![...Object.values(labels || {}), ...stopLabels].every(validLabel)) {
+      throw new ViewerError(502, "The map contains invalid legend labels.");
+    }
   }
   return data;
+}
+
+function validLabel(label) {
+  return typeof label === "string" && label.length >= 1 && label.length <= 200;
+}
+
+function legendList(entries) {
+  const list = document.createElement("ul");
+  list.className = "legend";
+  for (const [label, color] of entries) {
+    const item = document.createElement("li");
+    const swatch = document.createElement("span");
+    swatch.className = "swatch";
+    swatch.style.backgroundColor = color;
+    swatch.setAttribute("aria-hidden", "true");
+    item.append(swatch, textElement("span", label));
+    list.append(item);
+  }
+  return list;
 }
 
 function legend(layer) {
@@ -114,28 +141,27 @@ function legend(layer) {
       ) : PALETTES[style.palette];
     gradient.style.background = `linear-gradient(to right, ${colors.join(",")})`;
     gradient.setAttribute("aria-label", `Color ramp from ${style.min} to ${style.max}`);
-    const range = document.createElement("div");
-    range.className = "legend-range";
-    range.append(textElement("span", style.min), textElement("span", style.max));
-    container.append(gradient, range);
+    container.append(gradient);
+    const labelled = (style.stops || []).filter((stop) => stop.label);
+    if (labelled.length) {
+      container.append(legendList(labelled.map((stop) => [stop.label, stop.color])));
+    } else {
+      const range = document.createElement("div");
+      range.className = "legend-range";
+      range.append(textElement("span", style.min), textElement("span", style.max));
+      container.append(range);
+    }
     return container;
   }
-  const list = document.createElement("ul");
-  list.className = "legend";
   const categories = style.kind === "categorical" ? style.values : style.category?.values;
-  if (style.category) container.append(textElement("p", `Category: ${style.category.field}`, "layer-detail"));
-  const entries = categories ? Object.entries(categories) : [["Features", style.fill]];
-  if (style.category) entries.push(["Other / missing", style.fill]);
-  for (const [label, color] of entries) {
-    const item = document.createElement("li");
-    const swatch = document.createElement("span");
-    swatch.className = "swatch";
-    swatch.style.backgroundColor = color;
-    swatch.setAttribute("aria-hidden", "true");
-    item.append(swatch, textElement("span", `${label} (${color})`));
-    list.append(item);
-  }
-  container.append(list);
+  const labels = (style.kind === "categorical" ? style.labels : style.category?.labels) || {};
+  const ordered = categories ? Object.entries(categories) : [];
+  if (style.kind === "categorical") ordered.sort(([a], [b]) => Number(a) - Number(b));
+  const entries = categories ?
+    ordered.map(([value, color]) => [labels[value] || value, color]) :
+    [[layer.name, style.fill]];
+  if (style.category?.other_label) entries.push([style.category.other_label, style.fill]);
+  container.append(legendList(entries));
   return container;
 }
 
@@ -401,9 +427,7 @@ export async function start(initialSecret, hadFragment) {
       opacity.setAttribute("aria-label", `${layer.name} opacity`);
       opacity.addEventListener("input", () => grid.setOpacity(Number(opacity.value) / 100));
       opacityLabel.append(textElement("span", "Opacity"), opacity);
-      card.append(label, textElement("p",
-        layer.kind === "vector" ? `Vector tiles, zooms ${layer.vector_metadata.minzoom}-${layer.vector_metadata.maxzoom}` :
-          `Raster band ${layer.band}`, "layer-detail"), opacityLabel, legend(layer));
+      card.append(label, opacityLabel, legend(layer));
       if (layer.attribution) card.append(textElement("p", `Attribution: ${layer.attribution}`, "layer-detail"));
       if (layer.kind === "vector") {
         const inspect = textElement("button", "Inspect visible features");
@@ -517,10 +541,6 @@ export async function start(initialSecret, hadFragment) {
   $("clear-selection").addEventListener("click", () => {
     $("selection").hidden = true;
     $("attributes").replaceChildren();
-  });
-  map.on("moveend", () => {
-    const center = toLonLat(map.getView().getCenter());
-    $("coordinates").textContent = `Center: ${center[1].toFixed(3)}, ${center[0].toFixed(3)}; zoom ${map.getView().getZoom().toFixed(1)}`;
   });
   map.on("singleclick", async (event) => {
     try {
