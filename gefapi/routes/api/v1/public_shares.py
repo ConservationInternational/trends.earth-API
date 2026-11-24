@@ -19,6 +19,7 @@ from gefapi.services.public_share_service import (
     create_share,
     create_viewer_session,
     ensure_public_shares_enabled,
+    get_public_link,
     get_share_storage_usage,
     get_tile_url,
     invoke_raster_tile,
@@ -122,6 +123,30 @@ def get_public_share(share_id):
     except PublicShareError as exc:
         return _expected_error(exc)
     return jsonify(data=share.serialize())
+
+
+@endpoints.route("/shares/<share_id>/link", methods=["GET"])
+@bearer_required()
+@require_scope("webmap:write")
+def get_public_share_link(share_id):
+    """Return the owner's current unlisted link for an active share."""
+    from gefapi.services.public_share_service import _share_query
+
+    try:
+        ensure_public_shares_enabled()
+        share = _share_query(share_id, current_user.id)
+        link = get_public_link(share)
+    except PublicShareError as exc:
+        return _expected_error(exc)
+    response = jsonify(
+        data={
+            "id": str(share.id),
+            "link": link,
+            "expires_at": share.serialize()["expires_at"],
+        }
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @endpoints.route("/shares/<share_id>/layers", methods=["POST"])

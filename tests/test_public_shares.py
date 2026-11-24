@@ -291,6 +291,41 @@ def test_publish_expiry_rotation_and_revocation_invalidate_sessions(
     assert load_viewer_session(share.id, create_viewer_session(share)) is None
 
 
+def test_owner_can_view_current_link_until_rotation_or_revocation(
+    app, client, regular_user, admin_user, public_share_config
+):
+    share = create_share(regular_user, _payload())
+    share.state = "ready"
+    db.session.commit()
+    url = f"/api/v1/shares/{share.id}/link"
+
+    assert client.get(url, headers=_headers(regular_user)).status_code == 409
+    link = mint_public_link(share)
+    assert share.link_ciphertext and link.split("#", 1)[1] not in share.link_ciphertext
+
+    response = client.get(url, headers=_headers(regular_user))
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.get_json()["data"]["link"] == link
+    assert "link_ciphertext" not in client.get(
+        f"/api/v1/shares/{share.id}", headers=_headers(regular_user)
+    ).get_data(as_text=True)
+    assert client.get(url, headers=_headers(admin_user)).status_code == 404
+
+    rotated = mint_public_link(share, rotate=True)
+    response = client.get(url, headers=_headers(regular_user))
+    assert response.get_json()["data"]["link"] == rotated
+
+    share.link_ciphertext = None
+    db.session.commit()
+    assert client.get(url, headers=_headers(regular_user)).status_code == 409
+
+    mint_public_link(share, rotate=True)
+    mark_share_revoked(share)
+    assert share.link_ciphertext is None
+    assert client.get(url, headers=_headers(regular_user)).status_code == 409
+
+
 def test_fragment_exchange_sets_scoped_cookie_and_manifest_is_safe(
     app, client, regular_user, public_share_config
 ):

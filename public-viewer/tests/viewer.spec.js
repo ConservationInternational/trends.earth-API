@@ -16,9 +16,25 @@ async function colorCount(page, selector, color) {
     return count;
   }, color);
 }
+const transparentPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
+let mapboxRequests = [];
+
 test.beforeEach(async ({ page }) => {
+  mapboxRequests = [];
   page.on("pageerror", (error) => console.error(error.message));
   page.on("console", (msg) => { if (msg.type() === "error") console.error(msg.text()); });
+  await page.route("https://api.mapbox.com/**", async (route) => {
+    const request = route.request();
+    mapboxRequests.push({ url: request.url(), referer: await request.headerValue("referer") });
+    const vector = request.url().includes(".mvt");
+    await route.fulfill({
+      status: 200,
+      headers: { "Access-Control-Allow-Origin": "*" },
+      contentType: vector ? "application/vnd.mapbox-vector-tile" : "image/png",
+      body: vector ? Buffer.alloc(0) : transparentPng,
+    });
+  });
 });
 
 async function share(request, options = {}) {
@@ -90,8 +106,8 @@ test("renders authorized raster/vector tiles, legends, controls and safe attribu
   await page.getByRole("button", { name: "Inspect visible features" }).click();
   await expect(page.locator("#attributes")).toContainText("status");
   await expect(page.locator("#attributes")).toContainText("point");
-  const lineOption = await page.getByRole("combobox").locator("option").filter({ hasText: "(ID 2)" }).first().getAttribute("value");
-  await page.getByRole("combobox").selectOption(lineOption);
+  const lineOption = await page.getByRole("combobox", { name: /Vector result visible features/ }).locator("option").filter({ hasText: "(ID 2)" }).first().getAttribute("value");
+  await page.getByRole("combobox", { name: /Vector result visible features/ }).selectOption(lineOption);
   await expect(page.locator("#attributes")).toContainText("line");
   await page.getByRole("slider", { name: "Vector result opacity" }).fill("40");
   await expect.poll(() => colorCount(page, vectorCanvas, [255, 255, 0, 102])).toBeGreaterThan(50);
@@ -139,7 +155,8 @@ test("removes fragment before requests and does not leak capabilities or send ex
   const exchange = requests.find((req) => req.url().endsWith("/session"));
   expect(JSON.parse(exchange.postData()).secret).toBe(secret);
   for (const req of requests) {
-    expect(new URL(req.url()).origin).toBe(new URL(page.url()).origin);
+    // Only the share API and the Resilience Atlas Mapbox basemap/borders are contacted.
+    expect([new URL(page.url()).origin, "https://api.mapbox.com"]).toContain(new URL(req.url()).origin);
     expect(req.url()).not.toContain(secret);
     expect(req.headers().referer || "").toBe("");
     if (req !== exchange) expect(req.postData() || "").not.toContain(secret);
@@ -235,4 +252,27 @@ test("renders a custom color-stop legend", async ({ page, request }) => {
     "background-image",
     /rgb\(0, 0, 255\).*rgb\(255, 0, 0\)/,
   );
+});
+
+test("adds Resilience Atlas basemaps and national borders only after authorization", async ({ page, request }) => {
+  await page.goto(`/share/${await share(request)}#invalid`);
+  await expect(page.locator("#status")).toContainText("invalid");
+  expect(mapboxRequests).toHaveLength(0);
+  const id = await share(request);
+
+  await open(page, id);
+  await expect.poll(() => mapboxRequests.some(({ url }) => url.includes("/styles/v1/cigrp/cixkh6jb000582smx8pfdeu23/"))).toBe(true);
+  await expect.poll(() => mapboxRequests.some(({ url }) => url.includes("mapbox.mapbox-streets-v8"))).toBe(true);
+  expect(mapboxRequests.every(({ url, referer }) => !url.includes(secret) && !referer)).toBe(true);
+  await expect(page.locator(".ol-attribution")).toContainText("Mapbox");
+  await expect(page.locator("#map-disclaimer")).toContainText("do not imply official endorsement");
+  await expect(page.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute(
+    "href", "https://www.conservation.org/policies/privacy");
+  await expect(page.getByRole("link", { name: "Terms of Use" })).toHaveAttribute(
+    "href", "https://www.conservation.org/policies/terms-of-use");
+
+  await page.getByRole("combobox", { name: "Basemap" }).selectOption("satellite");
+  await expect.poll(() => mapboxRequests.some(({ url }) => url.includes("cizsz6pv700422ro73xdhzi1g"))).toBe(true);
+  await page.getByRole("checkbox", { name: "National borders" }).uncheck();
+  await expect(page.locator(".national-borders")).toBeHidden();
 });

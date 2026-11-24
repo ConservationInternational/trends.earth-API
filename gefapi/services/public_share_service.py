@@ -25,6 +25,9 @@ import uuid
 
 import boto3
 import botocore
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from gefapi import db
@@ -1173,14 +1176,50 @@ def mint_public_link(share, *, rotate=False):
             _ensure_martin_source_ready(layer)
     secret = secrets.token_urlsafe(SHARE_SECRET_BYTES)
     share.token_hash = hashlib.sha256(secret.encode("ascii")).hexdigest()
+    share.link_ciphertext = _link_fernet().encrypt(secret.encode("ascii")).decode()
     share.session_generation += 1
     if not rotate:
         share.ready_at = now
         share.expires_at = now + timedelta(days=share.retention_days)
     db.session.commit()
+    return _viewer_link(share, secret)
+
+
+def _viewer_link(share, secret):
     viewer_url = _config()["VIEWER_BASE_URL"].rstrip("/")
-    link = f"{viewer_url}/{quote(str(share.id), safe='')}#{secret}"
-    return link
+    return f"{viewer_url}/{quote(str(share.id), safe='')}#{secret}"
+
+
+def _link_fernet():
+    """Derive the link-encryption key from the configured session secret."""
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b"trends.earth-public-share-link-v1",
+        info=b"fernet-key",
+    )
+    key = hkdf.derive(_config()["SESSION_SECRET"].encode("utf-8"))
+    return Fernet(base64.urlsafe_b64encode(key))
+
+
+def get_public_link(share):
+    """Return the active link to its owner; access remains hash-verified."""
+    ensure_public_shares_enabled()
+    if not share.is_accessible(_now()):
+        raise PublicShareError(409, "Only active shares have a viewable link")
+    if not share.link_ciphertext:
+        raise PublicShareError(
+            409, "This link was not stored; rotate the link to view it again"
+        )
+    try:
+        secret = _link_fernet().decrypt(share.link_ciphertext.encode()).decode()
+    except (InvalidToken, UnicodeDecodeError, ValueError):
+        raise PublicShareError(
+            409, "This link can no longer be shown; rotate the link"
+        ) from None
+    if not verify_public_secret(share, secret):
+        raise PublicShareError(409, "This link can no longer be shown; rotate the link")
+    return _viewer_link(share, secret)
 
 
 def verify_public_secret(share, supplied_secret):
@@ -1467,6 +1506,7 @@ def mark_share_revoked(share):
     share.state = "revoked"
     share.revoked_at = share.revoked_at or now
     share.token_hash = None
+    share.link_ciphertext = None
     share.session_generation += 1
     share.cleanup_error = None
     db.session.commit()
@@ -1532,11 +1572,13 @@ def cleanup_share_objects(share_id):
     ):
         share.state = "expired"
         share.token_hash = None
+        share.link_ciphertext = None
         share.session_generation += 1
         db.session.commit()
     if share.state == "ready" and share.expires_at and share.expires_at <= now:
         share.state = "expired"
         share.token_hash = None
+        share.link_ciphertext = None
         share.session_generation += 1
         db.session.commit()
     if share.state not in ("revoked", "expired"):

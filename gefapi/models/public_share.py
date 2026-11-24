@@ -39,6 +39,8 @@ class PublicShare(db.Model):
     expires_at = db.Column(db.DateTime(), nullable=True, index=True)
     revoked_at = db.Column(db.DateTime(), nullable=True)
     token_hash = db.Column(db.String(64), nullable=True)
+    # Fernet ciphertext of the current capability so the owner can view the link.
+    link_ciphertext = db.Column(db.Text(), nullable=True)
     session_generation = db.Column(db.Integer(), nullable=False, default=0)
     quota_reserved_bytes = db.Column(db.BigInteger(), nullable=False, default=0)
     cleanup_completed_at = db.Column(db.DateTime(), nullable=True)

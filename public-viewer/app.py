@@ -31,6 +31,10 @@ app.index_string = """<!DOCTYPE html>
 <footer>{%config%}{%scripts%}{%renderer%}</footer>
 </body></html>"""
 
+# Same policy links as the API sign-in pages (gefapi/routes/oidc.py).
+PRIVACY_POLICY_URL = "https://www.conservation.org/policies/privacy"
+TERMS_OF_USE_URL = "https://www.conservation.org/policies/terms-of-use"
+
 app.layout = html.Div(
     [
         html.A("Skip to map controls", href="#controls", className="skip-link"),
@@ -57,8 +61,9 @@ app.layout = html.Div(
                             className="notice",
                         ),
                         html.P(
-                            "No analytics or external basemap is loaded. Map data is "
-                            "requested only from this site.",
+                            "No analytics are loaded. Shared map data is requested "
+                            "only from this site; basemap and national border tiles "
+                            "are loaded from Mapbox without the link or referrer.",
                             className="privacy",
                         ),
                         html.Div(
@@ -71,6 +76,7 @@ app.layout = html.Div(
                         html.Div(
                             [
                                 html.Button("Show full extent", id="fit"),
+                                html.Div(id="basemap-controls"),
                                 html.P(
                                     "Focus the map to pan with arrow keys; "
                                     "use + and - to zoom. "
@@ -120,6 +126,32 @@ app.layout = html.Div(
                             "The map will appear after this link is authorized.",
                             id="map-placeholder",
                         ),
+                        html.Div(
+                            [
+                                html.Span(
+                                    "Disclaimer: The boundaries and names used, and "
+                                    "the designations used, in Trends.Earth do not "
+                                    "imply official endorsement or acceptance by "
+                                    "Conservation International Foundation, or by "
+                                    "its partner organizations and contributors."
+                                ),
+                                " ",
+                                html.A(
+                                    "Privacy Policy",
+                                    href=PRIVACY_POLICY_URL,
+                                    target="_blank",
+                                    rel="noopener noreferrer",
+                                ),
+                                " | ",
+                                html.A(
+                                    "Terms of Use",
+                                    href=TERMS_OF_USE_URL,
+                                    target="_blank",
+                                    rel="noopener noreferrer",
+                                ),
+                            ],
+                            id="map-disclaimer",
+                        ),
                     ],
                     id="map-region",
                     **{"aria-label": "Shared geographic map"},
@@ -154,8 +186,9 @@ def private_responses(response):
             "Content-Security-Policy": (
                 "default-src 'none'; script-src 'self' "
                 + " ".join(app.csp_hashes())
-                + "; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
-                "connect-src 'self'; font-src 'self'; object-src 'none'; "
+                + "; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: "
+                "https://api.mapbox.com; connect-src 'self' https://api.mapbox.com; "
+                "font-src 'self'; object-src 'none'; "
                 "base-uri 'none'; frame-ancestors 'none'; form-action 'none'; "
                 "worker-src 'none'"
             ),

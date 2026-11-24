@@ -12,6 +12,9 @@ import { fromLonLat, toLonLat, transformExtent } from "ol/proj.js";
 import { createEmpty, extend } from "ol/extent.js";
 import { defaults as defaultControls } from "ol/control.js";
 import { createXYZ } from "ol/tilegrid.js";
+import {
+  BASEMAPS, DEFAULT_BASEMAP, createBasemapLayer, createBorderLayer, setBasemap,
+} from "./basemaps.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RGB = /^#[0-9a-f]{6}$/i;
@@ -139,7 +142,7 @@ function legend(layer) {
 export async function start(initialSecret, hadFragment) {
   const map = new Map({
     target: "map",
-    controls: defaultControls({ attribution: false, rotate: false }),
+    controls: defaultControls({ attribution: true, attributionOptions: { collapsible: true }, rotate: false }),
     view: new View({ center: fromLonLat([0, 0]), zoom: 2, minZoom: 0, maxZoom: 22 }),
   });
   $("map").setAttribute("aria-label", "Interactive map. Arrow keys pan; plus and minus zoom.");
@@ -154,6 +157,8 @@ export async function start(initialSecret, hadFragment) {
   let sessionDeadline = 0;
   const pending = new Set();
   const base = `/api/v1/public-shares/${shareId}`;
+  const basemap = createBasemapLayer(DEFAULT_BASEMAP);
+  const borders = createBorderLayer(BASEMAPS[DEFAULT_BASEMAP].borders);
 
   function status(message, state = "ready") {
     $("status").textContent = message;
@@ -162,6 +167,8 @@ export async function start(initialSecret, hadFragment) {
   }
 
   function clearLayers() {
+    map.removeLayer(basemap);
+    map.removeLayer(borders);
     for (const record of records) {
       map.removeLayer(record.grid);
       record.grid.getSource().clear();
@@ -426,6 +433,8 @@ export async function start(initialSecret, hadFragment) {
       $("layers").append(card);
     }
     fit();
+    map.addLayer(basemap);
+    map.addLayer(borders);
     for (const record of records) map.addLayer(record.grid);
     status("Map ready. Select layers or inspect vector features.");
   }
@@ -476,6 +485,33 @@ export async function start(initialSecret, hadFragment) {
     }
   }
 
+  const basemapLabel = document.createElement("label");
+  basemapLabel.className = "basemap-control";
+  const basemapSelect = document.createElement("select");
+  basemapSelect.id = "basemap";
+  basemapLabel.append(textElement("span", "Basemap"), basemapSelect);
+  const bordersLabel = document.createElement("label");
+  bordersLabel.className = "borders-control";
+  const bordersCheckbox = document.createElement("input");
+  bordersCheckbox.type = "checkbox";
+  bordersCheckbox.id = "borders";
+  bordersCheckbox.checked = true;
+  bordersLabel.append(bordersCheckbox, textElement("span", "National borders"));
+  $("basemap-controls").replaceChildren(basemapLabel, bordersLabel);
+  for (const [key, option] of Object.entries(BASEMAPS)) {
+    const element = textElement("option", option.label);
+    element.value = key;
+    $("basemap").append(element);
+  }
+  $("basemap").value = DEFAULT_BASEMAP;
+  $("basemap").addEventListener("change", () => {
+    const key = $("basemap").value;
+    if (!BASEMAPS[key]) return;
+    setBasemap(basemap, key);
+    borders.set("tone", BASEMAPS[key].borders);
+    borders.changed();
+  });
+  $("borders").addEventListener("change", () => borders.setVisible($("borders").checked));
   $("fit").addEventListener("click", fit);
   $("retry").addEventListener("click", load);
   $("clear-selection").addEventListener("click", () => {
