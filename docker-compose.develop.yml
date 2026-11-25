@@ -56,6 +56,9 @@ services:
       - ./gefapi:/opt/gef-api/gefapi
       - ./migrations:/opt/gef-api/migrations
       - ./tests:/opt/gef-api/tests
+      - ./scripts:/opt/gef-api/scripts:ro
+      - ./config/public-shares:/opt/gef-api/config/public-shares:ro
+      - ./gunicorn.py:/opt/gef-api/gunicorn.py:ro
     networks:
       - backend
       - db

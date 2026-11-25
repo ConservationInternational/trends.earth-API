@@ -1,3 +1,4 @@
+import logging
 import os
 
 bind = "0.0.0.0:3000"
@@ -47,7 +48,19 @@ proc_name = None
 #
 
 
+class PublicShareAccessFilter(logging.Filter):
+    def filter(self, record):
+        atoms = record.args
+        if isinstance(atoms, dict):
+            path = atoms.get("U", "")
+            return not path.startswith(
+                ("/api/v1/public-shares/s/", "/api/v1/public-shares/tiles/")
+            )
+        return True
+
+
 def post_fork(server, worker):
+    worker.log.access_log.addFilter(PublicShareAccessFilter())
     server.log.info("Worker spawned (pid: %s)", worker.pid)
 
 

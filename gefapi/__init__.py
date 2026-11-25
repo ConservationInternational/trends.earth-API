@@ -315,7 +315,13 @@ def set_security_headers(response):
     response.headers["X-XSS-Protection"] = "1; mode=block"
 
     # Referrer policy - limit referrer information
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if request.path.startswith("/api/v1/public-shares/") and response.status_code in (
+        503,
+        504,
+    ):
+        # The limiter injects its window reset even for upstream service errors.
+        response.headers["Retry-After"] = "1"
 
     # Permissions policy - disable unnecessary browser features
     response.headers["Permissions-Policy"] = (

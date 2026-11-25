@@ -1,6 +1,7 @@
 """Owner and bearer-authorized APIs for expiring public web-map shares."""
 
 import logging
+import math
 from urllib.error import HTTPError, URLError
 import uuid
 
@@ -14,6 +15,7 @@ from gefapi.models import PublicShare
 from gefapi.routes.api.v1 import endpoints, error
 from gefapi.services.public_share_service import (
     PublicShareError,
+    _now,
     add_layers_to_share,
     complete_share_uploads,
     create_or_refresh_upload,
@@ -24,12 +26,14 @@ from gefapi.services.public_share_service import (
     get_share_storage_usage,
     get_tile_url,
     invoke_raster_tile,
+    load_public_token,
     load_viewer_session,
     mark_share_revoked,
     mint_public_link,
     open_tile_service,
     public_origin_matches,
     refresh_viewer_session,
+    tile_intersects_layer,
     verify_public_secret,
 )
 from gefapi.utils.bearer_auth import bearer_required
@@ -59,8 +63,15 @@ def _public_error(exc):
     return _public_json({"status": exc.status, "detail": exc.detail}, exc.status)
 
 
-def _public_share(share_id):
+def _public_share(share_id, token=None):
     ensure_public_shares_enabled()
+    if token is not None:
+        share = load_public_token(token)
+        return (
+            share
+            if share is not None and (share_id is None or str(share.id) == share_id)
+            else None
+        )
     cookie = request.cookies.get("te_share_session")
     share = load_viewer_session(share_id, cookie) if cookie else None
     if share is None:
@@ -361,14 +372,22 @@ def refresh_public_share_session(share_id):
 
 
 @endpoints.route("/public-shares/<share_id>/manifest", methods=["GET"])
-def get_public_share_manifest(share_id):
+@endpoints.route(
+    "/public-shares/s/<token>/manifest", methods=["GET"], defaults={"share_id": None}
+)
+def get_public_share_manifest(share_id, token=None):
     """Return only the validated presentation metadata for an authorized share."""
     try:
-        share = _public_share(share_id)
+        share = _public_share(share_id, token)
     except PublicShareError as exc:
         return _public_error(exc)
     if share is None:
         return _public_json({"status": 404, "detail": "Share is unavailable"}, 404)
+    tile_base = (
+        f"/api/v1/public-shares/tiles/{share.id}/{token}"
+        if token
+        else f"/api/v1/public-shares/{share.id}/tiles"
+    )
     return _public_json(
         {
             "data": {
@@ -389,7 +408,7 @@ def get_public_share_manifest(share_id):
                         "vector_metadata": layer.vector_metadata,
                         "tile_format": "pbf" if layer.kind == "vector" else "png",
                         "tiles": (
-                            f"/api/v1/public-shares/{share.id}/tiles/{layer.id}/"
+                            f"{tile_base}/{layer.id}/"
                             "{z}/{x}/{y}."
                             + ("pbf" if layer.kind == "vector" else "png")
                         ),
@@ -403,6 +422,15 @@ def get_public_share_manifest(share_id):
 
 
 @endpoints.route(
+    "/public-shares/tiles/<share_id>/<token>/<layer_id>/<int:z>/<int:x>/<int:y>.png",
+    methods=["GET"],
+)
+@endpoints.route(
+    "/public-shares/tiles/<share_id>/<token>/<layer_id>/<int:z>/<int:x>/<int:y>.pbf",
+    methods=["GET"],
+    defaults={"tile_format": "pbf"},
+)
+@endpoints.route(
     "/public-shares/<share_id>/tiles/<layer_id>/<int:z>/<int:x>/<int:y>.png",
     methods=["GET"],
 )
@@ -411,14 +439,15 @@ def get_public_share_manifest(share_id):
     methods=["GET"],
     defaults={"tile_format": "pbf"},
 )
-def get_public_share_tile(share_id, layer_id, z, x, y, tile_format="png"):
+def get_public_share_tile(share_id, layer_id, z, x, y, tile_format="png", token=None):
     """Authorize each tile before a bounded request to TiTiler or Martin."""
     try:
-        share = _public_share(share_id)
+        share = _public_share(share_id, token)
     except PublicShareError as exc:
         return _public_error(exc)
     if share is None:
         return _public_json({"status": 404, "detail": "Share is unavailable"}, 404)
+    share_id = str(share.id)
     maximum_zoom = SETTINGS["PUBLIC_SHARES"]["MAX_TILE_ZOOM"]
     if z < 0 or z > maximum_zoom or x < 0 or y < 0 or x >= 2**z or y >= 2**z:
         return _public_json({"status": 400, "detail": "Invalid tile coordinates"}, 400)
@@ -430,19 +459,21 @@ def get_public_share_tile(share_id, layer_id, z, x, y, tile_format="png"):
         or tile_format != ("pbf" if layer.kind == "vector" else "png")
     ):
         return _public_json({"status": 404, "detail": "Layer is unavailable"}, 404)
-    if layer.kind == "vector" and not (
-        layer.vector_metadata["minzoom"] <= z <= layer.vector_metadata["maxzoom"]
+    if not tile_intersects_layer(layer, z, x, y) or (
+        layer.kind == "vector"
+        and not layer.vector_metadata["minzoom"]
+        <= z
+        <= layer.vector_metadata["maxzoom"]
     ):
         response = Response(status=204)
-        response.headers.update(PUBLIC_RESPONSE_HEADERS)
-        response.headers["Vary"] = "Cookie"
+        _tile_headers(response, share, token)
         return response
     try:
         tile_service = (
             invoke_raster_tile(share, layer, z, x, y)
             if layer.kind == "raster"
             and SETTINGS["PUBLIC_SHARES"].get("TITILER_LAMBDA_ARN")
-            else open_tile_service(get_tile_url(share, layer, z, x, y), timeout=10)
+            else open_tile_service(get_tile_url(share, layer, z, x, y), timeout=32)
         )
         with tile_service as tile_response:
             content_type = tile_response.headers.get_content_type()
@@ -456,7 +487,7 @@ def get_public_share_tile(share_id, layer_id, z, x, y, tile_format="png"):
             )
             if (
                 status not in (200, 204)
-                or (status == 204 and (layer.kind != "vector" or tile))
+                or (status == 204 and tile)
                 or (status == 200 and content_type not in allowed_types)
                 or len(tile) > 2 * 1024 * 1024
                 or encoding not in (None, "gzip")
@@ -482,17 +513,20 @@ def get_public_share_tile(share_id, layer_id, z, x, y, tile_format="png"):
             layer_id,
             type(exc).__name__,
         )
-        status_code = (
-            503
-            if layer.kind == "vector" and isinstance(exc, HTTPError) and exc.code == 404
-            else 502
-        )
-        return _public_json(
-            {
-                "status": status_code,
-                "detail": "Tile service is temporarily unavailable",
-            },
-            status_code,
+        if isinstance(exc, TimeoutError) or (
+            isinstance(exc, URLError) and isinstance(exc.reason, TimeoutError)
+        ):
+            status_code = 504
+        elif isinstance(exc, HTTPError) and (
+            exc.code in (429, 503) or (layer.kind == "vector" and exc.code == 404)
+        ):
+            status_code = 503
+        elif isinstance(exc, HTTPError) and exc.code == 504:
+            status_code = 504
+        else:
+            status_code = 502
+        return _public_error(
+            PublicShareError(status_code, "Tile service is temporarily unavailable")
         )
     response = Response(
         tile,
@@ -505,6 +539,19 @@ def get_public_share_tile(share_id, layer_id, z, x, y, tile_format="png"):
     )
     if encoding and status == 200:
         response.headers["Content-Encoding"] = encoding
-    response.headers.update(PUBLIC_RESPONSE_HEADERS)
-    response.headers["Vary"] = "Cookie"
+    _tile_headers(response, share, token)
     return response
+
+
+def _tile_headers(response, share, token):
+    response.headers.update(PUBLIC_RESPONSE_HEADERS)
+    if token and SETTINGS["PUBLIC_SHARES"].get("CDN_DISTRIBUTION_ID"):
+        remaining = math.floor((share.expires_at - _now()).total_seconds()) - 1
+        ttl = max(0, min(4 * 86400, remaining))
+        if ttl:
+            response.headers["Cache-Control"] = (
+                f"public, max-age=0, s-maxage={ttl}, must-revalidate, "
+                "proxy-revalidate, stale-if-error=0"
+            )
+    elif not token:
+        response.headers["Vary"] = "Cookie"

@@ -157,6 +157,7 @@ def restrict_viewer_routes():
     if (
         request.path not in ("/_dash-layout", "/_dash-dependencies", "/health")
         and not request.path.startswith(("/assets/", "/_dash-component-suites/"))
+        and not re.fullmatch(r"/share/s/[A-Za-z0-9_-]{32,128}", request.path)
         and not re.fullmatch(r"/share/[0-9a-fA-F-]{36}", request.path)
     ):
         abort(404)

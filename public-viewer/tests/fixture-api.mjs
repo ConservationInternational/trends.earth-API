@@ -90,8 +90,9 @@ const vectorId = "22222222-2222-4222-8222-222222222222";
 // Like the real API, the manifest echoes what the plugin uploaded (title, layer
 // names, attribution and styles including legend labels) and only adds
 // server-generated fields. This fake API defines no display text of its own.
-function manifest(id, options) {
-  const base = `/api/v1/public-shares/${id}/tiles/`;
+function manifest(id, options, token) {
+  const base = token ? `/api/v1/public-shares/tiles/${id}/${token}/` :
+    `/api/v1/public-shares/${id}/tiles/`;
   const [raster, vector] = options.layers;
   return {
     id, title: options.title,
@@ -129,7 +130,13 @@ http.createServer(async (req, res) => {
     json(200, { id }); return;
   }
   requests.push({ path, method: req.method, origin: req.headers.origin, cookie: req.headers.cookie, body });
-  const match = path.match(/^\/api\/v1\/public-shares\/([^/]+)\/(.+)$/);
+  const tokenMatch = path.match(/^\/api\/v1\/public-shares\/s\/([^/]+)\/(.+)$/);
+  const tileMatch = path.match(/^\/api\/v1\/public-shares\/tiles\/([^/]+)\/([^/]+)\/(.+)$/);
+  const token = tokenMatch?.[1] || tileMatch?.[2];
+  const tokenId = token && [...shares.keys()].find((id) => id.replaceAll("-", "") === token);
+  const match = tokenMatch ? [path, tokenId, tokenMatch[2]] : tileMatch ?
+    [path, tokenId === tileMatch[1] ? tokenId : null, `tiles/${tileMatch[3]}`] :
+    path.match(/^\/api\/v1\/public-shares\/([^/]+)\/(.+)$/);
   if (!match || !shares.has(match[1])) { json(404, {}); return; }
   const [, id, action] = match;
   const options = shares.get(id);
@@ -142,7 +149,7 @@ http.createServer(async (req, res) => {
       `te_share_session=${id}; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/public-shares/${id}`);
     json(200, { data: { expires_in: 900 } }); return;
   }
-  if (options.unavailable || !req.headers.cookie?.includes(`te_share_session=${id}`)) {
+  if (options.unavailable || (!token && !req.headers.cookie?.includes(`te_share_session=${id}`))) {
     json(404, {}); return;
   }
   if (action === "session/refresh") {
@@ -152,7 +159,7 @@ http.createServer(async (req, res) => {
   }
   if (action === "manifest") {
     if (options.manifestFailure) { json(503, {}); return; }
-    const data = manifest(id, options);
+    const data = manifest(id, options, token);
     if (options.maliciousUrl) data.layers[0].tiles = "https://external.invalid/{z}/{x}/{y}.png";
     json(200, { data }); return;
   }

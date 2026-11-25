@@ -8,7 +8,7 @@ from flask import has_request_context, request
 from flask_limiter.util import get_remote_address
 import rollbar
 
-from gefapi.utils import mask_email
+from gefapi.utils import mask_email, redact_public_share_url
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +74,8 @@ def log_security_event(
                 "user_agent": request.headers.get("User-Agent", "Unknown"),
                 "endpoint": request.endpoint,
                 "method": request.method,
-                "url": request.url,
-                "path": request.path,
+                "url": redact_public_share_url(request.url),
+                "path": redact_public_share_url(request.path),
             }
         except Exception as e:
             logger.debug(f"Failed to gather request context: {e}")

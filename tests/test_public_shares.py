@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import logging
 from pathlib import Path
 import shutil
 import struct
@@ -48,6 +49,7 @@ def public_share_config(monkeypatch, app):
         "PUBLIC_ORIGIN": "https://viewer.example",
         "TITILER_INTERNAL_URL": "http://titiler:8000/",
         "TITILER_LAMBDA_ARN": None,
+        "CDN_DISTRIBUTION_ID": None,
         "MARTIN_INTERNAL_URL": "http://martin:3000/",
         "SESSION_SECRET": "share-session-test-secret-" * 2,
         "MAX_VIEWER_SESSION_LIFETIME_SECONDS": 86400,
@@ -327,16 +329,16 @@ def test_publish_expiry_rotation_and_revocation_invalidate_sessions(
     db.session.commit()
 
     link = mint_public_link(share)
-    secret = link.split("#", 1)[1]
+    secret = link.rsplit("/", 1)[1]
     cookie = create_viewer_session(share)
-    assert link.startswith(f"https://viewer.example/share/{share.id}#")
+    assert link.startswith("https://viewer.example/share/s/") and "#" not in link
     assert share.expires_at - share.ready_at == timedelta(days=7)
     assert share.token_hash != secret
     assert load_viewer_session(share.id, cookie) is not None
 
     rotated_link = mint_public_link(share, rotate=True)
     assert load_viewer_session(share.id, cookie) is None
-    assert rotated_link.split("#", 1)[1] != secret
+    assert rotated_link.rsplit("/", 1)[1] != secret
     assert share.expires_at - share.ready_at == timedelta(days=7)
 
     share.state = "revoked"
@@ -354,7 +356,7 @@ def test_owner_can_view_current_link_until_rotation_or_revocation(
 
     assert client.get(url, headers=_headers(regular_user)).status_code == 409
     link = mint_public_link(share)
-    assert share.link_ciphertext and link.split("#", 1)[1] not in share.link_ciphertext
+    assert share.link_ciphertext and link.rsplit("/", 1)[1] not in share.link_ciphertext
 
     response = client.get(url, headers=_headers(regular_user))
     assert response.status_code == 200
@@ -391,7 +393,7 @@ def test_fragment_exchange_sets_scoped_cookie_and_manifest_is_safe(
     layer.crs = "EPSG:4326"
     db.session.commit()
     link = mint_public_link(share)
-    secret = link.split("#", 1)[1]
+    secret = link.rsplit("/", 1)[1]
 
     exchange = client.post(
         f"/api/v1/public-shares/{share.id}/session",
@@ -450,6 +452,220 @@ def test_fragment_exchange_sets_scoped_cookie_and_manifest_is_safe(
     assert manifest.status_code == 404
 
 
+def test_path_token_needs_no_cookie_and_rotation_revocation_expiry_deny_access(
+    app, client, regular_user, public_share_config, monkeypatch
+):
+    from gefapi.routes.api.v1 import public_shares as routes
+    from gefapi.services.public_share_service import get_public_link
+
+    share = create_share(regular_user, _payload())
+    share.state = "ready"
+    layer = share.layers[0]
+    layer.checksum_sha256 = layer.expected_sha256
+    layer.published = True
+    db.session.commit()
+    link = mint_public_link(share)
+    token = link.rsplit("/", 1)[1]
+    manifest_url = f"/api/v1/public-shares/s/{token}/manifest"
+    manifest = client.get(manifest_url)
+    assert manifest.status_code == 200 and "Set-Cookie" not in manifest.headers
+    assert manifest.headers["Cache-Control"] == "no-store"
+    tile_url = manifest.json["data"]["layers"][0]["tiles"].format(z=0, x=0, y=0)
+    upstream = Mock(return_value=_upstream(b"png", "image/png"))
+    monkeypatch.setattr(routes, "open_tile_service", upstream)
+    assert client.get(tile_url).status_code == 200
+    assert (
+        client.get(tile_url.replace(str(share.id), str(uuid.uuid4()))).status_code
+        == 404
+    )
+    assert client.get(manifest_url.replace(token, "x" * 43)).status_code == 404
+    assert client.get(f"/api/v1/public-shares/{share.id}/manifest").status_code == 404
+    assert get_public_link(share) == link
+
+    new_token = mint_public_link(share, rotate=True).rsplit("/", 1)[1]
+    assert client.get(manifest_url).status_code == 404
+    assert client.get(tile_url).status_code == 404
+    manifest_url = manifest_url.replace(token, new_token)
+    tile_url = tile_url.replace(token, new_token)
+    assert client.get(manifest_url).status_code == 200
+    share.expires_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=1)
+    db.session.commit()
+    assert client.get(manifest_url).status_code == 404
+    assert client.get(tile_url).status_code == 404
+    share.expires_at += timedelta(days=1)
+    db.session.commit()
+    mark_share_revoked(share)
+    assert client.get(manifest_url).status_code == 404
+    assert client.get(tile_url).status_code == 404
+
+
+def test_public_token_paths_are_excluded_from_access_logs_and_redacted_in_events():
+    from gefapi.utils import redact_public_share_url
+
+    spec = importlib.util.spec_from_file_location(
+        "public_share_gunicorn", Path(__file__).parents[1] / "gunicorn.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    token = "a" * 43
+    for path in [
+        f"/api/v1/public-shares/s/{token}/manifest",
+        f"/api/v1/public-shares/tiles/share-id/{token}/layer/0/0/0.png",
+    ]:
+        assert token not in redact_public_share_url(f"https://viewer.example{path}")
+        record = logging.LogRecord(
+            "access", logging.INFO, "", 1, "%(U)s", ({"U": path},), None
+        )
+        assert module.PublicShareAccessFilter().filter(record) is False
+    record.args = {"U": "/health"}
+    assert module.PublicShareAccessFilter().filter(record) is True
+
+
+def test_cdn_cache_lifetime_is_four_days_or_remaining_expiry_and_purges_all_tokens(
+    app, client, regular_user, public_share_config, monkeypatch
+):
+    from gefapi.routes.api.v1 import public_shares as routes
+    from gefapi.services import public_share_service as service
+
+    share = create_share(regular_user, _payload())
+    _publish_vector(share, monkeypatch, client)
+    token = service.get_public_link(share).rsplit("/", 1)[1]
+    url = (
+        f"/api/v1/public-shares/tiles/{share.id}/{token}/{share.layers[0].id}/0/0/0.png"
+    )
+    upstream = Mock(return_value=_upstream(b"png", "image/png"))
+    monkeypatch.setattr(routes, "open_tile_service", upstream)
+    monkeypatch.setitem(SETTINGS["PUBLIC_SHARES"], "CDN_DISTRIBUTION_ID", "E123")
+    response = client.get(url)
+    assert response.status_code == 200
+    assert response.cache_control.s_maxage == 4 * 86400
+    assert response.cache_control.max_age == 0
+    assert "Vary" not in response.headers or "Cookie" not in response.headers["Vary"]
+    share.expires_at = service._now() + timedelta(seconds=100)
+    db.session.commit()
+    response = client.get(url)
+    assert 95 <= response.cache_control.s_maxage < 100
+
+    monkeypatch.setattr(routes, "open_tile_service", Mock(side_effect=TimeoutError()))
+    response = client.get(url)
+    assert response.status_code == 504
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Retry-After"] == "1"
+
+    sdk = Mock()
+    monkeypatch.setattr(service.boto3, "client", Mock(return_value=sdk))
+    mint_public_link(share, rotate=True)
+    mark_share_revoked(share)
+    assert sdk.create_invalidation.call_count == 2
+    options = sdk.create_invalidation.call_args.kwargs
+    assert options["DistributionId"] == "E123"
+    assert options["InvalidationBatch"]["Paths"]["Items"] == [
+        f"/api/v1/public-shares/tiles/{share.id}/*"
+    ]
+    sdk.create_invalidation.side_effect = botocore.exceptions.ClientError(
+        {"Error": {"Code": "AccessDenied", "Message": "denied"}}, "CreateInvalidation"
+    )
+    with pytest.raises(PublicShareError, match="CDN invalidation failed"):
+        mark_share_revoked(share)
+    assert share.state == "revoked"
+    sdk.create_invalidation.side_effect = None
+    mark_share_revoked(share)
+    assert sdk.create_invalidation.call_count == 4
+
+
+@pytest.mark.parametrize("kind", ["raster", "vector"])
+def test_tiles_outside_layer_bounds_are_empty_without_invoking_renderer(
+    app, client, regular_user, public_share_config, monkeypatch, kind
+):
+    from gefapi.routes.api.v1 import public_shares as routes
+
+    share = create_share(
+        regular_user, _payload() if kind == "raster" else _vector_payload()
+    )
+    _publish_vector(share, monkeypatch, client)
+    layer = share.layers[0]
+    layer.bounds = [10, 10, 20, 20]
+    db.session.commit()
+    upstream = Mock(
+        return_value=_upstream(
+            b"tile", "image/png" if kind == "raster" else "application/x-protobuf"
+        )
+    )
+    monkeypatch.setattr(routes, "open_tile_service", upstream)
+    extension = "png" if kind == "raster" else "pbf"
+    base = f"/api/v1/public-shares/{share.id}/tiles/{layer.id}"
+    assert client.get(f"{base}/2/0/0.{extension}").status_code == 204
+    upstream.assert_not_called()
+    assert client.get(f"{base}/0/0/0.{extension}").status_code == 200
+
+
+def test_cleanup_retries_account_deletion_cache_invalidation_before_removing_share(
+    app, client, regular_user, public_share_config, monkeypatch
+):
+    from gefapi.services import public_share_service as service
+    from gefapi.tasks.public_shares import cleanup_public_shares_task
+
+    share = create_share(regular_user, _payload())
+    _publish_vector(share, monkeypatch, client)
+    share_id = share.id
+    share.user_id = None
+    share.state = "revoked"
+    share.token_hash = None
+    db.session.commit()
+    monkeypatch.setitem(SETTINGS["PUBLIC_SHARES"], "CDN_DISTRIBUTION_ID", "E123")
+    cdn = Mock()
+    cdn.create_invalidation.side_effect = botocore.exceptions.ClientError(
+        {"Error": {"Code": "ServiceUnavailable", "Message": "retry"}},
+        "CreateInvalidation",
+    )
+    storage = Mock()
+    storage.get_paginator.return_value.paginate.return_value = []
+    monkeypatch.setattr(service, "_s3_client", lambda: storage)
+    monkeypatch.setattr(service.boto3, "client", Mock(return_value=cdn))
+    assert cleanup_public_shares_task.run() == {"cleaned": 0, "failures": 1}
+    storage.delete_object.assert_not_called()
+    assert PublicShare.query.filter_by(id=share_id).one().cleanup_error
+    cdn.create_invalidation.side_effect = None
+    assert cleanup_public_shares_task.run() == {"cleaned": 1, "failures": 0}
+    assert PublicShare.query.filter_by(id=share_id).first() is None
+    storage.delete_object.assert_called_once()
+
+
+def test_token_index_migration_preserves_existing_capabilities(monkeypatch):
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    import sqlalchemy as sa
+
+    path = (
+        Path(__file__).parents[1]
+        / "migrations/versions/ce4a8f2d109b_index_public_share_tokens.py"
+    )
+    spec = importlib.util.spec_from_file_location("token_index_migration", path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text("CREATE TABLE public_share (token_hash VARCHAR(64))")
+        )
+        connection.execute(
+            sa.text("INSERT INTO public_share VALUES ('existing-hash'), (NULL)")
+        )
+        monkeypatch.setattr(
+            migration, "op", Operations(MigrationContext.configure(connection))
+        )
+        migration.upgrade()
+        assert sa.inspect(connection).get_indexes("public_share")[0][
+            "column_names"
+        ] == ["token_hash"]
+        migration.downgrade()
+        assert not sa.inspect(connection).get_indexes("public_share")
+        assert connection.execute(
+            sa.text("SELECT token_hash FROM public_share")
+        ).scalars().all() == ["existing-hash", None]
+    engine.dispose()
+
+
 def test_refresh_preserves_absolute_session_lifetime_and_rejects_expired_cookie(
     app, client, regular_user, public_share_config
 ):
@@ -463,7 +679,7 @@ def test_refresh_preserves_absolute_session_lifetime_and_rejects_expired_cookie(
     link = mint_public_link(share)
     exchanged = client.post(
         f"/api/v1/public-shares/{share.id}/session",
-        json={"secret": link.split("#", 1)[1]},
+        json={"secret": link.rsplit("/", 1)[1]},
         headers={"Origin": "https://viewer.example"},
     )
     assert exchanged.status_code == 200
@@ -681,7 +897,7 @@ def _publish_vector(share, monkeypatch, client):
     link = mint_public_link(share)
     response = client.post(
         f"/api/v1/public-shares/{share.id}/session",
-        json={"secret": link.split("#")[1]},
+        json={"secret": link.rsplit("/", 1)[1]},
         headers={"Origin": "https://viewer.example"},
     )
     assert response.status_code == 200
@@ -749,6 +965,7 @@ def test_authorized_raster_lambda_invocation(
     assert sdk_factory.call_args.kwargs["region_name"] == "us-east-1"
     config = sdk_factory.call_args.kwargs["config"]
     assert config.retries["total_max_attempts"] == 1
+    assert config.read_timeout == 32
     sdk.invoke.reset_mock()
     assert client.get(url.replace("/0/0/0.", "/0/1/0.")).status_code == 400
     assert client.get(url.replace(".png", ".pbf")).status_code == 404
@@ -824,6 +1041,9 @@ def test_lambda_tile_failures_are_explicit_and_do_not_fall_back_to_http(
     )
     assert response.status_code == (503 if problem == "throttled" else 502)
     assert response.headers["Cache-Control"] == "no-store"
+    if problem == "throttled":
+        assert sdk.invoke.call_count == 3
+        assert response.headers["Retry-After"] == "1"
     http.assert_not_called()
 
 
@@ -837,6 +1057,88 @@ def test_malformed_lambda_configuration_fails_closed(
     )
     with pytest.raises(PublicShareError, match="Lambda is not configured safely"):
         service.ensure_public_shares_enabled()
+
+
+@pytest.mark.parametrize("status", [204, 503, 504])
+def test_lambda_empty_and_transient_statuses_are_preserved(
+    app, client, regular_user, public_share_config, monkeypatch, status
+):
+    from gefapi.services import public_share_service as service
+
+    share = create_share(regular_user, _payload())
+    _publish_vector(share, monkeypatch, client)
+    monkeypatch.setitem(
+        SETTINGS["PUBLIC_SHARES"],
+        "TITILER_LAMBDA_ARN",
+        "arn:aws:lambda:us-east-1:123456789012:function:share-tiler:live",
+    )
+    sdk = Mock()
+    sdk.invoke.return_value = {
+        "StatusCode": 200,
+        "Payload": io.BytesIO(
+            json.dumps(
+                {
+                    "statusCode": status,
+                    "headers": {"content-type": "application/json"},
+                    "body": "" if status == 204 else '{"detail":"renderer error"}',
+                }
+            ).encode()
+        ),
+    }
+    monkeypatch.setattr(service.boto3, "client", Mock(return_value=sdk))
+    response = client.get(
+        f"/api/v1/public-shares/{share.id}/tiles/{share.layers[0].id}/0/0/0.png"
+    )
+    assert response.status_code == status
+    if status == 204:
+        assert not response.data
+    else:
+        assert response.headers["Retry-After"] == "1"
+
+
+def test_lambda_throttle_retry_can_recover_and_read_timeout_is_504(
+    app, client, regular_user, public_share_config, monkeypatch
+):
+    from gefapi.services import public_share_service as service
+
+    share = create_share(regular_user, _payload())
+    _publish_vector(share, monkeypatch, client)
+    monkeypatch.setitem(
+        SETTINGS["PUBLIC_SHARES"],
+        "TITILER_LAMBDA_ARN",
+        "arn:aws:lambda:us-east-1:123456789012:function:share-tiler:live",
+    )
+    sdk = Mock()
+    sdk.invoke.side_effect = [
+        botocore.exceptions.ClientError(
+            {"Error": {"Code": "TooManyRequestsException"}}, "Invoke"
+        ),
+        {
+            "StatusCode": 200,
+            "Payload": io.BytesIO(
+                json.dumps(
+                    {
+                        "statusCode": 204,
+                        "headers": {},
+                        "body": "",
+                    }
+                ).encode()
+            ),
+        },
+    ]
+    monkeypatch.setattr(service.boto3, "client", Mock(return_value=sdk))
+    sleep = Mock()
+    monkeypatch.setattr(service.time, "sleep", sleep)
+    url = f"/api/v1/public-shares/{share.id}/tiles/{share.layers[0].id}/0/0/0.png"
+    assert client.get(url).status_code == 204
+    assert sdk.invoke.call_count == 2
+    assert 0.05 <= sleep.call_args.args[0] <= 0.1
+    sdk.invoke.side_effect = botocore.exceptions.ReadTimeoutError(
+        endpoint_url="private"
+    )
+    response = client.get(url)
+    assert response.status_code == 504
+    assert response.headers["Retry-After"] == "1"
 
 
 @pytest.mark.parametrize("size,expected", [(2 * 1024**2, 200), (2 * 1024**2 + 1, 502)])

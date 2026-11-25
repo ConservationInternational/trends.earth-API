@@ -10,7 +10,7 @@ from flask_limiter.util import get_remote_address
 import rollbar
 
 from gefapi.config import SETTINGS
-from gefapi.utils import mask_email
+from gefapi.utils import mask_email, redact_public_share_url
 from gefapi.utils.permissions import is_admin_or_higher
 from gefapi.utils.security_events import log_rate_limit_exceeded
 
@@ -335,7 +335,7 @@ def create_rate_limit_response(retry_after=None, limit_details=None):
     user_info = None
     user_id = None
     ip_address = get_remote_address()
-    endpoint = request.path or request.endpoint
+    endpoint = redact_public_share_url(request.path) or request.endpoint
 
     # Try to get current user information
     try:
@@ -365,7 +365,7 @@ def create_rate_limit_response(retry_after=None, limit_details=None):
             "endpoint": endpoint,
             "user_agent": request.headers.get("User-Agent"),
             "method": request.method,
-            "url": request.url,
+            "url": redact_public_share_url(request.url),
             "retry_after": retry_after,
             "user_info": user_info,
         }
@@ -420,7 +420,11 @@ def create_rate_limit_response(retry_after=None, limit_details=None):
         )
 
         raw_limit_key = metadata.get("limit_key")
-        limit_key = raw_limit_key if isinstance(raw_limit_key, str) else None
+        limit_key = (
+            redact_public_share_url(raw_limit_key)
+            if isinstance(raw_limit_key, str)
+            else None
+        )
 
         RateLimitEventService.record_event(
             rate_limit_type=rate_limit_type,

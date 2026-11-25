@@ -40,8 +40,8 @@ function textElement(tag, text, className) {
   return element;
 }
 
-function validateManifest(data, shareId) {
-  if (!data || data.id !== shareId || typeof data.title !== "string" ||
+function validateManifest(data, shareId, token) {
+  if (!data || !UUID.test(data.id) || (shareId && data.id !== shareId) || typeof data.title !== "string" ||
       !Number.isFinite(Date.parse(data.expires_at)) || !Array.isArray(data.layers) ||
       data.layers.length < 1) {
     throw new ViewerError(502, "The map manifest is invalid.");
@@ -49,7 +49,9 @@ function validateManifest(data, shareId) {
   const ids = new Set();
   for (const layer of data.layers) {
     const extension = layer.kind === "vector" ? "pbf" : "png";
-    const expected = `/api/v1/public-shares/${shareId}/tiles/${layer.id}/{z}/{x}/{y}.${extension}`;
+    const tileBase = token ? `/api/v1/public-shares/tiles/${data.id}/${token}` :
+      `/api/v1/public-shares/${shareId}/tiles`;
+    const expected = `${tileBase}/${layer.id}/{z}/{x}/{y}.${extension}`;
     if (!UUID.test(layer.id) || ids.has(layer.id) || !["raster", "vector"].includes(layer.kind) ||
         layer.tile_format !== extension || layer.tiles !== expected ||
         typeof layer.name !== "string" || typeof layer.attribution !== "string" ||
@@ -168,12 +170,14 @@ function legend(layer) {
 export async function start(initialSecret, hadFragment) {
   const map = new Map({
     target: "map",
+    maxTilesLoading: 6,
     controls: defaultControls({ attribution: true, attributionOptions: { collapsible: true }, rotate: false }),
     view: new View({ center: fromLonLat([0, 0]), zoom: 2, minZoom: 0, maxZoom: 22 }),
   });
   $("map").setAttribute("aria-label", "Interactive map. Arrow keys pan; plus and minus zoom.");
   const match = location.pathname.match(/^\/share\/([^/]+)$/);
   const shareId = match?.[1];
+  const token = location.pathname.match(/^\/share\/s\/([A-Za-z0-9_-]{32,128})$/)?.[1];
   let manifest = null;
   let records = [];
   let stopped = false;
@@ -182,7 +186,9 @@ export async function start(initialSecret, hadFragment) {
   let expiryTimer = null;
   let sessionDeadline = 0;
   const pending = new Set();
-  const base = `/api/v1/public-shares/${shareId}`;
+  const tileQueue = [];
+  let activeTiles = 0;
+  const base = `/api/v1/public-shares/${token ? `s/${token}` : shareId}`;
   const basemap = createBasemapLayer(DEFAULT_BASEMAP);
   const borders = createBorderLayer(BASEMAPS[DEFAULT_BASEMAP].borders);
 
@@ -223,7 +229,7 @@ export async function start(initialSecret, hadFragment) {
     clearTimeout(expiryTimer);
     if (stopped || !manifest) return;
     const shareExpiry = Date.parse(manifest.expires_at);
-    const deadline = Math.min(shareExpiry, sessionDeadline);
+    const deadline = token ? shareExpiry : Math.min(shareExpiry, sessionDeadline);
     if (Date.now() >= deadline) {
       stop(shareExpiry <= Date.now() ? "This shared map has expired." :
         "This viewer session has expired. Open the original current link to authorize again.");
@@ -245,7 +251,7 @@ export async function start(initialSecret, hadFragment) {
   async function request(path, { method = "GET", body, tile = false } = {}) {
     const controller = new AbortController();
     pending.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), tile ? 45000 : 15000);
     try {
       const response = await fetch(path, {
         method, body: body ? JSON.stringify(body) : undefined,
@@ -253,7 +259,14 @@ export async function start(initialSecret, hadFragment) {
         credentials: "same-origin", cache: "no-store", redirect: "error",
         referrerPolicy: "no-referrer", signal: controller.signal,
       });
-      if (!response.ok) throw new ViewerError(response.status, "Map request failed.");
+      if (!response.ok) {
+        const error = new ViewerError(response.status, "Map request failed.");
+        const retryAfter = response.headers.get("Retry-After");
+        const seconds = Number(retryAfter);
+        error.retryAfter = Math.max(0, Math.min(30000, Number.isFinite(seconds) ?
+          seconds * 1000 : Date.parse(retryAfter) - Date.now())) || 0;
+        throw error;
+      }
       if (tile && response.status === 204) return null;
       const type = response.headers.get("Content-Type")?.split(";")[0];
       const expected = tile ?
@@ -289,6 +302,28 @@ export async function start(initialSecret, hadFragment) {
     }
   }
 
+  async function requestTile(url, isCurrent) {
+    if (activeTiles >= 6) await new Promise((resolve) => tileQueue.push(resolve));
+    else activeTiles++;
+    try {
+      for (let attempt = 0; ; attempt++) {
+        if (stopped || !isCurrent()) return null;
+        try {
+          return await request(url, { tile: true });
+        } catch (error) {
+          const retryable = [429, 502, 503, 504].includes(error.status) || error instanceof TypeError;
+          if (stopped || !isCurrent() || !retryable || attempt >= 2) throw error;
+          const delay = Math.max(error.retryAfter || 0, 500 * 2 ** attempt * (1 + Math.random()));
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    } finally {
+      const resume = tileQueue.shift();
+      if (resume) resume();
+      else activeTiles--;
+    }
+  }
+
   function selectFeature(feature, layerName) {
     $("selection").hidden = false;
     $("attributes").replaceChildren(textElement("dt", "Layer"), textElement("dd", layerName));
@@ -312,8 +347,11 @@ export async function start(initialSecret, hadFragment) {
     let grid;
     async function loadTile(tile, url, tileExtent, projection) {
       try {
-        const result = await request(url, { tile: true });
-        if (stopped || !map.getLayers().getArray().includes(grid)) return;
+        const result = await requestTile(url, () => map.getLayers().getArray().includes(grid));
+        if (stopped || !map.getLayers().getArray().includes(grid)) {
+          tile.setState(TileState.EMPTY);
+          return;
+        }
         if (!result) {
           if (vector) tile.setFeatures([]);
           else tile.setState(TileState.EMPTY);
@@ -340,7 +378,7 @@ export async function start(initialSecret, hadFragment) {
         }
       } catch (error) {
         tile.setState(TileState.ERROR);
-        failure(error);
+        if (map.getLayers().getArray().includes(grid)) failure(error);
       }
     }
     const sourceOptions = {
@@ -464,6 +502,7 @@ export async function start(initialSecret, hadFragment) {
   }
 
   async function refresh() {
+    if (token) return;
     const result = await request(`${base}/session/refresh`, { method: "POST" });
     if (!Number.isFinite(result.data?.expires_in) || result.data.expires_in <= 0) {
       throw new ViewerError(502, "Invalid session response.");
@@ -480,7 +519,7 @@ export async function start(initialSecret, hadFragment) {
     }
     busy = true;
     try {
-      if (sessionDeadline - Date.now() < 60000) await refresh();
+      if (!token && sessionDeadline - Date.now() < 60000) await refresh();
       await request(`${base}/manifest`);
     } catch (error) { failure(error); }
     finally {
@@ -496,7 +535,7 @@ export async function start(initialSecret, hadFragment) {
     status("Loading shared map...", "loading");
     try {
       await refresh();
-      manifest = validateManifest((await request(`${base}/manifest`)).data, shareId);
+      manifest = validateManifest((await request(`${base}/manifest`)).data, shareId, token);
       if (Date.now() >= Date.parse(manifest.expires_at)) { stop("This shared map has expired."); return; }
       enforceExpiry();
       if (stopped) return;
@@ -562,12 +601,13 @@ export async function start(initialSecret, hadFragment) {
   window.addEventListener("pageshow", (event) => {
     if (event.persisted) { enforceExpiry(); poll(); }
   });
-  if (!UUID.test(shareId || "") || (hadFragment && !/^[A-Za-z0-9_-]{32,128}$/.test(initialSecret))) {
+  if ((!token && !UUID.test(shareId || "")) ||
+      (hadFragment && !/^[A-Za-z0-9_-]{32,128}$/.test(initialSecret))) {
     initialSecret = null;
     stop("This share link is invalid. Open the full original link supplied by its owner.");
     return;
   }
-  if (initialSecret) {
+  if (initialSecret && !token) {
     try { await request(`${base}/session`, { method: "POST", body: { secret: initialSecret } }); }
     catch (error) {
       initialSecret = null;

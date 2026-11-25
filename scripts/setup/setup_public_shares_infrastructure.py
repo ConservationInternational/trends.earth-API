@@ -30,6 +30,7 @@ from botocore.exceptions import ClientError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TILER_TEMPLATE = REPO_ROOT / "cloud_functions" / "titiler_cogs" / "template.yaml"
+CDN_TEMPLATE = REPO_ROOT / "config" / "public-shares" / "cdn.yaml"
 SAM_BUILD_DIR = REPO_ROOT / ".aws-sam" / "public-viewer-tiler"
 GITHUB_REPO = "ConservationInternational/trends.earth-API"
 VIEWER_REPOSITORIES = ("trendsearth-public-viewer", "trendsearth-public-viewer-gateway")
@@ -693,7 +694,15 @@ class Provisioner:
             )
             names += detail["Certificate"].get("SubjectAlternativeNames", [])
         host = self.args.viewer_host
-        if not any(
+        if not self.certificate_covers(names):
+            sys.exit(
+                f"No HTTPS listener certificate covers {host}; add one in ACM first"
+            )
+        self.ok(f"listener certificate covers {host}")
+
+    def certificate_covers(self, names):
+        host = self.args.viewer_host
+        return any(
             name == host
             or (
                 name.startswith("*.")
@@ -701,11 +710,7 @@ class Provisioner:
                 and host.count(".") == name.count(".")
             )
             for name in names
-        ):
-            sys.exit(
-                f"No HTTPS listener certificate covers {host}; add one in ACM first"
-            )
-        self.ok(f"listener certificate covers {host}")
+        )
 
     def ensure_ingress(self, ec2, alb_groups, targets):
         instances = ec2.describe_instances(InstanceIds=targets)["Reservations"]
@@ -761,7 +766,7 @@ class Provisioner:
 
     def ensure_dns(self):
         self.step(f"DNS for {self.args.viewer_host}")
-        target = self.outputs.get("alb_dns")
+        target = self.outputs.get("cdn_domain")
         if not self.args.route53_zone_id:
             self.ok("no --route53-zone-id given")
             self.manual_steps.append(
@@ -789,6 +794,129 @@ class Provisioner:
                 },
             ),
         )
+
+    def cdn_certificate(self):
+        """Find or request the viewer's us-east-1 CloudFront certificate."""
+        acm = self.session.client("acm", region_name="us-east-1")
+        arn = self.args.cdn_certificate_arn
+        if not arn:
+            candidates = acm.get_paginator("list_certificates").paginate(
+                CertificateStatuses=["ISSUED", "PENDING_VALIDATION"],
+                Includes={
+                    "keyTypes": ["RSA_2048", "RSA_3072", "RSA_4096", "EC_prime256v1"]
+                },
+            )
+            for page in candidates:
+                for item in page["CertificateSummaryList"]:
+                    names = item.get("SubjectAlternativeNameSummaries", [])
+                    if self.certificate_covers(names):
+                        arn = item["CertificateArn"]
+                        break
+                if arn:
+                    break
+        if not arn:
+            arn = acm.request_certificate(
+                DomainName=self.args.viewer_host,
+                ValidationMethod="DNS",
+                IdempotencyToken=f"teviewer{self.env}",
+                Tags=[{"Key": k, "Value": v} for k, v in self.tags().items()],
+            )["CertificateArn"]
+        if arn.split(":")[3] != "us-east-1":
+            sys.exit("The CloudFront certificate must be in us-east-1")
+        detail = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        if detail["Status"] == "ISSUED":
+            if not self.certificate_covers(detail["SubjectAlternativeNames"]):
+                sys.exit("The CloudFront certificate does not cover the viewer host")
+            return arn
+        records = [
+            item["ResourceRecord"]
+            for item in detail.get("DomainValidationOptions", [])
+            if "ResourceRecord" in item
+        ]
+        if self.args.route53_zone_id and records:
+            self.client("route53").change_resource_record_sets(
+                HostedZoneId=self.args.route53_zone_id,
+                ChangeBatch={
+                    "Changes": [
+                        {
+                            "Action": "UPSERT",
+                            "ResourceRecordSet": {
+                                "Name": record["Name"],
+                                "Type": record["Type"],
+                                "TTL": 300,
+                                "ResourceRecords": [{"Value": record["Value"]}],
+                            },
+                        }
+                        for record in {
+                            record["Name"]: record for record in records
+                        }.values()
+                    ]
+                },
+            )
+        else:
+            for record in records:
+                print(f"  ACM DNS validation: {record['Name']} CNAME {record['Value']}")
+        sys.exit(
+            f"CloudFront certificate {arn} is {detail['Status']}. "
+            "Complete DNS validation, wait for ISSUED, then re-run this script."
+        )
+
+    def ensure_cdn(self):
+        self.step(
+            "CloudFront CDN (four-day maximum tile cache; viewer/session uncached)"
+        )
+
+        def deploy():
+            certificate = self.cdn_certificate()
+            cfn = self.session.client("cloudformation", region_name="us-east-1")
+            stack = f"trendsearth-public-viewer-cdn-{self.env}"
+            parameters = {
+                "ViewerHost": self.args.viewer_host,
+                "AlbDomainName": self.outputs["alb_dns"],
+                "CertificateArn": certificate,
+                "ApiRoleName": self.api_role,
+            }
+            options = {
+                "StackName": stack,
+                "TemplateBody": CDN_TEMPLATE.read_text(),
+                "Parameters": [
+                    {"ParameterKey": key, "ParameterValue": value}
+                    for key, value in parameters.items()
+                ],
+                "Capabilities": ["CAPABILITY_IAM"],
+                "Tags": [
+                    {"Key": key, "Value": value} for key, value in self.tags().items()
+                ],
+            }
+            try:
+                cfn.describe_stacks(StackName=stack)
+            except ClientError as error:
+                if "does not exist" not in str(error):
+                    raise
+                cfn.create_stack(**options)
+                cfn.get_waiter("stack_create_complete").wait(StackName=stack)
+            else:
+                try:
+                    cfn.update_stack(**options)
+                except ClientError as error:
+                    if "No updates are to be performed" not in str(error):
+                        raise
+                else:
+                    cfn.get_waiter("stack_update_complete").wait(StackName=stack)
+            outputs = {
+                item["OutputKey"]: item["OutputValue"]
+                for item in cfn.describe_stacks(StackName=stack)["Stacks"][0]["Outputs"]
+            }
+            self.outputs["cdn_domain"] = outputs["DomainName"]
+            self.outputs["cdn_distribution"] = outputs["DistributionId"]
+            self.ok(f"CloudFront distribution {outputs['DistributionId']}")
+
+        self.change(
+            "deploy CDN, certificate, tile cache and invalidation IAM policy",
+            deploy,
+        )
+        if not self.apply:
+            self.outputs["cdn_domain"] = "<CloudFront DomainName output>"
 
     # ------------------------------------------------------------------
     # GitHub
@@ -872,6 +1000,13 @@ class Provisioner:
             sys.exit("No TiTiler Lambda ARN available; deploy the tiler first")
         else:
             print("  [plan] set PUBLIC_SHARES_TITILER_LAMBDA_ARN from the SAM output")
+        distribution = self.outputs.get("cdn_distribution")
+        if distribution:
+            desired["PUBLIC_SHARES_CDN_DISTRIBUTION_ID"] = distribution
+        elif self.apply:
+            sys.exit("No CloudFront distribution available; deploy the CDN first")
+        else:
+            print("  [plan] set PUBLIC_SHARES_CDN_DISTRIBUTION_ID from the CDN output")
 
         for name, value in desired.items():
             if variables.get(name) == value:
@@ -963,6 +1098,7 @@ class Provisioner:
         else:
             self.ensure_tiler()
         self.ensure_load_balancer()
+        self.ensure_cdn()
         self.ensure_dns()
         if not self.args.skip_github:
             self.ensure_github_settings(variables, secret_names)
@@ -1020,7 +1156,11 @@ def parse_args(argv=None):
         "--route53-zone-id", help="Create the viewer CNAME in this zone"
     )
     parser.add_argument("--sam-cli", default="sam")
-    parser.add_argument("--tiler-reserved-concurrency", type=int, default=20)
+    parser.add_argument(
+        "--cdn-certificate-arn",
+        help="Viewer's us-east-1 ACM certificate (default: discover or request)",
+    )
+    parser.add_argument("--tiler-reserved-concurrency", type=int, default=50)
     parser.add_argument("--rotate-martin-key", action="store_true")
     parser.add_argument(
         "--rotate-session-secret",

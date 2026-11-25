@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 
 const secret = "a".repeat(43);
+const pathToken = (id) => id.replaceAll("-", "");
 const fixtureUrl = `http://127.0.0.1:${process.env.FIXTURE_PORT || 18952}`;
 const vectorCanvas = ".layer-22222222-2222-4222-8222-222222222222 canvas";
 const rasterCanvas = ".layer-11111111-1111-4111-8111-111111111111 canvas";
@@ -74,8 +75,8 @@ async function share(request, options = {}) {
   return id;
 }
 const ready = (page) => expect(page.locator("#status")).toHaveAttribute("data-state", "ready");
-async function open(page, id) {
-  await page.goto(`/share/${id}#${secret}`);
+async function open(page, id, legacy = false) {
+  await page.goto(legacy ? `/share/${id}#${secret}` : `/share/s/${pathToken(id)}`);
   await ready(page);
   await expect(page.locator(".brand-logo")).toBeVisible();
   await expect(page.locator(".powered-by")).toHaveText("Powered by Trends.Earth");
@@ -185,7 +186,7 @@ test("removes fragment before requests and does not leak capabilities or send ex
   const id = await share(request, { title: "<img src=x onerror=alert(1)>", attribution: "<script>alert(2)</script>" });
   const requests = [];
   page.on("request", (req) => requests.push(req));
-  await open(page, id);
+  await open(page, id, true);
   expect(new URL(page.url()).hash).toBe("");
   await expect(page.locator("#title")).toHaveText("<img src=x onerror=alert(1)>");
   await expect(page.locator("#title img")).toHaveCount(0);
@@ -222,6 +223,86 @@ test("gateway blocks dashboard, owner APIs, callbacks and non-public renderer en
   expect((await request.get(`/api/v1/public-shares/${id}/manifest`)).status()).toBe(404);
 });
 
+test("path links survive reload and forwarding without cookies or a secret exchange", async ({ page, request, context, browser }) => {
+  const id = await share(request);
+  const calls = [];
+  page.on("request", (req) => calls.push(req));
+  await open(page, id);
+  const link = page.url();
+  expect(new URL(link).pathname).toBe(`/share/s/${pathToken(id)}`);
+  expect((await context.cookies()).filter((cookie) => cookie.name === "te_share_session")).toEqual([]);
+  expect(calls.some((req) => req.url().includes("/session"))).toBe(false);
+  expect(mapboxRequests.every(({ referer, url }) => !referer && !url.includes(pathToken(id)))).toBe(true);
+  await page.reload();
+  await ready(page);
+  const recipient = await browser.newContext({ ignoreHTTPSErrors: true });
+  try {
+    const forwarded = await recipient.newPage();
+    await forwarded.route("https://api.mapbox.com/**", (route) => route.abort());
+    await forwarded.goto(link);
+    await ready(forwarded);
+    await expect.poll(() => colorCount(forwarded, rasterCanvas, [0, 128, 0, 255])).toBeGreaterThan(10000);
+  } finally { await recipient.close(); }
+});
+
+test("limits tiles to six concurrent requests and recovers from transient failures before warning", async ({ page, request }) => {
+  const id = await share(request);
+  let active = 0;
+  let maximum = 0;
+  let retriedUrl = null;
+  let attempts = 0;
+  await page.route("**/api/v1/public-shares/tiles/**", async (route) => {
+    const url = route.request().url();
+    if (!retriedUrl && url.endsWith(".png")) retriedUrl = url;
+    active++;
+    maximum = Math.max(maximum, active);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    try {
+      if (url === retriedUrl && ++attempts < 3) {
+        await route.fulfill({ status: 503, headers: { "Retry-After": "1" } });
+      } else {
+        await route.continue();
+      }
+    } finally { active--; }
+  });
+  await open(page, id);
+  await expect.poll(() => attempts).toBe(3);
+  await expect.poll(() => colorCount(page, rasterCanvas, [0, 128, 0, 255])).toBeGreaterThan(10000);
+  expect(maximum).toBeLessThanOrEqual(6);
+  await expect(page.locator("#status")).toHaveAttribute("data-state", "ready");
+  await expect(page.getByRole("button", { name: "Retry loading map" })).toBeHidden();
+});
+
+test("waits for slow tiles beyond the former 15-second deadline", async ({ page, request }) => {
+  await page.clock.install();
+  const id = await share(request);
+  const held = [];
+  await page.route("**/api/v1/public-shares/tiles/**", (route) => held.push(route));
+  await page.goto(`/share/s/${pathToken(id)}`);
+  await ready(page);
+  await expect.poll(() => held.length).toBeGreaterThan(0);
+  await page.clock.runFor(16000);
+  await page.unroute("**/api/v1/public-shares/tiles/**");
+  for (const route of held) await route.continue();
+  await page.clock.resume();
+  await expect.poll(() => colorCount(page, rasterCanvas, [0, 128, 0, 255])).toBeGreaterThan(10000);
+  await expect(page.locator("#status")).toHaveAttribute("data-state", "ready");
+});
+
+test("warns only after tile retries are exhausted and never retries authorization failures", async ({ page, request }) => {
+  const id = await share(request, { tileFailure: 504 });
+  await page.goto(`/share/s/${pathToken(id)}`);
+  await expect(page.locator("#status")).toContainText("temporarily unavailable", { timeout: 10000 });
+  await request.post(`${fixtureUrl}/__share/${id}`, { data: { tileFailure: 0 } });
+  await page.getByRole("button", { name: "Retry loading map" }).click();
+  await ready(page);
+  await expect.poll(() => colorCount(page, rasterCanvas, [0, 128, 0, 255])).toBeGreaterThan(10000);
+  const denied = await share(request, { tileFailure: 403 });
+  await page.goto(`/share/s/${pathToken(denied)}`);
+  await expect(page.locator("#status")).toContainText("unavailable");
+  await expect(page.locator("#layers")).toBeEmpty();
+});
+
 test("invalid and unavailable links fail without displaying map data", async ({ page, request }) => {
   const id = await share(request, { unavailable: true });
   await page.goto(`/share/${id}#${secret}`);
@@ -250,7 +331,7 @@ test("reports service errors and retries successfully", async ({ page, request }
 test("clears displayed data when revoked and refresh cannot extend an expired session", async ({ page, request }) => {
   await page.clock.install();
   const id = await share(request, { sessionTtl: 60 });
-  await open(page, id);
+  await open(page, id, true);
   await request.post(`${fixtureUrl}/__share/${id}`, { data: { sessionExpired: true } });
   await page.clock.fastForward(31000);
   await expect(page.locator("#status")).toContainText("unavailable");

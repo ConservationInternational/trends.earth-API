@@ -12,6 +12,7 @@ import rasterio
 from rasterio.io import MemoryFile
 from rasterio.shutil import copy as copy_raster
 from rasterio.transform import from_bounds
+from rio_tiler.errors import TileOutsideBounds
 from rio_tiler.io import Reader
 
 SOURCE = (
@@ -157,6 +158,12 @@ class RasterLambdaTests(unittest.TestCase):
             response = app.handler(event(), None)
         self.assertEqual(response["statusCode"], 502)
         self.assertNotIn(SOURCE, response["body"])
+
+    def test_outside_raster_bounds_returns_empty_tile(self):
+        with patch.object(app.cog, "reader", side_effect=TileOutsideBounds()):
+            response = app.handler(event(), None)
+        self.assertEqual(response["statusCode"], 204)
+        self.assertFalse(response.get("body"))
 
     def test_oversized_and_invalid_output_is_rejected(self):
         for response in [

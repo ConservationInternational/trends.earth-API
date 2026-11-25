@@ -1,6 +1,16 @@
 """Utils module"""
 
 import datetime
+import re
+
+
+def redact_public_share_url(value: str) -> str:
+    """Keep bearer path tokens out of application security/rate-limit logs."""
+    return re.sub(
+        r"(/api/v1/public-shares/(?:s/|tiles/[^/]+/))[^/?#]+",
+        r"\1[redacted]",
+        value,
+    )
 
 
 def utcnow() -> datetime.datetime:

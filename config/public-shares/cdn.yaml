@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Public CDN for shared maps and private TiTiler/Martin tile proxies
+
+Parameters:
+  ViewerHost:
+    Type: String
+  AlbDomainName:
+    Type: String
+  CertificateArn:
+    Type: String
+    Description: Issued ACM certificate in us-east-1 covering ViewerHost
+  ApiRoleName:
+    Type: String
+
+Resources:
+  ViewerOriginPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub "${AWS::StackName}-viewer"
+        CookiesConfig:
+          CookieBehavior: whitelist
+          Cookies: [te_share_session]
+        HeadersConfig:
+          HeaderBehavior: whitelist
+          Headers: [Host, Origin, Content-Type]
+        QueryStringsConfig:
+          QueryStringBehavior: all
+  TileOriginPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub "${AWS::StackName}-tiles"
+        CookiesConfig:
+          CookieBehavior: none
+        HeadersConfig:
+          HeaderBehavior: whitelist
+          Headers: [Host]
+        QueryStringsConfig:
+          QueryStringBehavior: none
+  TileCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub "${AWS::StackName}-tiles"
+        MinTTL: 0
+        DefaultTTL: 0
+        MaxTTL: 345600
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig:
+            CookieBehavior: none
+          HeadersConfig:
+            HeaderBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "Shared web maps for ${ViewerHost}"
+        Aliases: [!Ref ViewerHost]
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+        Origins:
+          - Id: ShareGateway
+            DomainName: !Ref AlbDomainName
+            ConnectionAttempts: 1
+            ConnectionTimeout: 3
+            CustomOriginConfig:
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+              OriginReadTimeout: 40
+        DefaultCacheBehavior:
+          TargetOriginId: ShareGateway
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: !Ref ViewerOriginPolicy
+        CacheBehaviors:
+          - PathPattern: /api/v1/public-shares/tiles/*
+            TargetOriginId: ShareGateway
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: !Ref TileCachePolicy
+            OriginRequestPolicyId: !Ref TileOriginPolicy
+        CustomErrorResponses:
+          - {ErrorCode: 400, ErrorCachingMinTTL: 0}
+          - {ErrorCode: 403, ErrorCachingMinTTL: 0}
+          - {ErrorCode: 404, ErrorCachingMinTTL: 0}
+          - {ErrorCode: 500, ErrorCachingMinTTL: 0}
+          - {ErrorCode: 502, ErrorCachingMinTTL: 0}
+          - {ErrorCode: 503, ErrorCachingMinTTL: 0}
+          - {ErrorCode: 504, ErrorCachingMinTTL: 0}
+  ApiInvalidationPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "${AWS::StackName}-invalidate"
+      Roles: [!Ref ApiRoleName]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: cloudfront:CreateInvalidation
+            Resource: !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
+  TileErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Shared-map CDN origin errors including renderer HTTP failures
+      Namespace: AWS/CloudFront
+      MetricName: 5xxErrorRate
+      Dimensions:
+        - Name: DistributionId
+          Value: !Ref Distribution
+        - Name: Region
+          Value: Global
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  DistributionId:
+    Value: !Ref Distribution
+  DomainName:
+    Value: !GetAtt Distribution.DomainName

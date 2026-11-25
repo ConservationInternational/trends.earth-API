@@ -82,6 +82,7 @@ def cleanup_public_shares_task(self):
     from gefapi import app
     from gefapi.services.public_share_service import (
         ACTIVE_STATES,
+        PublicShareError,
         cleanup_share_objects,
     )
 
@@ -118,7 +119,12 @@ def cleanup_public_shares_task(self):
             try:
                 cleanup_share_objects(share_id)
                 cleaned += 1
-            except (botocore.exceptions.BotoCoreError, SQLAlchemyError):
+            except (
+                PublicShareError,
+                botocore.exceptions.BotoCoreError,
+                botocore.exceptions.ClientError,
+                SQLAlchemyError,
+            ):
                 db.session.rollback()
                 failures += 1
                 logger.exception("Could not clean public share %s", share_id)

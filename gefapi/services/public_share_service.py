@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, build_opener
@@ -35,6 +36,7 @@ from gefapi.config import SETTINGS
 from gefapi.models import PublicShare, PublicShareLayer, User
 
 SHARE_SECRET_BYTES = 32
+PUBLIC_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 VECTOR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,119}$")
@@ -1195,7 +1197,7 @@ def validate_share(share_id):
 
 
 def mint_public_link(share, *, rotate=False):
-    """Mint a one-time bearer secret and activate or rotate the public link."""
+    """Mint a path token and activate or rotate the public link."""
     ensure_public_shares_enabled()
     now = _now()
     if share.state != "ready":
@@ -1218,12 +1220,14 @@ def mint_public_link(share, *, rotate=False):
         share.ready_at = now
         share.expires_at = now + timedelta(days=share.retention_days)
     db.session.commit()
+    if rotate:
+        invalidate_public_tiles(share)
     return _viewer_link(share, secret)
 
 
 def _viewer_link(share, secret):
     viewer_url = _config()["VIEWER_BASE_URL"].rstrip("/")
-    return f"{viewer_url}/{quote(str(share.id), safe='')}#{secret}"
+    return f"{viewer_url}/s/{quote(secret, safe='')}"
 
 
 def _link_fernet():
@@ -1259,7 +1263,7 @@ def get_public_link(share):
 
 
 def verify_public_secret(share, supplied_secret):
-    """Compare a fragment-delivered capability without exposing it in storage."""
+    """Compare a capability without exposing its plaintext in storage."""
     if not isinstance(supplied_secret, str) or not 32 <= len(supplied_secret) <= 128:
         return False
     expected = share.token_hash
@@ -1267,6 +1271,38 @@ def verify_public_secret(share, supplied_secret):
         return False
     actual = hashlib.sha256(supplied_secret.encode("utf-8")).hexdigest()
     return hmac.compare_digest(expected, actual)
+
+
+def load_public_token(token):
+    """Resolve current and legacy capabilities using their indexed hash."""
+    if not isinstance(token, str) or not PUBLIC_TOKEN_RE.fullmatch(token):
+        return None
+    digest = hashlib.sha256(token.encode("ascii")).hexdigest()
+    share = PublicShare.query.filter_by(token_hash=digest).first()
+    return share if share is not None and share.is_accessible() else None
+
+
+def invalidate_public_tiles(share):
+    """Purge all token generations for this share; a retry uses the same prefix."""
+    distribution = _config().get("CDN_DISTRIBUTION_ID")
+    if not distribution:
+        return
+    try:
+        boto3.client("cloudfront").create_invalidation(
+            DistributionId=distribution,
+            InvalidationBatch={
+                "CallerReference": str(uuid.uuid4()),
+                "Paths": {
+                    "Quantity": 1,
+                    "Items": [f"/api/v1/public-shares/tiles/{share.id}/*"],
+                },
+            },
+        )
+    except (botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError) as exc:
+        logger.error("Could not invalidate cached tiles for share %s", share.id)
+        raise PublicShareError(
+            503, "Link updated, but CDN invalidation failed; retry this operation"
+        ) from exc
 
 
 def create_viewer_session(share):
@@ -1348,9 +1384,21 @@ class _NoTileRedirects(HTTPRedirectHandler):
         return None
 
 
-def open_tile_service(url, timeout=10):
+def open_tile_service(url, timeout=32):
     """Do not forward trusted internal requests to an upstream redirect target."""
     return build_opener(_NoTileRedirects()).open(url, timeout=timeout)
+
+
+def tile_intersects_layer(layer, z, x, y):
+    """Bounds are validated EPSG:4326, while tile coordinates are Web Mercator."""
+    if not layer.bounds:
+        return True
+    count = 2**z
+    west, east = x / count * 360 - 180, (x + 1) / count * 360 - 180
+    north = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / count))))
+    south = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 1) / count))))
+    left, bottom, right, top = layer.bounds
+    return west <= right and east >= left and south <= top and north >= bottom
 
 
 def _ensure_martin_source_ready(layer):
@@ -1454,9 +1502,9 @@ def get_tile_url(share, layer, z, x, y):
 
 
 class _LambdaTileResponse(BytesIO):
-    def __init__(self, tile, content_type):
+    def __init__(self, tile, content_type, status=200):
         super().__init__(tile)
-        self.status = 200
+        self.status = status
         self.headers = Message()
         self.headers["Content-Type"] = content_type
 
@@ -1489,20 +1537,38 @@ def invoke_raster_tile(share, layer, z, x, y):
             "lambda",
             region_name=match.group(2),
             config=botocore.config.Config(
-                connect_timeout=3,
-                read_timeout=15,
+                connect_timeout=1,
+                read_timeout=32,
                 retries={"total_max_attempts": 1},
             ),
         )
-        result = client.invoke(
-            FunctionName=arn,
-            InvocationType="RequestResponse",
-            LogType="None",
-            Payload=json.dumps(event).encode("utf-8"),
-        )
+        for attempt in range(3):
+            try:
+                result = client.invoke(
+                    FunctionName=arn,
+                    InvocationType="RequestResponse",
+                    LogType="None",
+                    Payload=json.dumps(event).encode("utf-8"),
+                )
+                break
+            except botocore.exceptions.ClientError as exc:
+                if (
+                    exc.response.get("Error", {}).get("Code")
+                    != "TooManyRequestsException"
+                    or attempt == 2
+                ):
+                    raise
+                logger.warning("Private renderer throttled; retrying invocation")
+                time.sleep((0.1 * 2**attempt) * (0.5 + secrets.randbelow(501) / 1000))
         with closing(result["Payload"]) as payload:
             raw = payload.read(4 * 1024**2 + 1)
-        if result.get("StatusCode") != 200 or result.get("FunctionError"):
+        if result.get("FunctionError"):
+            failure = json.loads(raw)
+            error_type = failure.get("errorType") if isinstance(failure, dict) else None
+            status = 504 if error_type in ("Sandbox.Timedout", "TimeoutError") else 502
+            logger.warning("Private renderer failed (%s)", status)
+            raise PublicShareError(status, "Tile service could not render this tile")
+        if result.get("StatusCode") != 200:
             raise ValueError("Lambda invocation failed")
         if len(raw) > 4 * 1024**2:
             raise ValueError("Lambda response exceeds its limit")
@@ -1517,6 +1583,15 @@ def invoke_raster_tile(share, layer, z, x, y):
         ):
             raise ValueError("Invalid Lambda response headers")
         headers = {key.lower(): value for key, value in response["headers"].items()}
+        status = response.get("statusCode")
+        if status == 204 and not response.get("body"):
+            return _LambdaTileResponse(b"", "image/png", status=204)
+        if status in (429, 502, 503, 504):
+            logger.warning("Private renderer returned status %s", status)
+            raise PublicShareError(
+                503 if status == 429 else status,
+                "Tile service is temporarily unavailable",
+            )
         if (
             response.get("statusCode") != 200
             or response.get("isBase64Encoded") is not True
@@ -1529,6 +1604,9 @@ def invoke_raster_tile(share, layer, z, x, y):
         if len(tile) > 2 * 1024**2 or not tile.startswith(b"\x89PNG\r\n\x1a\n"):
             raise ValueError("Lambda tile exceeds its limit")
         return _LambdaTileResponse(tile, "image/png")
+    except botocore.exceptions.ReadTimeoutError as exc:
+        logger.warning("Private renderer invocation timed out")
+        raise PublicShareError(504, "Tile service timed out") from exc
     except (botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError) as exc:
         logger.warning(
             "Private renderer invocation failed for share %s layer %s (%s)",
@@ -1551,6 +1629,7 @@ def invoke_raster_tile(share, layer, z, x, y):
 def mark_share_revoked(share):
     """Deny access immediately while preserving the record for async cleanup."""
     if share.state == "revoked":
+        invalidate_public_tiles(share)
         return
     now = _now()
     share.state = "revoked"
@@ -1560,6 +1639,7 @@ def mark_share_revoked(share):
     share.session_generation += 1
     share.cleanup_error = None
     db.session.commit()
+    invalidate_public_tiles(share)
 
 
 def _delete_s3_object_versions(client, bucket, key):
@@ -1636,6 +1716,8 @@ def cleanup_share_objects(share_id):
 
     client = _s3_client()
     try:
+        if share.state == "revoked" and share.ready_at is not None:
+            invalidate_public_tiles(share)
         for layer in share.layers:
             if layer.upload_id and not layer.upload_completed:
                 try:
@@ -1658,7 +1740,11 @@ def cleanup_share_objects(share_id):
         if share.user_id is None:
             db.session.delete(share)
         db.session.commit()
-    except (botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError) as exc:
+    except (
+        PublicShareError,
+        botocore.exceptions.BotoCoreError,
+        botocore.exceptions.ClientError,
+    ) as exc:
         db.session.rollback()
         failed_share = PublicShare.query.filter_by(id=share_id).first()
         if failed_share is not None:

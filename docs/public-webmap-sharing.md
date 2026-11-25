@@ -1,7 +1,7 @@
 # Expiring public web-map sharing (API)
 
 The API implements the owner lifecycle, private S3 transfers, COG and PMTiles
-validation, short-lived viewer sessions, authorized tile proxies, and cleanup for
+validation, path-token links, CDN-backed tile proxies, legacy viewer sessions, and cleanup for
 the [expiring web-map sharing plan](https://github.com/ConservationInternational/trends.earth/blob/main/docs/EXPIRING_PUBLIC_WEBMAP_SHARING_PLAN.md).
 The feature is disabled by default. It does not publish objects, expose TiTiler,
 or grant arbitrary object access. A separate Dash public viewer with OpenLayers
@@ -65,7 +65,7 @@ and provides native MVT rendering and feature picking; Dash hosts the responsive
 page independently of the authenticated API/dashboard. Current map tiles use
 EPSG:3857 and manifest extents use EPSG:4326.
 
-After the session is authorized, the viewer adds the same Mapbox basemaps
+After the link is authorized, the viewer adds the same Mapbox basemaps
 (Default, Satellite, Topographic and Dark) and national-border lines
 (`mapbox.mapbox-streets-v8`, `admin` layer, `admin_level` 0, maritime borders
 excluded) that Resilience Atlas uses, with Resilience Atlas's public `pk.`
@@ -75,10 +75,13 @@ the viewed area to Mapbox. A bottom-left footer shows the Trends.Earth boundary
 disclaimer and links to the Conservation International privacy policy and terms
 of use.
 
-The early bootstrap removes the capability fragment before loading map code or
-making API requests. The browser exchanges it for the API's share-bound,
-HttpOnly cookie; all manifest/tiles/refresh requests go through the same-origin
-gateway. It clears layers and attributes at the known share/session deadline,
+New links use `/share/s/<unguessable-token>` with no separate secret or session
+cookie. Copying the browser address bar or forwarding the URL preserves access.
+Existing `/share/<UUID>#<secret>` links still work: the early bootstrap removes
+the fragment and exchanges it for the API's share-bound HttpOnly cookie.
+Owner link retrieval returns the new path form using the existing stored token;
+no rotation is needed. All data requests go through the same-origin gateway.
+The viewer clears layers and attributes at the known share/session deadline,
 checks authorization every 30 seconds and on returning to a cached/hidden page,
 and clears data on authorization failures. Already downloaded data cannot be
 recalled from recipients; do not describe expiration as DRM.
@@ -88,12 +91,32 @@ manifest/tile routes, and health. It blocks owner APIs, dashboard routes and Das
 data callbacks. The Dash service receives no API/database/cloud configuration
 or browser cookies; neither Dash nor Martin publishes a port. Both viewer
 containers are non-root and read-only with writable temporary files only.
-Access logs are disabled; responses are no-store with no-referrer, noindex and
+Access logs are disabled; non-tile responses are no-store with no-referrer, noindex and
 a CSP using Dash renderer hashes rather than inline-script/eval permissions.
 The CSP's only external origin is `https://api.mapbox.com` (`img-src` and
 `connect-src`) for basemap and border tiles.
 Keep equivalent redaction at the external TLS terminator: never record cookies,
-request bodies, capability fragments or full viewer URLs.
+request bodies, path tokens, capability fragments or full viewer URLs. API
+Gunicorn access logging excludes token-bearing routes, and application
+security/rate-limit event URLs redact tokens. CloudFront access logging is not
+enabled by the sharing template.
+
+CloudFront sits in front of this gateway for both TiTiler raster and Martin
+vector tiles; neither renderer is directly public. Only successful path-token
+tile responses are cacheable, for at most **four days**, shortened to the
+remaining share lifetime. The complete token, share ID, layer ID and tile
+coordinates are in the cache key. Manifests, cookies, legacy sessions and errors
+are not cached. Browser requests use `no-store`; response `max-age=0` prevents
+fresh browser reuse, while `s-maxage` controls edge reuse. Expired tiles must
+revalidate; stale-on-error serving is not enabled. Rotation/revocation updates
+the origin immediately and requests an invalidation covering all token
+generations for that map. **Already cached tiles can be served until the
+invalidation propagates**; if invalidation fails the API returns 503 explicitly,
+and retrying rotation/revocation reissues the per-map invalidation. Do not promise
+instant removal from CDN caches or from recipients who downloaded data.
+The cleanup worker retries invalidation of revoked shares before deleting their
+records, including ownerless shares after account deletion. Account-deletion
+invalidations therefore wait for the next cleanup batch (normally five minutes).
 
 Build from the repository root:
 
@@ -134,7 +157,8 @@ npm test
 The browser suite starts an isolated Compose stack with the actual Dash/Nginx
 images and a fixture API behind a temporary local TLS terminator. It checks
 rendered pixels, controls/attributes, gzip/empty tiles, expiry/revocation/retry,
-cookies, fragment/referrer handling, CSP, restricted routes and mobile/keyboard
+forwarded path links without cookies, legacy fragment/referrer handling,
+bounded tile concurrency/retries, slow tiles, CSP, restricted routes and mobile/keyboard
 behavior. It does not replace real AWS/TiTiler/Martin/staging or assistive-device
 testing. Ports 18951/18952 can be overridden with `VIEWER_TEST_PORT`/
 `FIXTURE_PORT`. The `Public viewer` workflow builds images and runs these tests.
@@ -159,7 +183,7 @@ poetry run python scripts/setup/setup_public_shares_infrastructure.py \
 
 The viewer host defaults to `viewer-staging.trends.earth` for staging and
 `viewer.trends.earth` for production, with share links under `/share`
-(for example `https://viewer-staging.trends.earth/share/<token>`). Pass
+(for example `https://viewer-staging.trends.earth/share/s/<token>`). Pass
 `--viewer-host` only to override it.
 
 It requires administrator AWS credentials (`--profile`/`--region`), an
@@ -189,11 +213,26 @@ or `--skip-tiler`). It performs the following steps:
    API target group, checks the listener certificate, and opens only the gateway
    port from the ALB security group. Ports are 8080 for production and 8081 for
    staging.
-7. Creates the viewer CNAME when `--route53-zone-id` is given; otherwise it
-   prints the CNAME to create manually.
-8. Sets environment variables `PUBLIC_SHARES_S3_BUCKET`, `PUBLIC_SHARES_S3_PREFIX`,
+7. Deploys the `trendsearth-public-viewer-cdn-<env>` CloudFormation stack in
+   `us-east-1` from `config/public-shares/cdn.yaml`. CloudFront forwards HTTPS
+   requests to the ALB with the viewer Host header, caches only the path-token
+   tile route (four-day maximum, zero minimum/default), and leaves the rest
+   uncached. It grants the API role `cloudfront:CreateInvalidation` only on this
+   distribution. Errors have zero cache TTL. No paid provisioned concurrency
+   or Lambda warm-up schedule is created. A CloudFront 5xx alarm covers renderer
+   HTTP failures as well as invocation failures; attach notification actions.
+8. Discovers an ACM certificate in `us-east-1` (or uses
+   `--cdn-certificate-arn`). If absent it requests a DNS-validated certificate.
+   With `--route53-zone-id` it writes the validation CNAMEs; otherwise it prints
+   them. If validation is pending, it stops before deploying the CDN; complete
+   validation, wait for ISSUED and rerun. The ALB listener must independently
+   have a certificate covering the viewer host.
+9. Creates the viewer CNAME **to CloudFront, not directly to the ALB**, when
+   `--route53-zone-id` is given; otherwise it prints the CNAME to create manually.
+10. Sets environment variables `PUBLIC_SHARES_S3_BUCKET`, `PUBLIC_SHARES_S3_PREFIX`,
    `PUBLIC_SHARES_PUBLIC_ORIGIN`, `PUBLIC_SHARES_VIEWER_BASE_URL`,
-   `PUBLIC_SHARES_TITILER_LAMBDA_ARN` and `PUBLIC_VIEWER_PORT`. Only when
+   `PUBLIC_SHARES_TITILER_LAMBDA_ARN`, `PUBLIC_SHARES_CDN_DISTRIBUTION_ID` and
+   `PUBLIC_VIEWER_PORT`. Only when
    `PUBLIC_SHARES_ENABLED` is absent, it sets that variable to `false`. It
    generates the `PUBLIC_SHARES_SESSION_SECRET` secret if absent; use
    `--rotate-session-secret` to replace it, which invalidates viewer sessions
@@ -229,6 +268,7 @@ Configure these values before setting `PUBLIC_SHARES_ENABLED=true`:
 | `PUBLIC_SHARES_TITILER_LAMBDA_ARN` | Private Lambda function/alias ARN, preferably the SAM stack's `RendererFunctionArn` output. Selected for raster tiles when set. |
 | `PUBLIC_SHARES_TITILER_INTERNAL_URL` | Legacy internal HTTP TiTiler origin/base path; required only when no Lambda ARN is configured. Must be unreachable by public clients. |
 | `PUBLIC_SHARES_MARTIN_INTERNAL_URL` | Internal Martin origin/base path; required for vector declarations and publication, not raster-only deployments. |
+| `PUBLIC_SHARES_CDN_DISTRIBUTION_ID` | CloudFront distribution created by the script. Enables four-day edge cache headers and per-map invalidation on rotation/revocation. Without it tiles remain no-store. |
 | `PUBLIC_SHARES_SESSION_SECRET` | Dedicated random secret of at least 32 characters for signed viewer cookies; an HKDF-derived key from it also encrypts stored share links. |
 | `PUBLIC_SHARES_VIEWER_SESSION_TTL_SECONDS` | Rolling signed-cookie age (default 900 seconds). |
 | `PUBLIC_SHARES_MAX_VIEWER_SESSION_LIFETIME_SECONDS` | Absolute session lifetime from capability exchange (default 86400 seconds); refresh does not extend this deadline. |
@@ -257,7 +297,8 @@ and size, and records only server-derived metadata. Raster transfers and
 validation are bounded by configured share/file/layer quotas, multipart part
 sizes, 1 GiB address-space and 16 MiB metadata-file limits for `gdalinfo`, a
 90-second timeout, and single-threaded GDAL settings. Do not
-expose TiTiler directly: the API authorizes the cookie, checks share expiry and
+expose TiTiler directly: the API authorizes the path token or legacy cookie,
+checks share expiry and
 layer membership, and constructs every internal COG URL from database-owned
 keys and validated style fields.
 
@@ -331,8 +372,13 @@ sam deploy --template-file .aws-sam/build/template.yaml \
 ```
 
 For SSE-KMS add `KmsKeyArn=<key-ARN>` to the overrides. `ReservedConcurrency`
-defaults to 20; memory is 1024 MiB and timeout is 10 seconds. Tune capacity and
-monitor throttles, duration, errors and cost before rollout. Logs are retained
+defaults to 50; memory is 2048 MiB and timeout is 30 seconds. This is on-demand
+Lambda: reserved concurrency limits capacity but does not keep instances warm
+or incur provisioned-concurrency idle charges. A 32 MiB GDAL range cache avoids
+the invalid zero-size cache setting. S3 HTTP reads have a ten-second timeout
+and one retry. Tune capacity and monitor cost before rollout. The stack creates
+CloudWatch alarms for errors, throttles and p95 duration approaching the timeout;
+operators must attach notification actions. Logs are retained
 for 14 days; do not enable event/body logging. The pinned base is Python 3.14
 on `linux/amd64`. SAM's local image build was verified; use SAM for publication.
 If publishing manually with Buildx, use a single `linux/amd64` image with
@@ -343,8 +389,15 @@ Read the stack's `RendererFunctionArn` output and set
 `PUBLIC_SHARES_TITILER_LAMBDA_ARN` in the API/worker environment files, then
 redeploy the API stack. No TiTiler container, gateway route or HTTP URL is needed.
 The ARN takes precedence over the legacy HTTP URL; failures **never fall back**
-to HTTP. Invocation transport/throttle errors return 503, while function errors
-or invalid output return 502.
+to HTTP. Invocation throttles retry twice with jitter; SDK reads allow 32 seconds
+and do not retry an already-running render. Transport/throttle errors return 503,
+timeouts return 504, and malformed output returns 502. Retryable errors include
+`Retry-After`. Tiles outside validated layer bounds return 204 before rendering;
+the Lambda also maps `TileOutsideBounds` to 204. The viewer permits at most six
+concurrent data-tile requests, retries transient/network failures twice with
+backoff and `Retry-After`, and only warns after exhaustion. Authorization errors
+are never retried. Timeouts increase outwards: Lambda 30 s, SDK 32 s, gateway
+35 s, CloudFront 40 s, browser 45 s.
 
 Before enabling sharing, verify a real uploaded categorical and continuous COG
 renders through an authorized share session, invalid/expired/revoked sessions
@@ -529,21 +582,24 @@ authenticated user; optional job IDs are not accepted as an ownership proxy.
 | `GET /api/v1/public-shares/{id}/manifest` | Viewer cookie | Return validated display metadata without storage keys or credentials. |
 | `GET /api/v1/public-shares/{id}/tiles/{layer}/{z}/{x}/{y}.png` | Viewer cookie | Re-check authorization before invoking private TiTiler Lambda (or the legacy internal HTTP renderer) for bounded PNG tiles. |
 | `GET /api/v1/public-shares/{id}/tiles/{layer}/{z}/{x}/{y}.pbf` | Viewer cookie | Re-check authorization before proxying bounded MVT requests to internal Martin. |
+| `GET /api/v1/public-shares/s/{token}/manifest` | Current path token | Return uncached metadata and token-bound tile URLs; no cookie/exchange required. |
+| `GET /api/v1/public-shares/tiles/{id}/{token}/{layer}/{z}/{x}/{y}.png` (or `.pbf`) | Current path token | Authorize on CDN miss, then invoke TiTiler or proxy Martin; successful/empty tiles may be cached until four days or share expiry, whichever is earlier. |
 
-The capability is 256-bit random data delivered only in the URL fragment and
+The capability is 256-bit random data delivered in the URL path and
 stored as a SHA-256 hash, which is what authorizes access. So that the owner
 can view and copy the link again, the API also stores the secret in
 `link_ciphertext`, encrypted with Fernet under a key derived (HKDF-SHA256) from
 `PUBLIC_SHARES_SESSION_SECRET`; retrieval re-verifies the decrypted secret
 against the hash. Rotation replaces it; revocation and expiry clear it. Anyone
 holding both the database and the session secret could recover live links. The
-viewer must remove the fragment from browser
-history before POSTing it, keep no token in tile URLs, and call APIs on the
-configured same HTTPS origin. Responses containing links, sessions, manifests,
-or tiles are `no-store`; public responses also use `Referrer-Policy: no-referrer`
-and `X-Robots-Tag: noindex`. Revocation, expiry, rotation, and token/session
-generation and absolute session expiry are checked on each manifest/tile
-request; no shared tile cache is used by the API. The rolling cookie TTL
+viewer calls APIs on the configured same HTTPS origin. Tokens appear in viewer
+and tile URL paths: disable/redact full URL logs at every proxy/telemetry system,
+and retain `Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex`.
+Links, sessions, manifests and errors are `no-store`; only successful new-style
+tiles opt in to public edge caching. Revocation, expiry and rotation are checked
+on every manifest request and tile cache miss; cached tiles follow the expiry
+cap and invalidation semantics above. Legacy session/token generation and
+absolute session expiry remain checked on each legacy request. The rolling cookie TTL
 (default 15 minutes) is not an absolute lifetime: refresh preserves the
 original 24-hour maximum lifetime. `Origin` is a browser CSRF defense only,
 not proof that a caller is authorized.

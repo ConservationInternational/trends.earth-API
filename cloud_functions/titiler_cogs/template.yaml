@@ -25,7 +25,7 @@ Parameters:
     Description: Optional customer-managed KMS key for an SSE-KMS share bucket
   ReservedConcurrency:
     Type: Number
-    Default: 20
+    Default: 50
     MinValue: 1
     MaxValue: 1000
 
@@ -81,8 +81,8 @@ Resources:
       Role: !GetAtt RendererRole.Arn
       AutoPublishAlias: live
       AutoPublishAliasAllProperties: true
-      MemorySize: 1024
-      Timeout: 10
+      MemorySize: 2048
+      Timeout: 30
       ReservedConcurrentExecutions: !Ref ReservedConcurrency
       Environment:
         Variables:
@@ -92,11 +92,12 @@ Resources:
           GDAL_PAM_ENABLED: "NO"
           CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif
           GDAL_CACHEMAX: "64"
-          CPL_VSIL_CURL_CACHE_SIZE: "0"
+          CPL_VSIL_CURL_CACHE_SIZE: "33554432"
           VSI_CACHE: "FALSE"
           GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
-          GDAL_HTTP_TIMEOUT: "5"
-          GDAL_HTTP_MAX_RETRY: "0"
+          GDAL_HTTP_TIMEOUT: "10"
+          GDAL_HTTP_MAX_RETRY: "1"
+          GDAL_HTTP_RETRY_DELAY: "0.5"
           OPENBLAS_NUM_THREADS: "1"
           OMP_NUM_THREADS: "1"
     Metadata:
@@ -114,6 +115,51 @@ Resources:
           - Effect: Allow
             Action: lambda:InvokeFunction
             Resource: !Sub "${TitilerCogsFunction.Arn}:live"
+  RendererErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Private sharing renderer invocation errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref TitilerCogsFunction
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+  RendererThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Private sharing renderer concurrency exhausted
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref TitilerCogsFunction
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+  RendererDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Private sharing renderer approaching its timeout
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref TitilerCogsFunction
+      ExtendedStatistic: p95
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 25000
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
 
 Outputs:
   RendererFunctionArn:

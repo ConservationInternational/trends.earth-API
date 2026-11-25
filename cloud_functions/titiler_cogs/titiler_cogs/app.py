@@ -8,8 +8,9 @@ from urllib.parse import urlsplit
 import uuid
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from mangum import Mangum
+from rio_tiler.errors import TileOutsideBounds
 from titiler.core.errors import DEFAULT_STATUS_CODES
 from titiler.core.factory import TilerFactory
 
@@ -78,6 +79,8 @@ async def tile_requests_only(request: Request, call_next):
 
 
 async def renderer_error(request: Request, exc: Exception):
+    if isinstance(exc, TileOutsideBounds):
+        return Response(status_code=204, headers={"Cache-Control": "no-store"})
     logger.warning("Raster rendering failed (%s)", type(exc).__name__)
     return JSONResponse(
         {"detail": "Raster rendering failed"},
