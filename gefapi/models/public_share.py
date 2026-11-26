@@ -31,6 +31,8 @@ class PublicShare(db.Model):
         index=True,
     )
     title = db.Column(db.String(120), nullable=False)
+    mask = db.Column(db.JSON(), nullable=True)
+    mask_version = db.Column(db.Integer(), nullable=False, default=0)
     retention_days = db.Column(db.Integer(), nullable=False)
     state = db.Column(db.String(20), nullable=False, default="draft", index=True)
     update_state = db.Column(db.String(20), nullable=False, default="idle")
@@ -70,6 +72,8 @@ class PublicShare(db.Model):
         return {
             "id": str(self.id),
             "title": self.title,
+            "has_mask": self.mask is not None,
+            "mask_version": self.mask_version,
             "state": self.state,
             "update_state": self.update_state,
             "retention_days": self.retention_days,
@@ -87,7 +91,9 @@ class PublicShare(db.Model):
                 for layer in self.layers
                 if layer.validation_error
             ],
-            "layers": [layer.serialize() for layer in self.layers],
+            "layers": [
+                layer.serialize() for layer in self.layers if layer.removed_at is None
+            ],
         }
 
 
@@ -128,6 +134,7 @@ class PublicShareLayer(db.Model):
     upload_part_count = db.Column(db.Integer(), nullable=True)
     upload_completed = db.Column(db.Boolean(), nullable=False, default=False)
     published = db.Column(db.Boolean(), nullable=False, default=False)
+    removed_at = db.Column(db.DateTime(), nullable=True, index=True)
     validation_error = db.Column(db.String(500), nullable=True)
     created_at = db.Column(db.DateTime(), nullable=False, default=utcnow)
 

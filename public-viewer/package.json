@@ -8,6 +8,7 @@
     "test": "playwright test"
   },
   "dependencies": {
+    "@turf/boolean-intersects": "^7.2.0",
     "ol": "10.11.0"
   },
   "devDependencies": {

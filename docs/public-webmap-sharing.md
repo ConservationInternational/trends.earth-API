@@ -65,6 +65,20 @@ and provides native MVT rendering and feature picking; Dash hosts the responsive
 page independently of the authenticated API/dashboard. Current map tiles use
 EPSG:3857 and manifest extents use EPSG:4326.
 
+Shares can carry an optional WGS84 GeoJSON Polygon or MultiPolygon display
+mask (maximum 512 KiB and 30,000 coordinates). The API validates the geometry,
+splits antimeridian crossings, and stores a snapshot with the share. Owners can
+replace or remove it with `PUT /api/v1/shares/<id>/mask`, supplying `mask` and
+the current `mask_version`; stale versions receive HTTP 409. The authorized
+manifest returns the mask and version, and open viewers check for changes every
+30 seconds. Migration and the updated viewer must be deployed before clients
+create masked shares.
+
+The mask clips shared raster and vector layers in OpenLayers, not the basemap or
+borders. It is not access control: authorized viewers can retrieve underlying
+tiles and data outside the mask. The mask itself is visible to anyone with the
+link and is removed from the database during share cleanup.
+
 After the link is authorized, the viewer adds the same Mapbox basemaps
 (Default, Satellite, Topographic and Dark) and national-border lines
 (`mapbox.mapbox-streets-v8`, `admin` layer, `admin_level` 0, maritime borders
@@ -567,9 +581,10 @@ authenticated user; optional job IDs are not accepted as an ownership proxy.
 
 | Method and path | Scope | Purpose |
 |---|---|---|
-| `POST /api/v1/shares` | `webmap:write` | Create a quota-reserved draft with raster/vector declarations, title and retention (7/30/90 days). See the vector contract above. |
+| `POST /api/v1/shares` | `webmap:write` | Create a quota-reserved draft with raster/vector declarations, title and retention (7/30/90 days). See the vector contract above. An empty `layers` array creates a map that is immediately `ready` to publish; the plugin creates maps this way and adds layers afterward. |
 | `POST /api/v1/shares/{id}/uploads` | `webmap:write` | Start/refresh a multipart upload for a declared layer; returns fixed-size signed parts with a 15-minute default TTL. |
 | `POST /api/v1/shares/{id}/complete` | `webmap:write` | Complete every layer, verify actual size, and enqueue COG/PMTiles validation. Repeated completion can retry a lost validation enqueue. |
+| `DELETE /api/v1/shares/{id}/layers` | `webmap:write` | Remove published layers using `{"layer_ids": ["..."]}`; an empty map remains accessible. Returns 202 with the updated `share` and `cleanup_scheduled`. |
 | `GET /api/v1/shares` and `GET /api/v1/shares/{id}` | `webmap:read` | List/status for the owner only; never returns capability secrets, object keys, or upload credentials. |
 | `GET /api/v1/shares/{id}/link` | `webmap:write` | Return the owner's current viewer link (`{id, link, expires_at}`, `no-store`). Returns 409 when the share is not live or its link was not stored (published before link storage, or after a session-secret rotation); rotate once to fix. |
 | `GET /api/v1/shares/storage` | `webmap:read` | Return the owner's uploaded, reserved, pending-cleanup and available storage totals. |
@@ -633,3 +648,11 @@ records exist: revoke and clean their S3 objects, then remove the retained
 records administratively before downgrading. API rollback
 must disable new shares without making the private bucket public; retain the
 cleanup configuration until all stored objects and multipart uploads are gone.
+
+Removing layers immediately excludes them from manifests and origin tile
+requests while preserving the map link. Cached tiles may remain available until
+CDN invalidation propagates. The cleanup worker retries invalidation and deletes
+all snapshot versions; their storage quota remains reserved until cleanup
+succeeds. Open viewers check for layer changes periodically. Migration
+`9c4f7a3d8b20` follows the display-mask migration; its downgrade is blocked
+until removed-layer cleanup has finished.

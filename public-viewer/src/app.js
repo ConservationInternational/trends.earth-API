@@ -5,6 +5,7 @@ import VectorTileLayer from "ol/layer/VectorTile.js";
 import XYZ from "ol/source/XYZ.js";
 import VectorTileSource from "ol/source/VectorTile.js";
 import MVT from "ol/format/MVT.js";
+import GeoJSON from "ol/format/GeoJSON.js";
 import Feature from "ol/Feature.js";
 import TileState from "ol/TileState.js";
 import { Circle, Fill, Stroke, Style } from "ol/style.js";
@@ -12,6 +13,8 @@ import { fromLonLat, transformExtent } from "ol/proj.js";
 import { createEmpty, extend } from "ol/extent.js";
 import { defaults as defaultControls } from "ol/control.js";
 import { createXYZ } from "ol/tilegrid.js";
+import { getRenderPixel } from "ol/render.js";
+import booleanIntersects from "@turf/boolean-intersects";
 import {
   BASEMAPS, DEFAULT_BASEMAP, createBasemapLayer, createBorderLayer, setBasemap,
 } from "./basemaps.js";
@@ -27,10 +30,15 @@ const PALETTES = {
   turbo: ["#30123b", "#28bbec", "#a4fc3c", "#fb7e21", "#7a0403"],
 };
 const MAX_TILE_BYTES = 2 * 1024 * 1024;
+const geojson = new GeoJSON();
 const $ = (id) => document.getElementById(id);
 
 class ViewerError extends Error {
   constructor(status, message) { super(message); this.status = status; }
+}
+
+class MaskError extends ViewerError {
+  constructor() { super(502, "The map contains an invalid mask."); }
 }
 
 function textElement(tag, text, className) {
@@ -42,11 +50,33 @@ function textElement(tag, text, className) {
 
 function validateManifest(data, shareId, token) {
   if (!data || !UUID.test(data.id) || (shareId && data.id !== shareId) || typeof data.title !== "string" ||
-      !Number.isFinite(Date.parse(data.expires_at)) || !Array.isArray(data.layers) ||
-      data.layers.length < 1) {
+      !Number.isFinite(Date.parse(data.expires_at)) || !Array.isArray(data.layers)) {
     throw new ViewerError(502, "The map manifest is invalid.");
   }
   const ids = new Set();
+  if (data.mask !== undefined && data.mask !== null) {
+    const mask = data.mask;
+    if (!mask || !["Polygon", "MultiPolygon"].includes(mask.type) ||
+        !Array.isArray(mask.coordinates) || !Number.isInteger(data.mask_version) ||
+        data.mask_version < 0) {
+      throw new MaskError();
+    }
+    const polygons = mask.type === "Polygon" ? [mask.coordinates] : mask.coordinates;
+    let count = 0;
+    if (!polygons.length || !polygons.every((polygon) =>
+      Array.isArray(polygon) && polygon.length && polygon.every((ring) => {
+        if (!Array.isArray(ring) || ring.length < 4) return false;
+        count += ring.length;
+        return ring.every((point) => Array.isArray(point) && point.length === 2 &&
+          point.every(Number.isFinite) && Math.abs(point[0]) <= 180 && Math.abs(point[1]) <= 90) &&
+          ring[0][0] === ring.at(-1)[0] && ring[0][1] === ring.at(-1)[1];
+      })) || count > 30000) {
+      throw new MaskError();
+    }
+  } else if (data.mask_version !== undefined &&
+      (!Number.isInteger(data.mask_version) || data.mask_version < 0)) {
+    throw new MaskError();
+  }
   for (const layer of data.layers) {
     const extension = layer.kind === "vector" ? "pbf" : "png";
     const tileBase = token ? `/api/v1/public-shares/tiles/${data.id}/${token}` :
@@ -179,6 +209,8 @@ export async function start(initialSecret, hadFragment) {
   const shareId = match?.[1];
   const token = location.pathname.match(/^\/share\/s\/([A-Za-z0-9_-]{32,128})$/)?.[1];
   let manifest = null;
+  let maskGeometry = null;
+  let maskFeature = null;
   let records = [];
   let stopped = false;
   let busy = false;
@@ -273,7 +305,7 @@ export async function start(initialSecret, hadFragment) {
         ["image/png", "application/x-protobuf", "application/vnd.mapbox-vector-tile"] :
         ["application/json"];
       if (!expected.includes(type)) throw new ViewerError(502, "Invalid map response.");
-      const limit = tile ? MAX_TILE_BYTES : 1024 * 1024;
+      const limit = tile ? MAX_TILE_BYTES : 2 * 1024 * 1024;
       const reader = response.body.getReader();
       const chunks = [];
       let size = 0;
@@ -338,7 +370,56 @@ export async function start(initialSecret, hadFragment) {
     $("selection").scrollIntoView({ block: "nearest" });
   }
 
-  function makeGrid(layer, order) {
+  function setMask(mask) {
+    try {
+      maskGeometry = mask ? geojson.readGeometry(mask, {
+        dataProjection: "EPSG:4326", featureProjection: "EPSG:3857",
+      }) : null;
+      maskFeature = maskGeometry ? {
+        type: "Feature", properties: {}, geometry: geojson.writeGeometryObject(maskGeometry),
+      } : null;
+    } catch (error) {
+      throw new MaskError();
+    }
+    $("feature-picker")?.remove();
+    $("attributes").replaceChildren();
+    $("selection").hidden = true;
+    for (const record of records) record.grid.changed();
+  }
+
+  function clipLayer(grid) {
+    let maskSaved = false;
+    grid.on("prerender", (event) => {
+      if (!maskGeometry) return;
+      const context = event.context;
+      if (!(context instanceof CanvasRenderingContext2D)) {
+        stop("The display mask cannot be rendered by this browser.");
+        return;
+      }
+      const polygons = maskGeometry.getType() === "Polygon" ?
+        [maskGeometry.getCoordinates()] : maskGeometry.getCoordinates();
+      context.save();
+      context.beginPath();
+      for (const polygon of polygons) for (const ring of polygon) {
+        ring.forEach((coordinate, index) => {
+          const pixel = getRenderPixel(event, map.getPixelFromCoordinate(coordinate));
+          if (index === 0) context.moveTo(...pixel);
+          else context.lineTo(...pixel);
+        });
+        context.closePath();
+      }
+      context.clip("evenodd");
+      maskSaved = true;
+    });
+    grid.on("postrender", (event) => {
+      if (maskSaved) {
+        event.context.restore();
+        maskSaved = false;
+      }
+    });
+  }
+
+  function makeGrid(layer, zIndex) {
     const vector = layer.kind === "vector";
     const extent = transformExtent([
       layer.bounds[0], Math.max(-85.051129, layer.bounds[1]),
@@ -378,7 +459,16 @@ export async function start(initialSecret, hadFragment) {
         }
       } catch (error) {
         tile.setState(TileState.ERROR);
-        if (map.getLayers().getArray().includes(grid)) failure(error);
+        if (map.getLayers().getArray().includes(grid)) {
+          if (error.status === 404) {
+            await poll();
+            if (map.getLayers().getArray().includes(grid)) {
+              failure(new ViewerError(502, "Layer tile is unavailable."));
+            }
+          } else {
+            failure(error);
+          }
+        }
       }
     }
     const sourceOptions = {
@@ -417,16 +507,17 @@ export async function start(initialSecret, hadFragment) {
       return styleCache.get(color);
     }
     grid = vector ? new VectorTileLayer({
-      source, style: vectorStyle, extent, zIndex: order + 1,
+      source, style: vectorStyle, extent, zIndex,
       className: `layer-${layer.id}`, renderMode: "vector",
     }) : new TileLayer({
-      source, extent, zIndex: order + 1, className: `layer-${layer.id}`,
+      source, extent, zIndex, className: `layer-${layer.id}`,
     });
+    clipLayer(grid);
     return grid;
   }
 
   function fit() {
-    if (!manifest) return;
+    if (!manifest || !manifest.layers.length) return;
     const extent = createEmpty();
     for (const layer of manifest.layers) {
       extend(extent, transformExtent([
@@ -438,15 +529,21 @@ export async function start(initialSecret, hadFragment) {
     map.getView().fit(extent, { padding: [20, 20, 20, 20], maxZoom: 12 });
   }
 
-  function render() {
+  function render(fitLayers = true) {
+    const previous = new globalThis.Map(records.map(({ layer, grid }) => [
+      layer.id, { visible: grid.getVisible(), opacity: grid.getOpacity() },
+    ]));
     clearLayers();
     $("title").textContent = manifest.title;
     // Keep browser tab titles generic: uploaded names may contain sensitive text.
     $("expiry").textContent = `Link expires: ${new Date(manifest.expires_at).toISOString().replace(/Z$/, " UTC")}`;
     $("map-placeholder").hidden = true;
     $("map-tools").hidden = false;
+    if (!manifest.layers.length) {
+      $("layers").append(textElement("p", "No layers are currently shared."));
+    }
     for (const [order, layer] of manifest.layers.entries()) {
-      const grid = makeGrid(layer, order);
+      const grid = makeGrid(layer, manifest.layers.length - order);
       const record = { layer, grid };
       records.push(record);
       const card = document.createElement("div");
@@ -455,13 +552,16 @@ export async function start(initialSecret, hadFragment) {
       label.className = "layer-title";
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
-      checkbox.checked = true;
+      checkbox.checked = previous.get(layer.id)?.visible ?? true;
+      grid.setVisible(checkbox.checked);
       checkbox.addEventListener("change", () => grid.setVisible(checkbox.checked));
       label.append(checkbox, textElement("span", layer.name));
       const opacityLabel = document.createElement("label");
       opacityLabel.className = "opacity";
       const opacity = document.createElement("input");
-      opacity.type = "range"; opacity.min = 0; opacity.max = 100; opacity.value = 100;
+      opacity.type = "range"; opacity.min = 0; opacity.max = 100;
+      opacity.value = Math.round((previous.get(layer.id)?.opacity ?? 1) * 100);
+      grid.setOpacity(Number(opacity.value) / 100);
       opacity.setAttribute("aria-label", `${layer.name} opacity`);
       opacity.addEventListener("input", () => grid.setOpacity(Number(opacity.value) / 100));
       opacityLabel.append(textElement("span", "Opacity"), opacity);
@@ -472,8 +572,14 @@ export async function start(initialSecret, hadFragment) {
         inspect.type = "button";
         inspect.addEventListener("click", () => {
           const options = [];
-          if (grid.getVisible()) options.push(...grid.getFeaturesInExtent(
-            map.getView().calculateExtent(map.getSize())).slice(0, 100));
+          if (grid.getVisible()) {
+            const features = grid.getFeaturesInExtent(map.getView().calculateExtent(map.getSize()));
+            options.push(...features.filter((feature) => !maskFeature ||
+              booleanIntersects(maskFeature, {
+                type: "Feature", properties: {},
+                geometry: geojson.writeGeometryObject(feature.getGeometry()),
+              })).slice(0, 100));
+          }
           const select = document.createElement("select");
           select.setAttribute("aria-label", `${layer.name} visible features (up to 100 tile features)`);
           options.forEach((feature, index) => {
@@ -494,7 +600,7 @@ export async function start(initialSecret, hadFragment) {
       }
       $("layers").append(card);
     }
-    fit();
+    if (fitLayers) fit();
     map.addLayer(basemap);
     map.addLayer(borders);
     for (const record of records) map.addLayer(record.grid);
@@ -520,10 +626,23 @@ export async function start(initialSecret, hadFragment) {
     busy = true;
     try {
       if (!token && sessionDeadline - Date.now() < 60000) await refresh();
-      await request(`${base}/manifest`);
-    } catch (error) { failure(error); }
+      const updated = validateManifest((await request(`${base}/manifest`)).data, shareId, token);
+      if (manifest.mask_version !== undefined && updated.mask_version === undefined) {
+        throw new MaskError();
+      }
+      if (updated.mask_version !== manifest.mask_version) {
+        setMask(updated.mask || null);
+      }
+      const layersChanged = JSON.stringify(updated.layers) !== JSON.stringify(manifest.layers);
+      manifest = updated;
+      if (layersChanged) render(false);
+    } catch (error) {
+      if (error instanceof MaskError) stop(error.message);
+      else failure(error);
+    }
     finally {
       busy = false;
+      clearTimeout(timer);
       if (!stopped) timer = setTimeout(poll, 30000);
     }
   }
@@ -536,11 +655,15 @@ export async function start(initialSecret, hadFragment) {
     try {
       await refresh();
       manifest = validateManifest((await request(`${base}/manifest`)).data, shareId, token);
+      setMask(manifest.mask || null);
       if (Date.now() >= Date.parse(manifest.expires_at)) { stop("This shared map has expired."); return; }
       enforceExpiry();
       if (stopped) return;
       render();
-    } catch (error) { failure(error); }
+    } catch (error) {
+      if (error instanceof MaskError) stop(error.message);
+      else failure(error);
+    }
     finally {
       busy = false;
       clearTimeout(timer);
@@ -583,7 +706,8 @@ export async function start(initialSecret, hadFragment) {
   });
   map.on("singleclick", async (event) => {
     try {
-      for (const record of [...records].reverse()) {
+      if (maskGeometry && !maskGeometry.intersectsCoordinate(event.coordinate)) return;
+      for (const record of records) {
         if (record.layer.kind !== "vector" || !record.grid.getVisible()) continue;
         const features = await record.grid.getFeatures(event.pixel);
         if (stopped || !records.includes(record)) return;

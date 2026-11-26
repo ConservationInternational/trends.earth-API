@@ -9,7 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from gefapi import db
 from gefapi.config import SETTINGS
-from gefapi.models import PublicShare
+from gefapi.models import PublicShare, PublicShareLayer
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +96,7 @@ def cleanup_public_shares_task(self):
                 PublicShare.cleanup_completed_at.is_(None),
                 db.or_(
                     PublicShare.state.in_(("revoked", "expired")),
+                    PublicShare.layers.any(PublicShareLayer.removed_at.isnot(None)),
                     db.and_(
                         PublicShare.state == "ready",
                         PublicShare.expires_at.isnot(None),

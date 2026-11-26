@@ -86,6 +86,95 @@ async function open(page, id, legacy = false) {
   await expect(page.locator(vectorCanvas).first()).toBeVisible();
 }
 
+test("clips raster and vector layers and applies mask changes to an open map", async ({ page, request }) => {
+  await page.clock.install();
+  const mask = {
+    type: "Polygon",
+    coordinates: [[[-180, -80], [0, -80], [0, 80], [-180, 80], [-180, -80]]],
+  };
+  const id = await share(request, { mask, mask_version: 0 });
+  await open(page, id);
+  const pixels = (selector) => page.locator(selector).first().evaluate((canvas) => {
+    const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+    let left = 0, right = 0;
+    for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
+      if (data[(y * canvas.width + x) * 4 + 3] === 255) {
+        if (x < canvas.width / 2) left++; else right++;
+      }
+    }
+    return { left, right };
+  });
+  await expect.poll(async () => (await pixels(rasterCanvas)).left).toBeGreaterThan(1000);
+  await expect.poll(async () => (await pixels(rasterCanvas)).right).toBeLessThan(1000);
+  await expect.poll(async () => (await pixels(vectorCanvas)).left).toBeGreaterThan(100);
+  await expect.poll(async () => (await pixels(vectorCanvas)).right).toBeLessThan(100);
+  await page.getByRole("checkbox", { name: "Vector result" }).uncheck();
+  await request.post(`${fixtureUrl}/__share/${id}`, { data: { mask: null, mask_version: 1 } });
+  await page.clock.runFor(30001);
+  await expect.poll(async () => (await pixels(rasterCanvas)).right).toBeGreaterThan(1000);
+  await expect(page.getByRole("checkbox", { name: "Vector result" })).not.toBeChecked();
+});
+
+test("masks holes and excludes outside features from inspection", async ({ page, request }) => {
+  const mask = {
+    type: "Polygon",
+    coordinates: [
+      [[-80, -60], [80, -60], [80, 60], [-80, 60], [-80, -60]],
+      [[-20, -20], [-20, 20], [20, 20], [20, -20], [-20, -20]],
+    ],
+  };
+  const id = await share(request, { mask });
+  await open(page, id);
+  const centerAlpha = () => page.locator(rasterCanvas).first().evaluate((canvas) =>
+    canvas.getContext("2d").getImageData(
+      Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data[3]);
+  await expect.poll(centerAlpha).toBe(0);
+  await expect.poll(() => colorCount(page, rasterCanvas, [0, 128, 0, 255])).toBeGreaterThan(1000);
+  await page.locator("#map").click({ position: { x: 5, y: 5 } });
+  await expect(page.locator("#selection")).toBeHidden();
+});
+
+test("the feature picker ignores features outside a mask", async ({ page, request }) => {
+  const mask = {
+    type: "Polygon",
+    coordinates: [[[-179, -84], [-175, -84], [-175, -80], [-179, -80], [-179, -84]]],
+  };
+  const id = await share(request, { mask });
+  await open(page, id);
+  await page.getByRole("button", { name: "Inspect visible features" }).click();
+  await expect(page.locator("#feature-picker")).toContainText("No features loaded");
+  await expect(page.locator("#selection")).toBeHidden();
+});
+
+test("invalid masks fail closed", async ({ page, request }) => {
+  const id = await share(request, {
+    mask: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1]]] },
+  });
+  await page.goto(`/share/s/${pathToken(id)}`);
+  await expect(page.locator("#status")).toContainText("invalid mask");
+  await expect(page.locator("#layers")).toBeEmpty();
+});
+
+test.describe("high-DPI masking", () => {
+  test.use({ deviceScaleFactor: 2 });
+  test("clips in canvas pixels", async ({ page, request }) => {
+    const id = await share(request, {
+      mask: {
+        type: "Polygon",
+        coordinates: [[[-180, -80], [0, -80], [0, 80], [-180, 80], [-180, -80]]],
+      },
+    });
+    await open(page, id);
+    const samples = () => page.locator(rasterCanvas).first().evaluate((canvas) => {
+      const context = canvas.getContext("2d");
+      const y = Math.floor(canvas.height / 2);
+      return [0.25, 0.75].map((x) =>
+        context.getImageData(Math.floor(canvas.width * x), y, 1, 1).data[3]);
+    });
+    await expect.poll(samples).toEqual([255, 0]);
+  });
+});
+
 test("renders authorized raster/vector tiles, legends, controls and safe attributes", async ({ page, request }) => {
   const id = await share(request);
   const errors = [];
@@ -159,6 +248,68 @@ test("renders authorized raster/vector tiles, legends, controls and safe attribu
   await expect(page.locator(vectorCanvas).first()).toBeVisible();
   await page.getByRole("button", { name: "Show full extent" }).click();
   expect(errors).toEqual([]);
+});
+
+test("renders earlier layers above later layers in the table of contents", async ({ page, request }) => {
+  for (const reverseLayers of [false, true]) {
+    const id = await share(request, { reverseLayers });
+    await open(page, id);
+    await expect(page.locator(rasterCanvas).first()).toBeVisible();
+    const names = reverseLayers ? ["Vector result", "Raster result"] : ["Raster result", "Vector result"];
+    await expect(page.locator("#layers .layer-title span")).toHaveText(names);
+    await expect.poll(() => page.evaluate(() => {
+      const raster = document.querySelector(".layer-11111111-1111-4111-8111-111111111111");
+      const vector = document.querySelector(".layer-22222222-2222-4222-8222-222222222222");
+      return Boolean(raster.compareDocumentPosition(vector) & Node.DOCUMENT_POSITION_FOLLOWING);
+    })).toBe(reverseLayers);
+  }
+});
+
+test("inspects the uppermost visible vector layer first", async ({ page, request }) => {
+  const id = await share(request, { secondVector: "Another vector" });
+  await open(page, id);
+  await expect.poll(() => colorCount(page, vectorCanvas, [255, 0, 0, 255])).toBeGreaterThan(50);
+  const point = await page.locator(vectorCanvas).first().evaluate((canvas) => {
+    const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+    const rect = canvas.getBoundingClientRect();
+    const mapRect = document.getElementById("map").getBoundingClientRect();
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] === 255 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 255) {
+        const x = rect.left + (i / 4 % canvas.width) * rect.width / canvas.width;
+        const y = rect.top + Math.floor(i / 4 / canvas.width) * rect.height / canvas.height;
+        if (x > mapRect.left + 50 && x < mapRect.right - 50 &&
+            y > mapRect.top + 50 && y < mapRect.bottom - 50) return { x, y };
+      }
+    }
+  });
+  await page.mouse.click(point.x + 3, point.y + 8);
+  await expect(page.locator("#attributes dd").first()).toHaveText("Vector result");
+});
+
+test("keeps an empty map accessible and updates an open viewer when layers change", async ({ page, request }) => {
+  await page.clock.install();
+  const id = await share(request, { reverseLayers: true });
+  await open(page, id);
+  await page.getByRole("slider", { name: "Vector result opacity" }).fill("40");
+  await page.getByRole("checkbox", { name: "Vector result" }).uncheck();
+  await request.post(`${fixtureUrl}/__share/${id}`, { data: { layerCount: 1 } });
+  await page.clock.runFor(30001);
+  await expect(page.locator("#layers .layer-title span")).toHaveText(["Vector result"]);
+  await expect(page.getByRole("checkbox", { name: "Vector result" })).not.toBeChecked();
+  await expect(page.getByRole("slider", { name: "Vector result opacity" })).toHaveValue("40");
+  await request.post(`${fixtureUrl}/__share/${id}`, { data: { layerCount: 0 } });
+  await page.clock.runFor(30001);
+  await expect(page.locator("#layers")).toContainText("No layers are currently shared.");
+  await expect(page.locator("#layers .layer")).toHaveCount(0);
+  await ready(page);
+  await page.getByRole("button", { name: "Show full extent" }).click();
+  await page.reload();
+  await ready(page);
+  await expect(page.locator("#layers")).toContainText("No layers are currently shared.");
+
+  await request.post(`${fixtureUrl}/__share/${id}`, { data: { layerCount: 1 } });
+  await page.clock.runFor(30001);
+  await expect(page.locator("#layers .layer-title span")).toHaveText(["Vector result"]);
 });
 
 test("clears data at the declared expiry without waiting for polling", async ({ page, request }) => {

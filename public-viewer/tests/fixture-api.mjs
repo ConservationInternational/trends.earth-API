@@ -94,9 +94,11 @@ function manifest(id, options, token) {
   const base = token ? `/api/v1/public-shares/tiles/${id}/${token}/` :
     `/api/v1/public-shares/${id}/tiles/`;
   const [raster, vector] = options.layers;
-  return {
+  const data = {
     id, title: options.title,
     expires_at: options.expires_at || new Date(Date.now() + 86400000).toISOString(),
+    mask: options.mask || null,
+    mask_version: options.mask_version || 0,
     layers: [
       {
         ...raster, id: rasterId, kind: "raster", band: 1,
@@ -111,6 +113,16 @@ function manifest(id, options, token) {
       },
     ],
   };
+  if (options.secondVector) {
+    const id = "33333333-3333-4333-8333-333333333333";
+    data.layers.push({
+      ...data.layers[1], id, name: options.secondVector,
+      tiles: base + id + "/{z}/{x}/{y}.pbf",
+    });
+  }
+  if (options.reverseLayers) data.layers.reverse();
+  if (options.layerCount !== undefined) data.layers = data.layers.slice(0, options.layerCount);
+  return data;
 }
 
 http.createServer(async (req, res) => {

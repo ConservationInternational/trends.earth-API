@@ -30,6 +30,11 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from shapely import get_num_coordinates
+from shapely.affinity import translate
+from shapely.errors import GEOSException
+from shapely.geometry import Polygon, box, mapping
+from shapely.ops import unary_union
 
 from gefapi import db
 from gefapi.config import SETTINGS
@@ -41,6 +46,8 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 VECTOR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,119}$")
 MAX_LEGEND_LABEL = 200
+MAX_MASK_BYTES = 512 * 1024
+MAX_MASK_COORDINATES = 30000
 COLORMAP_LIMIT = 3.4e38
 ALLOWED_PALETTES = frozenset(
     {"viridis", "plasma", "magma", "inferno", "cividis", "turbo"}
@@ -136,6 +143,108 @@ def _share_query(share_id, user_id, lock=False):
     share = query.first()
     if share is None:
         raise PublicShareError(404, "Share not found")
+    return share
+
+
+def _validate_mask(mask):
+    if mask is None:
+        return None
+    if not isinstance(mask, dict) or set(mask) != {"type", "coordinates"}:
+        raise PublicShareError(400, "Mask must be a GeoJSON Polygon or MultiPolygon")
+    if mask["type"] not in ("Polygon", "MultiPolygon"):
+        raise PublicShareError(400, "Mask must be a GeoJSON Polygon or MultiPolygon")
+    try:
+        encoded = json.dumps(mask, allow_nan=False, separators=(",", ":")).encode()
+    except (ValueError, TypeError):
+        raise PublicShareError(400, "Mask contains invalid coordinates") from None
+    if len(encoded) > MAX_MASK_BYTES:
+        raise PublicShareError(400, "Mask exceeds the maximum size")
+    polygons = (
+        [mask["coordinates"]] if mask["type"] == "Polygon" else mask["coordinates"]
+    )
+    if not isinstance(polygons, list) or not polygons:
+        raise PublicShareError(400, "Mask contains no polygons")
+    count = 0
+    for polygon in polygons:
+        if not isinstance(polygon, list) or not polygon:
+            raise PublicShareError(400, "Mask contains an invalid polygon")
+        for ring in polygon:
+            if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
+                raise PublicShareError(400, "Mask contains an invalid ring")
+            for point in ring:
+                if (
+                    not isinstance(point, list)
+                    or len(point) != 2
+                    or any(type(value) not in (int, float) for value in point)
+                    or not -180 <= point[0] <= 180
+                    or not -90 <= point[1] <= 90
+                ):
+                    raise PublicShareError(400, "Mask contains invalid coordinates")
+            count += len(ring)
+            if count > MAX_MASK_COORDINATES:
+                raise PublicShareError(400, "Mask contains too many coordinates")
+    try:
+        pieces = []
+        for polygon in polygons:
+            unwrapped = []
+            for ring in polygon:
+                coordinates = [ring[0]]
+                for longitude, latitude in ring[1:]:
+                    previous = coordinates[-1][0]
+                    longitude += 360 * round((previous - longitude) / 360)
+                    coordinates.append([longitude, latitude])
+                if coordinates[0] != coordinates[-1]:
+                    raise PublicShareError(400, "Mask ring wraps around the world")
+                if unwrapped:
+                    offset = 360 * round((unwrapped[0][0][0] - coordinates[0][0]) / 360)
+                    coordinates = [[x + offset, y] for x, y in coordinates]
+                unwrapped.append(coordinates)
+            geometry = Polygon(unwrapped[0], unwrapped[1:])
+            if geometry.is_empty or not geometry.is_valid or geometry.area == 0:
+                raise PublicShareError(400, "Mask geometry is empty or invalid")
+            min_x, _, max_x, _ = geometry.bounds
+            if max_x - min_x > 360:
+                raise PublicShareError(400, "Mask polygon wraps around the world")
+            for world in range(
+                math.floor((min_x + 180) / 360), math.floor((max_x + 180) / 360) + 1
+            ):
+                part = geometry.intersection(
+                    box(-180 + 360 * world, -90, 180 + 360 * world, 90)
+                )
+                if not part.is_empty and part.area:
+                    pieces.append(translate(part, xoff=-360 * world))
+        geometry = unary_union(pieces)
+        if geometry.is_empty or not geometry.is_valid or geometry.area == 0:
+            raise PublicShareError(400, "Mask geometry is empty or invalid")
+        if geometry.geom_type not in ("Polygon", "MultiPolygon"):
+            raise PublicShareError(400, "Mask geometry is not polygonal")
+        if get_num_coordinates(geometry) > MAX_MASK_COORDINATES:
+            raise PublicShareError(400, "Mask contains too many coordinates")
+        result = mapping(geometry)
+        if len(json.dumps(result, separators=(",", ":")).encode()) > MAX_MASK_BYTES:
+            raise PublicShareError(400, "Mask exceeds the maximum size")
+    except (ValueError, TypeError, IndexError, GEOSException) as exc:
+        raise PublicShareError(400, "Mask geometry is invalid") from exc
+    return result
+
+
+def update_share_mask(share_id, user_id, body):
+    ensure_public_shares_enabled()
+    if not isinstance(body, dict) or set(body) != {"mask", "mask_version"}:
+        raise PublicShareError(400, "mask and mask_version are required")
+    if type(body["mask_version"]) is not int or body["mask_version"] < 0:
+        raise PublicShareError(400, "Invalid mask version")
+    mask = _validate_mask(body["mask"])
+    share = _share_query(share_id, user_id, lock=True)
+    if not share.is_accessible(_now()):
+        raise PublicShareError(
+            409, "Only active published shares can update their mask"
+        )
+    if share.mask_version != body["mask_version"]:
+        raise PublicShareError(409, "The mask changed; refresh and try again")
+    share.mask = mask
+    share.mask_version += 1
+    db.session.commit()
     return share
 
 
@@ -411,8 +520,9 @@ def create_share(user, body):
     ensure_public_shares_enabled()
     if not isinstance(body, dict):
         raise PublicShareError(400, "JSON object required")
-    if body.keys() - {"title", "retention_days", "layers"}:
+    if body.keys() - {"title", "retention_days", "layers", "mask"}:
         raise PublicShareError(400, "Unsupported share fields")
+    mask = _validate_mask(body.get("mask"))
     title = body.get("title")
     retention_days = body.get("retention_days")
     layers = body.get("layers")
@@ -421,9 +531,9 @@ def create_share(user, body):
     if type(retention_days) is not int or retention_days not in (7, 30, 90):
         raise PublicShareError(400, "retention_days must be 7, 30, or 90")
     config = _config()
-    if not isinstance(layers, list) or not layers or len(layers) > config["MAX_LAYERS"]:
+    if not isinstance(layers, list) or len(layers) > config["MAX_LAYERS"]:
         raise PublicShareError(
-            400, f"layers must contain 1 to {config['MAX_LAYERS']} items"
+            400, f"layers must contain at most {config['MAX_LAYERS']} items"
         )
 
     declarations = []
@@ -536,8 +646,11 @@ def create_share(user, body):
         id=share_id,
         user_id=user.id,
         title=title.strip(),
+        mask=mask,
         retention_days=retention_days,
-        state="draft",
+        # An empty map has nothing to upload or validate; layers are added
+        # after publication.
+        state="draft" if declarations else "ready",
         quota_reserved_bytes=total_bytes,
     )
     prefix = config.get("S3_PREFIX", "public-shares").strip("/")
@@ -596,10 +709,11 @@ def add_layers_to_share(share_id, user_id, body):
         raise PublicShareError(409, "A share update is already in progress")
 
     config = _config()
+    active_layers = [layer for layer in share.layers if layer.removed_at is None]
     declarations, total_bytes = _validate_layer_declarations(
-        body["layers"], (layer.name for layer in share.layers)
+        body["layers"], (layer.name for layer in active_layers)
     )
-    if len(share.layers) + len(declarations) > config["MAX_LAYERS"]:
+    if len(active_layers) + len(declarations) > config["MAX_LAYERS"]:
         raise PublicShareError(
             400, f"A share can contain at most {config['MAX_LAYERS']} layers"
         )
@@ -653,6 +767,43 @@ def add_layers_to_share(share_id, user_id, body):
         )
     share.quota_reserved_bytes += total_bytes
     share.update_state = "uploading"
+    db.session.commit()
+    return share
+
+
+def remove_layers_from_share(share_id, user_id, body):
+    """Hide published layers immediately and retain them for retryable cleanup."""
+    ensure_public_shares_enabled()
+    if (
+        not isinstance(body, dict)
+        or set(body) != {"layer_ids"}
+        or not isinstance(body["layer_ids"], list)
+        or not body["layer_ids"]
+        or len(body["layer_ids"]) > _config()["MAX_LAYERS"]
+    ):
+        raise PublicShareError(400, "Request must contain a nonempty layer_ids array")
+    try:
+        layer_ids = [str(uuid.UUID(value)) for value in body["layer_ids"]]
+    except (ValueError, TypeError, AttributeError):
+        raise PublicShareError(400, "Invalid layer ID") from None
+    if len(set(layer_ids)) != len(layer_ids):
+        raise PublicShareError(400, "Duplicate layer IDs")
+    share = _share_query(share_id, user_id, lock=True)
+    if not share.is_accessible(_now()):
+        raise PublicShareError(409, "Only active published shares can remove layers")
+    if share.update_state != "idle":
+        raise PublicShareError(409, "A share update is already in progress")
+    layers = {str(layer.id): layer for layer in share.layers}
+    if any(
+        layer_id not in layers
+        or not layers[layer_id].published
+        or layers[layer_id].removed_at is not None
+        for layer_id in layer_ids
+    ):
+        raise PublicShareError(404, "Published layer not found")
+    now = _now()
+    for layer_id in layer_ids:
+        layers[layer_id].removed_at = now
     db.session.commit()
     return share
 
@@ -714,9 +865,25 @@ def get_share_storage_usage(user):
         )
         .scalar()
     )
+    removed_pending_bytes = (
+        db.session.query(
+            db.func.coalesce(db.func.sum(PublicShareLayer.expected_size_bytes), 0)
+        )
+        .join(PublicShare, PublicShareLayer.share_id == PublicShare.id)
+        .filter(
+            PublicShare.user_id == user.id,
+            PublicShare.cleanup_completed_at.is_(None),
+            PublicShare.state == "ready",
+            PublicShare.expires_at > now,
+            PublicShareLayer.removed_at.isnot(None),
+        )
+        .scalar()
+    )
     reserved_bytes = int(reserved_bytes or 0)
     uploaded_bytes = int(uploaded_bytes or 0)
-    cleanup_pending_bytes = int(cleanup_pending_bytes or 0)
+    cleanup_pending_bytes = int(cleanup_pending_bytes or 0) + int(
+        removed_pending_bytes or 0
+    )
     return {
         "quota_limit_bytes": int(quota_limit),
         "quota_override_bytes": user.public_share_quota_bytes,
@@ -740,7 +907,7 @@ def create_or_refresh_upload(share_id, layer_id, user_id):
     if not is_additive_update and share.state not in ("draft", "uploading", "failed"):
         raise PublicShareError(409, "Share is not accepting uploads")
     layer = next((item for item in share.layers if str(item.id) == str(layer_id)), None)
-    if layer is None:
+    if layer is None or layer.removed_at is not None:
         raise PublicShareError(404, "Layer not found")
     if is_additive_update and layer.published:
         raise PublicShareError(409, "Published layers cannot be replaced")
@@ -837,7 +1004,11 @@ def complete_share_uploads(share_id, user_id, body):
     elif share.state not in ("uploading", "failed"):
         raise PublicShareError(409, "Share is not ready for upload completion")
     pending_layers = (
-        [layer for layer in share.layers if not layer.published]
+        [
+            layer
+            for layer in share.layers
+            if not layer.published and layer.removed_at is None
+        ]
         if is_additive_update
         else share.layers
     )
@@ -1155,7 +1326,11 @@ def validate_share(share_id):
     bucket = _config()["S3_BUCKET"]
     failures = []
     pending_layers = (
-        [layer for layer in share.layers if not layer.published]
+        [
+            layer
+            for layer in share.layers
+            if not layer.published and layer.removed_at is None
+        ]
         if is_additive_update
         else share.layers
     )
@@ -1210,7 +1385,7 @@ def mint_public_link(share, *, rotate=False):
             409, "Share is already published; rotate to get a new link"
         )
     for layer in share.layers:
-        if layer.kind == "vector":
+        if layer.kind == "vector" and layer.removed_at is None:
             _ensure_martin_source_ready(layer)
     secret = secrets.token_urlsafe(SHARE_SECRET_BYTES)
     share.token_hash = hashlib.sha256(secret.encode("ascii")).hexdigest()
@@ -1678,6 +1853,25 @@ def _delete_s3_object_versions(client, bucket, key):
         client.delete_object(Bucket=bucket, Key=key)
 
 
+def _delete_layer_objects(client, bucket, layer):
+    if layer.upload_id and not layer.upload_completed:
+        try:
+            client.abort_multipart_upload(
+                Bucket=bucket, Key=layer.object_key, UploadId=layer.upload_id
+            )
+        except botocore.exceptions.ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") not in (
+                "NoSuchUpload",
+                "NoSuchKey",
+                "404",
+            ):
+                raise
+    _delete_s3_object_versions(client, bucket, layer.object_key)
+    if layer.kind == "vector":
+        for key in set(_vector_object_keys(layer)) - {layer.object_key}:
+            _delete_s3_object_versions(client, bucket, key)
+
+
 def cleanup_share_objects(share_id):
     """Idempotently remove private objects and abort incomplete uploads."""
     config = _config()
@@ -1711,30 +1905,26 @@ def cleanup_share_objects(share_id):
         share.link_ciphertext = None
         share.session_generation += 1
         db.session.commit()
-    if share.state not in ("revoked", "expired"):
+    removed_layers = [layer for layer in share.layers if layer.removed_at is not None]
+    if share.state not in ("revoked", "expired") and not removed_layers:
         return
 
-    client = _s3_client()
     try:
-        if share.state == "revoked" and share.ready_at is not None:
+        client = _s3_client()
+        if (share.state == "revoked" and share.ready_at is not None) or removed_layers:
             invalidate_public_tiles(share)
+        if share.state not in ("revoked", "expired"):
+            for layer in removed_layers:
+                _delete_layer_objects(client, config["S3_BUCKET"], layer)
+                share.quota_reserved_bytes -= layer.expected_size_bytes
+                db.session.delete(layer)
+            share.cleanup_error = None
+            db.session.commit()
+            return
         for layer in share.layers:
-            if layer.upload_id and not layer.upload_completed:
-                try:
-                    client.abort_multipart_upload(
-                        Bucket=config["S3_BUCKET"],
-                        Key=layer.object_key,
-                        UploadId=layer.upload_id,
-                    )
-                except botocore.exceptions.ClientError as exc:
-                    code = exc.response.get("Error", {}).get("Code")
-                    if code not in ("NoSuchUpload", "NoSuchKey", "404"):
-                        raise
-            _delete_s3_object_versions(client, config["S3_BUCKET"], layer.object_key)
-            if layer.kind == "vector":
-                for key in set(_vector_object_keys(layer)) - {layer.object_key}:
-                    _delete_s3_object_versions(client, config["S3_BUCKET"], key)
+            _delete_layer_objects(client, config["S3_BUCKET"], layer)
         share.quota_reserved_bytes = 0
+        share.mask = None
         share.cleanup_error = None
         share.cleanup_completed_at = _now()
         if share.user_id is None:

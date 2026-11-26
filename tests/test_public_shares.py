@@ -30,6 +30,7 @@ from gefapi.services.public_share_service import (
     PublicShareError,
     _delete_s3_object_versions,
     _raster_tile_request,
+    _validate_mask,
     _validate_style,
     _validate_vector_style,
     create_share,
@@ -87,6 +88,291 @@ def _headers(user):
     }
 
 
+def test_remove_layers_hides_tiles_and_retries_cleanup(
+    app, client, regular_user, admin_user, public_share_config, monkeypatch
+):
+    from gefapi.services import public_share_service as service
+    from gefapi.tasks.public_shares import cleanup_public_shares_task
+
+    payload = _payload()
+    payload["layers"].append({**payload["layers"][0], "name": "Second"})
+    share = create_share(regular_user, payload)
+    share.state = "ready"
+    first, second = share.layers
+    for layer in share.layers:
+        layer.published = True
+        layer.upload_completed = True
+        layer.checksum_sha256 = layer.expected_sha256
+    second.kind = "vector"
+    second.object_key = f"public-shares/vector/{second.id}.pmtiles"
+    share_id, first_id, second_id = str(share.id), str(first.id), str(second.id)
+    first_key = first.object_key
+    vector_keys = set(service._vector_object_keys(second))
+    db.session.commit()
+    monkeypatch.setattr(service, "_ensure_martin_source_ready", Mock())
+    link = mint_public_link(share)
+    token = link.rsplit("/", 1)[1]
+    manifest_url = f"/api/v1/public-shares/s/{token}/manifest"
+    url = f"/api/v1/shares/{share_id}/layers"
+    monkeypatch.setattr(cleanup_public_shares_task, "delay", lambda: None)
+
+    assert (
+        client.delete(
+            url, json={"layer_ids": [first_id]}, headers=_headers(admin_user)
+        ).status_code
+        == 404
+    )
+    assert (
+        client.delete(
+            url,
+            json={"layer_ids": [first_id, first_id]},
+            headers=_headers(regular_user),
+        ).status_code
+        == 400
+    )
+    assert (
+        client.delete(
+            url,
+            json={"layer_ids": [first_id, str(uuid.uuid4())]},
+            headers=_headers(regular_user),
+        ).status_code
+        == 404
+    )
+    assert len(client.get(manifest_url).json["data"]["layers"]) == 2
+    share.update_state = "validating"
+    db.session.commit()
+    assert (
+        client.delete(
+            url, json={"layer_ids": [first_id]}, headers=_headers(regular_user)
+        ).status_code
+        == 409
+    )
+    share.update_state = "idle"
+    db.session.commit()
+
+    response = client.delete(
+        url, json={"layer_ids": [first_id, second_id]}, headers=_headers(regular_user)
+    )
+    assert response.status_code == 202
+    assert response.json["data"]["cleanup_scheduled"] is True
+    assert response.json["data"]["share"]["layers"] == []
+    assert client.get(manifest_url).json["data"]["layers"] == []
+    tile = f"/api/v1/public-shares/tiles/{share_id}/{token}/{first_id}/0/0/0.png"
+    assert client.get(tile).status_code == 404
+    assert service.get_public_link(share) == link
+    usage = client.get("/api/v1/shares/storage", headers=_headers(regular_user))
+    assert usage.json["data"]["reserved_bytes"] == 2048
+    assert usage.json["data"]["cleanup_pending_bytes"] == 2048
+
+    invalidate = Mock(side_effect=PublicShareError(503, "CDN unavailable"))
+    delete = Mock()
+    monkeypatch.setattr(service, "invalidate_public_tiles", invalidate)
+    monkeypatch.setattr(service, "_s3_client", Mock(return_value=Mock()))
+    monkeypatch.setattr(service, "_delete_s3_object_versions", delete)
+    assert cleanup_public_shares_task.run() == {"cleaned": 0, "failures": 1}
+    assert delete.call_count == 0
+    assert PublicShare.query.filter_by(id=share_id).one().quota_reserved_bytes == 2048
+
+    invalidate.side_effect = None
+    delete.side_effect = [
+        None,
+        botocore.exceptions.ClientError(
+            {"Error": {"Code": "ServiceUnavailable", "Message": "retry"}},
+            "DeleteObjects",
+        ),
+    ]
+    assert cleanup_public_shares_task.run() == {"cleaned": 0, "failures": 1}
+    db.session.expire_all()
+    assert PublicShare.query.filter_by(id=share_id).one().quota_reserved_bytes == 2048
+    assert client.get(manifest_url).json["data"]["layers"] == []
+
+    delete.side_effect = None
+    assert cleanup_public_shares_task.run() == {"cleaned": 1, "failures": 0}
+    db.session.expire_all()
+    cleaned = PublicShare.query.filter_by(id=share_id).one()
+    assert cleaned.quota_reserved_bytes == 0
+    assert cleaned.layers == []
+    assert {call.args[2] for call in delete.call_args_list} == {first_key, *vector_keys}
+    assert client.get(manifest_url).json["data"]["layers"] == []
+    assert service.get_public_link(cleaned) == link
+    added = client.post(
+        url, json={"layers": [payload["layers"][0]]}, headers=_headers(regular_user)
+    )
+    assert added.status_code == 201
+    assert added.json["data"]["layers"][0]["name"] == payload["layers"][0]["name"]
+
+
+def test_removed_layer_migration_blocks_unsafe_downgrade(monkeypatch):
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    import sqlalchemy as sa
+
+    path = (
+        Path(__file__).parents[1]
+        / "migrations/versions/9c4f7a3d8b20_remove_public_share_layers.py"
+    )
+    spec = importlib.util.spec_from_file_location("removed_layer_migration", path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(sa.text("CREATE TABLE public_share_layer (id TEXT)"))
+        monkeypatch.setattr(
+            migration, "op", Operations(MigrationContext.configure(connection))
+        )
+        migration.upgrade()
+        connection.execute(
+            sa.text(
+                "INSERT INTO public_share_layer (id, removed_at) "
+                "VALUES ('removed', '2026-01-01')"
+            )
+        )
+        with pytest.raises(RuntimeError, match="cleanup"):
+            migration.downgrade()
+        connection.execute(sa.text("UPDATE public_share_layer SET removed_at = NULL"))
+        migration.downgrade()
+        assert [
+            column["name"]
+            for column in sa.inspect(connection).get_columns("public_share_layer")
+        ] == ["id"]
+
+
+def test_remove_one_layer_preserves_the_other_when_queue_is_unavailable(
+    app, client, regular_user, public_share_config, monkeypatch
+):
+    from kombu.exceptions import OperationalError
+
+    from gefapi.tasks.public_shares import cleanup_public_shares_task
+
+    payload = _payload()
+    payload["layers"].append({**payload["layers"][0], "name": "Second"})
+    share = create_share(regular_user, payload)
+    share.state = "ready"
+    first, second = share.layers
+    for layer in share.layers:
+        layer.published = True
+        layer.checksum_sha256 = layer.expected_sha256
+    db.session.commit()
+    token = mint_public_link(share).rsplit("/", 1)[1]
+    monkeypatch.setattr(
+        cleanup_public_shares_task, "delay", Mock(side_effect=OperationalError("down"))
+    )
+    response = client.delete(
+        f"/api/v1/shares/{share.id}/layers",
+        json={"layer_ids": [str(first.id)]},
+        headers=_headers(regular_user),
+    )
+    assert response.status_code == 202
+    assert response.json["data"]["cleanup_scheduled"] is False
+    assert [layer["name"] for layer in response.json["data"]["share"]["layers"]] == [
+        "Second"
+    ]
+    manifest = client.get(f"/api/v1/public-shares/s/{token}/manifest")
+    assert [layer["id"] for layer in manifest.json["data"]["layers"]] == [
+        str(second.id)
+    ]
+
+
+def test_share_mask_creation_updates_and_manifest(
+    app, client, regular_user, admin_user, public_share_config
+):
+    mask = {
+        "type": "Polygon",
+        "coordinates": [[[-10, -5], [10, -5], [10, 5], [-10, 5], [-10, -5]]],
+    }
+    payload = _payload()
+    payload["mask"] = mask
+    share = create_share(regular_user, payload)
+    assert share.serialize()["has_mask"] is True
+    assert share.mask_version == 0
+    share.state = "ready"
+    share.layers[0].published = True
+    db.session.commit()
+    token = mint_public_link(share).rsplit("/", 1)[1]
+    manifest_url = f"/api/v1/public-shares/s/{token}/manifest"
+    assert client.get(manifest_url).get_json()["data"]["mask"]["type"] == "Polygon"
+
+    url = f"/api/v1/shares/{share.id}/mask"
+    assert (
+        client.put(
+            url, json={"mask": None, "mask_version": 0}, headers=_headers(admin_user)
+        ).status_code
+        == 404
+    )
+    response = client.put(
+        url, json={"mask": None, "mask_version": 0}, headers=_headers(regular_user)
+    )
+    assert response.status_code == 200
+    assert response.get_json()["data"]["mask_version"] == 1
+    assert client.get(manifest_url).get_json()["data"]["mask"] is None
+    assert (
+        client.put(
+            url, json={"mask": mask, "mask_version": 0}, headers=_headers(regular_user)
+        ).status_code
+        == 409
+    )
+    assert (
+        client.put(
+            url, json={"mask": mask, "mask_version": 1}, headers=_headers(regular_user)
+        ).status_code
+        == 200
+    )
+    share.state = "revoked"
+    db.session.commit()
+    assert (
+        client.put(
+            url, json={"mask": None, "mask_version": 2}, headers=_headers(regular_user)
+        ).status_code
+        == 409
+    )
+
+
+def test_mask_validation_splits_antimeridian_and_rejects_bad_geometry():
+    mask = {
+        "type": "Polygon",
+        "coordinates": [[[170, -10], [-170, -10], [-170, 10], [170, 10], [170, -10]]],
+    }
+    result = _validate_mask(mask)
+    assert result["type"] == "MultiPolygon"
+    assert len(result["coordinates"]) == 2
+    with pytest.raises(PublicShareError):
+        _validate_mask({"type": "Point", "coordinates": [0, 0]})
+    with pytest.raises(PublicShareError):
+        _validate_mask(
+            {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [1, 1], [1, 0], [0, 1], [0, 0]]],
+            }
+        )
+    with pytest.raises(PublicShareError, match="too many"):
+        _validate_mask(
+            {
+                "type": "Polygon",
+                "coordinates": [[[0, 0]] * 30001],
+            }
+        )
+
+
+def test_share_cleanup_removes_mask(
+    app, regular_user, public_share_config, monkeypatch
+):
+    from gefapi.services import public_share_service as service
+
+    payload = _payload()
+    payload["mask"] = {
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+    }
+    share = create_share(regular_user, payload)
+    share.state = "revoked"
+    db.session.commit()
+    monkeypatch.setattr(service, "_s3_client", Mock())
+    monkeypatch.setattr(service, "_delete_s3_object_versions", Mock())
+    service.cleanup_share_objects(share.id)
+    assert share.cleanup_completed_at is not None
+    assert share.mask is None
+
+
 def test_create_share_reserves_quota_and_returns_no_storage_key(
     app, client, regular_user, public_share_config
 ):
@@ -103,6 +389,37 @@ def test_create_share_reserves_quota_and_returns_no_storage_key(
     layer = PublicShareLayer.query.filter_by(share_id=data["id"]).one()
     assert layer.object_key.startswith(f"public-shares/{data['id']}/")
     assert layer.object_key.endswith(f"{layer.id}.tif")
+
+
+def test_empty_share_is_publishable_without_uploads(
+    app, client, regular_user, public_share_config
+):
+    payload = {**_payload(), "layers": []}
+    response = client.post(
+        "/api/v1/shares", json=payload, headers=_headers(regular_user)
+    )
+    assert response.status_code == 201
+    data = response.get_json()["data"]
+    assert data["state"] == "ready"
+    assert data["layers"] == []
+    assert data["quota_reserved_bytes"] == 0
+
+    published = client.post(
+        f"/api/v1/shares/{data['id']}/publish", headers=_headers(regular_user)
+    )
+    assert published.status_code == 200
+    token = published.get_json()["data"]["link"].rsplit("/", 1)[1]
+    manifest = client.get(f"/api/v1/public-shares/s/{token}/manifest")
+    assert manifest.status_code == 200
+    assert manifest.get_json()["data"]["layers"] == []
+
+    too_many = {**_payload(), "layers": [_payload()["layers"][0]] * 11}
+    assert (
+        client.post(
+            "/api/v1/shares", json=too_many, headers=_headers(regular_user)
+        ).status_code
+        == 400
+    )
 
 
 def test_share_creation_rejects_unknown_file_path_and_invalid_retention(

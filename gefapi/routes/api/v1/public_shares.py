@@ -33,7 +33,9 @@ from gefapi.services.public_share_service import (
     open_tile_service,
     public_origin_matches,
     refresh_viewer_session,
+    remove_layers_from_share,
     tile_intersects_layer,
+    update_share_mask,
     verify_public_secret,
 )
 from gefapi.utils.bearer_auth import bearer_required
@@ -161,6 +163,22 @@ def get_public_share_link(share_id):
     return response
 
 
+@endpoints.route("/shares/<share_id>/mask", methods=["PUT"])
+@bearer_required()
+@require_scope("webmap:write")
+def update_public_share_mask(share_id):
+    """Replace or remove the display mask on an active share."""
+    try:
+        share = update_share_mask(
+            share_id, current_user.id, request.get_json(silent=True)
+        )
+    except PublicShareError as exc:
+        return _expected_error(exc)
+    response = jsonify(data=share.serialize())
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @endpoints.route("/shares/<share_id>/layers", methods=["POST"])
 @bearer_required()
 @require_scope("webmap:write")
@@ -173,6 +191,34 @@ def add_public_share_layers(share_id):
     except PublicShareError as exc:
         return _expected_error(exc)
     return jsonify(data=share.serialize()), 201
+
+
+@endpoints.route("/shares/<share_id>/layers", methods=["DELETE"])
+@bearer_required()
+@require_scope("webmap:write")
+def remove_public_share_layers(share_id):
+    """Remove published layers and schedule cache and storage cleanup."""
+    try:
+        share = remove_layers_from_share(
+            share_id, current_user.id, request.get_json(silent=True)
+        )
+    except PublicShareError as exc:
+        return _expected_error(exc)
+    from kombu.exceptions import OperationalError
+
+    from gefapi.tasks.public_shares import cleanup_public_shares_task
+
+    cleanup_scheduled = True
+    try:
+        cleanup_public_shares_task.delay()
+    except OperationalError:
+        cleanup_scheduled = False
+        logger.exception("Removed layer cleanup awaits periodic recovery")
+    response = jsonify(
+        data={"share": share.serialize(), "cleanup_scheduled": cleanup_scheduled}
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response, 202
 
 
 @endpoints.route("/shares/<share_id>/uploads", methods=["POST"])
@@ -394,6 +440,8 @@ def get_public_share_manifest(share_id, token=None):
                 "id": str(share.id),
                 "title": share.title,
                 "expires_at": share.expires_at.isoformat() + "Z",
+                "mask": share.mask,
+                "mask_version": share.mask_version,
                 "layers": [
                     {
                         "id": str(layer.id),
@@ -414,7 +462,7 @@ def get_public_share_manifest(share_id, token=None):
                         ),
                     }
                     for layer in share.layers
-                    if layer.published
+                    if layer.published and layer.removed_at is None
                 ],
             }
         }
@@ -455,6 +503,7 @@ def get_public_share_tile(share_id, layer_id, z, x, y, tile_format="png", token=
     if (
         layer is None
         or not layer.published
+        or layer.removed_at is not None
         or not layer.checksum_sha256
         or tile_format != ("pbf" if layer.kind == "vector" else "png")
     ):
