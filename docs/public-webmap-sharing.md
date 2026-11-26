@@ -91,9 +91,21 @@ After the link is authorized, the viewer adds the same Mapbox basemaps
 excluded) that Resilience Atlas uses, with Resilience Atlas's public `pk.`
 token. Users can switch the basemap and hide borders. Mapbox requests carry no
 share secret, cookie or referrer, but they do reveal the viewer's IP address and
-the viewed area to Mapbox. A bottom-left footer shows the Trends.Earth boundary
-disclaimer and links to the Conservation International privacy policy and terms
-of use.
+the viewed area to Mapbox. A bottom-left footer shows the Mapbox and
+OpenStreetMap copyrights, the Trends.Earth boundary disclaimer, links to the
+Conservation International privacy policy and terms of use, and the link's
+expiry time.
+
+On small screens (at most 720 px wide or 500 px tall) the map fills the page
+below a one-line header. The controls and **Layers** list open as a full-height
+sheet from a floating **Layers** button and close with **Show map** or Escape.
+**Show full extent** also closes the sheet, and selecting a vector feature on
+the map opens it at the feature's attributes. The hidden part of the page is
+`inert`, and focus moves between the two buttons. The footer collapses the
+disclaimer behind a **Disclaimer** toggle but always shows the copyrights and
+expiry time. Until the sheet is first opened, a short unlisted-snapshot notice
+sits under the Layers button. A red dot marks the button when the sheet holds a
+warning or error.
 
 New links use `/share/s/<unguessable-token>` with no separate secret or session
 cookie. Copying the browser address bar or forwarding the URL preserves access.

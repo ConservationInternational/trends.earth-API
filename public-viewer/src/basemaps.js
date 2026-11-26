@@ -10,7 +10,6 @@ import { Stroke, Style } from "ol/style.js";
 export const MAPBOX_ORIGIN = "https://api.mapbox.com";
 const MAPBOX_TOKEN =
   "pk.eyJ1IjoiY2lncnAiLCJhIjoiYTQ5YzVmYTk4YzM0ZWM4OTU1ZjQxMWI5ZDNiNTQ5M2IifQ.SBgo9jJftBDx4c5gX4wm3g";
-const ATTRIBUTION = "© Mapbox © OpenStreetMap";
 
 export const BASEMAPS = {
   defaultmap: { label: "Default", style: "cixkh6jb000582smx8pfdeu23", borders: "dark" },
@@ -33,7 +32,7 @@ export function createBasemapLayer(key = DEFAULT_BASEMAP) {
   return new TileLayer({
     source: new XYZ({
       url: basemapUrl(key), crossOrigin: "anonymous", tilePixelRatio: 2,
-      tileSize: 256, maxZoom: 22, attributions: ATTRIBUTION,
+      tileSize: 256, maxZoom: 22,
     }),
     zIndex: -1,
     className: "basemap",
@@ -60,7 +59,6 @@ export function createBorderLayer(tone = "dark") {
       url: `${MAPBOX_ORIGIN}/v4/mapbox.mapbox-streets-v8/{z}/{x}/{y}.mvt?access_token=${MAPBOX_TOKEN}`,
       format: new MVT({ layers: ["admin"] }),
       maxZoom: 14,
-      attributions: ATTRIBUTION,
     }),
     style: (feature) => {
       const maritime = feature.get("maritime");

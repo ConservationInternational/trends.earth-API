@@ -543,6 +543,7 @@ test("shows expired state and supports responsive keyboard navigation and contin
   await page.setViewportSize({ width: 390, height: 844 });
   const id = await share(request, { continuous: true });
   await open(page, id);
+  await page.getByRole("button", { name: "Layers", exact: true }).click();
   await expect(page.locator(".gradient")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole("checkbox", { name: "Raster result" }).focus();
@@ -576,7 +577,14 @@ test("adds Resilience Atlas basemaps and national borders only after authorizati
   await expect.poll(() => mapboxRequests.some(({ url }) => url.includes("/styles/v1/cigrp/cixkh6jb000582smx8pfdeu23/"))).toBe(true);
   await expect.poll(() => mapboxRequests.some(({ url }) => url.includes("mapbox.mapbox-streets-v8"))).toBe(true);
   expect(mapboxRequests.every(({ url, referer }) => !url.includes(secret) && !referer)).toBe(true);
-  await expect(page.locator(".ol-attribution")).toContainText("Mapbox");
+  await expect(page.locator(".ol-attribution")).toHaveCount(0);
+  await expect(page.locator("#map-disclaimer")).toHaveText(
+    /^© Mapbox © OpenStreetMap \| Disclaimer: The boundaries[^]*Terms of Use\s*Link expires: .+ UTC$/,
+    { useInnerText: true });
+  await expect(page.locator("header #expiry")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Disclaimer" })).toBeHidden();
+  await expect(page.getByRole("link", { name: "© OpenStreetMap" })).toHaveAttribute(
+    "href", "https://www.openstreetmap.org/copyright");
   await expect(page.locator("#map-disclaimer")).toContainText("do not imply official endorsement");
   await expect(page.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute(
     "href", "https://www.conservation.org/policies/privacy");
@@ -587,4 +595,80 @@ test("adds Resilience Atlas basemaps and national borders only after authorizati
   await expect.poll(() => mapboxRequests.some(({ url }) => url.includes("cizsz6pv700422ro73xdhzi1g"))).toBe(true);
   await page.getByRole("checkbox", { name: "National borders" }).uncheck();
   await expect(page.locator(".national-borders")).toBeHidden();
+});
+
+test("small screens show the map full screen and open the layer list as a sheet", async ({ page, request }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, await share(request));
+  const sheet = page.locator("#controls");
+  const layers = page.getByRole("button", { name: "Layers", exact: true });
+  const showMap = page.getByRole("button", { name: "Show map" });
+  const inert = (selector) => page.locator(selector).evaluate((element) => element.inert);
+  const box = (selector) => page.locator(selector).boundingBox();
+
+  await expect(page.locator(".powered-by")).toBeHidden();
+  const main = await box("main");
+  expect(main.y + main.height).toBeCloseTo(844, 0);
+  expect(await box("#map")).toEqual(main);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth &&
+    document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+  await expect(sheet).toBeHidden();
+  expect(await inert("#controls")).toBe(true);
+  await expect(layers).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator("#mobile-notice")).toBeVisible();
+
+  await expect(page.locator("#expiry")).toBeVisible();
+  await expect(page.locator("#expiry")).toContainText("UTC");
+  await expect(page.locator("#disclaimer-text")).toBeHidden();
+  const disclaimer = page.getByRole("button", { name: "Disclaimer" });
+  await disclaimer.click();
+  await expect(disclaimer).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#disclaimer-text")).toBeVisible();
+  await expect(page.locator("#disclaimer-text")).toContainText("do not imply official endorsement");
+  await disclaimer.click();
+  await expect(page.locator("#disclaimer-text")).toBeHidden();
+
+  await layers.click();
+  await expect(sheet).toBeVisible();
+  await expect(showMap).toBeFocused();
+  await expect(showMap).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#mobile-notice")).toBeHidden();
+  await expect.poll(() => box("#controls")).toEqual(main);
+  expect(await inert("#map-region")).toBe(true);
+  await expect(page.getByRole("checkbox", { name: "Raster result" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(layers).toBeFocused();
+
+  await layers.click();
+  await page.getByRole("button", { name: "Show full extent" }).click();
+  await expect(sheet).toBeHidden();
+  expect(await inert("#map-region")).toBe(false);
+
+  const point = await page.locator(vectorCanvas).evaluate((canvas) => {
+    const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+    const rect = canvas.getBoundingClientRect();
+    const mapRect = document.getElementById("map").getBoundingClientRect();
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] === 255 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 255) {
+        const x = rect.left + (i / 4 % canvas.width) * rect.width / canvas.width;
+        const y = rect.top + Math.floor(i / 4 / canvas.width) * rect.height / canvas.height;
+        if (x > mapRect.left + 60 && x < mapRect.right - 60 &&
+            y > mapRect.top + 80 && y < mapRect.bottom - 80) return { x, y };
+      }
+    }
+  });
+  await page.mouse.click(point.x + 3, point.y + 8);
+  await expect(sheet).toBeVisible();
+  await expect(page.locator("#selection-title")).toBeFocused();
+  await expect(page.locator("#attributes")).toContainText("point");
+  await showMap.click();
+  await expect(sheet).toBeHidden();
+  await expect(layers).toBeFocused();
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(sheet).toBeVisible();
+  expect(await inert("#controls")).toBe(false);
+  await expect(layers).toBeHidden();
+  await expect(page.locator("#expiry")).toBeVisible();
 });

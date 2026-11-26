@@ -215,7 +215,7 @@ export async function start(initialSecret, hadFragment) {
   const map = new Map({
     target: "map",
     maxTilesLoading: 6,
-    controls: defaultControls({ attribution: true, attributionOptions: { collapsible: true }, rotate: false }),
+    controls: defaultControls({ attribution: false, rotate: false }),
     view: new View({ center: fromLonLat([0, 0]), zoom: 2, minZoom: 0, maxZoom: 22 }),
   });
   $("map").setAttribute("aria-label", "Interactive map. Arrow keys pan; plus and minus zoom.");
@@ -239,11 +239,35 @@ export async function start(initialSecret, hadFragment) {
   const base = `/api/v1/public-shares/${token ? `s/${token}` : shareId}`;
   const basemap = createBasemapLayer(DEFAULT_BASEMAP);
   const borders = createBorderLayer(BASEMAPS[DEFAULT_BASEMAP].borders);
+  // Small screens show the map full screen; the controls open as an overlay sheet.
+  const compact = window.matchMedia("(max-width: 720px), (max-height: 500px)");
+  let tocOpen = false;
+
+  function syncToc() {
+    const sheet = compact.matches;
+    document.body.classList.toggle("toc-open", sheet && tocOpen);
+    $("controls").inert = sheet && !tocOpen;
+    $("map-region").inert = sheet && tocOpen;
+    for (const id of ["toc-open", "toc-close"]) {
+      $(id).setAttribute("aria-expanded", String(!sheet || tocOpen));
+    }
+  }
+
+  function setToc(open, { focus = true } = {}) {
+    if (tocOpen === open) return;
+    tocOpen = open;
+    if (open) $("mobile-notice").hidden = true;
+    syncToc();
+    if (compact.matches && focus) $(open ? "toc-close" : "toc-open").focus();
+  }
 
   function status(message, state) {
     $("status").textContent = message;
     $("status").dataset.state = state;
     $("status").setAttribute("role", state === "error" ? "alert" : "status");
+    const attention = Boolean(message) && ["warning", "error"].includes(state);
+    $("toc-open").classList.toggle("attention", attention);
+    $("toc-open").setAttribute("aria-label", attention ? "Layers (has a status message)" : "Layers");
   }
 
   function clearLayers() {
@@ -373,6 +397,7 @@ export async function start(initialSecret, hadFragment) {
   }
 
   function selectFeature(feature, layerName) {
+    const reveal = compact.matches && !tocOpen;
     $("selection").hidden = false;
     $("attributes").replaceChildren(textElement("dt", "Layer"), textElement("dd", layerName));
     const properties = { ...feature.getProperties() };
@@ -382,6 +407,10 @@ export async function start(initialSecret, hadFragment) {
     }
     if (!Object.keys(properties).length) {
       $("attributes").append(textElement("dt", "Attributes"), textElement("dd", "No attributes embedded."));
+    }
+    if (reveal) {
+      setToc(true, { focus: false });
+      $("selection-title").focus({ preventScroll: true });
     }
     $("selection").scrollIntoView({ block: "nearest" });
   }
@@ -829,7 +858,22 @@ export async function start(initialSecret, hadFragment) {
     borders.changed();
   });
   $("borders").addEventListener("change", () => borders.setVisible($("borders").checked));
-  $("fit").addEventListener("click", fit);
+  $("fit").addEventListener("click", () => {
+    fit();
+    if (compact.matches) setToc(false);
+  });
+  $("toc-open").addEventListener("click", () => setToc(true));
+  $("toc-close").addEventListener("click", () => setToc(false));
+  document.querySelector(".skip-link").addEventListener("click", () => setToc(true, { focus: false }));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && compact.matches && tocOpen) setToc(false);
+  });
+  compact.addEventListener("change", () => { tocOpen = false; syncToc(); });
+  syncToc();
+  $("disclaimer-toggle").addEventListener("click", () => {
+    const expanded = $("map-disclaimer").classList.toggle("expanded");
+    $("disclaimer-toggle").setAttribute("aria-expanded", String(expanded));
+  });
   $("retry").addEventListener("click", load);
   $("clear-selection").addEventListener("click", () => {
     $("selection").hidden = true;

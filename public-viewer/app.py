@@ -14,6 +14,12 @@ app = Dash(
     external_stylesheets=["/assets/style.css"],
     title="Trends.Earth shared map",
     update_title=None,
+    meta_tags=[
+        {
+            "name": "viewport",
+            "content": "width=device-width, initial-scale=1, viewport-fit=cover",
+        }
+    ],
 )
 server = app.server
 server.config["MAX_CONTENT_LENGTH"] = 4096
@@ -34,6 +40,11 @@ app.index_string = """<!DOCTYPE html>
 # Same policy links as the API sign-in pages (gefapi/routes/oidc.py).
 PRIVACY_POLICY_URL = "https://www.conservation.org/policies/privacy"
 TERMS_OF_USE_URL = "https://www.conservation.org/policies/terms-of-use"
+DISCLAIMER = (
+    "The boundaries and names used, and the designations used, in Trends.Earth "
+    "do not imply official endorsement or acceptance by Conservation International "
+    "Foundation, or by its partner organizations and contributors. "
+)
 
 app.layout = html.Div(
     [
@@ -46,7 +57,6 @@ app.layout = html.Div(
                     className="brand-logo",
                 ),
                 html.H1("Shared map", id="title"),
-                html.P(id="expiry"),
                 html.P("Powered by Trends.Earth", className="powered-by"),
             ]
         ),
@@ -54,6 +64,18 @@ app.layout = html.Div(
             [
                 html.Aside(
                     [
+                        html.Div(
+                            html.Button(
+                                "Show map",
+                                id="toc-close",
+                                type="button",
+                                **{
+                                    "aria-controls": "controls",
+                                    "aria-expanded": "false",
+                                },
+                            ),
+                            className="toc-bar",
+                        ),
                         html.P(
                             "This is an unlisted snapshot. Anyone with the "
                             "original link can "
@@ -85,7 +107,9 @@ app.layout = html.Div(
                         html.Section(
                             [
                                 html.H2(
-                                    "Selected vector feature", id="selection-title"
+                                    "Selected vector feature",
+                                    id="selection-title",
+                                    tabIndex=-1,
                                 ),
                                 html.P(
                                     "All embedded attributes are public "
@@ -113,29 +137,70 @@ app.layout = html.Div(
                             "The map will appear after this link is authorized.",
                             id="map-placeholder",
                         ),
+                        html.Button(
+                            "Layers",
+                            id="toc-open",
+                            type="button",
+                            **{"aria-controls": "controls", "aria-expanded": "false"},
+                        ),
+                        html.P(
+                            "Unlisted snapshot: anyone with the link can view, "
+                            "forward, or save it until access expires.",
+                            id="mobile-notice",
+                        ),
                         html.Div(
                             [
-                                html.Span(
-                                    "Disclaimer: The boundaries and names used, and "
-                                    "the designations used, in Trends.Earth do not "
-                                    "imply official endorsement or acceptance by "
-                                    "Conservation International Foundation, or by "
-                                    "its partner organizations and contributors."
+                                html.P(
+                                    [
+                                        html.A(
+                                            "© Mapbox",
+                                            href="https://www.mapbox.com/about/maps/",
+                                            target="_blank",
+                                            rel="noopener noreferrer",
+                                        ),
+                                        " ",
+                                        html.A(
+                                            "© OpenStreetMap",
+                                            href="https://www.openstreetmap.org/copyright",
+                                            target="_blank",
+                                            rel="noopener noreferrer",
+                                        ),
+                                        " | ",
+                                        html.Button(
+                                            "Disclaimer",
+                                            id="disclaimer-toggle",
+                                            type="button",
+                                            **{
+                                                "aria-controls": "disclaimer-text",
+                                                "aria-expanded": "false",
+                                            },
+                                        ),
+                                        html.Span(
+                                            [
+                                                html.Span(
+                                                    "Disclaimer: ",
+                                                    className="disclaimer-label",
+                                                ),
+                                                DISCLAIMER,
+                                                html.A(
+                                                    "Privacy Policy",
+                                                    href=PRIVACY_POLICY_URL,
+                                                    target="_blank",
+                                                    rel="noopener noreferrer",
+                                                ),
+                                                " | ",
+                                                html.A(
+                                                    "Terms of Use",
+                                                    href=TERMS_OF_USE_URL,
+                                                    target="_blank",
+                                                    rel="noopener noreferrer",
+                                                ),
+                                            ],
+                                            id="disclaimer-text",
+                                        ),
+                                    ]
                                 ),
-                                " ",
-                                html.A(
-                                    "Privacy Policy",
-                                    href=PRIVACY_POLICY_URL,
-                                    target="_blank",
-                                    rel="noopener noreferrer",
-                                ),
-                                " | ",
-                                html.A(
-                                    "Terms of Use",
-                                    href=TERMS_OF_USE_URL,
-                                    target="_blank",
-                                    rel="noopener noreferrer",
-                                ),
+                                html.P(id="expiry"),
                             ],
                             id="map-disclaimer",
                         ),
