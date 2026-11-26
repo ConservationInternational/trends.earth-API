@@ -96,6 +96,10 @@ OpenStreetMap copyrights, the Trends.Earth boundary disclaimer, links to the
 Conservation International privacy policy and terms of use, and the link's
 expiry time.
 
+On larger screens the controls and **Layers** list form a sidebar that starts
+open. **Hide layers** collapses it so the map takes the full width, and a
+floating **Layers** button reopens it.
+
 On small screens (at most 720 px wide or 500 px tall) the map fills the page
 below a one-line header. The controls and **Layers** list open as a full-height
 sheet from a floating **Layers** button and close with **Show map** or Escape.

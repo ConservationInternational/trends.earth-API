@@ -239,18 +239,20 @@ export async function start(initialSecret, hadFragment) {
   const base = `/api/v1/public-shares/${token ? `s/${token}` : shareId}`;
   const basemap = createBasemapLayer(DEFAULT_BASEMAP);
   const borders = createBorderLayer(BASEMAPS[DEFAULT_BASEMAP].borders);
-  // Small screens show the map full screen; the controls open as an overlay sheet.
+  // Small screens show the map full screen and open the controls as an overlay
+  // sheet; larger screens show them as a sidebar that can be collapsed.
   const compact = window.matchMedia("(max-width: 720px), (max-height: 500px)");
-  let tocOpen = false;
+  let tocOpen = !compact.matches;
 
   function syncToc() {
     const sheet = compact.matches;
     document.body.classList.toggle("toc-open", sheet && tocOpen);
-    $("controls").inert = sheet && !tocOpen;
+    document.body.classList.toggle("toc-hidden", !sheet && !tocOpen);
+    $("controls").inert = !tocOpen;
     $("map-region").inert = sheet && tocOpen;
-    for (const id of ["toc-open", "toc-close"]) {
-      $(id).setAttribute("aria-expanded", String(!sheet || tocOpen));
-    }
+    $("toc-close").textContent = sheet ? "Show map" : "Hide layers";
+    for (const id of ["toc-open", "toc-close"]) $(id).setAttribute("aria-expanded", String(tocOpen));
+    map.updateSize();
   }
 
   function setToc(open, { focus = true } = {}) {
@@ -258,7 +260,7 @@ export async function start(initialSecret, hadFragment) {
     tocOpen = open;
     if (open) $("mobile-notice").hidden = true;
     syncToc();
-    if (compact.matches && focus) $(open ? "toc-close" : "toc-open").focus();
+    if (focus) $(open ? "toc-close" : "toc-open").focus();
   }
 
   function status(message, state) {
@@ -397,7 +399,7 @@ export async function start(initialSecret, hadFragment) {
   }
 
   function selectFeature(feature, layerName) {
-    const reveal = compact.matches && !tocOpen;
+    const reveal = !tocOpen;
     $("selection").hidden = false;
     $("attributes").replaceChildren(textElement("dt", "Layer"), textElement("dd", layerName));
     const properties = { ...feature.getProperties() };
@@ -868,7 +870,7 @@ export async function start(initialSecret, hadFragment) {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && compact.matches && tocOpen) setToc(false);
   });
-  compact.addEventListener("change", () => { tocOpen = false; syncToc(); });
+  compact.addEventListener("change", () => { tocOpen = !compact.matches; syncToc(); });
   syncToc();
   $("disclaimer-toggle").addEventListener("click", () => {
     const expanded = $("map-disclaimer").classList.toggle("expanded");

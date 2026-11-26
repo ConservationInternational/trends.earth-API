@@ -672,3 +672,29 @@ test("small screens show the map full screen and open the layer list as a sheet"
   await expect(layers).toBeHidden();
   await expect(page.locator("#expiry")).toBeVisible();
 });
+
+test("the desktop sidebar is open by default and collapses to give the map the full width", async ({ page, request }) => {
+  await open(page, await share(request));
+  const sidebar = page.locator("#controls");
+  const hide = page.getByRole("button", { name: "Hide layers" });
+  const layers = page.getByRole("button", { name: "Layers", exact: true });
+  const mapWidth = () => page.locator("#map canvas").first().evaluate((canvas) => canvas.getBoundingClientRect().width);
+  await expect(sidebar).toBeVisible();
+  await expect(layers).toBeHidden();
+  await expect(hide).toHaveAttribute("aria-expanded", "true");
+  const narrow = await mapWidth();
+
+  await hide.click();
+  await expect(sidebar).toBeHidden();
+  await expect(layers).toBeFocused();
+  await expect(layers).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(mapWidth).toBe(1280);
+  await page.keyboard.press("Escape");
+  await expect(sidebar).toBeHidden();
+
+  await layers.click();
+  await expect(sidebar).toBeVisible();
+  await expect(hide).toBeFocused();
+  await expect.poll(mapWidth).toBe(narrow);
+  expect(narrow).toBeLessThan(1280);
+});
