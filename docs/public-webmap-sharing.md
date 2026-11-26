@@ -65,6 +65,12 @@ and provides native MVT rendering and feature picking; Dash hosts the responsive
 page independently of the authenticated API/dashboard. Current map tiles use
 EPSG:3857 and manifest extents use EPSG:4326.
 
+The **Layers** list starts in the owner's order, with the first layer drawn on
+top. Viewers can drag a layer's handle, or focus it and press the Up and Down
+arrow keys, to restack layers for themselves. This order is local to the page:
+it is never sent to the API. It survives manifest refreshes, and layers added
+later keep their shared position.
+
 Shares can carry an optional WGS84 GeoJSON Polygon or MultiPolygon display
 mask (maximum 512 KiB and 30,000 coordinates). The API validates the geometry,
 splits antimeridian crossings, and stores a snapshot with the share. Owners can
@@ -569,7 +575,9 @@ restores the default. Users can inspect their own totals with
 `GET /api/v1/shares/storage` and list/delete individual shares using the owner
 routes below. The storage response distinguishes uploaded bytes, total reserved
 bytes (including incomplete uploads and pending cleanup), bytes awaiting
-cleanup, available quota, and whether the account is over quota. Revoked or
+cleanup, available quota, and whether the account is over quota. It also
+reports `active_share_count`, `active_share_limit`, `max_layers_per_share` and
+`max_share_bytes` so clients can show the remaining allowance. Revoked or
 expired content continues counting against quota until its S3 objects and
 versions are deleted successfully.
 
@@ -586,8 +594,9 @@ authenticated user; optional job IDs are not accepted as an ownership proxy.
 | `POST /api/v1/shares/{id}/complete` | `webmap:write` | Complete every layer, verify actual size, and enqueue COG/PMTiles validation. Repeated completion can retry a lost validation enqueue. |
 | `DELETE /api/v1/shares/{id}/layers` | `webmap:write` | Remove published layers using `{"layer_ids": ["..."]}`; an empty map remains accessible. Returns 202 with the updated `share` and `cleanup_scheduled`. |
 | `GET /api/v1/shares` and `GET /api/v1/shares/{id}` | `webmap:read` | List/status for the owner only; never returns capability secrets, object keys, or upload credentials. |
+| `PUT /api/v1/shares/{id}/layers/order` | `webmap:write` | Reorder an active, idle share's published layers with `{"layer_ids": ["..."]}`, listing every published layer exactly once; the first ID is the top layer in the viewer. New layers are appended at the bottom. Returns the updated share (`no-store`). |
 | `GET /api/v1/shares/{id}/link` | `webmap:write` | Return the owner's current viewer link (`{id, link, expires_at}`, `no-store`). Returns 409 when the share is not live or its link was not stored (published before link storage, or after a session-secret rotation); rotate once to fix. |
-| `GET /api/v1/shares/storage` | `webmap:read` | Return the owner's uploaded, reserved, pending-cleanup and available storage totals. |
+| `GET /api/v1/shares/storage` | `webmap:read` | Return the owner's uploaded, reserved, pending-cleanup and available storage totals, active-map count and limit, and per-map limits. |
 | `POST /api/v1/shares/{id}/publish` | `webmap:write` | After validation, set `ready_at` and `expires_at`, hash a new capability, store it encrypted for the owner, and return its URL. |
 | `POST /api/v1/shares/{id}/rotate` | `webmap:write` | Replace the capability and invalidate old viewer sessions without extending expiry. |
 | `DELETE /api/v1/shares/{id}` | `webmap:write` | Revoke synchronously, then schedule idempotent object/upload cleanup. |

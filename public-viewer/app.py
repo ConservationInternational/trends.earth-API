@@ -77,7 +77,7 @@ app.layout = html.Div(
                         ),
                         html.Section(
                             [
-                                html.H2("Layers and legends", id="layers-title"),
+                                html.H2("Layers", id="layers-title"),
                                 html.Div(id="layers"),
                             ],
                             **{"aria-labelledby": "layers-title"},

@@ -656,11 +656,12 @@ def create_share(user, body):
     prefix = config.get("S3_PREFIX", "public-shares").strip("/")
     if not prefix or ".." in prefix.split("/"):
         raise PublicShareError(503, "Public share storage prefix is invalid")
-    for declaration in declarations:
+    for position, declaration in enumerate(declarations):
         layer_id = str(uuid.uuid4())
         share.layers.append(
             PublicShareLayer(
                 id=layer_id,
+                position=position,
                 name=declaration["name"],
                 kind=declaration["kind"],
                 band=declaration["band"],
@@ -741,11 +742,13 @@ def add_layers_to_share(share_id, user_id, body):
     prefix = config.get("S3_PREFIX", "public-shares").strip("/")
     if not prefix or ".." in prefix.split("/"):
         raise PublicShareError(503, "Public share storage prefix is invalid")
-    for declaration in declarations:
+    next_position = max((layer.position for layer in share.layers), default=-1) + 1
+    for offset, declaration in enumerate(declarations):
         layer_id = str(uuid.uuid4())
         share.layers.append(
             PublicShareLayer(
                 id=layer_id,
+                position=next_position + offset,
                 name=declaration["name"],
                 kind=declaration["kind"],
                 band=declaration["band"],
@@ -808,6 +811,47 @@ def remove_layers_from_share(share_id, user_id, body):
     return share
 
 
+def reorder_share_layers(share_id, user_id, body):
+    """Set the display order of an active share's published layers."""
+    ensure_public_shares_enabled()
+    if (
+        not isinstance(body, dict)
+        or set(body) != {"layer_ids"}
+        or not isinstance(body["layer_ids"], list)
+        or not body["layer_ids"]
+        or len(body["layer_ids"]) > _config()["MAX_LAYERS"]
+    ):
+        raise PublicShareError(400, "Request must contain a nonempty layer_ids array")
+    try:
+        layer_ids = [str(uuid.UUID(value)) for value in body["layer_ids"]]
+    except (ValueError, TypeError, AttributeError):
+        raise PublicShareError(400, "Invalid layer ID") from None
+    if len(set(layer_ids)) != len(layer_ids):
+        raise PublicShareError(400, "Duplicate layer IDs")
+    share = _share_query(share_id, user_id, lock=True)
+    if not share.is_accessible(_now()):
+        raise PublicShareError(409, "Only active published shares can reorder layers")
+    if share.update_state != "idle":
+        raise PublicShareError(409, "A share update is already in progress")
+    layers = {
+        str(layer.id): layer
+        for layer in share.layers
+        if layer.published and layer.removed_at is None
+    }
+    if set(layer_ids) != set(layers):
+        raise PublicShareError(400, "layer_ids must list every published layer once")
+    for position, layer_id in enumerate(layer_ids):
+        layers[layer_id].position = position
+    # Unpublished or removed layers keep their relative order after the list.
+    for offset, layer in enumerate(
+        layer for layer in share.layers if str(layer.id) not in layers
+    ):
+        layer.position = len(layer_ids) + offset
+    db.session.commit()
+    db.session.refresh(share)
+    return share
+
+
 def get_share_storage_usage(user):
     """Return committed and reserved public-share storage for one owner."""
     config = _config()
@@ -818,6 +862,11 @@ def get_share_storage_usage(user):
     )
     owned_shares = PublicShare.query.filter_by(user_id=user.id)
     retained_shares = owned_shares.filter(PublicShare.cleanup_completed_at.is_(None))
+    active_share_count = PublicShare.query.filter(
+        PublicShare.user_id == user.id,
+        PublicShare.state.in_(ACTIVE_STATES),
+        db.or_(PublicShare.expires_at.is_(None), PublicShare.expires_at > _now()),
+    ).count()
     reserved_bytes = (
         db.session.query(
             db.func.coalesce(db.func.sum(PublicShare.quota_reserved_bytes), 0)
@@ -893,6 +942,10 @@ def get_share_storage_usage(user):
         "available_bytes": max(0, quota_limit - reserved_bytes),
         "over_quota": reserved_bytes > quota_limit,
         "retained_share_count": retained_shares.count(),
+        "active_share_count": active_share_count,
+        "active_share_limit": config["MAX_ACTIVE_SHARES_PER_USER"],
+        "max_layers_per_share": config["MAX_LAYERS"],
+        "max_share_bytes": config["MAX_SHARE_BYTES"],
     }
 
 

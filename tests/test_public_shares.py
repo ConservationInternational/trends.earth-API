@@ -237,6 +237,141 @@ def test_removed_layer_migration_blocks_unsafe_downgrade(monkeypatch):
         ] == ["id"]
 
 
+def test_owner_reorders_published_layers_and_new_layers_are_appended(
+    app, client, regular_user, admin_user, public_share_config, monkeypatch
+):
+    from gefapi.services.public_share_service import add_layers_to_share
+    from gefapi.tasks.public_shares import cleanup_public_shares_task
+
+    payload = _payload()
+    payload["layers"] += [
+        {**payload["layers"][0], "name": "Second"},
+        {**payload["layers"][0], "name": "Third"},
+    ]
+    share = create_share(regular_user, payload)
+    share.state = "ready"
+    for layer in share.layers:
+        layer.published = True
+        layer.checksum_sha256 = layer.expected_sha256
+    first, second, third = (str(layer.id) for layer in share.layers)
+    db.session.commit()
+    token = mint_public_link(share).rsplit("/", 1)[1]
+    manifest_url = f"/api/v1/public-shares/s/{token}/manifest"
+    url = f"/api/v1/shares/{share.id}/layers/order"
+
+    def names():
+        return [
+            layer["name"] for layer in client.get(manifest_url).json["data"]["layers"]
+        ]
+
+    assert names() == ["Land cover", "Second", "Third"]
+    assert (
+        client.put(
+            url,
+            json={"layer_ids": [third, second, first]},
+            headers=_headers(admin_user),
+        ).status_code
+        == 404
+    )
+    for invalid in ([third, second], [third, second, first, first], [third, "x"]):
+        assert (
+            client.put(
+                url, json={"layer_ids": invalid}, headers=_headers(regular_user)
+            ).status_code
+            == 400
+        )
+    share.update_state = "validating"
+    db.session.commit()
+    assert (
+        client.put(
+            url,
+            json={"layer_ids": [third, second, first]},
+            headers=_headers(regular_user),
+        ).status_code
+        == 409
+    )
+    share.update_state = "idle"
+    db.session.commit()
+
+    response = client.put(
+        url, json={"layer_ids": [third, first, second]}, headers=_headers(regular_user)
+    )
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert [layer["id"] for layer in response.json["data"]["layers"]] == [
+        third,
+        first,
+        second,
+    ]
+    assert names() == ["Third", "Land cover", "Second"]
+
+    monkeypatch.setattr(cleanup_public_shares_task, "delay", lambda: None)
+    assert (
+        client.delete(
+            f"/api/v1/shares/{share.id}/layers",
+            json={"layer_ids": [first]},
+            headers=_headers(regular_user),
+        ).status_code
+        == 202
+    )
+    assert (
+        client.put(
+            url, json={"layer_ids": [second, third]}, headers=_headers(regular_user)
+        ).status_code
+        == 200
+    )
+    assert names() == ["Second", "Third"]
+
+    added = add_layers_to_share(
+        str(share.id),
+        regular_user.id,
+        {"layers": [{**payload["layers"][0], "name": "Fourth"}]},
+    )
+    assert [layer.name for layer in added.layers if layer.removed_at is None] == [
+        "Second",
+        "Third",
+        "Fourth",
+    ]
+
+
+def test_layer_order_migration_backfills_creation_order(monkeypatch):
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    import sqlalchemy as sa
+
+    path = (
+        Path(__file__).parents[1]
+        / "migrations/versions/b5e2d7a91f34_order_public_share_layers.py"
+    )
+    spec = importlib.util.spec_from_file_location("layer_order_migration", path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "CREATE TABLE public_share_layer "
+                "(id TEXT, share_id TEXT, created_at TEXT)"
+            )
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO public_share_layer VALUES "
+                "('a2', 'a', '2026-01-02'), ('a1', 'a', '2026-01-01'), "
+                "('b1', 'b', '2026-01-03')"
+            )
+        )
+        monkeypatch.setattr(
+            migration, "op", Operations(MigrationContext.configure(connection))
+        )
+        migration.upgrade()
+        assert dict(
+            connection.execute(
+                sa.text("SELECT id, position FROM public_share_layer")
+            ).all()
+        ) == {"a1": 0, "a2": 1, "b1": 0}
+
+
 def test_remove_one_layer_preserves_the_other_when_queue_is_unavailable(
     app, client, regular_user, public_share_config, monkeypatch
 ):
@@ -574,6 +709,12 @@ def test_storage_usage_reports_uploads_and_retains_quota_until_cleanup(
     assert usage["uploaded_bytes"] == 1024
     assert usage["reserved_bytes"] == 1024
     assert usage["cleanup_pending_bytes"] == 0
+    assert usage["active_share_count"] == 1
+    assert (
+        usage["active_share_limit"]
+        == SETTINGS["PUBLIC_SHARES"]["MAX_ACTIVE_SHARES_PER_USER"]
+    )
+    assert usage["max_layers_per_share"] == SETTINGS["PUBLIC_SHARES"]["MAX_LAYERS"]
 
     from gefapi.tasks.public_shares import cleanup_public_shares_task
 
@@ -585,6 +726,7 @@ def test_storage_usage_reports_uploads_and_retains_quota_until_cleanup(
 
     pending = client.get("/api/v1/shares/storage", headers=_headers(regular_user))
     usage = pending.get_json()["data"]
+    assert usage["active_share_count"] == 0
     assert usage["uploaded_bytes"] == 1024
     assert usage["reserved_bytes"] == 1024
     assert usage["cleanup_pending_bytes"] == 1024

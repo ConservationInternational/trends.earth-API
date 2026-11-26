@@ -265,6 +265,47 @@ test("renders earlier layers above later layers in the table of contents", async
   }
 });
 
+test("viewers can drag or key layers into a new local order", async ({ page, request }) => {
+  await page.clock.install();
+  const id = await share(request);
+  await open(page, id);
+  await expect(page.locator("#layers-title")).toHaveText("Layers");
+  const titles = page.locator("#layers .layer-title span");
+  const vectorOnTop = () => page.evaluate(() => {
+    const raster = document.querySelector(".layer-11111111-1111-4111-8111-111111111111");
+    const vector = document.querySelector(".layer-22222222-2222-4222-8222-222222222222");
+    return Boolean(raster.compareDocumentPosition(vector) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  await expect(titles).toHaveText(["Raster result", "Vector result"]);
+  await expect.poll(vectorOnTop).toBe(false);
+
+  const handle = await page.getByRole("button", { name: "Reorder Vector result" }).boundingBox();
+  const target = await page.locator("#layers .layer").first().boundingBox();
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + handle.width / 2, target.y + 2, { steps: 8 });
+  await page.mouse.up();
+  await expect(titles).toHaveText(["Vector result", "Raster result"]);
+  await expect.poll(vectorOnTop).toBe(true);
+
+  await page.getByRole("button", { name: "Reorder Vector result" }).press("ArrowDown");
+  await expect(titles).toHaveText(["Raster result", "Vector result"]);
+  await expect.poll(vectorOnTop).toBe(false);
+  await expect(page.getByRole("button", { name: "Reorder Vector result" })).toBeFocused();
+  await page.getByRole("button", { name: "Reorder Vector result" }).press("ArrowUp");
+  await expect(titles).toHaveText(["Vector result", "Raster result"]);
+
+  await page.getByRole("button", { name: "Reorder Vector result" }).press("ArrowDown");
+  await page.getByRole("button", { name: "Hide Raster result details" }).click();
+  await expect(page.getByRole("slider", { name: "Raster result opacity" })).toBeHidden();
+  // The owner's new order rerenders the list but keeps the viewer's order and layout.
+  await request.post(`${fixtureUrl}/__share/${id}`, { data: { reverseLayers: true } });
+  await page.clock.runFor(30001);
+  await expect(page.getByRole("button", { name: "Show Raster result details" })).toBeVisible();
+  await expect(titles).toHaveText(["Raster result", "Vector result"]);
+  await expect.poll(vectorOnTop).toBe(false);
+});
+
 test("inspects the uppermost visible vector layer first", async ({ page, request }) => {
   const id = await share(request, { secondVector: "Another vector" });
   await open(page, id);

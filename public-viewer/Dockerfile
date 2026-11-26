@@ -4,7 +4,6 @@ COPY public-viewer/package*.json ./
 RUN npm ci --ignore-scripts
 COPY public-viewer/build.mjs ./build.mjs
 COPY public-viewer/src ./src
-COPY gefapi/static/auth/trends_earth_logo_from_CI.png /build/gefapi/static/auth/trends_earth_logo_from_CI.png
 RUN npm run build
 
 FROM python:3.13-slim

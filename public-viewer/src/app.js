@@ -48,6 +48,20 @@ function textElement(tag, text, className) {
   return element;
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+function icon(path) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  const shape = document.createElementNS(SVG_NS, "path");
+  shape.setAttribute("d", path);
+  svg.append(shape);
+  return svg;
+}
+const GRIP_ICON = "M5 3h2v2H5zm4 0h2v2H9zM5 7h2v2H5zm4 0h2v2H9zm-4 4h2v2H5zm4 0h2v2H9z";
+const CHEVRON_ICON = "M4.5 6 8 9.5 11.5 6 13 7.5l-5 5-5-5z";
+
 function validateManifest(data, shareId, token) {
   if (!data || !UUID.test(data.id) || (shareId && data.id !== shareId) || typeof data.title !== "string" ||
       !Number.isFinite(Date.parse(data.expires_at)) || !Array.isArray(data.layers)) {
@@ -212,6 +226,8 @@ export async function start(initialSecret, hadFragment) {
   let maskGeometry = null;
   let maskFeature = null;
   let records = [];
+  // Viewer-only layer order chosen by dragging; it never changes the share.
+  let viewerOrder = null;
   let stopped = false;
   let busy = false;
   let timer = null;
@@ -529,9 +545,79 @@ export async function start(initialSecret, hadFragment) {
     map.getView().fit(extent, { padding: [20, 20, 20, 20], maxZoom: 12 });
   }
 
+  function orderedLayers() {
+    if (!viewerOrder) return manifest.layers;
+    const rank = new globalThis.Map(viewerOrder.map((id, index) => [id, index]));
+    const known = manifest.layers.filter((layer) => rank.has(layer.id))
+      .sort((a, b) => rank.get(a.id) - rank.get(b.id));
+    // Layers added since the viewer reordered keep their shared position.
+    return manifest.layers.map((layer) => (rank.has(layer.id) ? known.shift() : layer));
+  }
+
+  function applyOrder(ids) {
+    const byId = new globalThis.Map(records.map((record) => [record.layer.id, record]));
+    if (ids.length !== records.length || !ids.every((id) => byId.has(id))) return;
+    viewerOrder = ids;
+    records = ids.map((id) => byId.get(id));
+    records.forEach((record, index) => {
+      record.grid.setZIndex(records.length - index);
+      $("layers").append(record.card);
+    });
+  }
+
+  function cardOrder() {
+    return [...$("layers").querySelectorAll(".layer")].map((card) => card.dataset.layerId);
+  }
+
+  function startDrag(event, record) {
+    if (event.button !== 0 || records.length < 2) return;
+    event.preventDefault();
+    const { pointerId } = event;
+    const { card } = record;
+    const listeners = new AbortController();
+    card.classList.add("dragging");
+    $("layers").classList.add("reordering");
+    document.addEventListener("pointermove", (moveEvent) => {
+      if (moveEvent.pointerId !== pointerId || !records.includes(record)) return;
+      const next = [...$("layers").querySelectorAll(".layer")].find((other) => {
+        if (other === card) return false;
+        const rect = other.getBoundingClientRect();
+        return moveEvent.clientY < rect.top + rect.height / 2;
+      });
+      if (next) $("layers").insertBefore(card, next);
+      else $("layers").append(card);
+    }, { signal: listeners.signal });
+    const finish = () => {
+      listeners.abort();
+      card.classList.remove("dragging");
+      $("layers").classList.remove("reordering");
+      // A manifest update may have replaced the list during the drag.
+      if (records.includes(record)) applyOrder(cardOrder());
+    };
+    for (const type of ["pointerup", "pointercancel"]) {
+      document.addEventListener(type, (endEvent) => {
+        if (endEvent.pointerId === pointerId) finish();
+      }, { signal: listeners.signal });
+    }
+  }
+
+  function moveBy(record, offset) {
+    const ids = records.map((item) => item.layer.id);
+    const from = ids.indexOf(record.layer.id);
+    const to = from + offset;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    applyOrder(ids);
+    record.card.querySelector(".drag-handle").focus();
+  }
+
   function render(fitLayers = true) {
-    const previous = new globalThis.Map(records.map(({ layer, grid }) => [
-      layer.id, { visible: grid.getVisible(), opacity: grid.getOpacity() },
+    const previous = new globalThis.Map(records.map(({ layer, grid, card }) => [
+      layer.id, {
+        visible: grid.getVisible(),
+        opacity: grid.getOpacity(),
+        collapsed: card.classList.contains("collapsed"),
+      },
     ]));
     clearLayers();
     $("title").textContent = manifest.title;
@@ -540,22 +626,61 @@ export async function start(initialSecret, hadFragment) {
     $("map-placeholder").hidden = true;
     $("map-tools").hidden = false;
     if (!manifest.layers.length) {
-      $("layers").append(textElement("p", "No layers are currently shared."));
+      $("layers").append(textElement("p", "No layers are currently shared.", "layers-empty"));
     }
-    for (const [order, layer] of manifest.layers.entries()) {
-      const grid = makeGrid(layer, manifest.layers.length - order);
-      const record = { layer, grid };
-      records.push(record);
+    const layers = orderedLayers();
+    for (const [order, layer] of layers.entries()) {
+      const grid = makeGrid(layer, layers.length - order);
       const card = document.createElement("div");
+      const record = { layer, grid, card };
+      records.push(record);
       card.className = "layer";
+      card.dataset.layerId = layer.id;
+      const header = document.createElement("div");
+      header.className = "layer-header";
+      const handle = document.createElement("button");
+      handle.type = "button";
+      handle.className = "drag-handle";
+      handle.hidden = layers.length < 2;
+      handle.setAttribute("aria-label", `Reorder ${layer.name}`);
+      handle.title = "Drag to reorder, or use the arrow keys";
+      handle.append(icon(GRIP_ICON));
+      handle.addEventListener("pointerdown", (event) => startDrag(event, record));
+      handle.addEventListener("keydown", (event) => {
+        const offset = { ArrowUp: -1, ArrowDown: 1 }[event.key];
+        if (!offset) return;
+        event.preventDefault();
+        moveBy(record, offset);
+      });
       const label = document.createElement("label");
       label.className = "layer-title";
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.checked = previous.get(layer.id)?.visible ?? true;
       grid.setVisible(checkbox.checked);
-      checkbox.addEventListener("change", () => grid.setVisible(checkbox.checked));
+      checkbox.addEventListener("change", () => {
+        grid.setVisible(checkbox.checked);
+        card.classList.toggle("layer-hidden", !checkbox.checked);
+      });
+      card.classList.toggle("layer-hidden", !checkbox.checked);
       label.append(checkbox, textElement("span", layer.name));
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "layer-toggle";
+      toggle.append(icon(CHEVRON_ICON));
+      const body = document.createElement("div");
+      body.className = "layer-body";
+      body.id = `layer-body-${layer.id}`;
+      toggle.setAttribute("aria-controls", body.id);
+      const setCollapsed = (collapsed) => {
+        card.classList.toggle("collapsed", collapsed);
+        body.hidden = collapsed;
+        toggle.setAttribute("aria-expanded", String(!collapsed));
+        toggle.setAttribute("aria-label", `${collapsed ? "Show" : "Hide"} ${layer.name} details`);
+      };
+      setCollapsed(previous.get(layer.id)?.collapsed ?? false);
+      toggle.addEventListener("click", () => setCollapsed(!card.classList.contains("collapsed")));
+      header.append(handle, label, toggle);
       const opacityLabel = document.createElement("label");
       opacityLabel.className = "opacity";
       const opacity = document.createElement("input");
@@ -563,12 +688,18 @@ export async function start(initialSecret, hadFragment) {
       opacity.value = Math.round((previous.get(layer.id)?.opacity ?? 1) * 100);
       grid.setOpacity(Number(opacity.value) / 100);
       opacity.setAttribute("aria-label", `${layer.name} opacity`);
-      opacity.addEventListener("input", () => grid.setOpacity(Number(opacity.value) / 100));
-      opacityLabel.append(textElement("span", "Opacity"), opacity);
-      card.append(label, opacityLabel, legend(layer));
-      if (layer.attribution) card.append(textElement("p", `Attribution: ${layer.attribution}`, "layer-detail"));
+      const opacityValue = textElement("span", `${opacity.value}%`, "opacity-value");
+      opacityValue.setAttribute("aria-hidden", "true");
+      opacity.addEventListener("input", () => {
+        grid.setOpacity(Number(opacity.value) / 100);
+        opacityValue.textContent = `${opacity.value}%`;
+      });
+      opacityLabel.append(textElement("span", "Opacity"), opacity, opacityValue);
+      body.append(legend(layer), opacityLabel);
+      card.append(header, body);
+      if (layer.attribution) body.append(textElement("p", `Attribution: ${layer.attribution}`, "layer-detail"));
       if (layer.kind === "vector") {
-        const inspect = textElement("button", "Inspect visible features");
+        const inspect = textElement("button", "Inspect visible features", "inspect");
         inspect.type = "button";
         inspect.addEventListener("click", () => {
           const options = [];
@@ -593,10 +724,10 @@ export async function start(initialSecret, hadFragment) {
           picker.id = "feature-picker";
           picker.append(textElement("p", options.length ? "Visible tile features (up to 100; boundary features may repeat):" : "No features loaded at this zoom."));
           if (options.length) { picker.append(select); selectFeature(options[0], layer.name); }
-          card.append(picker);
+          body.append(picker);
           if (options.length) select.focus();
         });
-        card.append(inspect);
+        body.append(inspect);
       }
       $("layers").append(card);
     }

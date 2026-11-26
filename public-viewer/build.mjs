@@ -19,7 +19,4 @@ await build({
   loader: { ".png": "dataurl" },
 });
 await copyFile("src/bootstrap.js", "dist/assets/bootstrap.js");
-await copyFile(
-  "../gefapi/static/auth/trends_earth_logo_from_CI.png",
-  "dist/assets/trends_earth_logo.png",
-);
+await copyFile("src/trends_earth_logo.png", "dist/assets/trends_earth_logo.png");

@@ -34,6 +34,7 @@ from gefapi.services.public_share_service import (
     public_origin_matches,
     refresh_viewer_session,
     remove_layers_from_share,
+    reorder_share_layers,
     tile_intersects_layer,
     update_share_mask,
     verify_public_secret,
@@ -219,6 +220,22 @@ def remove_public_share_layers(share_id):
     )
     response.headers["Cache-Control"] = "no-store"
     return response, 202
+
+
+@endpoints.route("/shares/<share_id>/layers/order", methods=["PUT"])
+@bearer_required()
+@require_scope("webmap:write")
+def reorder_public_share_layers(share_id):
+    """Set the viewer order of published layers; the first ID is the top layer."""
+    try:
+        share = reorder_share_layers(
+            share_id, current_user.id, request.get_json(silent=True)
+        )
+    except PublicShareError as exc:
+        return _expected_error(exc)
+    response = jsonify(data=share.serialize())
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @endpoints.route("/shares/<share_id>/uploads", methods=["POST"])

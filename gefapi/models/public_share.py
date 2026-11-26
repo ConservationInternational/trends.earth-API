@@ -52,7 +52,7 @@ class PublicShare(db.Model):
         "PublicShareLayer",
         back_populates="share",
         cascade="all, delete-orphan",
-        order_by="PublicShareLayer.created_at",
+        order_by="(PublicShareLayer.position, PublicShareLayer.created_at)",
     )
 
     def is_accessible(self, now=None):
@@ -135,6 +135,8 @@ class PublicShareLayer(db.Model):
     upload_completed = db.Column(db.Boolean(), nullable=False, default=False)
     published = db.Column(db.Boolean(), nullable=False, default=False)
     removed_at = db.Column(db.DateTime(), nullable=True, index=True)
+    # Display order in the viewer; the lowest position is the top layer.
+    position = db.Column(db.Integer(), nullable=False, default=0)
     validation_error = db.Column(db.String(500), nullable=True)
     created_at = db.Column(db.DateTime(), nullable=False, default=utcnow)
 
