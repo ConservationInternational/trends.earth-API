@@ -811,19 +811,9 @@ def remove_layers_from_share(share_id, user_id, body):
     return share
 
 
-def reorder_share_layers(share_id, user_id, body):
-    """Set the display order of an active share's published layers."""
-    ensure_public_shares_enabled()
-    if (
-        not isinstance(body, dict)
-        or set(body) != {"layer_ids"}
-        or not isinstance(body["layer_ids"], list)
-        or not body["layer_ids"]
-        or len(body["layer_ids"]) > _config()["MAX_LAYERS"]
-    ):
-        raise PublicShareError(400, "Request must contain a nonempty layer_ids array")
+def _update_layer_order(share_id, user_id, ids, names=None):
     try:
-        layer_ids = [str(uuid.UUID(value)) for value in body["layer_ids"]]
+        layer_ids = [str(uuid.UUID(value)) for value in ids]
     except (ValueError, TypeError, AttributeError):
         raise PublicShareError(400, "Invalid layer ID") from None
     if len(set(layer_ids)) != len(layer_ids):
@@ -840,8 +830,18 @@ def reorder_share_layers(share_id, user_id, body):
     }
     if set(layer_ids) != set(layers):
         raise PublicShareError(400, "layer_ids must list every published layer once")
+    if names is not None:
+        reserved_names = {
+            layer.name.casefold()
+            for layer in share.layers
+            if not layer.published and layer.removed_at is None
+        }
+        if reserved_names.intersection(name.casefold() for name in names):
+            raise PublicShareError(400, "Layer names must be unique")
     for position, layer_id in enumerate(layer_ids):
         layers[layer_id].position = position
+        if names is not None:
+            layers[layer_id].name = names[position]
     # Unpublished or removed layers keep their relative order after the list.
     for offset, layer in enumerate(
         layer for layer in share.layers if str(layer.id) not in layers
@@ -850,6 +850,49 @@ def reorder_share_layers(share_id, user_id, body):
     db.session.commit()
     db.session.refresh(share)
     return share
+
+
+def reorder_share_layers(share_id, user_id, body):
+    """Set the display order of an active share's published layers."""
+    ensure_public_shares_enabled()
+    if (
+        not isinstance(body, dict)
+        or set(body) != {"layer_ids"}
+        or not isinstance(body["layer_ids"], list)
+        or not body["layer_ids"]
+        or len(body["layer_ids"]) > _config()["MAX_LAYERS"]
+    ):
+        raise PublicShareError(400, "Request must contain a nonempty layer_ids array")
+    return _update_layer_order(share_id, user_id, body["layer_ids"])
+
+
+def edit_share_layers(share_id, user_id, body):
+    """Atomically update the names and order of all published layers."""
+    ensure_public_shares_enabled()
+    if (
+        not isinstance(body, dict)
+        or set(body) != {"layers"}
+        or not isinstance(body["layers"], list)
+        or not body["layers"]
+        or len(body["layers"]) > _config()["MAX_LAYERS"]
+        or any(
+            not isinstance(layer, dict) or set(layer) != {"id", "name"}
+            for layer in body["layers"]
+        )
+    ):
+        raise PublicShareError(400, "Request must contain a nonempty layers array")
+    ids, names = [], []
+    for layer in body["layers"]:
+        name = layer["name"]
+        if not isinstance(name, str) or not name.strip() or len(name.strip()) > 120:
+            raise PublicShareError(
+                400, "Each layer name must contain 1 to 120 characters"
+            )
+        ids.append(layer["id"])
+        names.append(name.strip())
+    if len({name.casefold() for name in names}) != len(names):
+        raise PublicShareError(400, "Layer names must be unique")
+    return _update_layer_order(share_id, user_id, ids, names)
 
 
 def get_share_storage_usage(user):

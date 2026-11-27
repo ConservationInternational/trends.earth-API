@@ -237,6 +237,60 @@ def test_removed_layer_migration_blocks_unsafe_downgrade(monkeypatch):
         ] == ["id"]
 
 
+def test_owner_edits_layer_names_and_order_atomically(
+    app, client, regular_user, admin_user, public_share_config
+):
+    payload = _payload()
+    payload["layers"].append({**payload["layers"][0], "name": "Second"})
+    share = create_share(regular_user, payload)
+    share.state = "ready"
+    for layer in share.layers:
+        layer.published = True
+        layer.checksum_sha256 = layer.expected_sha256
+    first, second = (str(layer.id) for layer in share.layers)
+    db.session.commit()
+    token = mint_public_link(share).rsplit("/", 1)[1]
+    manifest_url = f"/api/v1/public-shares/s/{token}/manifest"
+    url = f"/api/v1/shares/{share.id}/layers"
+    headers = _headers(regular_user)
+    edits = [{"id": second, "name": " Custom "}, {"id": first, "name": "Second"}]
+
+    assert (
+        client.put(
+            url, json={"layers": edits}, headers=_headers(admin_user)
+        ).status_code
+        == 404
+    )
+    for invalid in (
+        [{"id": first, "name": ""}, {"id": second, "name": "Second"}],
+        [{"id": first, "name": "x" * 121}, {"id": second, "name": "Second"}],
+        [{"id": first, "name": "Same"}, {"id": second, "name": " same "}],
+        [{"id": first, "name": "One"}],
+        [{"id": first, "name": "One"}, {"id": first, "name": "Two"}],
+        [{"id": "bad", "name": "One"}, {"id": second, "name": "Two"}],
+    ):
+        assert (
+            client.put(url, json={"layers": invalid}, headers=headers).status_code
+            == 400
+        )
+    assert [
+        layer["name"] for layer in client.get(manifest_url).json["data"]["layers"]
+    ] == ["Land cover", "Second"]
+    share.update_state = "validating"
+    db.session.commit()
+    assert client.put(url, json={"layers": edits}, headers=headers).status_code == 409
+    share.update_state = "idle"
+    db.session.commit()
+    response = client.put(url, json={"layers": edits}, headers=headers)
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    layers = client.get(manifest_url).json["data"]["layers"]
+    assert [(layer["id"], layer["name"]) for layer in layers] == [
+        (second, "Custom"),
+        (first, "Second"),
+    ]
+
+
 def test_owner_reorders_published_layers_and_new_layers_are_appended(
     app, client, regular_user, admin_user, public_share_config, monkeypatch
 ):

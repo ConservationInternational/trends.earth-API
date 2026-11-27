@@ -21,6 +21,7 @@ from gefapi.services.public_share_service import (
     create_or_refresh_upload,
     create_share,
     create_viewer_session,
+    edit_share_layers,
     ensure_public_shares_enabled,
     get_public_link,
     get_share_storage_usage,
@@ -220,6 +221,22 @@ def remove_public_share_layers(share_id):
     )
     response.headers["Cache-Control"] = "no-store"
     return response, 202
+
+
+@endpoints.route("/shares/<share_id>/layers", methods=["PUT"])
+@bearer_required()
+@require_scope("webmap:write")
+def edit_public_share_layers(share_id):
+    """Update published layer titles and their viewer order."""
+    try:
+        share = edit_share_layers(
+            share_id, current_user.id, request.get_json(silent=True)
+        )
+    except PublicShareError as exc:
+        return _expected_error(exc)
+    response = jsonify(data=share.serialize())
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @endpoints.route("/shares/<share_id>/layers/order", methods=["PUT"])

@@ -616,12 +616,17 @@ Owner endpoints require bearer authentication and the dedicated OIDC/service
 client scope shown below. Object ownership is always checked against the
 authenticated user; optional job IDs are not accepted as an ownership proxy.
 
+In the plugin, layer titles are prefilled from dataset outputs and can be
+renamed before upload. For a published map, **Edit map layers...** changes
+titles and order together; **Remove layers...** removes published layers.
+
 | Method and path | Scope | Purpose |
 |---|---|---|
 | `POST /api/v1/shares` | `webmap:write` | Create a quota-reserved draft with raster/vector declarations, title and retention (7/30/90 days). See the vector contract above. An empty `layers` array creates a map that is immediately `ready` to publish; the plugin creates maps this way and adds layers afterward. |
 | `POST /api/v1/shares/{id}/uploads` | `webmap:write` | Start/refresh a multipart upload for a declared layer; returns fixed-size signed parts with a 15-minute default TTL. |
 | `POST /api/v1/shares/{id}/complete` | `webmap:write` | Complete every layer, verify actual size, and enqueue COG/PMTiles validation. Repeated completion can retry a lost validation enqueue. |
 | `DELETE /api/v1/shares/{id}/layers` | `webmap:write` | Remove published layers using `{"layer_ids": ["..."]}`; an empty map remains accessible. Returns 202 with the updated `share` and `cleanup_scheduled`. |
+| `PUT /api/v1/shares/{id}/layers` | `webmap:write` | Atomically rename and reorder all published layers using `{"layers": [{"id": "...", "name": "..."}]}` in top-first order. Names must be unique ignoring case and 1–120 characters after trimming. The share must be active and idle. Returns the updated share (`no-store`). |
 | `GET /api/v1/shares` and `GET /api/v1/shares/{id}` | `webmap:read` | List/status for the owner only; never returns capability secrets, object keys, or upload credentials. |
 | `PUT /api/v1/shares/{id}/layers/order` | `webmap:write` | Reorder an active, idle share's published layers with `{"layer_ids": ["..."]}`, listing every published layer exactly once; the first ID is the top layer in the viewer. New layers are appended at the bottom. Returns the updated share (`no-store`). |
 | `GET /api/v1/shares/{id}/link` | `webmap:write` | Return the owner's current viewer link (`{id, link, expires_at}`, `no-store`). Returns 409 when the share is not live or its link was not stored (published before link storage, or after a session-secret rotation); rotate once to fix. |
