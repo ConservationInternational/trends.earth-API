@@ -102,12 +102,12 @@ function manifest(id, options, token) {
     layers: [
       {
         ...raster, id: rasterId, kind: "raster", band: 1,
-        bounds: [-180, -85, 180, 85], crs: "EPSG:4326", nodata: null,
+        bounds: options.bounds || [-180, -85, 180, 85], crs: "EPSG:4326", nodata: null,
         vector_metadata: null, tile_format: "png", tiles: base + rasterId + "/{z}/{x}/{y}.png",
       },
       {
         ...vector, id: vectorId, kind: "vector", band: null,
-        bounds: [-180, -85, 180, 85], crs: "EPSG:3857", nodata: null,
+        bounds: options.bounds || [-180, -85, 180, 85], crs: "EPSG:3857", nodata: null,
         vector_metadata: { source_layer: "analysis", minzoom: 0, maxzoom: 4, fields: { status: "string" } },
         tile_format: "pbf", tiles: base + vectorId + "/{z}/{x}/{y}.pbf",
       },

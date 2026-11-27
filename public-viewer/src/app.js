@@ -11,12 +11,13 @@ import TileState from "ol/TileState.js";
 import { Circle, Fill, Stroke, Style } from "ol/style.js";
 import { fromLonLat, transformExtent } from "ol/proj.js";
 import { createEmpty, extend } from "ol/extent.js";
-import { defaults as defaultControls } from "ol/control.js";
+import { Control, Zoom, defaults as defaultControls } from "ol/control.js";
 import { createXYZ } from "ol/tilegrid.js";
 import { getRenderPixel } from "ol/render.js";
 import booleanIntersects from "@turf/boolean-intersects";
 import {
-  BASEMAPS, DEFAULT_BASEMAP, createBasemapLayer, createBorderLayer, setBasemap,
+  BASEMAPS, DEFAULT_BASEMAP, createBasemapLayer, createBorderLayer, createLabelLayer, setBasemap,
+  setLabelTone,
 } from "./basemaps.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -49,9 +50,9 @@ function textElement(tag, text, className) {
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-function icon(path) {
+function icon(path, viewBox = "0 0 16 16") {
   const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("viewBox", viewBox);
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("focusable", "false");
   const shape = document.createElementNS(SVG_NS, "path");
@@ -61,6 +62,21 @@ function icon(path) {
 }
 const GRIP_ICON = "M5 3h2v2H5zm4 0h2v2H9zM5 7h2v2H5zm4 0h2v2H9zm-4 4h2v2H5zm4 0h2v2H9z";
 const CHEVRON_ICON = "M4.5 6 8 9.5 11.5 6 13 7.5l-5 5-5-5z";
+// Material Design icons (Apache 2.0), 24x24 viewBox.
+const EXTENT_ICON = "M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6z";
+const BORDERS_ICON = "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z";
+const LABELS_ICON = "M5 4v3h5.5v12h3V7H19V4z";
+const BASEMAP_ICON = "M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z";
+
+function mapButton(id, label, path) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.id = id;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.append(icon(path, "0 0 24 24"));
+  return button;
+}
 
 function validateManifest(data, shareId, token) {
   if (!data || !UUID.test(data.id) || (shareId && data.id !== shareId) || typeof data.title !== "string" ||
@@ -215,10 +231,42 @@ export async function start(initialSecret, hadFragment) {
   const map = new Map({
     target: "map",
     maxTilesLoading: 6,
-    controls: defaultControls({ attribution: false, rotate: false }),
+    controls: defaultControls({ attribution: false, rotate: false, zoom: false }),
     view: new View({ center: fromLonLat([0, 0]), zoom: 2, minZoom: 0, maxZoom: 22 }),
   });
   $("map").setAttribute("aria-label", "Interactive map. Arrow keys pan; plus and minus zoom.");
+  // Zoom, extent, borders, labels and basemap buttons share one column at the map's top left.
+  const mapButtons = document.createElement("div");
+  mapButtons.className = "map-buttons ol-unselectable";
+  const tools = document.createElement("div");
+  tools.id = "map-tools";
+  tools.className = "map-tools ol-control";
+  tools.hidden = true;
+  const fitButton = mapButton("fit", "Show full extent", EXTENT_ICON);
+  const bordersButton = mapButton("borders", "National borders", BORDERS_ICON);
+  bordersButton.setAttribute("aria-pressed", "true");
+  const labelsButton = mapButton("labels", "Map labels", LABELS_ICON);
+  labelsButton.setAttribute("aria-expanded", "false");
+  labelsButton.setAttribute("aria-controls", "labels-panel");
+  const labelsPanel = document.createElement("div");
+  labelsPanel.id = "labels-panel";
+  labelsPanel.className = "labels-panel";
+  labelsPanel.setAttribute("role", "radiogroup");
+  labelsPanel.setAttribute("aria-label", "Map labels");
+  labelsPanel.hidden = true;
+  const basemapButton = mapButton("basemap-button", "Basemap", BASEMAP_ICON);
+  basemapButton.setAttribute("aria-expanded", "false");
+  basemapButton.setAttribute("aria-controls", "basemap-panel");
+  const basemapPanel = document.createElement("div");
+  basemapPanel.id = "basemap-panel";
+  basemapPanel.className = "basemap-panel";
+  basemapPanel.setAttribute("role", "radiogroup");
+  basemapPanel.setAttribute("aria-label", "Basemap");
+  basemapPanel.hidden = true;
+  tools.append(fitButton, bordersButton, labelsButton, labelsPanel, basemapButton, basemapPanel);
+  map.addControl(new Control({ element: mapButtons }));
+  map.addControl(new Zoom({ target: mapButtons }));
+  mapButtons.append(tools);
   const match = location.pathname.match(/^\/share\/([^/]+)$/);
   const shareId = match?.[1];
   const token = location.pathname.match(/^\/share\/s\/([A-Za-z0-9_-]{32,128})$/)?.[1];
@@ -239,6 +287,7 @@ export async function start(initialSecret, hadFragment) {
   const base = `/api/v1/public-shares/${token ? `s/${token}` : shareId}`;
   const basemap = createBasemapLayer(DEFAULT_BASEMAP);
   const borders = createBorderLayer(BASEMAPS[DEFAULT_BASEMAP].borders);
+  const labels = createLabelLayer();
   // Small screens show the map full screen and open the controls as an overlay
   // sheet; larger screens show them as a sidebar that can be collapsed.
   const compact = window.matchMedia("(max-width: 720px), (max-height: 500px)");
@@ -250,7 +299,9 @@ export async function start(initialSecret, hadFragment) {
     document.body.classList.toggle("toc-hidden", !sheet && !tocOpen);
     $("controls").inert = !tocOpen;
     $("map-region").inert = sheet && tocOpen;
-    $("toc-close").textContent = sheet ? "Show map" : "Hide layers";
+    const closeLabel = sheet ? "Show map" : "Hide layers";
+    $("toc-close").setAttribute("aria-label", closeLabel);
+    $("toc-close").title = closeLabel;
     for (const id of ["toc-open", "toc-close"]) $(id).setAttribute("aria-expanded", String(tocOpen));
     map.updateSize();
   }
@@ -258,7 +309,6 @@ export async function start(initialSecret, hadFragment) {
   function setToc(open, { focus = true } = {}) {
     if (tocOpen === open) return;
     tocOpen = open;
-    if (open) $("mobile-notice").hidden = true;
     syncToc();
     if (focus) $(open ? "toc-close" : "toc-open").focus();
   }
@@ -275,6 +325,7 @@ export async function start(initialSecret, hadFragment) {
   function clearLayers() {
     map.removeLayer(basemap);
     map.removeLayer(borders);
+    map.removeLayer(labels);
     for (const record of records) {
       map.removeLayer(record.grid);
       record.grid.getSource().clear();
@@ -573,7 +624,21 @@ export async function start(initialSecret, hadFragment) {
       ], "EPSG:4326", "EPSG:3857"));
     }
     map.updateSize();
-    map.getView().fit(extent, { padding: [20, 20, 20, 20], maxZoom: 12 });
+    map.getView().fit(extent, { padding: fitPadding(), maxZoom: 12 });
+  }
+
+  // Keep fitted data clear of the footer and the control column.
+  function fitPadding() {
+    const area = $("map").getBoundingClientRect();
+    const padding = [20, 20, 20, 20];
+    const footer = $("map-disclaimer").getBoundingClientRect();
+    if (footer.height) padding[2] = Math.max(20, area.bottom - footer.top + 12);
+    // Equal side padding keeps the data centred beside the control column.
+    const controls = mapButtons.getBoundingClientRect();
+    if (controls.width) padding[1] = padding[3] = Math.max(20, controls.right - area.left + 12);
+    if (padding[0] + padding[2] > area.height - 40) { padding[0] = 20; padding[2] = 20; }
+    if (padding[1] + padding[3] > area.width - 40) { padding[1] = 20; padding[3] = 20; }
+    return padding;
   }
 
   function orderedLayers() {
@@ -653,7 +718,8 @@ export async function start(initialSecret, hadFragment) {
     clearLayers();
     $("title").textContent = manifest.title;
     // Keep browser tab titles generic: uploaded names may contain sensitive text.
-    $("expiry").textContent = `Link expires: ${new Date(manifest.expires_at).toISOString().replace(/Z$/, " UTC")}`;
+    // Round down to the minute so the link never appears to outlive its expiry.
+    $("expiry").textContent = `Link expires: ${new Date(manifest.expires_at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
     $("map-placeholder").hidden = true;
     $("map-tools").hidden = false;
     if (!manifest.layers.length) {
@@ -765,6 +831,7 @@ export async function start(initialSecret, hadFragment) {
     if (fitLayers) fit();
     map.addLayer(basemap);
     map.addLayer(borders);
+    map.addLayer(labels);
     for (const record of records) map.addLayer(record.grid);
     status("", "ready");
   }
@@ -833,37 +900,71 @@ export async function start(initialSecret, hadFragment) {
     }
   }
 
-  const basemapLabel = document.createElement("label");
-  basemapLabel.className = "basemap-control";
-  const basemapSelect = document.createElement("select");
-  basemapSelect.id = "basemap";
-  basemapLabel.append(textElement("span", "Basemap"), basemapSelect);
-  const bordersLabel = document.createElement("label");
-  bordersLabel.className = "borders-control";
-  const bordersCheckbox = document.createElement("input");
-  bordersCheckbox.type = "checkbox";
-  bordersCheckbox.id = "borders";
-  bordersCheckbox.checked = true;
-  bordersLabel.append(bordersCheckbox, textElement("span", "National borders"));
-  $("basemap-controls").replaceChildren(basemapLabel, bordersLabel);
-  for (const [key, option] of Object.entries(BASEMAPS)) {
-    const element = textElement("option", option.label);
-    element.value = key;
-    $("basemap").append(element);
+  function setBasemapPanel(open) {
+    if (open) setLabelsPanel(false);
+    basemapPanel.hidden = !open;
+    basemapButton.setAttribute("aria-expanded", String(open));
   }
-  $("basemap").value = DEFAULT_BASEMAP;
-  $("basemap").addEventListener("change", () => {
-    const key = $("basemap").value;
-    if (!BASEMAPS[key]) return;
-    setBasemap(basemap, key);
-    borders.set("tone", BASEMAPS[key].borders);
-    borders.changed();
+  function setLabelsPanel(open) {
+    if (open) setBasemapPanel(false);
+    labelsPanel.hidden = !open;
+    labelsButton.setAttribute("aria-expanded", String(open));
+  }
+  for (const [value, name] of [["off", "Off"], ["dark", "Dark labels"], ["light", "Light labels"]]) {
+    const option = document.createElement("label");
+    option.className = "labels-option";
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "map-labels";
+    input.value = value;
+    input.checked = value === "off";
+    input.addEventListener("change", () => {
+      if (value !== "off") setLabelTone(labels, value);
+      labels.setVisible(value !== "off");
+    });
+    option.append(input, textElement("span", name));
+    labelsPanel.append(option);
+  }
+  for (const [key, option] of Object.entries(BASEMAPS)) {
+    const label = document.createElement("label");
+    label.className = "basemap-option";
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "basemap";
+    input.value = key;
+    input.checked = key === DEFAULT_BASEMAP;
+    input.addEventListener("change", () => {
+      setBasemap(basemap, key);
+      borders.set("tone", BASEMAPS[key].borders);
+      borders.changed();
+    });
+    label.append(input, textElement("span", "", `basemap-swatch basemap-${key}`), textElement("span", option.label));
+    basemapPanel.append(label);
+  }
+  basemapButton.addEventListener("click", () => setBasemapPanel(basemapPanel.hidden));
+  labelsButton.addEventListener("click", () => setLabelsPanel(labelsPanel.hidden));
+  for (const [panel, button, setPanel] of [
+    [basemapPanel, basemapButton, setBasemapPanel],
+    [labelsPanel, labelsButton, setLabelsPanel],
+  ]) {
+    panel.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" || event.key === "Enter") {
+        event.stopPropagation();
+        setPanel(false);
+        button.focus();
+      }
+    });
+  }
+  document.addEventListener("pointerdown", (event) => {
+    if (!basemapPanel.hidden && !tools.contains(event.target)) setBasemapPanel(false);
+    if (!labelsPanel.hidden && !tools.contains(event.target)) setLabelsPanel(false);
   });
-  $("borders").addEventListener("change", () => borders.setVisible($("borders").checked));
-  $("fit").addEventListener("click", () => {
-    fit();
-    if (compact.matches) setToc(false);
+  bordersButton.addEventListener("click", () => {
+    const visible = !borders.getVisible();
+    borders.setVisible(visible);
+    bordersButton.setAttribute("aria-pressed", String(visible));
   });
+  fitButton.addEventListener("click", fit);
   $("toc-open").addEventListener("click", () => setToc(true));
   $("toc-close").addEventListener("click", () => setToc(false));
   document.querySelector(".skip-link").addEventListener("click", () => setToc(true, { focus: false }));

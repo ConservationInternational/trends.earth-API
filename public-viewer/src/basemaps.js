@@ -1,5 +1,5 @@
-// Basemaps and national borders shared with Resilience Atlas
-// (resilienceatlas frontend/src/views/utils/basemaps.json and OLMap/boundaries.ts).
+// Basemaps, national borders and labels shared with Resilience Atlas (resilienceatlas
+// frontend/src/views/utils/basemaps.json, labels.json and OLMap/boundaries.ts).
 import TileLayer from "ol/layer/Tile.js";
 import VectorTileLayer from "ol/layer/VectorTile.js";
 import XYZ from "ol/source/XYZ.js";
@@ -17,6 +17,7 @@ export const BASEMAPS = {
   topographic: { label: "Topographic", style: "clgmd4mqr00ci01r7eh0ngxkz", borders: "dark" },
   dark: { label: "Dark", style: "cixtef50400162rla1jtwtoyi", borders: "light" },
 };
+const LABEL_STYLES = { light: "clgyr7y4u009l01qt32300lx9", dark: "clgyh74fy00g901qy2bmmerq9" };
 export const DEFAULT_BASEMAP = "defaultmap";
 
 const BORDER_COLORS = {
@@ -24,8 +25,12 @@ const BORDER_COLORS = {
   dark: { halo: "#00000059", line: "#666666b3" },
 };
 
+function styleUrl(style) {
+  return `${MAPBOX_ORIGIN}/styles/v1/cigrp/${style}/tiles/256/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`;
+}
+
 function basemapUrl(key) {
-  return `${MAPBOX_ORIGIN}/styles/v1/cigrp/${BASEMAPS[key].style}/tiles/256/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`;
+  return styleUrl(BASEMAPS[key].style);
 }
 
 export function createBasemapLayer(key = DEFAULT_BASEMAP) {
@@ -72,4 +77,28 @@ export function createBorderLayer(tone = "dark") {
     properties: { tone },
   });
   return layer;
+}
+
+function labelSource(tone) {
+  return new XYZ({
+    url: styleUrl(LABEL_STYLES[tone]), crossOrigin: "anonymous", tilePixelRatio: 2,
+    tileSize: 256, maxZoom: 22,
+  });
+}
+
+// Place-name labels drawn above the borders; hidden until the viewer turns them on.
+export function createLabelLayer(tone = "dark") {
+  return new TileLayer({
+    source: labelSource(tone),
+    zIndex: 100001,
+    className: "map-labels",
+    visible: false,
+    properties: { tone },
+  });
+}
+
+export function setLabelTone(layer, tone) {
+  if (layer.get("tone") === tone) return;
+  layer.setSource(labelSource(tone));
+  layer.set("tone", tone);
 }

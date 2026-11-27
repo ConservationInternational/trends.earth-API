@@ -94,3 +94,6 @@ ENV/
 # Generated API documentation
 gefapi/static/swagger.json
 scripts/setup-oidc-redirect-variables.sh
+
+# Local planning documents
+PLAN_*

@@ -20,3 +20,4 @@ await build({
 });
 await copyFile("src/bootstrap.js", "dist/assets/bootstrap.js");
 await copyFile("src/trends_earth_logo.png", "dist/assets/trends_earth_logo.png");
+await copyFile("src/favicon.ico", "dist/assets/favicon.ico");

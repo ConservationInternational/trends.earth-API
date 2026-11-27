@@ -86,30 +86,43 @@ tiles and data outside the mask. The mask itself is visible to anyone with the
 link and is removed from the database during share cleanup.
 
 After the link is authorized, the viewer adds the same Mapbox basemaps
-(Default, Satellite, Topographic and Dark) and national-border lines
+(Default, Satellite, Topographic and Dark), national-border lines
 (`mapbox.mapbox-streets-v8`, `admin` layer, `admin_level` 0, maritime borders
-excluded) that Resilience Atlas uses, with Resilience Atlas's public `pk.`
-token. Users can switch the basemap and hide borders. Mapbox requests carry no
-share secret, cookie or referrer, but they do reveal the viewer's IP address and
-the viewed area to Mapbox. A bottom-left footer shows the Mapbox and
-OpenStreetMap copyrights, the Trends.Earth boundary disclaimer, links to the
-Conservation International privacy policy and terms of use, and the link's
-expiry time.
+excluded) and dark or light place-name labels (styles
+`clgyh74fy00g901qy2bmmerq9` and `clgyr7y4u009l01qt32300lx9`) that Resilience
+Atlas uses, with Resilience Atlas's public `pk.` token. Mapbox requests carry
+no share secret, cookie or referrer, but they do reveal the viewer's IP address
+and the viewed area to Mapbox.
 
-On larger screens the controls and **Layers** list form a sidebar that starts
-open. **Hide layers** collapses it so the map takes the full width, and a
-floating **Layers** button reopens it.
+The header shows only the Trends.Earth logo and the map title, and the page uses
+the API UI's red-delta favicon. A column of map buttons at the top left holds
+zoom in and out, **Show full extent**, a **National borders** toggle, a **Map
+labels** picker and a **Basemap** button. Labels start off, as in Resilience
+Atlas, and request no tiles until enabled. Viewers can choose off, dark or light
+labels independently of the basemap. The
+basemap button opens a Resilience Atlas-style panel of basemap swatches, which
+closes on Escape or a click outside it. Fitting to the full extent pads the view
+so data is not hidden under the button column or the footer. A footer across the
+bottom of the map shows, in order:
+
+- the Mapbox and OpenStreetMap copyrights;
+- the Trends.Earth boundary disclaimer, with links to the Conservation
+  International privacy policy and terms of use;
+- the unlisted-snapshot notice;
+- the link's expiry time in UTC, rounded down to the minute.
+
+On larger screens the **Layers** list forms a sidebar that starts open. A
+chevron button beside the **Layers** title hides it so the map takes the full
+width, and a floating **Layers** button reopens it.
 
 On small screens (at most 720 px wide or 500 px tall) the map fills the page
-below a one-line header. The controls and **Layers** list open as a full-height
-sheet from a floating **Layers** button and close with **Show map** or Escape.
-**Show full extent** also closes the sheet, and selecting a vector feature on
-the map opens it at the feature's attributes. The hidden part of the page is
-`inert`, and focus moves between the two buttons. The footer collapses the
-disclaimer behind a **Disclaimer** toggle but always shows the copyrights and
-expiry time. Until the sheet is first opened, a short unlisted-snapshot notice
-sits under the Layers button. A red dot marks the button when the sheet holds a
-warning or error.
+below a one-line header. The **Layers** list opens as a full-height sheet from a
+floating **Layers** button. The chevron beside the title (**Show map**) or
+Escape closes it. Selecting a vector feature on the map opens the sheet at the
+feature's attributes. The hidden part of the page is `inert`, and focus moves
+between the two buttons. The footer collapses the disclaimer behind a
+**Disclaimer** toggle but always shows the copyrights, notice and expiry time. A
+red dot marks the Layers button when the sheet holds a warning or error.
 
 New links use `/share/s/<unguessable-token>` with no separate secret or session
 cookie. Copying the browser address bar or forwarding the URL preserves access.
@@ -573,7 +586,7 @@ Quotas and limits are configurable with:
 `PUBLIC_SHARES_MAX_LAYERS` (10), `PUBLIC_SHARES_MAX_FILE_BYTES` (2 GiB),
 `PUBLIC_SHARES_MAX_SHARE_BYTES` (2 GiB),
 `PUBLIC_SHARES_MAX_ACTIVE_PER_USER` (10),
-`PUBLIC_SHARES_MAX_RESERVED_BYTES_PER_USER` (10 GiB),
+`PUBLIC_SHARES_MAX_RESERVED_BYTES_PER_USER` (2 GiB),
 `PUBLIC_SHARES_MULTIPART_PART_BYTES` (16 MiB),
 `PUBLIC_SHARES_UPLOAD_URL_TTL_SECONDS` (900),
 `PUBLIC_SHARES_VIEWER_SESSION_TTL_SECONDS` (900),

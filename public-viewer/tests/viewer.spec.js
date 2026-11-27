@@ -79,7 +79,7 @@ async function open(page, id, legacy = false) {
   await page.goto(legacy ? `/share/${id}#${secret}` : `/share/s/${pathToken(id)}`);
   await ready(page);
   await expect(page.locator(".brand-logo")).toBeVisible();
-  await expect(page.locator(".powered-by")).toHaveText("Powered by Trends.Earth");
+  await expect(page.locator("header")).not.toContainText("Powered by");
   await expect(page.locator("header")).toHaveCSS("background-color", "rgb(100, 100, 100)");
   await expect.poll(() => page.locator(".brand-logo").evaluate((image) =>
     image.complete && image.naturalWidth > 0)).toBe(true);
@@ -385,7 +385,7 @@ test("removes fragment before requests and does not leak capabilities or send ex
   const exchange = requests.find((req) => req.url().endsWith("/session"));
   expect(JSON.parse(exchange.postData()).secret).toBe(secret);
   for (const req of requests) {
-    // Only the share API and the Resilience Atlas Mapbox basemap/borders are contacted.
+    // Only the share API and the Resilience Atlas Mapbox basemap/borders/labels are contacted.
     expect([new URL(page.url()).origin, "https://api.mapbox.com"]).toContain(new URL(req.url()).origin);
     expect(req.url()).not.toContain(secret);
     expect(req.headers().referer || "").toBe("");
@@ -567,7 +567,7 @@ test("renders a custom color-stop legend", async ({ page, request }) => {
     ["Uploaded stop A", "Uploaded stop B"]);
 });
 
-test("adds Resilience Atlas basemaps and national borders only after authorization", async ({ page, request }) => {
+test("adds Resilience Atlas basemaps, national borders and labels only after authorization", async ({ page, request }) => {
   await page.goto(`/share/${await share(request)}#invalid`);
   await expect(page.locator("#status")).toContainText("invalid");
   expect(mapboxRequests).toHaveLength(0);
@@ -579,7 +579,7 @@ test("adds Resilience Atlas basemaps and national borders only after authorizati
   expect(mapboxRequests.every(({ url, referer }) => !url.includes(secret) && !referer)).toBe(true);
   await expect(page.locator(".ol-attribution")).toHaveCount(0);
   await expect(page.locator("#map-disclaimer")).toHaveText(
-    /^© Mapbox © OpenStreetMap \| Disclaimer: The boundaries[^]*Terms of Use\s*Link expires: .+ UTC$/,
+    /^© Mapbox © OpenStreetMap \| Disclaimer: The boundaries[^]*Terms of Use\s*This is an unlisted snapshot\. [^]*until access expires\.\s*Link expires: \d{4}-\d\d-\d\d \d\d:\d\d UTC$/,
     { useInnerText: true });
   await expect(page.locator("header #expiry")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Disclaimer" })).toBeHidden();
@@ -591,22 +591,86 @@ test("adds Resilience Atlas basemaps and national borders only after authorizati
   await expect(page.getByRole("link", { name: "Terms of Use" })).toHaveAttribute(
     "href", "https://www.conservation.org/policies/terms-of-use");
 
-  await page.getByRole("combobox", { name: "Basemap" }).selectOption("satellite");
+  const basemapButton = page.getByRole("button", { name: "Basemap" });
+  await expect(page.getByRole("radiogroup", { name: "Basemap" })).toBeHidden();
+  await basemapButton.click();
+  await expect(basemapButton).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("radio", { name: "Default" })).toBeChecked();
+  await page.getByRole("radio", { name: "Satellite" }).check();
   await expect.poll(() => mapboxRequests.some(({ url }) => url.includes("cizsz6pv700422ro73xdhzi1g"))).toBe(true);
-  await page.getByRole("checkbox", { name: "National borders" }).uncheck();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("radiogroup", { name: "Basemap" })).toBeHidden();
+  await expect(basemapButton).toBeFocused();
+  await basemapButton.click();
+  await expect(page.getByRole("radio", { name: "Satellite" })).toBeChecked();
+  await page.locator("#map").click({ position: { x: 600, y: 300 } });
+  await expect(page.getByRole("radiogroup", { name: "Basemap" })).toBeHidden();
+  const bordersButton = page.getByRole("button", { name: "National borders" });
+  await expect(bordersButton).toHaveAttribute("aria-pressed", "true");
+  await bordersButton.click();
+  await expect(bordersButton).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".national-borders")).toBeHidden();
+
+  const lightLabels = "clgyr7y4u009l01qt32300lx9";
+  const darkLabels = "clgyh74fy00g901qy2bmmerq9";
+  const labelsButton = page.getByRole("button", { name: "Map labels" });
+  const labelsPanel = page.getByRole("radiogroup", { name: "Map labels" });
+  await expect(labelsButton).toHaveAttribute("aria-expanded", "false");
+  expect(mapboxRequests.some(({ url }) => url.includes(lightLabels) || url.includes(darkLabels))).toBe(false);
+  await labelsButton.click();
+  await expect(labelsButton).toHaveAttribute("aria-expanded", "true");
+  await expect(labelsPanel.getByRole("radio", { name: "Off" })).toBeChecked();
+  await labelsPanel.getByRole("radio", { name: "Dark labels" }).check();
+  await expect(page.locator(".map-labels")).toBeVisible();
+  await expect.poll(() => mapboxRequests.some(({ url }) => url.includes(darkLabels))).toBe(true);
+  expect(mapboxRequests.some(({ url }) => url.includes(lightLabels))).toBe(false);
+  await basemapButton.click();
+  await expect(labelsPanel).toBeHidden();
+  await page.getByRole("radio", { name: "Default" }).check();
+  await page.waitForTimeout(500);
+  expect(mapboxRequests.some(({ url }) => url.includes(lightLabels))).toBe(false);
+  await page.keyboard.press("Escape");
+  await labelsButton.click();
+  await expect(labelsPanel.getByRole("radio", { name: "Dark labels" })).toBeChecked();
+  await labelsPanel.getByRole("radio", { name: "Light labels" }).check();
+  await expect.poll(() => mapboxRequests.some(({ url }) => url.includes(lightLabels))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(labelsPanel).toBeHidden();
+  await expect(labelsButton).toBeFocused();
+  await labelsButton.click();
+  await expect(labelsPanel.getByRole("radio", { name: "Light labels" })).toBeChecked();
+  await labelsPanel.getByRole("radio", { name: "Off" }).check();
+  await expect(page.locator(".map-labels")).toBeHidden();
+  await page.locator("#map").click({ position: { x: 600, y: 300 } });
+  await expect(labelsPanel).toBeHidden();
+  await labelsButton.click();
+  await expect(labelsPanel.getByRole("radio", { name: "Off" })).toBeChecked();
+  await labelsPanel.getByRole("radio", { name: "Off" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(labelsPanel.getByRole("radio", { name: "Dark labels" })).toBeChecked();
+  await expect(page.locator(".map-labels")).toBeVisible();
+  await page.keyboard.press("Escape");
+  const buttons = await page.locator(".map-buttons button").evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("aria-label") || element.title));
+  expect(buttons).toEqual(["Zoom in", "Zoom out", "Show full extent", "National borders", "Map labels", "Basemap"]);
 });
 
 test("small screens show the map full screen and open the layer list as a sheet", async ({ page, request }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, await share(request));
+  const labelsButton = page.getByRole("button", { name: "Map labels" });
+  await labelsButton.click();
+  const labelsPanel = page.getByRole("radiogroup", { name: "Map labels" });
+  await labelsPanel.getByRole("radio", { name: "Light labels" }).check();
+  await expect(page.locator(".map-labels")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(labelsButton).toBeFocused();
   const sheet = page.locator("#controls");
   const layers = page.getByRole("button", { name: "Layers", exact: true });
   const showMap = page.getByRole("button", { name: "Show map" });
   const inert = (selector) => page.locator(selector).evaluate((element) => element.inert);
   const box = (selector) => page.locator(selector).boundingBox();
 
-  await expect(page.locator(".powered-by")).toBeHidden();
   const main = await box("main");
   expect(main.y + main.height).toBeCloseTo(844, 0);
   expect(await box("#map")).toEqual(main);
@@ -615,7 +679,6 @@ test("small screens show the map full screen and open the layer list as a sheet"
   await expect(sheet).toBeHidden();
   expect(await inert("#controls")).toBe(true);
   await expect(layers).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator("#mobile-notice")).toBeVisible();
 
   await expect(page.locator("#expiry")).toBeVisible();
   await expect(page.locator("#expiry")).toContainText("UTC");
@@ -632,7 +695,6 @@ test("small screens show the map full screen and open the layer list as a sheet"
   await expect(sheet).toBeVisible();
   await expect(showMap).toBeFocused();
   await expect(showMap).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator("#mobile-notice")).toBeHidden();
   await expect.poll(() => box("#controls")).toEqual(main);
   expect(await inert("#map-region")).toBe(true);
   await expect(page.getByRole("checkbox", { name: "Raster result" })).toBeVisible();
@@ -640,9 +702,7 @@ test("small screens show the map full screen and open the layer list as a sheet"
   await expect(sheet).toBeHidden();
   await expect(layers).toBeFocused();
 
-  await layers.click();
-  await page.getByRole("button", { name: "Show full extent" }).click();
-  await expect(sheet).toBeHidden();
+  await expect(page.locator(".share-notice")).toBeVisible();
   expect(await inert("#map-region")).toBe(false);
 
   const point = await page.locator(vectorCanvas).evaluate((canvas) => {
@@ -697,4 +757,39 @@ test("the desktop sidebar is open by default and collapses to give the map the f
   await expect(hide).toBeFocused();
   await expect.poll(mapWidth).toBe(narrow);
   expect(narrow).toBeLessThan(1280);
+});
+
+test("uses the Trends.Earth favicon and fits data clear of the map footer and controls", async ({ page, request }) => {
+  await open(page, await share(request, { bounds: [-20, -20, 20, 20] }));
+  const href = await page.locator('link[rel="icon"]').getAttribute("href");
+  expect(href).toContain("/assets/favicon.ico");
+  const favicon = await page.request.get(new URL(href, page.url()).href);
+  expect(favicon.status()).toBe(200);
+  expect((await favicon.body()).subarray(0, 4)).toEqual(Buffer.from([0, 0, 1, 0]));
+
+  for (const size of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(size);
+    await page.getByRole("button", { name: "Show full extent" }).click();
+    await page.waitForTimeout(500);
+    const covered = await page.locator(rasterCanvas).first().evaluate((canvas) => {
+      const context = canvas.getContext("2d");
+      const rect = canvas.getBoundingClientRect();
+      const scale = canvas.width / rect.width;
+      let total = 0;
+      let hidden = 0;
+      const obstacles = [".map-buttons", "#map-disclaimer"].map((selector) =>
+        document.querySelector(selector).getBoundingClientRect());
+      const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let i = 3; i < data.length; i += 4) {
+        if (!data[i]) continue;
+        total++;
+        const x = rect.left + ((i - 3) / 4 % canvas.width) / scale;
+        const y = rect.top + Math.floor((i - 3) / 4 / canvas.width) / scale;
+        if (obstacles.some((box) => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom)) hidden++;
+      }
+      return { total, hidden };
+    });
+    expect(covered.total).toBeGreaterThan(0);
+    expect(covered.hidden).toBe(0);
+  }
 });

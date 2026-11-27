@@ -48,7 +48,7 @@ DISCLAIMER = (
 
 app.layout = html.Div(
     [
-        html.A("Skip to map controls", href="#controls", className="skip-link"),
+        html.A("Skip to layers", href="#controls", className="skip-link"),
         html.Header(
             [
                 html.Img(
@@ -57,7 +57,6 @@ app.layout = html.Div(
                     className="brand-logo",
                 ),
                 html.H1("Shared map", id="title"),
-                html.P("Powered by Trends.Earth", className="powered-by"),
             ]
         ),
         html.Main(
@@ -65,22 +64,20 @@ app.layout = html.Div(
                 html.Aside(
                     [
                         html.Div(
-                            html.Button(
-                                "Show map",
-                                id="toc-close",
-                                type="button",
-                                **{
-                                    "aria-controls": "controls",
-                                    "aria-expanded": "false",
-                                },
-                            ),
-                            className="toc-bar",
-                        ),
-                        html.P(
-                            "This is an unlisted snapshot. Anyone with the "
-                            "original link can "
-                            "view, forward, or save its content until access expires.",
-                            className="notice",
+                            [
+                                html.H2("Layers", id="layers-title"),
+                                html.Button(
+                                    id="toc-close",
+                                    type="button",
+                                    title="Hide layers",
+                                    **{
+                                        "aria-label": "Hide layers",
+                                        "aria-controls": "controls",
+                                        "aria-expanded": "false",
+                                    },
+                                ),
+                            ],
+                            className="toc-header",
                         ),
                         html.Div(
                             "Opening shared map...",
@@ -89,21 +86,7 @@ app.layout = html.Div(
                             **{"aria-live": "polite"},
                         ),
                         html.Button("Retry loading map", id="retry", hidden=True),
-                        html.Div(
-                            [
-                                html.Button("Show full extent", id="fit"),
-                                html.Div(id="basemap-controls"),
-                            ],
-                            id="map-tools",
-                            hidden=True,
-                        ),
-                        html.Section(
-                            [
-                                html.H2("Layers", id="layers-title"),
-                                html.Div(id="layers"),
-                            ],
-                            **{"aria-labelledby": "layers-title"},
-                        ),
+                        html.Div(id="layers"),
                         html.Section(
                             [
                                 html.H2(
@@ -125,7 +108,7 @@ app.layout = html.Div(
                     ],
                     id="controls",
                     tabIndex=-1,
-                    **{"aria-label": "Map controls and legend"},
+                    **{"aria-label": "Layers and legend"},
                 ),
                 html.Section(
                     [
@@ -142,11 +125,6 @@ app.layout = html.Div(
                             id="toc-open",
                             type="button",
                             **{"aria-controls": "controls", "aria-expanded": "false"},
-                        ),
-                        html.P(
-                            "Unlisted snapshot: anyone with the link can view, "
-                            "forward, or save it until access expires.",
-                            id="mobile-notice",
                         ),
                         html.Div(
                             [
@@ -199,6 +177,12 @@ app.layout = html.Div(
                                             id="disclaimer-text",
                                         ),
                                     ]
+                                ),
+                                html.P(
+                                    "This is an unlisted snapshot. Anyone with the "
+                                    "original link can view, forward, or save its "
+                                    "content until access expires.",
+                                    className="share-notice",
                                 ),
                                 html.P(id="expiry"),
                             ],

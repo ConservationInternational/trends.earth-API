@@ -101,7 +101,7 @@ SETTINGS = {
             os.getenv("PUBLIC_SHARES_MAX_ACTIVE_PER_USER", "10")
         ),
         "MAX_RESERVED_BYTES_PER_USER": int(
-            os.getenv("PUBLIC_SHARES_MAX_RESERVED_BYTES_PER_USER", str(10 * 1024**3))
+            os.getenv("PUBLIC_SHARES_MAX_RESERVED_BYTES_PER_USER", str(2 * 1024**3))
         ),
         "MULTIPART_PART_BYTES": int(
             os.getenv("PUBLIC_SHARES_MULTIPART_PART_BYTES", str(16 * 1024**2))
