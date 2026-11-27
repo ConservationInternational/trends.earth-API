@@ -728,7 +728,8 @@ test("small screens show the map full screen and open the layer list as a sheet"
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(sheet).toBeVisible();
-  expect(await inert("#controls")).toBe(false);
+  // CSS can reveal the sidebar before the media-query change handler runs.
+  await expect(sheet).toHaveJSProperty("inert", false);
   await expect(layers).toBeHidden();
   await expect(page.locator("#expiry")).toBeVisible();
 });
